@@ -17,7 +17,7 @@ import re
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 from pathlib import Path
 
-VERSION = "7.3-026"
+VERSION = "7.3-027"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
@@ -245,7 +245,21 @@ def _bool_env(var_name: str, default: bool = False) -> bool:
     return default
 
 
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+def _resolve_log_level(raw_level: str | None, default: str = "INFO") -> str:
+    if not raw_level:
+        return default
+
+    normalised_level = raw_level.strip().upper()
+    if normalised_level == "VERBOSE":
+        return "DEBUG"
+
+    if normalised_level in {"CRITICAL", "ERROR", "WARNING", "WARN", "INFO", "DEBUG"}:
+        return normalised_level
+
+    return default
+
+
+LOG_LEVEL = _resolve_log_level(os.getenv("LOG_LEVEL"), default="INFO")
 
 # Emit one JSON object per line so it can be parsed and queried.
 LOGGING = {

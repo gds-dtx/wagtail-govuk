@@ -64,9 +64,7 @@ def custom_js_view(request):
     if not custom_js:
         raise Http404
 
-    return HttpResponse(
-        custom_js, content_type="application/javascript; charset=utf-8"
-    )
+    return HttpResponse(custom_js, content_type="application/javascript; charset=utf-8")
 
 
 @require_http_methods(["GET"])
@@ -104,11 +102,11 @@ def search_view(request):
     )
 
 
-def _normalized_referrer(value: str | None) -> str:
+def _normalised_referrer(value: str | None) -> str:
     return (value or "").strip()[:500]
 
 
-def _normalized_feedback_type(value: str | None) -> str | None:
+def _normalised_feedback_type(value: str | None) -> str | None:
     feedback_type = (value or "").strip()
     if not feedback_type:
         return None
@@ -181,10 +179,10 @@ def feedback_view(request):
     if not settings.FEATURE_FLAGS.get("FEEDBACK"):
         raise Http404
 
-    inferred_referrer = _normalized_referrer(
+    inferred_referrer = _normalised_referrer(
         request.GET.get("referrer") or request.META.get("HTTP_REFERER")
     )
-    inferred_feedback_type = _normalized_feedback_type(request.GET.get("feedback_type"))
+    inferred_feedback_type = _normalised_feedback_type(request.GET.get("feedback_type"))
 
     if not request.user.is_authenticated:
         return render(

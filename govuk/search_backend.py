@@ -310,15 +310,19 @@ class SearchBackend:
             source_name = self._clean_text(getattr(item.source, "name", ""))
             item_rank = float(getattr(item, "external_rank", 0.0) or 0.0)
             recency_boost = self._external_recency_boost(item)
-            score = item_rank + recency_boost + self._text_relevance(
-                query,
-                (
-                    (item.title, 3.0),
-                    (item.summary, 2.0),
-                    (item.url, 1.0),
-                    (source_name, EXTERNAL_SOURCE_TEXT_WEIGHT),
-                    (tags_text, EXTERNAL_TAG_TEXT_WEIGHT),
-                ),
+            score = (
+                item_rank
+                + recency_boost
+                + self._text_relevance(
+                    query,
+                    (
+                        (item.title, 3.0),
+                        (item.summary, 2.0),
+                        (item.url, 1.0),
+                        (source_name, EXTERNAL_SOURCE_TEXT_WEIGHT),
+                        (tags_text, EXTERNAL_TAG_TEXT_WEIGHT),
+                    ),
+                )
             )
             if score <= 0:
                 continue
@@ -620,10 +624,10 @@ class SearchBackend:
             clean_value = self._clean_text(value)
             if not clean_value:
                 continue
-            normalized = clean_value.lower()
-            if normalized in seen:
+            normalised = clean_value.lower()
+            if normalised in seen:
                 continue
-            seen.add(normalized)
+            seen.add(normalised)
             unique_values.append(clean_value)
         return unique_values
 

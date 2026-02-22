@@ -113,3 +113,17 @@ class LoggingSettingsTests(SimpleTestCase):
         self.assertEqual(root_logger["handlers"], ["console"])
         self.assertIn("gunicorn.access", loggers)
         self.assertIn("gunicorn.error", loggers)
+
+
+class ResolveLogLevelTests(SimpleTestCase):
+    def test_returns_default_when_value_is_missing(self):
+        self.assertEqual(base_settings._resolve_log_level(None), "INFO")
+
+    def test_maps_verbose_to_info(self):
+        self.assertEqual(base_settings._resolve_log_level("VERBOSE"), "INFO")
+
+    def test_returns_normalised_supported_level(self):
+        self.assertEqual(base_settings._resolve_log_level("debug"), "DEBUG")
+
+    def test_returns_default_when_value_is_unsupported(self):
+        self.assertEqual(base_settings._resolve_log_level("TRACE"), "INFO")

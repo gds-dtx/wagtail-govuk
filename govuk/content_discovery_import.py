@@ -38,9 +38,7 @@ def import_content_discovery_sources_from_csv(
     if len(delimiter) != 1:
         raise ContentDiscoverySourceImportError("Delimiter must be a single character.")
     if default_site_id is not None and default_site_id <= 0:
-        raise ContentDiscoverySourceImportError(
-            "--site-id must be a positive integer."
-        )
+        raise ContentDiscoverySourceImportError("--site-id must be a positive integer.")
 
     reader = csv.DictReader(csv_file, delimiter=delimiter)
     if not reader.fieldnames:
@@ -52,7 +50,9 @@ def import_content_discovery_sources_from_csv(
         if (header or "").strip()
     }
     if "url" not in header_names:
-        raise ContentDiscoverySourceImportError("CSV header must include a 'url' column.")
+        raise ContentDiscoverySourceImportError(
+            "CSV header must include a 'url' column."
+        )
     if "site_id" not in header_names and default_site_id is None:
         raise ContentDiscoverySourceImportError(
             "Provide a 'site_id' column or pass --site-id for all rows."
@@ -168,7 +168,8 @@ def import_content_discovery_sources_from_csv(
             if (
                 has_default_tags
                 and default_tag_stream is not None
-                and source.get_default_tag_ids() != _tag_ids_from_stream(default_tag_stream)
+                and source.get_default_tag_ids()
+                != _tag_ids_from_stream(default_tag_stream)
             ):
                 source.default_tags = default_tag_stream
                 fields_to_update.append("default_tags")
@@ -224,10 +225,10 @@ def _resolve_site_id(
 
 
 def _parse_bool(raw_value: str, *, row_index: int, field_name: str) -> bool:
-    normalized = raw_value.strip().lower()
-    if normalized in TRUTHY_VALUES:
+    normalised = raw_value.strip().lower()
+    if normalised in TRUTHY_VALUES:
         return True
-    if normalized in FALSY_VALUES:
+    if normalised in FALSY_VALUES:
         return False
     raise ContentDiscoverySourceImportError(
         f"Row {row_index}: '{field_name}' must be one of "
@@ -256,7 +257,9 @@ def _parse_default_tag_stream(
         seen.add(key)
         ordered_keys.append(key)
 
-    tags_by_key = {tag.slug: tag for tag in GovukTag.objects.filter(slug__in=ordered_keys)}
+    tags_by_key = {
+        tag.slug: tag for tag in GovukTag.objects.filter(slug__in=ordered_keys)
+    }
     missing = [key for key in ordered_keys if key not in tags_by_key]
     if missing:
         raise ContentDiscoverySourceImportError(
