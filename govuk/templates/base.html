@@ -266,6 +266,10 @@
                                     {% endfor %}
                                 {% endif %}
                             </ul>
+                            <div class="govuk-footer__meta-custom"
+                                 {% if not app_debug %}hidden{% endif %}>
+                                Debug: {{ app_debug|default:"unknown" }} | Version: {{ app_version|default:"unknown" }} | Settings: {{ django_settings_module|default:"unknown" }}
+                            </div>
                             <svg aria-hidden="true"
                                  focusable="false"
                                  class="govuk-footer__licence-logo"
@@ -303,6 +307,7 @@
         {% if customise_settings and customise_settings.has_custom_js %}
             <script src="{% url 'govuk_custom_js' %}"></script>
         {% endif %}
-        {% block extra_body %}{% endblock %}
+        {% block extra_body %}
+        {% endblock %}
     </body>
 </html>

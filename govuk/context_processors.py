@@ -1,3 +1,6 @@
+import os
+
+from django.conf import settings
 from django.http import Http404
 from wagtail.models import Page, Site
 
@@ -5,9 +8,17 @@ from govuk.models import CustomiseSettings, FooterSettings, PhaseBannerSettings
 
 
 def navigation_and_breadcrumbs(request):
+    template_context = {
+        "app_debug": settings.DEBUG,
+        "app_version": getattr(settings, "VERSION", ""),
+        "django_settings_module": os.getenv("DJANGO_SETTINGS_MODULE")
+        or getattr(settings, "SETTINGS_MODULE", ""),
+    }
+
     site = Site.find_for_request(request)
     if site is None:
         return {
+            **template_context,
             "service_navigation_items": [],
             "breadcrumbs": [],
             "phase_banner_settings": None,
@@ -57,6 +68,7 @@ def navigation_and_breadcrumbs(request):
     customise_settings = CustomiseSettings.for_site(site)
 
     return {
+        **template_context,
         "service_navigation_items": service_navigation_items,
         "breadcrumbs": breadcrumbs,
         "phase_banner_settings": PhaseBannerSettings.for_site(site),

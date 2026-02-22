@@ -22,7 +22,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Read app version
+        id: app_version
+        run: |
+          VERSION="$(grep -E '^VERSION[[:space:]]*=[[:space:]]*".*"$' govuk/settings/base.py | sed -E 's/^VERSION[[:space:]]*=[[:space:]]*"([^"]+)"$/\1/')"
+          if [ -z "$VERSION" ]; then
+            echo "Unable to determine VERSION from govuk/settings/base.py" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: 'Build Inventory Image'
         run: |
-          docker build . --no-cache --tag ghcr.io/govuk-digital-backbone/wagtail-govuk:7.3-025
-          docker push ghcr.io/govuk-digital-backbone/wagtail-govuk:7.3-025
+          docker build . --no-cache --tag ghcr.io/govuk-digital-backbone/wagtail-govuk:${{ steps.app_version.outputs.version }}
+          docker push ghcr.io/govuk-digital-backbone/wagtail-govuk:${{ steps.app_version.outputs.version }}
