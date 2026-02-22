@@ -79,7 +79,7 @@
                             {% if listing_items.paginator.count < 15 %}
                                 {{ listing_items.paginator.count }} result{{ listing_items.paginator.count|pluralize }}
                             {% else %}
-                                Showing {{ listing_items.start_index }} to {{ listing_items.end_index }} of {{ listing_items.paginator.count }} result{{ listing_items.paginator.count|pluralize }}
+                                Showing {{ listing_items.start_index }} to {{ listing_items.end_index }} of {{ listing_items.paginator.count|default:0|comma_number }} results
                             {% endif %}
                         </p>
                         <div class="section-cards">

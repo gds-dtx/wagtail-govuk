@@ -12,7 +12,7 @@ class FeedbackForm(forms.ModelForm):
             "comments": "Comments",
         }
         help_texts = {
-            "comments": "Do not include personal, sensitive, or classified information.",
+            "comments": None,
         }
         widgets = {
             "feedback_type": forms.Select(attrs={"class": "govuk-select"}),

@@ -35,6 +35,26 @@ def _parse_admin_user_emails(raw_emails: str | None) -> list[str]:
     return emails
 
 
+def _resolve_simple_jwt_audience(
+    default_audience: str | None,
+) -> str | tuple[str, ...] | None:
+    raw_audiences = os.getenv("OIDC_TOKEN_AUDIENCES")
+    if raw_audiences:
+        audiences: list[str] = []
+        seen: set[str] = set()
+        for candidate in raw_audiences.split(","):
+            audience = candidate.strip()
+            if audience and audience not in seen:
+                audiences.append(audience)
+                seen.add(audience)
+        if len(audiences) == 1:
+            return audiences[0]
+        if audiences:
+            return tuple(audiences)
+
+    return default_audience
+
+
 def _build_unique_username(user_model, username_field: str, email: str) -> str:
     field = user_model._meta.get_field(username_field)
     max_length = getattr(field, "max_length", 150) or 150
@@ -153,6 +173,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "govuk.middleware.IncomingRequestDebugLoggingMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -178,7 +199,7 @@ OIDC_JWKS_URL = os.getenv(
 OIDC_END_SESSION_URL = os.getenv(
     "OIDC_END_SESSION_URL", "https://sso.service.security.gov.uk/sign-out"
 )
-OIDC_TOKEN_AUDIENCE = os.getenv("OIDC_TOKEN_AUDIENCE", OIDC_CLIENT_ID)
+SIMPLE_JWT_AUDIENCE = _resolve_simple_jwt_audience(OIDC_CLIENT_ID)
 SOCIALACCOUNT_OPENID_CONNECT_URL_PREFIX = "oidc"
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_PROVIDERS = {
@@ -222,11 +243,66 @@ def _bool_env(var_name: str, default: bool = False) -> bool:
     return default
 
 
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+
+# Emit one JSON object per line so it can be parsed and queried.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "logging_json": {
+            "()": "govuk.logging_utils.LoggingJSONFormatter",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "logging_json",
+            "stream": "ext://sys.stdout",
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": LOG_LEVEL,
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "django.server": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "gunicorn.error": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "gunicorn.access": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+    },
+}
+
+
 FEATURE_FLAGS = {
     "ORGANISATIONS": _bool_env("FEATURE_ORGANISATIONS"),
     "PEOPLE_FINDER": _bool_env("FEATURE_PEOPLE_FINDER"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
 }
+
+# When enabled, logs inbound Django requests (including headers) at INFO level.
+INCOMING_REQUEST_INFO_LOGGING = _bool_env("INCOMING_REQUEST_INFO_LOGGING")
+
+# When enabled, logs outbound content discovery requests (including headers) at INFO.
+CONTENT_DISCOVERY_REQUEST_INFO_LOGGING = _bool_env(
+    "CONTENT_DISCOVERY_REQUEST_INFO_LOGGING"
+)
 
 AUTHENTICATION_BACKENDS = [
     # Needed to login by username in Django admin, regardless of `allauth`
@@ -239,7 +315,8 @@ SIMPLE_JWT = {
     "ALGORITHM": "RS256",
     "JWK_URL": OIDC_JWKS_URL,
     "ISSUER": OIDC_ISSUER,
-    "AUDIENCE": OIDC_TOKEN_AUDIENCE,
+    # Accept one or more JWT audiences.
+    "AUDIENCE": SIMPLE_JWT_AUDIENCE,
     "AUTH_HEADER_TYPES": ("Bearer",),
     # OIDC ID tokens typically use "sub" as the subject identifier.
     "USER_ID_CLAIM": "sub",

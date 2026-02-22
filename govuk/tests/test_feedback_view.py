@@ -57,6 +57,17 @@ class FeedbackViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "/login/?next=%2Ffeedback")
 
+    def test_sign_in_url_preserves_valid_feedback_type_query_param(self):
+        with _with_feedback_feature(True):
+            response = self.client.get(
+                "/feedback/?feedback_type=content_request",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response, "/login/?next=%2Ffeedback%2F%3Ffeedback_type%3Dcontent_request"
+        )
+
     def test_authenticated_submission_creates_feedback_entry(self):
         with _with_feedback_feature(True):
             self.client.force_login(self.user)
@@ -110,6 +121,32 @@ class FeedbackViewTests(TestCase):
         self.assertEqual(feedback.referrer, "https://example.gov.uk/content/article/")
         self.assertEqual(feedback.browser, "Chrome")
         self.assertFalse(feedback.is_mobile)
+
+    def test_get_prefills_feedback_type_from_valid_query_param(self):
+        with _with_feedback_feature(True):
+            self.client.force_login(self.user)
+            response = self.client.get(
+                "/feedback/?feedback_type=content_request",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["form"]["feedback_type"].value(),
+            Feedback.FeedbackType.CONTENT_REQUEST,
+        )
+
+    def test_get_ignores_invalid_feedback_type_query_param(self):
+        with _with_feedback_feature(True):
+            self.client.force_login(self.user)
+            response = self.client.get(
+                "/feedback/?feedback_type=not-a-valid-choice",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.context["form"]["feedback_type"].value(),
+            Feedback.FeedbackType.GENERAL,
+        )
 
 
 class FeedbackFeatureFlagTests(TestCase):

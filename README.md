@@ -48,6 +48,8 @@ When using `govuk.settings.dev`, the following variables are required:
 - `OIDC_JWKS_URL`: JWKS URL for API bearer token verification. Defaults to `https://sso.service.security.gov.uk/.well-known/jwks.json`.
 - `OIDC_ISSUER`: Expected JWT issuer for API bearer token verification. Defaults to `https://sso.service.security.gov.uk`.
 - `OIDC_TOKEN_AUDIENCE`: Expected JWT audience for API bearer token verification. Defaults to `OIDC_CLIENT_ID`.
+- `INCOMING_REQUEST_INFO_LOGGING`: Enable info logging for inbound Django requests, including all sent request headers. Defaults to `false`.
+- `CONTENT_DISCOVERY_REQUEST_INFO_LOGGING`: Enable info logging for outbound content discovery requests, including all sent request headers. Defaults to `false`.
 
 ## Bulk Import Content Discovery Sources (CSV)
 

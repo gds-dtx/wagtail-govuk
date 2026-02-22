@@ -1,7 +1,7 @@
 from django.http import Http404
 from wagtail.models import Page, Site
 
-from govuk.models import FooterSettings, PhaseBannerSettings
+from govuk.models import CustomiseSettings, FooterSettings, PhaseBannerSettings
 
 
 def navigation_and_breadcrumbs(request):
@@ -12,6 +12,7 @@ def navigation_and_breadcrumbs(request):
             "breadcrumbs": [],
             "phase_banner_settings": None,
             "footer_settings": None,
+            "customise_settings": None,
         }
 
     site_root = site.root_page.specific
@@ -53,9 +54,12 @@ def navigation_and_breadcrumbs(request):
                 }
             )
 
+    customise_settings = CustomiseSettings.for_site(site)
+
     return {
         "service_navigation_items": service_navigation_items,
         "breadcrumbs": breadcrumbs,
         "phase_banner_settings": PhaseBannerSettings.for_site(site),
         "footer_settings": FooterSettings.for_site(site),
+        "customise_settings": customise_settings,
     }

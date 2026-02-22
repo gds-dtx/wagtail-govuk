@@ -10,7 +10,7 @@ class InternalAccessJWTAuthentication(JWTStatelessUserAuthentication):
     Validate bearer tokens issued by Internal Access OIDC.
 
     Verification is configured through the SIMPLE_JWT settings in
-    govuk/settings/base.py (JWKS URL, issuer, and audience).
+    govuk/settings/base.py (JWKS URL, issuer, and allowed audiences).
     """
 
     token_query_param = "bearer"

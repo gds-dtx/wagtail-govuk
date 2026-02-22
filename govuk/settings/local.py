@@ -2,6 +2,8 @@ import os
 from .base import *
 
 DEBUG = True
+INCOMING_REQUEST_INFO_LOGGING = True
+CONTENT_DISCOVERY_REQUEST_INFO_LOGGING = True
 
 SECRET_KEY = "abc123"
 

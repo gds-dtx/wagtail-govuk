@@ -1,39 +1,32 @@
 {% extends "wagtailadmin/generic/edit.html" %}
 {% load i18n govuk_admin %}
-
 {% block before_form %}
     {% if site_switcher %}
         <form class="w-mb-8" method="get" id="settings-site-switch" novalidate>
-            <label for="{{ site_switcher.site.id_for_label }}">
-                {% trans "Site" %}:
-            </label>
+            <label for="{{ site_switcher.site.id_for_label }}">{% trans "Site" %}:</label>
             {{ site_switcher.site }}
         </form>
     {% elif site_for_header %}
         <div class="w-mb-8">
             {% trans "Site" %}:
             {{ site_for_header.hostname }}
-            {% if site_for_header.is_default_site %}[{% trans "default" %}]{% endif %}
+            {% if site_for_header.is_default_site %}
+                [{% trans "default" %}]
+            {% endif %}
         </div>
     {% endif %}
-
     {% if view.model_name == "contentdiscoverysettings" %}
         {% is_debug_enabled as debug_enabled %}
         <section class="w-mb-8">
             <h2 class="w-h3 w-mb-2">{% trans "Run content discovery" %}</h2>
-            <p class="help w-mb-4">
-                {% trans "Fetch configured remote sources and update External content items." %}
-            </p>
-
+            <p class="help w-mb-4">{% trans "Fetch configured remote sources and update External content items." %}</p>
             <div class="w-flex w-gap-3 w-items-start w-mb-4">
                 <form class="w-mb-0"
                       method="post"
                       action="{% url 'govuk_content_discovery_sync_site' object.site_id %}">
                     {% csrf_token %}
                     <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                    <button class="button button-secondary" type="submit">
-                        {% trans "Sync all sources" %}
-                    </button>
+                    <button class="button button-secondary" type="submit">{% trans "Sync all sources" %}</button>
                 </form>
                 {% if debug_enabled %}
                     <form class="w-mb-0"
@@ -49,7 +42,6 @@
                     </form>
                 {% endif %}
             </div>
-
             <form class="w-mb-4"
                   method="post"
                   action="{% url 'govuk_content_discovery_import_site' object.site_id %}"
@@ -75,34 +67,122 @@
                                maxlength="1"
                                aria-label="{% trans 'CSV delimiter' %}">
                     </div>
-                    <button class="button button-secondary" type="submit">
-                        {% trans "Import CSV" %}
-                    </button>
+                    <button class="button button-secondary" type="submit">{% trans "Import CSV" %}</button>
                 </div>
                 <p class="help w-mt-2">
-                    {% trans "Columns: url (required), name, disable_tls_verification, default_tags. Optional site_id must match this site." %}
+                    {% trans "Columns: url (required), name, disable_tls_verification, send_signed_bearer_jwt, default_tags. Optional site_id must match this site." %}
                 </p>
             </form>
-
             {% for source in object.sources.all %}
                 <div class="w-mb-3 w-flex w-items-start w-justify-between w-gap-4">
                     <div>
                         <strong>{{ source.name|default:source.url }}</strong>
-                        {% if source.name %}
-                            <div class="help">{{ source.url }}</div>
-                        {% endif %}
+                        {% if source.name %}<div class="help">{{ source.url }}</div>{% endif %}
                     </div>
-                    <form method="post" action="{% url 'govuk_content_discovery_sync_source' source.id %}">
+                    <form method="post"
+                          action="{% url 'govuk_content_discovery_sync_source' source.id %}">
                         {% csrf_token %}
                         <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                        <button class="button button-small button-secondary" type="submit">
-                            {% trans "Sync source" %}
-                        </button>
+                        <button class="button button-small button-secondary" type="submit">{% trans "Sync source" %}</button>
                     </form>
                 </div>
             {% empty %}
                 <p class="help">{% trans "Add at least one source, then save this page before syncing." %}</p>
             {% endfor %}
+        </section>
+    {% endif %}
+    {% if view.model_name == "eddsakeysettings" %}
+        <section class="w-mb-8">
+            <h3 class="w-h4 w-mb-2">{% trans "Manage EdDSA key pairs" %}</h3>
+            <p class="help w-mb-4">
+                {% trans "Generate keys or set an existing key as primary. Save inline edits before running actions." %}
+            </p>
+            <form class="w-mb-4"
+                  method="post"
+                  action="{% url 'govuk_eddsa_generate_site_key' object.site_id %}">
+                {% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                <button class="button button-secondary" type="submit">{% trans "Generate new EdDSA key pair" %}</button>
+            </form>
+            {% for key_pair in object.ordered_key_pairs %}
+                <div class="w-mb-4 w-p-4" style="border: 1px solid #d8dde0;">
+                    <div class="w-flex w-items-start w-justify-between w-gap-4">
+                        <div>
+                            <strong>{{ key_pair.key_id }}</strong>
+                            {% if key_pair.is_primary %}
+                                <span class="w-ml-2">{% trans "(Primary)" %}</span>
+                            {% endif %}
+                            <pre class="help w-mt-2" style="white-space: pre-wrap;">{{ key_pair.public_key }}</pre>
+                        </div>
+                        <div class="w-flex w-gap-2">
+                            {% if not key_pair.is_primary %}
+                                <form method="post"
+                                      action="{% url 'govuk_eddsa_set_primary_key' key_pair.id %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                    <button class="button button-small button-secondary" type="submit">{% trans "Set primary" %}</button>
+                                </form>
+                            {% endif %}
+                            <form method="post" action="{% url 'govuk_eddsa_delete_key' key_pair.id %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                <button class="button button-small serious"
+                                        type="submit"
+                                        onclick="return confirm('Delete this EdDSA key pair?');">
+                                    {% trans "Delete" %}
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            {% empty %}
+                <p class="help">{% trans "Add a key pair below or generate one, then save this page." %}</p>
+            {% endfor %}
+            {% if object.ordered_key_pairs.count > 0 %}
+                <form class="w-mb-6"
+                      method="post"
+                      action="{% url 'govuk_eddsa_generate_site_jwt' object.site_id %}"
+                      target="_blank"
+                      rel="noopener">
+                    {% csrf_token %}
+                    <h3 class="w-h4 w-mb-2">{% trans "Generate JWT" %}</h3>
+                    <p class="help w-mb-3">
+                        {% trans "Generates a signed Bearer JWT using the current primary key. Response opens in a new tab." %}
+                    </p>
+                    <div class="w-flex w-gap-3 w-flex-wrap w-items-end w-mb-2">
+                        <div>
+                            <label class="w-block" for="eddsa-jwt-htu">{% trans "htu (optional URL)" %}</label>
+                            <input id="eddsa-jwt-htu"
+                                   type="url"
+                                   name="htu"
+                                   style="min-width: 26rem"
+                                   placeholder="https://api.example.gov.uk/path">
+                        </div>
+                        <div>
+                            <label class="w-block" for="eddsa-jwt-htm">{% trans "htm (optional method)" %}</label>
+                            <input id="eddsa-jwt-htm"
+                                   type="text"
+                                   name="htm"
+                                   class="w-w-20"
+                                   maxlength="20"
+                                   placeholder="GET">
+                        </div>
+                        <div>
+                            <label class="w-block" for="eddsa-jwt-lifetime">{% trans "Lifetime (seconds)" %}</label>
+                            <input id="eddsa-jwt-lifetime"
+                                   type="number"
+                                   min="1"
+                                   max="86400"
+                                   name="lifetime_seconds"
+                                   class="w-w-24"
+                                   value="300">
+                        </div>
+                    </div>
+                    <div>
+                        <button class="button button-secondary" type="submit">{% trans "Generate JWT" %}</button>
+                    </div>
+                </form>
+            {% endif %}
         </section>
     {% endif %}
 {% endblock %}

@@ -28,9 +28,9 @@ class ImportContentDiscoverySourcesCommandTests(TestCase):
         csv_path = self._write_csv(
             "\n".join(
                 [
-                    "url,name,disable_tls_verification,default_tags",
-                    "https://example.com/feed.xml,Example feed,false,policy|news",
-                    "https://example.org/rss.xml,,true,",
+                    "url,name,disable_tls_verification,send_signed_bearer_jwt,default_tags",
+                    "https://example.com/feed.xml,Example feed,false,true,policy|news",
+                    "https://example.org/rss.xml,,true,false,",
                 ]
             )
         )
@@ -52,6 +52,7 @@ class ImportContentDiscoverySourcesCommandTests(TestCase):
 
         self.assertEqual(sources[0].name, "Example feed")
         self.assertFalse(sources[0].disable_tls_verification)
+        self.assertTrue(sources[0].send_signed_bearer_jwt)
         self.assertEqual(
             sources[0].get_default_tag_ids(),
             [policy_tag.pk, news_tag.pk],
@@ -59,6 +60,7 @@ class ImportContentDiscoverySourcesCommandTests(TestCase):
 
         self.assertEqual(sources[1].name, "")
         self.assertTrue(sources[1].disable_tls_verification)
+        self.assertFalse(sources[1].send_signed_bearer_jwt)
         self.assertEqual(sources[1].get_default_tag_ids(), [])
 
         self.assertIn("created 2", stdout.getvalue())
@@ -78,8 +80,8 @@ class ImportContentDiscoverySourcesCommandTests(TestCase):
         csv_path = self._write_csv(
             "\n".join(
                 [
-                    "url,name,disable_tls_verification,default_tags",
-                    "https://example.com/feed.xml,Updated name,true,new",
+                    "url,name,disable_tls_verification,send_signed_bearer_jwt,default_tags",
+                    "https://example.com/feed.xml,Updated name,true,true,new",
                 ]
             )
         )
@@ -96,6 +98,7 @@ class ImportContentDiscoverySourcesCommandTests(TestCase):
         source.refresh_from_db()
         self.assertEqual(source.name, "Updated name")
         self.assertTrue(source.disable_tls_verification)
+        self.assertTrue(source.send_signed_bearer_jwt)
         self.assertEqual(source.get_default_tag_ids(), [new_tag.pk])
         self.assertEqual(
             ContentDiscoverySource.objects.filter(

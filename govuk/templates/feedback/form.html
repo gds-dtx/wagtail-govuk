@@ -1,11 +1,8 @@
 {% extends "base.html" %}
-
 {% block title %}Feedback{% endblock %}
-
 {% block content %}
     <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
         <h1 class="govuk-heading-l">Feedback</h1>
-
         {% if not request.user.is_authenticated %}
             <p class="govuk-body">You need to sign in before you can send feedback.</p>
             <a class="govuk-button"
@@ -26,21 +23,18 @@
                     </div>
                 </div>
             {% endif %}
-
             <p class="govuk-body">
                 Signed in as <strong>{{ feedback_name|default:"Unknown user" }}</strong>
-                {% if feedback_email %}({{ feedback_email }}){% endif %}.
+                {% if feedback_email %}({{ feedback_email }}){% endif %}
+                .
             </p>
-
             {% if form.errors %}
                 <div class="govuk-error-summary"
                      data-module="govuk-error-summary"
                      role="alert"
                      aria-labelledby="feedback-error-title"
                      tabindex="-1">
-                    <h2 class="govuk-error-summary__title" id="feedback-error-title">
-                        There is a problem
-                    </h2>
+                    <h2 class="govuk-error-summary__title" id="feedback-error-title">There is a problem</h2>
                     <div class="govuk-error-summary__body">
                         <ul class="govuk-list govuk-error-summary__list">
                             {% for field in form %}
@@ -54,15 +48,13 @@
                     </div>
                 </div>
             {% endif %}
-
             <form method="post" novalidate>
                 {% csrf_token %}
                 {{ form.referrer }}
-
                 <div class="govuk-form-group{% if form.feedback_type.errors %} govuk-form-group--error{% endif %}">
-                    <label class="govuk-label" for="{{ form.feedback_type.id_for_label }}">
-                        {{ form.feedback_type.label }}
-                    </label>
+                    <h2 class="govuk-label-wrapper">
+                        <label class="govuk-label govuk-label--m">{{ form.feedback_type.label }}</label>
+                    </h2>
                     {% for error in form.feedback_type.errors %}
                         <p class="govuk-error-message">
                             <span class="govuk-visually-hidden">Error:</span> {{ error }}
@@ -70,14 +62,12 @@
                     {% endfor %}
                     {{ form.feedback_type }}
                 </div>
-
                 <div class="govuk-form-group{% if form.comments.errors %} govuk-form-group--error{% endif %}">
-                    <label class="govuk-label" for="{{ form.comments.id_for_label }}">
-                        {{ form.comments.label }}
-                    </label>
-                    {% if form.comments.help_text %}
-                        <div class="govuk-hint">{{ form.comments.help_text }}</div>
-                    {% endif %}
+                    <h2 class="govuk-label-wrapper">
+                        <label class="govuk-label govuk-label--m"
+                               for="{{ form.comments.id_for_label }}">{{ form.comments.label }}</label>
+                    </h2>
+                    {% if form.comments.help_text %}<div class="govuk-hint">{{ form.comments.help_text }}</div>{% endif %}
                     {% for error in form.comments.errors %}
                         <p class="govuk-error-message">
                             <span class="govuk-visually-hidden">Error:</span> {{ error }}
@@ -85,10 +75,7 @@
                     {% endfor %}
                     {{ form.comments }}
                 </div>
-
-                <button class="govuk-button" data-module="govuk-button" type="submit">
-                    Send feedback
-                </button>
+                <button class="govuk-button" data-module="govuk-button" type="submit">Send feedback</button>
             </form>
         {% endif %}
     </div>

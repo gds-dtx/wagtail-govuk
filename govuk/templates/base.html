@@ -14,6 +14,9 @@
         <meta name="theme-color" content="blue">
         <link rel="stylesheet" href="{% static 'govuk-frontend-6.0.0.min.css' %}" />
         <link rel="stylesheet" href="{% static 'main.css' %}" />
+        {% if customise_settings and customise_settings.has_custom_css %}
+            <link rel="stylesheet" href="{% url 'govuk_custom_css' %}" />
+        {% endif %}
         <link rel="icon"
               sizes="48x48"
               href="{% static 'assets/images/favicon.ico' %}">
@@ -297,6 +300,9 @@
     initAll()
         </script>
         <script type="module" src="{% static 'main.js' %}"></script>
+        {% if customise_settings and customise_settings.has_custom_js %}
+            <script src="{% url 'govuk_custom_js' %}"></script>
+        {% endif %}
         {% block extra_body %}{% endblock %}
     </body>
 </html>

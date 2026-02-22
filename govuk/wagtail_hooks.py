@@ -1,10 +1,11 @@
 import io
+from datetime import timedelta
 
 from draftjs_exporter.dom import DOM
 from django.conf import settings
 from django import forms
 from django.core.exceptions import ImproperlyConfigured
-from django.http import HttpResponseNotAllowed
+from django.http import HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse, reverse_lazy
 from django.utils.html import escape
@@ -30,9 +31,12 @@ from govuk.content_discovery_import import (
 from govuk.models import (
     ContentDiscoverySettings,
     ContentDiscoverySource,
+    EdDSAKeyPair,
+    EdDSAKeySettings,
     ExternalContentItem,
     Feedback,
     GovukTag,
+    JWTGenerationError,
 )
 
 GOVUK_BUTTON_FEATURE = "govuk-button"
@@ -320,6 +324,17 @@ def _content_discovery_edit_url(site_id: int) -> str:
     )
 
 
+def _eddsa_keys_edit_url(site_id: int) -> str:
+    return reverse(
+        "wagtailsettings:edit",
+        args=(
+            EdDSAKeySettings._meta.app_label,
+            "eddsakeysettings",
+            site_id,
+        ),
+    )
+
+
 def _safe_next_url(request, *, fallback_url: str) -> str:
     next_url = (request.POST.get("next") or "").strip()
     if next_url and url_has_allowed_host_and_scheme(
@@ -333,6 +348,15 @@ def _safe_next_url(request, *, fallback_url: str) -> str:
 
 def _user_can_change_content_discovery_setting(request, *, site) -> bool:
     permission_policy = ContentDiscoverySettings.get_permission_policy()
+    return permission_policy.user_has_permission_for_instance(
+        request.user,
+        "change",
+        site,
+    )
+
+
+def _user_can_change_eddsa_key_setting(request, *, site) -> bool:
+    permission_policy = EdDSAKeySettings.get_permission_policy()
     return permission_policy.user_has_permission_for_instance(
         request.user,
         "change",
@@ -508,6 +532,120 @@ def import_content_discovery_site_view(request, site_id: int):
     return redirect(redirect_url)
 
 
+@require_admin_access
+def generate_eddsa_key_pair_view(request, site_id: int):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    key_settings = get_object_or_404(EdDSAKeySettings, site_id=site_id)
+    if not _user_can_change_eddsa_key_setting(request, site=key_settings.site):
+        return permission_denied(request)
+
+    fallback_url = _eddsa_keys_edit_url(site_id)
+    redirect_url = _safe_next_url(request, fallback_url=fallback_url)
+
+    generated_key_pair = EdDSAKeyPair.generate_for_settings(settings_obj=key_settings)
+    messages.success(
+        request,
+        f"Generated EdDSA key pair '{generated_key_pair.key_id}'.",
+    )
+    return redirect(redirect_url)
+
+
+@require_admin_access
+def generate_eddsa_jwt_view(request, site_id: int):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    key_settings = get_object_or_404(EdDSAKeySettings, site_id=site_id)
+    if not _user_can_change_eddsa_key_setting(request, site=key_settings.site):
+        return permission_denied(request)
+
+    htu = (request.POST.get("htu") or "").strip() or None
+    htm = (request.POST.get("htm") or "").strip() or None
+    raw_lifetime_seconds = (request.POST.get("lifetime_seconds") or "300").strip()
+    try:
+        lifetime_seconds = int(raw_lifetime_seconds)
+    except (TypeError, ValueError):
+        return HttpResponseBadRequest(
+            "lifetime_seconds must be an integer between 1 and 86400."
+        )
+
+    if lifetime_seconds < 1 or lifetime_seconds > 86400:
+        return HttpResponseBadRequest(
+            "lifetime_seconds must be between 1 and 86400."
+        )
+
+    try:
+        access_token = key_settings.generate_jwt(
+            htu=htu,
+            htm=htm,
+            lifetime=timedelta(seconds=lifetime_seconds),
+        )
+    except (JWTGenerationError, ImproperlyConfigured) as exc:
+        return HttpResponseBadRequest(str(exc))
+
+    primary_key_pair = key_settings.get_primary_key_pair()
+    return JsonResponse(
+        {
+            "token_type": "Bearer",
+            "access_token": access_token,
+            "expires_in": lifetime_seconds,
+            "issuer": getattr(settings, "WAGTAILADMIN_BASE_URL", ""),
+            "kid": getattr(primary_key_pair, "key_id", ""),
+            "htm": (htm or "").strip().upper() or None,
+            "htu": htu,
+        }
+    )
+
+
+@require_admin_access
+def set_primary_eddsa_key_pair_view(request, key_pair_id: int):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    key_pair = get_object_or_404(
+        EdDSAKeyPair.objects.select_related("settings__site"),
+        pk=key_pair_id,
+    )
+    if not _user_can_change_eddsa_key_setting(request, site=key_pair.settings.site):
+        return permission_denied(request)
+
+    fallback_url = _eddsa_keys_edit_url(key_pair.settings.site_id)
+    redirect_url = _safe_next_url(request, fallback_url=fallback_url)
+
+    key_pair.mark_as_primary()
+    messages.success(
+        request,
+        f"Set '{key_pair.key_id}' as the primary EdDSA key pair.",
+    )
+    return redirect(redirect_url)
+
+
+@require_admin_access
+def delete_eddsa_key_pair_view(request, key_pair_id: int):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    key_pair = get_object_or_404(
+        EdDSAKeyPair.objects.select_related("settings__site"),
+        pk=key_pair_id,
+    )
+    if not _user_can_change_eddsa_key_setting(request, site=key_pair.settings.site):
+        return permission_denied(request)
+
+    fallback_url = _eddsa_keys_edit_url(key_pair.settings.site_id)
+    redirect_url = _safe_next_url(request, fallback_url=fallback_url)
+
+    deleted_key_id = key_pair.key_id
+    key_pair.delete()
+    messages.success(
+        request,
+        f"Deleted EdDSA key pair '{deleted_key_id}'.",
+    )
+    return redirect(redirect_url)
+
+
 @hooks.register("register_admin_urls")
 def register_content_discovery_admin_urls():
     return [
@@ -530,6 +668,26 @@ def register_content_discovery_admin_urls():
             "content-discovery/import/site/<int:site_id>/",
             import_content_discovery_site_view,
             name="govuk_content_discovery_import_site",
+        ),
+        path(
+            "eddsa-keys/generate/site/<int:site_id>/",
+            generate_eddsa_key_pair_view,
+            name="govuk_eddsa_generate_site_key",
+        ),
+        path(
+            "eddsa-keys/generate-jwt/site/<int:site_id>/",
+            generate_eddsa_jwt_view,
+            name="govuk_eddsa_generate_site_jwt",
+        ),
+        path(
+            "eddsa-keys/set-primary/<int:key_pair_id>/",
+            set_primary_eddsa_key_pair_view,
+            name="govuk_eddsa_set_primary_key",
+        ),
+        path(
+            "eddsa-keys/delete/<int:key_pair_id>/",
+            delete_eddsa_key_pair_view,
+            name="govuk_eddsa_delete_key",
         ),
     ]
 

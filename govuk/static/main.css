@@ -11,15 +11,15 @@
 }
 
 .masthead--combined {
-    background-color: rgb(29, 112, 184);
+    background-color: rgb(29, 112, 184) !important;
     border-bottom: 1px solid rgb(29, 112, 184);
-    color: #fff;
+    color: #fff !important;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
 }
 
 .masthead--combined .hero__description {
-    color: #fff;
+    color: #fff !important;
 }
 
 .govuk-width-container, .hero {

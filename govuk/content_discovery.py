@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import ssl
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
 from html import unescape
 from typing import Iterable
@@ -12,14 +13,23 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
+from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
-from govuk.models import ContentDiscoverySource, ExternalContentItem
+from govuk.jwt_tokens import generate_site_jwt
+from govuk.models import (
+    ContentDiscoverySource,
+    EdDSAKeySettings,
+    ExternalContentItem,
+    JWTGenerationError,
+)
 
 ATOM_NAMESPACE = "http://www.w3.org/2005/Atom"
 GITHUB_ORG_API_PREFIX = "https://api.github.com/orgs/"
 USER_AGENT = "wagtail-govuk-content-discovery/1.0"
+logger = logging.getLogger(__name__)
 
 
 class ContentDiscoveryError(RuntimeError):
@@ -363,19 +373,33 @@ def fetch_source_content(
     timeout: float = 15.0,
     disable_tls_verification: bool = False,
     accept_header: str | None = None,
+    authorization_header: str | None = None,
 ) -> bytes:
     if not accept_header:
         accept_header = (
             "application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.1"
         )
 
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": accept_header,
+    }
+    if authorization_header:
+        headers["Authorization"] = authorization_header
+
     request = Request(
         url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": accept_header,
-        },
+        headers=headers,
     )
+    if getattr(settings, "CONTENT_DISCOVERY_REQUEST_INFO_LOGGING", False):
+        request_headers = dict(request.header_items())
+        logger.info(
+            "Content discovery request: url=%s timeout=%s disable_tls_verification=%s headers=%s",
+            url,
+            timeout,
+            disable_tls_verification,
+            request_headers,
+        )
 
     request_kwargs = {"timeout": timeout}
     if disable_tls_verification:
@@ -403,11 +427,13 @@ def sync_content_discovery_source(
         if is_github_org_source
         else None
     )
+    authorization_header = _build_source_authorization_header(source)
     feed_body = fetch_source_content(
         source.url,
         timeout=timeout,
         disable_tls_verification=source.disable_tls_verification,
         accept_header=accept_header,
+        authorization_header=authorization_header,
     )
     if is_github_org_source:
         entries = parse_github_org_repositories(feed_body)
@@ -475,3 +501,29 @@ def sync_content_discovery_sources(
         sync_content_discovery_source(source=source, timeout=timeout)
         for source in sources
     ]
+
+
+def _build_source_authorization_header(source: ContentDiscoverySource) -> str | None:
+    if not source.send_signed_bearer_jwt:
+        return None
+
+    site = getattr(getattr(source, "settings", None), "site", None)
+    if site is None:
+        return None
+    key_settings = EdDSAKeySettings.for_site(site)
+    if not key_settings.key_pairs.exists():
+        return None
+
+    try:
+        token = generate_site_jwt(
+            site=site,
+            htu=source.url,
+            htm="GET",
+            lifetime=timedelta(seconds=90),
+            add_jti=True,
+        )
+    except (JWTGenerationError, ImproperlyConfigured, ValidationError):
+        # Continue without an Authorization header if token generation fails.
+        return None
+
+    return f"Bearer {token}"

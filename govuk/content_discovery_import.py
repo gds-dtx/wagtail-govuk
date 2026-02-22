@@ -60,6 +60,7 @@ def import_content_discovery_sources_from_csv(
 
     has_name = "name" in header_names
     has_tls = "disable_tls_verification" in header_names
+    has_signed_jwt = "send_signed_bearer_jwt" in header_names
     has_default_tags = "default_tags" in header_names
     settings_cache: dict[int, ContentDiscoverySettings] = {}
     result = ContentDiscoverySourceImportResult()
@@ -105,6 +106,15 @@ def import_content_discovery_sources_from_csv(
                 if has_tls
                 else None
             )
+            send_signed_bearer_jwt = (
+                _parse_bool(
+                    row.get("send_signed_bearer_jwt", ""),
+                    row_index=row_index,
+                    field_name="send_signed_bearer_jwt",
+                )
+                if has_signed_jwt
+                else None
+            )
             default_tag_stream = (
                 _parse_default_tag_stream(
                     row.get("default_tags", ""),
@@ -125,6 +135,11 @@ def import_content_discovery_sources_from_csv(
                         if disable_tls_verification is not None
                         else False
                     ),
+                    send_signed_bearer_jwt=(
+                        send_signed_bearer_jwt
+                        if send_signed_bearer_jwt is not None
+                        else False
+                    ),
                     default_tags=default_tag_stream or [],
                 )
                 source.full_clean()
@@ -143,6 +158,13 @@ def import_content_discovery_sources_from_csv(
             ):
                 source.disable_tls_verification = disable_tls_verification
                 fields_to_update.append("disable_tls_verification")
+            if (
+                has_signed_jwt
+                and send_signed_bearer_jwt is not None
+                and source.send_signed_bearer_jwt != send_signed_bearer_jwt
+            ):
+                source.send_signed_bearer_jwt = send_signed_bearer_jwt
+                fields_to_update.append("send_signed_bearer_jwt")
             if (
                 has_default_tags
                 and default_tag_stream is not None

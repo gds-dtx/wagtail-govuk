@@ -4,13 +4,14 @@ from django.conf import settings
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.staticfiles.views import serve as staticfiles_serve
-from django.http import Http404
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_POST
 from django.views.decorators.http import require_http_methods
 from wagtail.models import Site
 
 from govuk.forms import FeedbackForm
+from govuk.models import CustomiseSettings, EdDSAKeySettings, Feedback
 from govuk.oidc import (
     ADMIN_OIDC_NEXT_URL_KEY,
     OIDC_ID_TOKEN_SESSION_KEY,
@@ -32,6 +33,49 @@ def profile_view(request):
 
 def assets_alias_view(request, path):
     return staticfiles_serve(request, f"assets/{path}", insecure=True)
+
+
+def _customise_settings_for_request(request) -> CustomiseSettings:
+    site = Site.find_for_request(request)
+    if site is None:
+        raise Http404
+    return CustomiseSettings.for_site(site)
+
+
+def _eddsa_key_settings_for_request(request) -> EdDSAKeySettings:
+    site = Site.find_for_request(request)
+    if site is None:
+        raise Http404
+    return EdDSAKeySettings.for_site(site)
+
+
+@require_http_methods(["GET"])
+def custom_css_view(request):
+    custom_css = _customise_settings_for_request(request).render_custom_css()
+    if not custom_css:
+        raise Http404
+
+    return HttpResponse(custom_css, content_type="text/css; charset=utf-8")
+
+
+@require_http_methods(["GET"])
+def custom_js_view(request):
+    custom_js = _customise_settings_for_request(request).render_custom_js()
+    if not custom_js:
+        raise Http404
+
+    return HttpResponse(
+        custom_js, content_type="application/javascript; charset=utf-8"
+    )
+
+
+@require_http_methods(["GET"])
+def jwks_view(request):
+    jwks_keys = _eddsa_key_settings_for_request(request).build_jwks_keys()
+    if not jwks_keys:
+        raise Http404
+
+    return JsonResponse({"keys": jwks_keys})
 
 
 @require_http_methods(["GET"])
@@ -62,6 +106,17 @@ def search_view(request):
 
 def _normalized_referrer(value: str | None) -> str:
     return (value or "").strip()[:500]
+
+
+def _normalized_feedback_type(value: str | None) -> str | None:
+    feedback_type = (value or "").strip()
+    if not feedback_type:
+        return None
+
+    valid_feedback_types = {choice for choice, _ in Feedback.FeedbackType.choices}
+    if feedback_type in valid_feedback_types:
+        return feedback_type
+    return None
 
 
 def _user_display_name(user) -> str:
@@ -107,10 +162,17 @@ def _browser_from_user_agent(user_agent: str) -> str:
     return "Unknown"
 
 
-def _feedback_sign_in_url(request, referrer: str) -> str:
+def _feedback_sign_in_url(
+    request, referrer: str, feedback_type: str | None = None
+) -> str:
     feedback_url = request.path
+    feedback_query = {}
     if referrer:
-        feedback_url = f"{feedback_url}?{urlencode({'referrer': referrer})}"
+        feedback_query["referrer"] = referrer
+    if feedback_type:
+        feedback_query["feedback_type"] = feedback_type
+    if feedback_query:
+        feedback_url = f"{feedback_url}?{urlencode(feedback_query)}"
     return f"{settings.LOGIN_URL}?{urlencode({'next': feedback_url})}"
 
 
@@ -122,6 +184,7 @@ def feedback_view(request):
     inferred_referrer = _normalized_referrer(
         request.GET.get("referrer") or request.META.get("HTTP_REFERER")
     )
+    inferred_feedback_type = _normalized_feedback_type(request.GET.get("feedback_type"))
 
     if not request.user.is_authenticated:
         return render(
@@ -130,7 +193,9 @@ def feedback_view(request):
             {
                 "form": None,
                 "submitted": False,
-                "sign_in_url": _feedback_sign_in_url(request, inferred_referrer),
+                "sign_in_url": _feedback_sign_in_url(
+                    request, inferred_referrer, inferred_feedback_type
+                ),
             },
         )
 
@@ -149,7 +214,10 @@ def feedback_view(request):
             feedback.save()
             return redirect(f"{request.path}?submitted=1")
     else:
-        form = FeedbackForm(initial={"referrer": inferred_referrer})
+        initial = {"referrer": inferred_referrer}
+        if inferred_feedback_type:
+            initial["feedback_type"] = inferred_feedback_type
+        form = FeedbackForm(initial=initial)
 
     return render(
         request,

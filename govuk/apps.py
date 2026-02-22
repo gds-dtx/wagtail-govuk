@@ -1,6 +1,7 @@
 import logging
 
 from django.apps import AppConfig
+from django.conf import settings
 from django.db.models.signals import post_migrate
 
 
@@ -27,6 +28,18 @@ class GovukConfig(AppConfig):
     verbose_name = "GOV.UK"
 
     def ready(self):
+        logger.info(
+            "Application startup logging flags",
+            extra={
+                "DEBUG": settings.DEBUG,
+                "INCOMING_REQUEST_INFO_LOGGING": getattr(
+                    settings, "INCOMING_REQUEST_INFO_LOGGING", False
+                ),
+                "CONTENT_DISCOVERY_REQUEST_INFO_LOGGING": getattr(
+                    settings, "CONTENT_DISCOVERY_REQUEST_INFO_LOGGING", False
+                ),
+            },
+        )
         post_migrate.connect(
             _sync_admin_users_after_migrate,
             dispatch_uid="govuk.sync_admin_users_after_migrate",

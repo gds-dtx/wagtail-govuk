@@ -1,11 +1,34 @@
 from __future__ import annotations
 
+import logging
+
+from django.conf import settings
 from django.shortcuts import redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from wagtail.models import Site
 
 from govuk.oidc import ADMIN_OIDC_NEXT_URL_KEY, build_oidc_login_url
 from govuk.models import AuthenticatedRedirectSettings
+
+logger = logging.getLogger(__name__)
+
+
+class IncomingRequestDebugLoggingMiddleware:
+    """Log inbound requests and headers when explicitly enabled via settings."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        if getattr(settings, "INCOMING_REQUEST_INFO_LOGGING", False):
+            request_headers = dict(request.headers.items())
+            logger.info(
+                "Incoming request: method=%s path=%s headers=%s",
+                request.method,
+                request.get_full_path(),
+                request_headers,
+            )
+        return self.get_response(request)
 
 
 class AdminOIDCLoginMiddleware:

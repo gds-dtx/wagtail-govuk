@@ -23,8 +23,8 @@ class ContentDiscoveryImportViewTests(TestCase):
         upload = SimpleUploadedFile(
             "sources.csv",
             (
-                "url,name,disable_tls_verification\n"
-                "https://example.com/feed.xml,Example feed,false\n"
+                "url,name,disable_tls_verification,send_signed_bearer_jwt\n"
+                "https://example.com/feed.xml,Example feed,false,true\n"
             ).encode("utf-8"),
             content_type="text/csv",
         )
@@ -42,6 +42,7 @@ class ContentDiscoveryImportViewTests(TestCase):
         )
         self.assertEqual(source.name, "Example feed")
         self.assertFalse(source.disable_tls_verification)
+        self.assertTrue(source.send_signed_bearer_jwt)
 
     def test_rejects_rows_targeting_other_sites(self):
         other_site = Site.objects.create(

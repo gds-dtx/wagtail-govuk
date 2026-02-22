@@ -1,10 +1,26 @@
+import base64
 import hashlib
+import re
+from datetime import timedelta
+from urllib.parse import urlparse
+from uuid import uuid4
 
+import jwt
+from cryptography.exceptions import UnsupportedAlgorithm
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
+from django import forms
 from django.conf import settings
-from django.core.exceptions import ValidationError
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.paginator import Paginator
-from django.db import models
+from django.core.validators import RegexValidator
+from django.db import models, transaction
+from django.db.models import Q
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 from django.utils.text import Truncator
 from modelcluster.contrib.taggit import ClusterTaggableManager
 from modelcluster.fields import ParentalKey
@@ -16,6 +32,107 @@ from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
 from wagtail.fields import RichTextField, StreamField
 from wagtail.models import Orderable, Page
 from wagtail.snippets.blocks import SnippetChooserBlock
+
+
+HEX_COLOR_VALIDATOR = RegexValidator(
+    regex=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
+    message="Enter a valid hex color, for example #1d70b8 or #fff.",
+)
+HTTP_METHOD_PATTERN = re.compile(r"^[A-Za-z]{3,20}$")
+DEFAULT_JWT_LIFETIME = timedelta(minutes=5)
+
+
+class JWTGenerationError(ValueError):
+    """Raised when JWT generation input is invalid."""
+
+
+class SecretTextarea(forms.Textarea):
+    """Never render the stored value back into the admin form."""
+
+    def format_value(self, value):
+        return ""
+
+
+def _base64url_without_padding(raw_bytes: bytes) -> str:
+    return base64.urlsafe_b64encode(raw_bytes).decode("ascii").rstrip("=")
+
+
+def _load_ed25519_public_key(public_key: str) -> Ed25519PublicKey:
+    normalised_public_key = (public_key or "").strip()
+    try:
+        parsed_public_key = serialization.load_pem_public_key(
+            normalised_public_key.encode("utf-8")
+        )
+    except (TypeError, ValueError, UnsupportedAlgorithm) as exc:
+        raise ValidationError(
+            "Enter a valid Ed25519 public key in PEM format."
+        ) from exc
+
+    if not isinstance(parsed_public_key, Ed25519PublicKey):
+        raise ValidationError("Public key must be an Ed25519 key.")
+    return parsed_public_key
+
+
+def _load_ed25519_private_key(private_key: str) -> Ed25519PrivateKey:
+    normalised_private_key = (private_key or "").strip()
+    try:
+        parsed_private_key = serialization.load_pem_private_key(
+            normalised_private_key.encode("utf-8"),
+            password=None,
+        )
+    except (TypeError, ValueError, UnsupportedAlgorithm) as exc:
+        raise ValidationError(
+            "Enter a valid unencrypted Ed25519 private key in PEM format."
+        ) from exc
+
+    if not isinstance(parsed_private_key, Ed25519PrivateKey):
+        raise ValidationError("Private key must be an Ed25519 key.")
+    return parsed_private_key
+
+
+def _ed25519_public_key_fingerprint(public_key: Ed25519PublicKey) -> str:
+    raw_public_key = public_key.public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return hashlib.sha256(raw_public_key).hexdigest()[:32]
+
+
+def _normalised_wagtail_admin_issuer() -> str:
+    issuer = (getattr(settings, "WAGTAILADMIN_BASE_URL", "") or "").strip()
+    if not issuer:
+        raise ImproperlyConfigured(
+            "WAGTAILADMIN_BASE_URL must be set before generating JWTs."
+        )
+
+    parsed_issuer = urlparse(issuer)
+    if parsed_issuer.scheme not in {"http", "https"} or not parsed_issuer.netloc:
+        raise ImproperlyConfigured(
+            "WAGTAILADMIN_BASE_URL must be an absolute http(s) URL."
+        )
+    return issuer.rstrip("/")
+
+
+def _normalised_htu(value: str | None) -> str:
+    htu = (value or "").strip()
+    if not htu:
+        raise JWTGenerationError("Claim 'htu' must not be empty when provided.")
+
+    parsed_htu = urlparse(htu)
+    if parsed_htu.scheme not in {"http", "https"} or not parsed_htu.netloc:
+        raise JWTGenerationError("Claim 'htu' must be an absolute http(s) URL.")
+    return htu
+
+
+def _normalised_htm(value: str | None) -> str:
+    htm = (value or "").strip().upper()
+    if not htm:
+        raise JWTGenerationError("Claim 'htm' must not be empty when provided.")
+    if not HTTP_METHOD_PATTERN.match(htm):
+        raise JWTGenerationError(
+            "Claim 'htm' must be an HTTP method like GET, POST, PUT or DELETE."
+        )
+    return htm
 
 
 @register_setting(icon="warning")
@@ -81,6 +198,74 @@ class FooterSettings(BaseSiteSetting):
     ]
 
 
+@register_setting(icon="cog")
+class CustomiseSettings(BaseSiteSetting):
+    hero_background_color = models.CharField(
+        max_length=7,
+        blank=True,
+        default="",
+        validators=[HEX_COLOR_VALIDATOR],
+        help_text="Optional hero background color in hex, for example #b5cd1e.",
+    )
+    hero_text_color = models.CharField(
+        max_length=7,
+        blank=True,
+        default="",
+        validators=[HEX_COLOR_VALIDATOR],
+        help_text="Optional hero text color in hex, for example #ffffff.",
+    )
+    extra_css = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional additional CSS appended after hero overrides.",
+    )
+    extra_js = models.TextField(
+        blank=True,
+        default="",
+        help_text="Optional additional JavaScript.",
+    )
+
+    panels = [
+        FieldPanel("hero_background_color"),
+        FieldPanel("hero_text_color"),
+        FieldPanel("extra_css"),
+        FieldPanel("extra_js"),
+    ]
+
+    class Meta:
+        verbose_name = "Customise"
+        verbose_name_plural = "Customise"
+
+    def render_custom_css(self) -> str:
+        sections: list[str] = []
+
+        hero_background_color = (self.hero_background_color or "").strip()
+        hero_text_color = (self.hero_text_color or "").strip()
+
+        if hero_background_color:
+            sections.append(f".masthead {{ background: {hero_background_color}; }}")
+        if hero_text_color:
+            sections.append(f".masthead {{ color: {hero_text_color}; }}")
+            sections.append(f".hero__description {{ color: {hero_text_color}; }}")
+
+        extra_css = (self.extra_css or "").strip()
+        if extra_css:
+            sections.append(extra_css)
+
+        return "\n".join(sections).strip()
+
+    def render_custom_js(self) -> str:
+        return (self.extra_js or "").strip()
+
+    @property
+    def has_custom_css(self) -> bool:
+        return bool(self.render_custom_css())
+
+    @property
+    def has_custom_js(self) -> bool:
+        return bool(self.render_custom_js())
+
+
 @register_setting(icon="search")
 class ContentDiscoverySettings(ClusterableModel, BaseSiteSetting):
     panels = [
@@ -115,6 +300,317 @@ class AuthenticatedRedirectSettings(ClusterableModel, BaseSiteSetting):
     class Meta:
         verbose_name = "Authenticated user redirects"
         verbose_name_plural = "Authenticated user redirects"
+
+
+@register_setting(icon="key")
+class EdDSAKeySettings(ClusterableModel, BaseSiteSetting):
+    panels = [
+        InlinePanel(
+            "key_pairs",
+            heading="EdDSA key pairs",
+            label="Key pair",
+            help_text=(
+                "Add one or more Ed25519 private/public key pairs. "
+                "Private keys are hidden after save."
+            ),
+        ),
+    ]
+
+    class Meta:
+        verbose_name = "Signing keys"
+        verbose_name_plural = "Signing keys"
+
+    @property
+    def ordered_key_pairs(self):
+        return self.key_pairs.order_by("-is_primary", "sort_order", "id")
+
+    def get_primary_key_pair(self):
+        return (
+            self.key_pairs.filter(is_primary=True).order_by("sort_order", "id").first()
+        )
+
+    def build_jwks_keys(self) -> list[dict[str, str]]:
+        return [key_pair.as_jwk() for key_pair in self.ordered_key_pairs]
+
+    def generate_jwt(
+        self,
+        *,
+        htu: str | None = None,
+        htm: str | None = None,
+        lifetime: timedelta = DEFAULT_JWT_LIFETIME,
+        extra_claims: dict | None = None,
+        add_jti: bool = False,
+    ) -> str:
+        if lifetime <= timedelta(seconds=0):
+            raise JWTGenerationError("JWT lifetime must be greater than 0 seconds.")
+
+        primary_key_pair = self.get_primary_key_pair()
+        if primary_key_pair is None:
+            raise JWTGenerationError(
+                "Cannot generate JWT because no primary EdDSA key is configured."
+            )
+
+        include_http_claims = bool((htu or "").strip() or (htm or "").strip())
+        normalised_htu = None
+        normalised_htm = None
+        if include_http_claims:
+            if not (htu and htm):
+                raise JWTGenerationError(
+                    "Provide both 'htu' and 'htm' claims together, or omit both."
+                )
+            normalised_htu = _normalised_htu(htu)
+            normalised_htm = _normalised_htm(htm)
+
+        now = timezone.now()
+        expiration = now + lifetime
+        payload: dict[str, object] = {
+            "iss": _normalised_wagtail_admin_issuer(),
+            "iat": int(now.timestamp()),
+            "nbf": int(now.timestamp()),
+            "exp": int(expiration.timestamp()),
+        }
+        if normalised_htu is not None and normalised_htm is not None:
+            payload["htu"] = normalised_htu
+            payload["aud"] = normalised_htu
+            payload["htm"] = normalised_htm
+        if add_jti:
+            payload["jti"] = str(uuid4())
+
+        if extra_claims:
+            reserved_claims = set(payload)
+            overlapping_claims = reserved_claims.intersection(extra_claims)
+            if overlapping_claims:
+                overlapping_list = ", ".join(sorted(overlapping_claims))
+                raise JWTGenerationError(
+                    f"extra_claims must not override reserved claim(s): {overlapping_list}."
+                )
+            payload.update(extra_claims)
+
+        return primary_key_pair.sign_jwt(payload)
+
+
+class EdDSAKeyPair(Orderable):
+    settings = ParentalKey(
+        "govuk.EdDSAKeySettings",
+        on_delete=models.CASCADE,
+        related_name="key_pairs",
+    )
+    key_id = models.CharField(
+        max_length=64,
+        blank=True,
+        help_text="Optional key ID (kid). If blank, it is generated from the public key.",
+    )
+    public_key = models.TextField(
+        help_text="Ed25519 public key in PEM format.",
+    )
+    private_key = models.TextField(
+        blank=True,
+        help_text=(
+            "Ed25519 private key in PEM format. Stored securely and hidden after save."
+        ),
+    )
+    is_primary = models.BooleanField(
+        default=False,
+        help_text="Primary key pair used for signing new tokens.",
+    )
+
+    panels = [
+        FieldPanel("key_id"),
+        FieldPanel("public_key"),
+        FieldPanel("private_key", widget=SecretTextarea(attrs={"rows": 2})),
+    ]
+
+    class Meta:
+        ordering = ["sort_order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["settings", "key_id"],
+                name="govuk_eddsa_key_id_unique_per_site",
+            ),
+            models.UniqueConstraint(
+                fields=["settings"],
+                condition=Q(is_primary=True),
+                name="govuk_single_primary_eddsa_key_per_site",
+            ),
+        ]
+
+    @classmethod
+    def _next_available_key_id(cls, *, settings_id: int, candidate: str) -> str:
+        normalised_candidate = (candidate or "").strip()
+        if not normalised_candidate:
+            normalised_candidate = "eddsa-key"
+
+        base_candidate = normalised_candidate[:64]
+        candidate_value = base_candidate
+        suffix = 2
+        while cls.objects.filter(
+            settings_id=settings_id,
+            key_id=candidate_value,
+        ).exists():
+            suffix_text = f"-{suffix}"
+            max_base_length = 64 - len(suffix_text)
+            candidate_value = f"{base_candidate[:max_base_length]}{suffix_text}"
+            suffix += 1
+        return candidate_value
+
+    @classmethod
+    def generate_for_settings(cls, *, settings_obj: EdDSAKeySettings) -> "EdDSAKeyPair":
+        private_key = Ed25519PrivateKey.generate()
+        public_key = private_key.public_key()
+        private_key_pem = private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption(),
+        ).decode("utf-8")
+        public_key_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode("utf-8")
+        generated_key_id = cls._next_available_key_id(
+            settings_id=settings_obj.pk,
+            candidate=_ed25519_public_key_fingerprint(public_key),
+        )
+        return cls.objects.create(
+            settings=settings_obj,
+            key_id=generated_key_id,
+            public_key=public_key_pem,
+            private_key=private_key_pem,
+        )
+
+    def mark_as_primary(self):
+        type(self).objects.filter(
+            settings_id=self.settings_id,
+            is_primary=True,
+        ).exclude(pk=self.pk).update(is_primary=False)
+        if not self.is_primary:
+            type(self).objects.filter(pk=self.pk).update(is_primary=True)
+            self.is_primary = True
+
+    def clean(self):
+        super().clean()
+
+        self.key_id = (self.key_id or "").strip()
+        self.public_key = (self.public_key or "").strip()
+        self.private_key = (self.private_key or "").strip()
+
+        public_key = _load_ed25519_public_key(self.public_key)
+
+        if self._state.adding and not self.private_key:
+            raise ValidationError(
+                {
+                    "private_key": "Enter an Ed25519 private key or use Generate key pair."
+                }
+            )
+
+        if self.private_key:
+            private_key = _load_ed25519_private_key(self.private_key)
+            private_public_key = private_key.public_key().public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            )
+            provided_public_key = public_key.public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            )
+            if private_public_key != provided_public_key:
+                raise ValidationError(
+                    {
+                        "private_key": (
+                            "Private and public keys do not match the same Ed25519 key pair."
+                        )
+                    }
+                )
+
+        if not self.key_id:
+            self.key_id = _ed25519_public_key_fingerprint(public_key)
+
+    def save(self, *args, **kwargs):
+        self.key_id = (self.key_id or "").strip()
+        self.public_key = (self.public_key or "").strip()
+        self.private_key = (self.private_key or "").strip()
+
+        if self.pk and not self.private_key:
+            existing_private_key = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values_list("private_key", flat=True)
+                .first()
+            )
+            if existing_private_key:
+                self.private_key = existing_private_key
+
+        with transaction.atomic():
+            if self.is_primary and self.settings_id:
+                type(self).objects.filter(
+                    settings_id=self.settings_id,
+                    is_primary=True,
+                ).exclude(pk=self.pk).update(is_primary=False)
+
+            super().save(*args, **kwargs)
+
+            if (
+                not type(self)
+                .objects.filter(
+                    settings_id=self.settings_id,
+                    is_primary=True,
+                )
+                .exists()
+            ):
+                type(self).objects.filter(pk=self.pk).update(is_primary=True)
+                self.is_primary = True
+
+    def delete(self, *args, **kwargs):
+        current_settings_id = self.settings_id
+        super().delete(*args, **kwargs)
+
+        if not current_settings_id:
+            return
+
+        if (
+            type(self)
+            .objects.filter(
+                settings_id=current_settings_id,
+                is_primary=True,
+            )
+            .exists()
+        ):
+            return
+
+        next_primary = (
+            type(self)
+            .objects.filter(settings_id=current_settings_id)
+            .order_by("sort_order", "id")
+            .first()
+        )
+        if next_primary:
+            type(self).objects.filter(pk=next_primary.pk).update(is_primary=True)
+
+    def as_jwk(self) -> dict[str, str]:
+        public_key = _load_ed25519_public_key(self.public_key)
+        raw_public_key = public_key.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        return {
+            "kty": "OKP",
+            "use": "sig",
+            "alg": "EdDSA",
+            "crv": "Ed25519",
+            "kid": self.key_id,
+            "x": _base64url_without_padding(raw_public_key),
+        }
+
+    def sign_jwt(self, payload: dict[str, object]) -> str:
+        private_key = _load_ed25519_private_key(self.private_key)
+        return jwt.encode(
+            payload,
+            key=private_key,
+            algorithm="EdDSA",
+            headers={"kid": self.key_id, "typ": "JWT"},
+        )
+
+    def __str__(self) -> str:
+        return self.key_id or f"EdDSA key {self.pk}"
 
 
 class AuthenticatedRedirectRule(Orderable):
@@ -225,6 +721,14 @@ class ContentDiscoverySource(Orderable):
         verbose_name="Disable TLS verification",
         help_text="When enabled, certificate verification is skipped for this source.",
     )
+    send_signed_bearer_jwt = models.BooleanField(
+        default=False,
+        verbose_name="Send signed bearer JWT",
+        help_text=(
+            "When enabled, sends an Authorization bearer token signed using this site's "
+            "primary key from Settings > Signing keys."
+        ),
+    )
     default_tags = StreamField(
         [
             (
@@ -244,6 +748,7 @@ class ContentDiscoverySource(Orderable):
         FieldPanel("name"),
         FieldPanel("url"),
         FieldPanel("disable_tls_verification"),
+        FieldPanel("send_signed_bearer_jwt"),
         FieldPanel("default_tags"),
     ]
 
@@ -406,9 +911,9 @@ class ExternalContentItem(ClusterableModel):
 
     @classmethod
     def upsert_from_url(cls, *, url: str, source=None, **defaults):
-        normalized_url = url.strip()
+        normalised_url = url.strip()
         item, _ = cls.objects.update_or_create(
-            url=normalized_url,
+            url=normalised_url,
             defaults={"source": source, **defaults},
         )
         if source:
@@ -880,6 +1385,10 @@ __all__ = [
     "AuthenticatedRedirectSettings",
     "ContentDiscoverySettings",
     "ContentDiscoverySource",
+    "CustomiseSettings",
+    "EdDSAKeyPair",
+    "EdDSAKeySettings",
+    "JWTGenerationError",
     "ContentPage",
     "ContentPageTag",
     "ExternalContentItem",
