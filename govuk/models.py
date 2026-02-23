@@ -8,6 +8,7 @@ from uuid import uuid4
 import jwt
 from cryptography.exceptions import UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
@@ -40,6 +41,16 @@ HEX_COLOR_VALIDATOR = RegexValidator(
 )
 HTTP_METHOD_PATTERN = re.compile(r"^[A-Za-z]{3,20}$")
 DEFAULT_JWT_LIFETIME = timedelta(minutes=5)
+SIGNING_ALGORITHM_EDDSA = "EdDSA"
+SIGNING_ALGORITHM_ES256 = "ES256"
+SIGNING_ALGORITHM_CHOICES = (
+    (SIGNING_ALGORITHM_EDDSA, "EdDSA (Ed25519)"),
+    (SIGNING_ALGORITHM_ES256, "ES256 (P-256)"),
+)
+SIGNING_ALGORITHM_VALUES = {value for value, _ in SIGNING_ALGORITHM_CHOICES}
+
+SigningPublicKey = Ed25519PublicKey | ec.EllipticCurvePublicKey
+SigningPrivateKey = Ed25519PrivateKey | ec.EllipticCurvePrivateKey
 
 
 class JWTGenerationError(ValueError):
@@ -57,23 +68,52 @@ def _base64url_without_padding(raw_bytes: bytes) -> str:
     return base64.urlsafe_b64encode(raw_bytes).decode("ascii").rstrip("=")
 
 
-def _load_ed25519_public_key(public_key: str) -> Ed25519PublicKey:
+def _normalised_signing_algorithm(value: str | None) -> str:
+    algorithm = (value or "").strip() or SIGNING_ALGORITHM_EDDSA
+    if algorithm not in SIGNING_ALGORITHM_VALUES:
+        raise ValidationError("Select a valid signing algorithm.")
+    return algorithm
+
+
+def _private_key_required_error(algorithm: str) -> str:
+    if algorithm == SIGNING_ALGORITHM_ES256:
+        return "Enter a P-256 private key or use Generate key pair."
+    return "Enter an Ed25519 private key or use Generate key pair."
+
+
+def _private_public_key_mismatch_error(algorithm: str) -> str:
+    if algorithm == SIGNING_ALGORITHM_ES256:
+        return "Private and public keys do not match the same P-256 key pair."
+    return "Private and public keys do not match the same Ed25519 key pair."
+
+
+def _load_signing_public_key(public_key: str, *, algorithm: str) -> SigningPublicKey:
+    normalised_algorithm = _normalised_signing_algorithm(algorithm)
     normalised_public_key = (public_key or "").strip()
     try:
         parsed_public_key = serialization.load_pem_public_key(
             normalised_public_key.encode("utf-8")
         )
     except (TypeError, ValueError, UnsupportedAlgorithm) as exc:
-        raise ValidationError(
-            "Enter a valid Ed25519 public key in PEM format."
-        ) from exc
+        if normalised_algorithm == SIGNING_ALGORITHM_ES256:
+            raise ValidationError("Enter a valid P-256 public key in PEM format.") from exc
+        raise ValidationError("Enter a valid Ed25519 public key in PEM format.") from exc
 
-    if not isinstance(parsed_public_key, Ed25519PublicKey):
-        raise ValidationError("Public key must be an Ed25519 key.")
+    if normalised_algorithm == SIGNING_ALGORITHM_EDDSA:
+        if not isinstance(parsed_public_key, Ed25519PublicKey):
+            raise ValidationError("Public key must be an Ed25519 key.")
+        return parsed_public_key
+
+    if not isinstance(parsed_public_key, ec.EllipticCurvePublicKey) or not isinstance(
+        parsed_public_key.curve,
+        ec.SECP256R1,
+    ):
+        raise ValidationError("Public key must be a P-256 key.")
     return parsed_public_key
 
 
-def _load_ed25519_private_key(private_key: str) -> Ed25519PrivateKey:
+def _load_signing_private_key(private_key: str, *, algorithm: str) -> SigningPrivateKey:
+    normalised_algorithm = _normalised_signing_algorithm(algorithm)
     normalised_private_key = (private_key or "").strip()
     try:
         parsed_private_key = serialization.load_pem_private_key(
@@ -81,20 +121,42 @@ def _load_ed25519_private_key(private_key: str) -> Ed25519PrivateKey:
             password=None,
         )
     except (TypeError, ValueError, UnsupportedAlgorithm) as exc:
+        if normalised_algorithm == SIGNING_ALGORITHM_ES256:
+            raise ValidationError(
+                "Enter a valid unencrypted P-256 private key in PEM format."
+            ) from exc
         raise ValidationError(
             "Enter a valid unencrypted Ed25519 private key in PEM format."
         ) from exc
 
-    if not isinstance(parsed_private_key, Ed25519PrivateKey):
-        raise ValidationError("Private key must be an Ed25519 key.")
+    if normalised_algorithm == SIGNING_ALGORITHM_EDDSA:
+        if not isinstance(parsed_private_key, Ed25519PrivateKey):
+            raise ValidationError("Private key must be an Ed25519 key.")
+        return parsed_private_key
+
+    if not isinstance(parsed_private_key, ec.EllipticCurvePrivateKey) or not isinstance(
+        parsed_private_key.curve,
+        ec.SECP256R1,
+    ):
+        raise ValidationError("Private key must be a P-256 key.")
     return parsed_private_key
 
 
-def _ed25519_public_key_fingerprint(public_key: Ed25519PublicKey) -> str:
-    raw_public_key = public_key.public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
-    )
+def _signing_public_key_fingerprint(public_key: SigningPublicKey, *, algorithm: str) -> str:
+    normalised_algorithm = _normalised_signing_algorithm(algorithm)
+    if normalised_algorithm == SIGNING_ALGORITHM_ES256:
+        if not isinstance(public_key, ec.EllipticCurvePublicKey):
+            raise ValidationError("Public key must be a P-256 key.")
+        public_numbers = public_key.public_numbers()
+        raw_public_key = public_numbers.x.to_bytes(32, "big") + public_numbers.y.to_bytes(
+            32,
+            "big",
+        )
+    else:
+        raw_public_key = public_key.public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
     return hashlib.sha256(raw_public_key).hexdigest()[:32]
 
 
@@ -307,10 +369,10 @@ class EdDSAKeySettings(ClusterableModel, BaseSiteSetting):
     panels = [
         InlinePanel(
             "key_pairs",
-            heading="EdDSA key pairs",
+            heading="Signing key pairs",
             label="Key pair",
             help_text=(
-                "Add one or more Ed25519 private/public key pairs. "
+                "Add one or more Ed25519 or P-256 private/public key pairs. "
                 "Private keys are hidden after save."
             ),
         ),
@@ -347,7 +409,7 @@ class EdDSAKeySettings(ClusterableModel, BaseSiteSetting):
         primary_key_pair = self.get_primary_key_pair()
         if primary_key_pair is None:
             raise JWTGenerationError(
-                "Cannot generate JWT because no primary EdDSA key is configured."
+                "Cannot generate JWT because no primary signing key is configured."
             )
 
         include_http_claims = bool((htu or "").strip() or (htm or "").strip())
@@ -390,6 +452,10 @@ class EdDSAKeySettings(ClusterableModel, BaseSiteSetting):
 
 
 class EdDSAKeyPair(Orderable):
+    class Algorithm(models.TextChoices):
+        EDDSA = SIGNING_ALGORITHM_EDDSA, "EdDSA (Ed25519)"
+        ES256 = SIGNING_ALGORITHM_ES256, "ES256 (P-256)"
+
     settings = ParentalKey(
         "govuk.EdDSAKeySettings",
         on_delete=models.CASCADE,
@@ -400,13 +466,20 @@ class EdDSAKeyPair(Orderable):
         blank=True,
         help_text="Optional key ID (kid). If blank, it is generated from the public key.",
     )
+    algorithm = models.CharField(
+        max_length=16,
+        choices=Algorithm.choices,
+        default=Algorithm.EDDSA,
+        help_text="Signing algorithm for this key pair.",
+    )
     public_key = models.TextField(
-        help_text="Ed25519 public key in PEM format.",
+        help_text="Public key in PEM format matching the selected algorithm.",
     )
     private_key = models.TextField(
         blank=True,
         help_text=(
-            "Ed25519 private key in PEM format. Stored securely and hidden after save."
+            "Unencrypted private key in PEM format matching the selected algorithm. "
+            "Stored securely and hidden after save."
         ),
     )
     is_primary = models.BooleanField(
@@ -416,6 +489,7 @@ class EdDSAKeyPair(Orderable):
 
     panels = [
         FieldPanel("key_id"),
+        FieldPanel("algorithm"),
         FieldPanel("public_key"),
         FieldPanel("private_key", widget=SecretTextarea(attrs={"rows": 2})),
     ]
@@ -435,10 +509,17 @@ class EdDSAKeyPair(Orderable):
         ]
 
     @classmethod
-    def _next_available_key_id(cls, *, settings_id: int, candidate: str) -> str:
+    def _next_available_key_id(
+        cls, *, settings_id: int, candidate: str, algorithm: str
+    ) -> str:
         normalised_candidate = (candidate or "").strip()
+        normalised_algorithm = _normalised_signing_algorithm(algorithm)
         if not normalised_candidate:
-            normalised_candidate = "eddsa-key"
+            normalised_candidate = (
+                "es256-key"
+                if normalised_algorithm == SIGNING_ALGORITHM_ES256
+                else "eddsa-key"
+            )
 
         base_candidate = normalised_candidate[:64]
         candidate_value = base_candidate
@@ -454,8 +535,17 @@ class EdDSAKeyPair(Orderable):
         return candidate_value
 
     @classmethod
-    def generate_for_settings(cls, *, settings_obj: EdDSAKeySettings) -> "EdDSAKeyPair":
-        private_key = Ed25519PrivateKey.generate()
+    def generate_for_settings(
+        cls,
+        *,
+        settings_obj: EdDSAKeySettings,
+        algorithm: str = SIGNING_ALGORITHM_EDDSA,
+    ) -> "EdDSAKeyPair":
+        normalised_algorithm = _normalised_signing_algorithm(algorithm)
+        if normalised_algorithm == SIGNING_ALGORITHM_ES256:
+            private_key = ec.generate_private_key(ec.SECP256R1())
+        else:
+            private_key = Ed25519PrivateKey.generate()
         public_key = private_key.public_key()
         private_key_pem = private_key.private_bytes(
             encoding=serialization.Encoding.PEM,
@@ -468,11 +558,16 @@ class EdDSAKeyPair(Orderable):
         ).decode("utf-8")
         generated_key_id = cls._next_available_key_id(
             settings_id=settings_obj.pk,
-            candidate=_ed25519_public_key_fingerprint(public_key),
+            candidate=_signing_public_key_fingerprint(
+                public_key,
+                algorithm=normalised_algorithm,
+            ),
+            algorithm=normalised_algorithm,
         )
         return cls.objects.create(
             settings=settings_obj,
             key_id=generated_key_id,
+            algorithm=normalised_algorithm,
             public_key=public_key_pem,
             private_key=private_key_pem,
         )
@@ -489,55 +584,99 @@ class EdDSAKeyPair(Orderable):
     def clean(self):
         super().clean()
 
+        self.algorithm = _normalised_signing_algorithm(self.algorithm)
         self.key_id = (self.key_id or "").strip()
         self.public_key = (self.public_key or "").strip()
         self.private_key = (self.private_key or "").strip()
 
-        public_key = _load_ed25519_public_key(self.public_key)
+        public_key = _load_signing_public_key(
+            self.public_key,
+            algorithm=self.algorithm,
+        )
 
-        if self._state.adding and not self.private_key:
+        existing_private_key = ""
+        existing_algorithm = self.algorithm
+        if self.pk and not self.private_key:
+            existing_key_data = (
+                type(self)
+                .objects.filter(pk=self.pk)
+                .values("private_key", "algorithm")
+                .first()
+            )
+            if existing_key_data:
+                existing_private_key = (existing_key_data["private_key"] or "").strip()
+                existing_algorithm = _normalised_signing_algorithm(
+                    existing_key_data["algorithm"]
+                )
+
+        private_key_value = self.private_key or existing_private_key
+
+        if self._state.adding and not private_key_value:
             raise ValidationError(
                 {
-                    "private_key": "Enter an Ed25519 private key or use Generate key pair."
+                    "private_key": _private_key_required_error(self.algorithm)
                 }
             )
 
-        if self.private_key:
-            private_key = _load_ed25519_private_key(self.private_key)
+        if existing_private_key and existing_algorithm != self.algorithm:
+            raise ValidationError(
+                {"private_key": "Provide a private key when changing the algorithm."}
+            )
+
+        if private_key_value:
+            private_key = _load_signing_private_key(
+                private_key_value,
+                algorithm=self.algorithm,
+            )
             private_public_key = private_key.public_key().public_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PublicFormat.Raw,
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
             )
             provided_public_key = public_key.public_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PublicFormat.Raw,
+                encoding=serialization.Encoding.DER,
+                format=serialization.PublicFormat.SubjectPublicKeyInfo,
             )
             if private_public_key != provided_public_key:
                 raise ValidationError(
                     {
-                        "private_key": (
-                            "Private and public keys do not match the same Ed25519 key pair."
+                        "private_key": _private_public_key_mismatch_error(
+                            self.algorithm
                         )
                     }
                 )
 
         if not self.key_id:
-            self.key_id = _ed25519_public_key_fingerprint(public_key)
+            self.key_id = _signing_public_key_fingerprint(
+                public_key,
+                algorithm=self.algorithm,
+            )
 
     def save(self, *args, **kwargs):
+        self.algorithm = _normalised_signing_algorithm(self.algorithm)
         self.key_id = (self.key_id or "").strip()
         self.public_key = (self.public_key or "").strip()
         self.private_key = (self.private_key or "").strip()
 
         if self.pk and not self.private_key:
-            existing_private_key = (
+            existing_key_data = (
                 type(self)
                 .objects.filter(pk=self.pk)
-                .values_list("private_key", flat=True)
+                .values("private_key", "algorithm")
                 .first()
             )
-            if existing_private_key:
-                self.private_key = existing_private_key
+            if existing_key_data and (existing_key_data["private_key"] or "").strip():
+                existing_algorithm = _normalised_signing_algorithm(
+                    existing_key_data["algorithm"]
+                )
+                if existing_algorithm != self.algorithm:
+                    raise ValidationError(
+                        {
+                            "private_key": (
+                                "Provide a private key when changing the algorithm."
+                            )
+                        }
+                    )
+                self.private_key = (existing_key_data["private_key"] or "").strip()
 
         with transaction.atomic():
             if self.is_primary and self.settings_id:
@@ -586,31 +725,53 @@ class EdDSAKeyPair(Orderable):
             type(self).objects.filter(pk=next_primary.pk).update(is_primary=True)
 
     def as_jwk(self) -> dict[str, str]:
-        public_key = _load_ed25519_public_key(self.public_key)
-        raw_public_key = public_key.public_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PublicFormat.Raw,
+        public_key = _load_signing_public_key(
+            self.public_key,
+            algorithm=self.algorithm,
         )
+        if self.algorithm == SIGNING_ALGORITHM_EDDSA:
+            raw_public_key = public_key.public_bytes(
+                encoding=serialization.Encoding.Raw,
+                format=serialization.PublicFormat.Raw,
+            )
+            return {
+                "kty": "OKP",
+                "use": "sig",
+                "alg": SIGNING_ALGORITHM_EDDSA,
+                "crv": "Ed25519",
+                "kid": self.key_id,
+                "x": _base64url_without_padding(raw_public_key),
+            }
+
+        if not isinstance(public_key, ec.EllipticCurvePublicKey):
+            raise ValidationError("Public key must be a P-256 key.")
+        public_numbers = public_key.public_numbers()
+        x_coordinate = public_numbers.x.to_bytes(32, "big")
+        y_coordinate = public_numbers.y.to_bytes(32, "big")
         return {
-            "kty": "OKP",
+            "kty": "EC",
             "use": "sig",
-            "alg": "EdDSA",
-            "crv": "Ed25519",
+            "alg": SIGNING_ALGORITHM_ES256,
+            "crv": "P-256",
             "kid": self.key_id,
-            "x": _base64url_without_padding(raw_public_key),
+            "x": _base64url_without_padding(x_coordinate),
+            "y": _base64url_without_padding(y_coordinate),
         }
 
     def sign_jwt(self, payload: dict[str, object]) -> str:
-        private_key = _load_ed25519_private_key(self.private_key)
+        private_key = _load_signing_private_key(
+            self.private_key,
+            algorithm=self.algorithm,
+        )
         return jwt.encode(
             payload,
             key=private_key,
-            algorithm="EdDSA",
+            algorithm=self.algorithm,
             headers={"kid": self.key_id, "typ": "JWT"},
         )
 
     def __str__(self) -> str:
-        return self.key_id or f"EdDSA key {self.pk}"
+        return self.key_id or f"{self.algorithm} key {self.pk}"
 
 
 class AuthenticatedRedirectRule(Orderable):

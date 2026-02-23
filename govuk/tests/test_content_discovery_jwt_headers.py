@@ -43,7 +43,8 @@ class ContentDiscoveryJWTHeaderTests(TestCase):
         payload = jwt.decode(
             token,
             key=public_key,
-            algorithms=["EdDSA"],
+            algorithms=[key_pair.algorithm],
+            audience=source.url,
             issuer="https://admin.example.gov.uk",
             options={"require": ["iss", "iat", "nbf", "exp", "jti"]},
         )

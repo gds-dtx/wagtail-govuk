@@ -46,6 +46,27 @@ class JwksViewTests(TestCase):
         self.assertEqual(first_jwk["use"], "sig")
         self.assertNotIn("private_key", first_jwk)
 
+    def test_returns_es256_jwk_for_es256_primary_key(self):
+        key_pair = EdDSAKeyPair.generate_for_settings(
+            settings_obj=self.key_settings,
+            algorithm=EdDSAKeyPair.Algorithm.ES256,
+        )
+
+        response = self.client.get(reverse("govuk_jwks"))
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(len(data["keys"]), 1)
+        first_jwk = data["keys"][0]
+        self.assertEqual(first_jwk["kid"], key_pair.key_id)
+        self.assertEqual(first_jwk["kty"], "EC")
+        self.assertEqual(first_jwk["alg"], "ES256")
+        self.assertEqual(first_jwk["crv"], "P-256")
+        self.assertEqual(first_jwk["use"], "sig")
+        self.assertIn("x", first_jwk)
+        self.assertIn("y", first_jwk)
+        self.assertNotIn("private_key", first_jwk)
+
 
 class EdDSAKeyPairModelTests(TestCase):
     def setUp(self):
@@ -74,3 +95,10 @@ class EdDSAKeyPairModelTests(TestCase):
         second_key_pair.refresh_from_db()
 
         self.assertTrue(second_key_pair.is_primary)
+
+    def test_generate_for_settings_supports_es256(self):
+        key_pair = EdDSAKeyPair.generate_for_settings(
+            settings_obj=self.key_settings,
+            algorithm=EdDSAKeyPair.Algorithm.ES256,
+        )
+        self.assertEqual(key_pair.algorithm, EdDSAKeyPair.Algorithm.ES256)

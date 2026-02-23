@@ -31,6 +31,18 @@ class EdDSAKeyAdminViewTests(TestCase):
             EdDSAKeyPair.objects.filter(settings=self.key_settings).count(),
             1,
         )
+        generated = EdDSAKeyPair.objects.get(settings=self.key_settings)
+        self.assertEqual(generated.algorithm, EdDSAKeyPair.Algorithm.EDDSA)
+
+    def test_generate_view_creates_es256_key_pair_when_requested(self):
+        response = self.client.post(
+            reverse("govuk_eddsa_generate_site_key", args=[self.site.pk]),
+            data={"next": "/admin/", "algorithm": EdDSAKeyPair.Algorithm.ES256},
+        )
+
+        self.assertEqual(response.status_code, 302)
+        generated = EdDSAKeyPair.objects.get(settings=self.key_settings)
+        self.assertEqual(generated.algorithm, EdDSAKeyPair.Algorithm.ES256)
 
     def test_set_primary_view_updates_primary_key_pair(self):
         first_key_pair = EdDSAKeyPair.generate_for_settings(settings_obj=self.key_settings)
@@ -99,6 +111,7 @@ class EdDSAKeyAdminViewTests(TestCase):
         self.assertEqual(body["expires_in"], 120)
         self.assertEqual(body["issuer"], "https://admin.example.gov.uk")
         self.assertEqual(body["kid"], key_pair.key_id)
+        self.assertEqual(body["alg"], key_pair.algorithm)
         self.assertEqual(body["htm"], "GET")
         self.assertEqual(body["htu"], "https://api.example.gov.uk/search")
         self.assertTrue(body["access_token"])
@@ -107,9 +120,10 @@ class EdDSAKeyAdminViewTests(TestCase):
         payload = jwt.decode(
             body["access_token"],
             key=public_key,
-            algorithms=["EdDSA"],
+            algorithms=[key_pair.algorithm],
+            audience="https://api.example.gov.uk/search",
             issuer="https://admin.example.gov.uk",
-            options={"require": ["iss", "iat", "nbf", "exp", "jti"]},
+            options={"require": ["iss", "iat", "nbf", "exp"]},
         )
         self.assertEqual(payload["htu"], "https://api.example.gov.uk/search")
         self.assertEqual(payload["htm"], "GET")

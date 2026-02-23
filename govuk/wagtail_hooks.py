@@ -4,7 +4,7 @@ from datetime import timedelta
 from draftjs_exporter.dom import DOM
 from django.conf import settings
 from django import forms
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.http import HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import path, reverse, reverse_lazy
@@ -544,10 +544,19 @@ def generate_eddsa_key_pair_view(request, site_id: int):
     fallback_url = _eddsa_keys_edit_url(site_id)
     redirect_url = _safe_next_url(request, fallback_url=fallback_url)
 
-    generated_key_pair = EdDSAKeyPair.generate_for_settings(settings_obj=key_settings)
+    requested_algorithm = (
+        request.POST.get("algorithm") or EdDSAKeyPair.Algorithm.EDDSA
+    ).strip()
+    try:
+        generated_key_pair = EdDSAKeyPair.generate_for_settings(
+            settings_obj=key_settings,
+            algorithm=requested_algorithm,
+        )
+    except ValidationError as exc:
+        return HttpResponseBadRequest("; ".join(exc.messages))
     messages.success(
         request,
-        f"Generated EdDSA key pair '{generated_key_pair.key_id}'.",
+        f"Generated {generated_key_pair.algorithm} key pair '{generated_key_pair.key_id}'.",
     )
     return redirect(redirect_url)
 
@@ -593,6 +602,7 @@ def generate_eddsa_jwt_view(request, site_id: int):
             "expires_in": lifetime_seconds,
             "issuer": getattr(settings, "WAGTAILADMIN_BASE_URL", ""),
             "kid": getattr(primary_key_pair, "key_id", ""),
+            "alg": getattr(primary_key_pair, "algorithm", ""),
             "htm": (htm or "").strip().upper() or None,
             "htu": htu,
         }
@@ -617,7 +627,7 @@ def set_primary_eddsa_key_pair_view(request, key_pair_id: int):
     key_pair.mark_as_primary()
     messages.success(
         request,
-        f"Set '{key_pair.key_id}' as the primary EdDSA key pair.",
+        f"Set '{key_pair.key_id}' as the primary signing key pair ({key_pair.algorithm}).",
     )
     return redirect(redirect_url)
 
@@ -638,10 +648,11 @@ def delete_eddsa_key_pair_view(request, key_pair_id: int):
     redirect_url = _safe_next_url(request, fallback_url=fallback_url)
 
     deleted_key_id = key_pair.key_id
+    deleted_algorithm = key_pair.algorithm
     key_pair.delete()
     messages.success(
         request,
-        f"Deleted EdDSA key pair '{deleted_key_id}'.",
+        f"Deleted {deleted_algorithm} key pair '{deleted_key_id}'.",
     )
     return redirect(redirect_url)
 

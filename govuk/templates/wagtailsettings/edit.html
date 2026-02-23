@@ -93,52 +93,65 @@
     {% endif %}
     {% if view.model_name == "eddsakeysettings" %}
         <section class="w-mb-8">
-            <h3 class="w-h4 w-mb-2">{% trans "Manage EdDSA key pairs" %}</h3>
+            <h3 class="w-h4 w-mb-2">{% trans "Manage signing key pairs" %}</h3>
             <p class="help w-mb-4">
-                {% trans "Generate keys or set an existing key as primary. Save inline edits before running actions." %}
+                {% trans "Generate EdDSA (Ed25519) or ES256 (P-256) keys, or set an existing key as primary. Save inline edits before running actions." %}
             </p>
             <form class="w-mb-4"
                   method="post"
                   action="{% url 'govuk_eddsa_generate_site_key' object.site_id %}">
                 {% csrf_token %}
                 <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                <button class="button button-secondary" type="submit">{% trans "Generate new EdDSA key pair" %}</button>
-            </form>
-            {% for key_pair in object.ordered_key_pairs %}
-                <div class="w-mb-4 w-p-4" style="border: 1px solid #d8dde0;">
-                    <div class="w-flex w-items-start w-justify-between w-gap-4">
-                        <div>
-                            <strong>{{ key_pair.key_id }}</strong>
-                            {% if key_pair.is_primary %}
-                                <span class="w-ml-2">{% trans "(Primary)" %}</span>
-                            {% endif %}
-                            <pre class="help w-mt-2" style="white-space: pre-wrap;">{{ key_pair.public_key }}</pre>
-                        </div>
-                        <div class="w-flex w-gap-2">
-                            {% if not key_pair.is_primary %}
-                                <form method="post"
-                                      action="{% url 'govuk_eddsa_set_primary_key' key_pair.id %}">
-                                    {% csrf_token %}
-                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                                    <button class="button button-small button-secondary" type="submit">{% trans "Set primary" %}</button>
-                                </form>
-                            {% endif %}
-                            <form method="post" action="{% url 'govuk_eddsa_delete_key' key_pair.id %}">
-                                {% csrf_token %}
-                                <input type="hidden" name="next" value="{{ request.get_full_path }}">
-                                <button class="button button-small serious"
-                                        type="submit"
-                                        onclick="return confirm('Delete this EdDSA key pair?');">
-                                    {% trans "Delete" %}
-                                </button>
-                            </form>
-                        </div>
+                <div class="w-flex w-gap-3 w-items-end w-flex-wrap w-mb-2">
+                    <div>
+                        <label class="w-block" for="eddsa-generate-algorithm">{% trans "Algorithm" %}</label>
+                        <select id="eddsa-generate-algorithm" name="algorithm" class="w-w-48">
+                            <option value="EdDSA">{% trans "EdDSA (Ed25519)" %}</option>
+                            <option value="ES256">{% trans "ES256 (P-256)" %}</option>
+                        </select>
                     </div>
                 </div>
-            {% empty %}
-                <p class="help">{% trans "Add a key pair below or generate one, then save this page." %}</p>
-            {% endfor %}
+                <div class="w-flex w-gap-3 w-items-end w-flex-wrap">
+                    <button class="button button-secondary" type="submit">{% trans "Generate new key pair" %}</button>
+                </div>
+            </form>
             {% if object.ordered_key_pairs.count > 0 %}
+                <h3 class="w-h4 w-mb-2">{% trans "Active signing key pairs" %}</h3>
+                {% for key_pair in object.ordered_key_pairs %}
+                    <div class="w-mb-4 w-p-4" style="border: 1px solid #d8dde0;">
+                        <div class="w-flex w-items-start w-justify-between w-gap-4">
+                            <div>
+                                <strong>{{ key_pair.key_id }}</strong>
+                                <span class="w-ml-2 help">{{ key_pair.get_algorithm_display }}</span>
+                                {% if key_pair.is_primary %}
+                                    <span class="w-ml-2">{% trans "(Primary)" %}</span>
+                                {% endif %}
+                                <pre class="help w-mt-2" style="white-space: pre-wrap;">{{ key_pair.public_key }}</pre>
+                            </div>
+                            <div class="w-flex w-gap-2">
+                                {% if not key_pair.is_primary %}
+                                    <form method="post"
+                                          action="{% url 'govuk_eddsa_set_primary_key' key_pair.id %}">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                        <button class="button button-small button-secondary" type="submit">{% trans "Set primary" %}</button>
+                                    </form>
+                                {% endif %}
+                                <form method="post" action="{% url 'govuk_eddsa_delete_key' key_pair.id %}">
+                                    {% csrf_token %}
+                                    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                                    <button class="button button-small serious"
+                                            type="submit"
+                                            onclick="return confirm('Delete this signing key pair?');">
+                                        {% trans "Delete" %}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                {% empty %}
+                    <p class="help">{% trans "Add a key pair below or generate one, then save this page." %}</p>
+                {% endfor %}
                 <form class="w-mb-6"
                       method="post"
                       action="{% url 'govuk_eddsa_generate_site_jwt' object.site_id %}"
@@ -147,7 +160,7 @@
                     {% csrf_token %}
                     <h3 class="w-h4 w-mb-2">{% trans "Generate JWT" %}</h3>
                     <p class="help w-mb-3">
-                        {% trans "Generates a signed Bearer JWT using the current primary key. Response opens in a new tab." %}
+                        {% trans "Generates a signed Bearer JWT using the current primary key pair algorithm. Response opens in a new tab." %}
                     </p>
                     <div class="w-flex w-gap-3 w-flex-wrap w-items-end w-mb-2">
                         <div>
