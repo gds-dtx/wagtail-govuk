@@ -31,6 +31,20 @@ class IncomingRequestDebugLoggingMiddleware:
         return self.get_response(request)
 
 
+class WellKnownCorsMiddleware:
+    """Allow cross-origin reads for well-known endpoints."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.path_prefix = "/.well-known/"
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.path.startswith(self.path_prefix):
+            response.headers.setdefault("Access-Control-Allow-Origin", "*")
+        return response
+
+
 class AdminOIDCLoginMiddleware:
     """Force OIDC login for admin routes by redirecting to OIDC."""
 

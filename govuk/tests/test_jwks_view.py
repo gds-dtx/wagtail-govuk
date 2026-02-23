@@ -17,6 +17,7 @@ class JwksViewTests(TestCase):
         response = self.client.get(reverse("govuk_jwks"))
 
         self.assertEqual(response.status_code, 404)
+        self.assertEqual(response["Access-Control-Allow-Origin"], "*")
 
     def test_returns_all_public_keys_with_primary_key_first(self):
         first_key_pair = EdDSAKeyPair.generate_for_settings(settings_obj=self.key_settings)
@@ -33,6 +34,7 @@ class JwksViewTests(TestCase):
         response = self.client.get(reverse("govuk_jwks"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Access-Control-Allow-Origin"], "*")
         data = response.json()
         self.assertIn("keys", data)
         self.assertEqual(len(data["keys"]), 2)
@@ -55,6 +57,7 @@ class JwksViewTests(TestCase):
         response = self.client.get(reverse("govuk_jwks"))
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Access-Control-Allow-Origin"], "*")
         data = response.json()
         self.assertEqual(len(data["keys"]), 1)
         first_jwk = data["keys"][0]
