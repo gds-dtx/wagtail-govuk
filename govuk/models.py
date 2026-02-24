@@ -1288,7 +1288,7 @@ class TagListingsPage(Page):
             .select_related("source")
         )
 
-    def _page_listing_items(self, *, tag_ids: list[int]) -> list[dict]:
+    def _page_listing_items(self, *, tag_ids: list[int], request=None) -> list[dict]:
         if not tag_ids:
             return []
 
@@ -1299,18 +1299,19 @@ class TagListingsPage(Page):
         )
         content_pages = (
             ContentPage.objects.live()
-            .public()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
             .distinct()
         )
         section_pages = (
             SectionPage.objects.live()
-            .public()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
             .distinct()
         )
+        if request is None or not request.user.is_authenticated:
+            content_pages = content_pages.public()
+            section_pages = section_pages.public()
 
         page_items: list[dict] = []
         for page in list(content_pages) + list(section_pages):
@@ -1336,6 +1337,7 @@ class TagListingsPage(Page):
         *,
         selected_tag_id: int | None = None,
         selected_source_id: int | None = None,
+        request=None,
     ) -> list[dict]:
         # Keep this as the single data-source entry point so external content and
         # tagged Wagtail pages remain filtered and sorted consistently.
@@ -1377,7 +1379,9 @@ class TagListingsPage(Page):
             )
 
         if selected_source_id is None:
-            listing_items.extend(self._page_listing_items(tag_ids=tag_ids))
+            listing_items.extend(
+                self._page_listing_items(tag_ids=tag_ids, request=request)
+            )
 
         listing_items.sort(
             key=lambda item: (
@@ -1449,6 +1453,7 @@ class TagListingsPage(Page):
         listing_items = self.get_listing_queryset(
             selected_tag_id=selected_tag.id if selected_tag is not None else None,
             selected_source_id=selected_source_pk,
+            request=request,
         )
 
         paginator = Paginator(listing_items, 15)

@@ -23,7 +23,7 @@
 }
 
 .govuk-width-container, .hero {
-    max-width: 1200px;
+    max-width: var(--govuk-content-width, 1200px);
     margin-right: 15px;
     margin-left: 15px;
 }

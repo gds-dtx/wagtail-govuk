@@ -1,5 +1,6 @@
+from django.contrib.auth import get_user_model
 from django.test import TestCase
-from wagtail.models import Site
+from wagtail.models import PageViewRestriction, Site
 
 from govuk.models import (
     ContentDiscoverySettings,
@@ -34,6 +35,19 @@ class TagListingsPageQuerysetTests(TestCase):
         )
         self.content_page_alpha.tags.add(self.alpha_tag)
         self.content_page_alpha.save_revision().publish()
+
+        self.private_alpha_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Private alpha page",
+                slug="private-alpha-page",
+                body="",
+            )
+        )
+        self.private_alpha_page.tags.add(self.alpha_tag)
+        self.private_alpha_page.save_revision().publish()
+        self.private_alpha_page.view_restrictions.create(
+            restriction_type=PageViewRestriction.LOGIN
+        )
 
         self.section_page_beta = self.root_page.add_child(
             instance=SectionPage(
@@ -111,6 +125,7 @@ class TagListingsPageQuerysetTests(TestCase):
 
         self.assertNotIn(self.external_gamma.url, urls)
         self.assertNotIn(self.gamma_page.url, urls)
+        self.assertNotIn(self.private_alpha_page.url, urls)
 
     def test_get_listing_queryset_applies_selected_tag_to_external_and_pages(self):
         items = self.listings_page.get_listing_queryset(selected_tag_id=self.beta_tag.id)
@@ -138,3 +153,31 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertContains(response, "Beta section")
         self.assertNotContains(response, "Alpha external")
         self.assertNotContains(response, "Alpha page")
+
+    def test_tag_filter_page_response_excludes_private_pages_for_anonymous_users(self):
+        self.listings_page.enable_tag_filter = True
+        self.listings_page.save_revision().publish()
+
+        response = self.client.get(self.listings_page.url, {"tag": self.alpha_tag.slug})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Alpha external")
+        self.assertContains(response, "Alpha page")
+        self.assertNotContains(response, "Private alpha page")
+
+    def test_tag_filter_page_response_includes_private_pages_for_logged_in_users(self):
+        self.listings_page.enable_tag_filter = True
+        self.listings_page.save_revision().publish()
+
+        user = get_user_model().objects.create_user(
+            username="tag-listing-user",
+            password="password",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(self.listings_page.url, {"tag": self.alpha_tag.slug})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Alpha external")
+        self.assertContains(response, "Alpha page")
+        self.assertContains(response, "Private alpha page")
