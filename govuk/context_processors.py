@@ -8,9 +8,18 @@ from govuk.models import CustomiseSettings, FooterSettings, PhaseBannerSettings
 
 
 def navigation_and_breadcrumbs(request):
+    additional_css = getattr(settings, "ADDITIONAL_CSS", None)
+    if isinstance(additional_css, str):
+        additional_css = [additional_css]
+    elif additional_css:
+        additional_css = [path for path in additional_css if path]
+    else:
+        additional_css = []
+
     template_context = {
         "app_debug": settings.DEBUG,
         "app_version": getattr(settings, "VERSION", ""),
+        "additional_css": additional_css,
         "django_settings_module": os.getenv("DJANGO_SETTINGS_MODULE")
         or getattr(settings, "SETTINGS_MODULE", ""),
     }

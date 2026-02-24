@@ -14,6 +14,11 @@
         <meta name="theme-color" content="blue">
         <link rel="stylesheet" href="{% static 'govuk-frontend-6.0.0.min.css' %}" />
         <link rel="stylesheet" href="{% static 'main.css' %}" />
+        {% if additional_css %}
+            {% for css_path in additional_css %}
+                <link rel="stylesheet" href="{{ css_path }}" />
+            {% endfor %}
+        {% endif %}
         {% if customise_settings and customise_settings.has_custom_css %}
             <link rel="stylesheet" href="{% url 'govuk_custom_css' %}" />
         {% endif %}

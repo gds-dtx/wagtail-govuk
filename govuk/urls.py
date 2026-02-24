@@ -7,7 +7,13 @@ from wagtail import urls as wagtail_urls
 from wagtail.documents import urls as wagtaildocs_urls
 
 from allauth.account.decorators import secure_admin_login
-from govuk.api import api_root_view, api_router, api_v2_root_view
+from govuk.api import (
+    ExternalContentItemsAPIView,
+    ExternalContentSourcesAPIView,
+    api_externalcontent_root_view,
+    api_root_view,
+    api_router,
+)
 from govuk.views import (
     account_logout_redirect,
     assets_alias_view,
@@ -39,8 +45,22 @@ urlpatterns = [
     path("admin/", include(wagtailadmin_urls)),
     path("documents/", include(wagtaildocs_urls)),
     path("api/", api_root_view, name="api_root"),
-    path("api/v2/", api_v2_root_view, name="api_v2_root"),
-    path("api/v2/", api_router.urls),
+    path(
+        "api/externalcontent/",
+        api_externalcontent_root_view,
+        name="api_externalcontent_root",
+    ),
+    path(
+        "api/externalcontent/sources/",
+        ExternalContentSourcesAPIView.as_view(),
+        name="api_externalcontent_sources",
+    ),
+    path(
+        "api/externalcontent/items/",
+        ExternalContentItemsAPIView.as_view(),
+        name="api_externalcontent_items",
+    ),
+    path("api/", api_router.urls),
     path("gen/custom.css", custom_css_view, name="govuk_custom_css"),
     path("gen/custom.js", custom_js_view, name="govuk_custom_js"),
     path(".well-known/jwks.json", jwks_view, name="govuk_jwks"),

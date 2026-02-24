@@ -15,3 +15,5 @@ DATABASES = {
 }
 
 WAGTAILADMIN_BASE_URL = "http://localhost:8000"
+
+# ADDITIONAL_CSS = ["/static/cyber.css"]

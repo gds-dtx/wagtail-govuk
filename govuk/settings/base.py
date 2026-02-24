@@ -17,7 +17,7 @@ import re
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 from pathlib import Path
 
-VERSION = "7.3-029"
+VERSION = "7.3-030"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
@@ -237,6 +237,16 @@ SOCIALACCOUNT_PROVIDERS = {
         ],
     }
 }
+
+
+def _parse_csv_env(var_name: str) -> list[str]:
+    _var = os.getenv(var_name)
+    if _var:
+        return [item.strip() for item in _var.split(",") if item.strip()]
+    return []
+
+
+ADDITIONAL_CSS = _parse_csv_env("ADDITIONAL_CSS")
 
 
 def _bool_env(var_name: str, default: bool = False) -> bool:
