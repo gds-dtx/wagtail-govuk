@@ -139,13 +139,6 @@
         <div class="govuk-width-container govuk-!-margin-top-3 govuk-!-margin-bottom-6">
             <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
                  {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
-                <div class="{% if self.enable_free_text_heading_navigation %}govuk-grid-column-two-thirds{% else %}govuk-grid-column-full{% endif %}"
-                     {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
-                    <div class="govuk-body rich-text-content"
-                         {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
-                        {{ self.free_text|richtext }}
-                    </div>
-                </div>
                 {% if self.enable_free_text_heading_navigation %}
                     <div class="govuk-grid-column-one-third" data-auto-heading-side-column>
                         <nav class="free-text-heading-nav"
@@ -155,6 +148,13 @@
                         </nav>
                     </div>
                 {% endif %}
+                <div class="{% if self.enable_free_text_heading_navigation %}govuk-grid-column-two-thirds{% else %}govuk-grid-column-full{% endif %}"
+                     {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
+                    <div class="govuk-body rich-text-content"
+                         {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
+                        {{ self.free_text|richtext }}
+                    </div>
+                </div>
             </div>
         </div>
     {% endif %}
