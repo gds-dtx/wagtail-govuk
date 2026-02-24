@@ -106,7 +106,7 @@
 }
 
 .section-card:hover {
-  border-color: rgb(29, 112, 184);
+  border-color: var(--govuk-brand-colour, rgb(29, 112, 184));
 }
 
 .section-card--clickable {
