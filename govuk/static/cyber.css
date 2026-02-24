@@ -2,10 +2,10 @@
 :root {
   --govuk-brand-colour: #158187;
   --govuk-secondary-colour: #8AC0C3;
-  --govuk-content-width: 900px;
+  --govuk-content-width: 950px;
 }
 
-@media (min-width: 980px) {
+@media (min-width: 1030px) {
     .hero {
         margin-right: auto !important;
         margin-left: auto !important;

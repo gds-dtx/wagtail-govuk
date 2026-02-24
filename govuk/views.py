@@ -88,7 +88,7 @@ def search_view(request):
             "request": request,
             "site": site,
             "live": True,
-            "public": True,
+            "public": not request.user.is_authenticated,
         },
         page=page_number,
     )
