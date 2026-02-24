@@ -96,8 +96,12 @@ def _load_signing_public_key(public_key: str, *, algorithm: str) -> SigningPubli
         )
     except (TypeError, ValueError, UnsupportedAlgorithm) as exc:
         if normalised_algorithm == SIGNING_ALGORITHM_ES256:
-            raise ValidationError("Enter a valid P-256 public key in PEM format.") from exc
-        raise ValidationError("Enter a valid Ed25519 public key in PEM format.") from exc
+            raise ValidationError(
+                "Enter a valid P-256 public key in PEM format."
+            ) from exc
+        raise ValidationError(
+            "Enter a valid Ed25519 public key in PEM format."
+        ) from exc
 
     if normalised_algorithm == SIGNING_ALGORITHM_EDDSA:
         if not isinstance(parsed_public_key, Ed25519PublicKey):
@@ -142,13 +146,17 @@ def _load_signing_private_key(private_key: str, *, algorithm: str) -> SigningPri
     return parsed_private_key
 
 
-def _signing_public_key_fingerprint(public_key: SigningPublicKey, *, algorithm: str) -> str:
+def _signing_public_key_fingerprint(
+    public_key: SigningPublicKey, *, algorithm: str
+) -> str:
     normalised_algorithm = _normalised_signing_algorithm(algorithm)
     if normalised_algorithm == SIGNING_ALGORITHM_ES256:
         if not isinstance(public_key, ec.EllipticCurvePublicKey):
             raise ValidationError("Public key must be a P-256 key.")
         public_numbers = public_key.public_numbers()
-        raw_public_key = public_numbers.x.to_bytes(32, "big") + public_numbers.y.to_bytes(
+        raw_public_key = public_numbers.x.to_bytes(
+            32, "big"
+        ) + public_numbers.y.to_bytes(
             32,
             "big",
         )
@@ -613,9 +621,7 @@ class EdDSAKeyPair(Orderable):
 
         if self._state.adding and not private_key_value:
             raise ValidationError(
-                {
-                    "private_key": _private_key_required_error(self.algorithm)
-                }
+                {"private_key": _private_key_required_error(self.algorithm)}
             )
 
         if existing_private_key and existing_algorithm != self.algorithm:
@@ -638,11 +644,7 @@ class EdDSAKeyPair(Orderable):
             )
             if private_public_key != provided_public_key:
                 raise ValidationError(
-                    {
-                        "private_key": _private_public_key_mismatch_error(
-                            self.algorithm
-                        )
-                    }
+                    {"private_key": _private_public_key_mismatch_error(self.algorithm)}
                 )
 
         if not self.key_id:
@@ -1266,31 +1268,128 @@ class TagListingsPage(Page):
         FieldPanel("enable_free_text_heading_navigation"),
     ]
 
-    def get_listing_queryset(self):
-        # Keep this as the single data-source entry point so other tagged card
-        # sources can be merged in future.
-        queryset = ExternalContentItem.objects.filter(hidden=False)
-        configured_tag_ids = list(self.tags.values_list("id", flat=True))
-        if configured_tag_ids:
-            queryset = queryset.filter(tags__id__in=configured_tag_ids)
+    def _configured_tag_ids(self) -> list[int]:
+        return list(self.tags.values_list("id", flat=True))
 
-        return queryset.distinct()
+    def _effective_tag_ids(self, *, selected_tag_id: int | None = None) -> list[int]:
+        configured_tag_ids = self._configured_tag_ids()
+        if not configured_tag_ids:
+            return []
+        if selected_tag_id is not None and selected_tag_id in configured_tag_ids:
+            return [selected_tag_id]
+        return configured_tag_ids
+
+    def _external_listing_queryset(self, *, tag_ids: list[int]):
+        if not tag_ids:
+            return ExternalContentItem.objects.none()
+        return (
+            ExternalContentItem.objects.filter(hidden=False, tags__id__in=tag_ids)
+            .distinct()
+            .select_related("source")
+        )
+
+    def _page_listing_items(self, *, tag_ids: list[int]) -> list[dict]:
+        if not tag_ids:
+            return []
+
+        page_sort_updated = Coalesce(
+            "last_published_at",
+            "latest_revision_created_at",
+            "first_published_at",
+        )
+        content_pages = (
+            ContentPage.objects.live()
+            .public()
+            .filter(tags__id__in=tag_ids)
+            .annotate(sort_updated=page_sort_updated)
+            .distinct()
+        )
+        section_pages = (
+            SectionPage.objects.live()
+            .public()
+            .filter(tags__id__in=tag_ids)
+            .annotate(sort_updated=page_sort_updated)
+            .distinct()
+        )
+
+        page_items: list[dict] = []
+        for page in list(content_pages) + list(section_pages):
+            page_items.append(
+                {
+                    "id": page.id,
+                    "url": page.url or page.url_path,
+                    "title": page.hero_title or page.title,
+                    "summary": page.hero_intro or page.search_description or "",
+                    "source": None,
+                    "metadata": {},
+                    "updated_at": page.last_published_at or page.sort_updated,
+                    "created_at": page.first_published_at,
+                    "published_at": page.first_published_at,
+                    "last_seen_at": page.last_published_at,
+                    "sort_updated": page.sort_updated,
+                }
+            )
+        return page_items
+
+    def get_listing_queryset(
+        self,
+        *,
+        selected_tag_id: int | None = None,
+        selected_source_id: int | None = None,
+    ) -> list[dict]:
+        # Keep this as the single data-source entry point so external content and
+        # tagged Wagtail pages remain filtered and sorted consistently.
+        tag_ids = self._effective_tag_ids(selected_tag_id=selected_tag_id)
+        if not tag_ids:
+            return []
+
+        external_queryset = self._external_listing_queryset(tag_ids=tag_ids).annotate(
+            sort_updated=Coalesce(
+                "updated_at",
+                "created_at",
+                "published_at",
+                "last_seen_at",
+                "first_seen_at",
+            )
+        )
+        if selected_source_id is not None:
+            external_queryset = external_queryset.filter(source_id=selected_source_id)
+
+        listing_items: list[dict] = []
+        for item in external_queryset:
+            source_label = ""
+            if item.source is not None:
+                source_label = (item.source.name or item.source.url or "").strip()
+            listing_items.append(
+                {
+                    "id": item.id,
+                    "url": item.url,
+                    "title": item.title,
+                    "summary": item.summary,
+                    "source": {"name": source_label} if source_label else None,
+                    "metadata": item.metadata or {},
+                    "updated_at": item.updated_at,
+                    "created_at": item.created_at,
+                    "published_at": item.published_at,
+                    "last_seen_at": item.last_seen_at,
+                    "sort_updated": item.sort_updated,
+                }
+            )
+
+        if selected_source_id is None:
+            listing_items.extend(self._page_listing_items(tag_ids=tag_ids))
+
+        listing_items.sort(
+            key=lambda item: (
+                item["sort_updated"].timestamp() if item["sort_updated"] else 0.0,
+                item["id"],
+            ),
+            reverse=True,
+        )
+        return listing_items
 
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
-        queryset = (
-            self.get_listing_queryset()
-            .annotate(
-                sort_updated=Coalesce(
-                    "updated_at",
-                    "created_at",
-                    "published_at",
-                    "last_seen_at",
-                    "first_seen_at",
-                )
-            )
-            .order_by("-sort_updated", "-id")
-        )
 
         available_tags = list(self.tags.all())
         selected_tag = None
@@ -1302,14 +1401,14 @@ class TagListingsPage(Page):
                     (tag for tag in available_tags if tag.slug == selected_tag_slug),
                     None,
                 )
-                if selected_tag is not None:
-                    queryset = queryset.filter(tags__id=selected_tag.id)
 
         available_sources = []
         selected_source_id = ""
         selected_source_label = ""
+        selected_tag_id = selected_tag.id if selected_tag is not None else None
+        source_tag_ids = self._effective_tag_ids(selected_tag_id=selected_tag_id)
         source_rows = (
-            self.get_listing_queryset()
+            self._external_listing_queryset(tag_ids=source_tag_ids)
             .exclude(source__isnull=True)
             .values("source_id", "source__name", "source__url")
             .distinct()
@@ -1342,12 +1441,17 @@ class TagListingsPage(Page):
                 None,
             )
             if selected_source is not None:
-                queryset = queryset.filter(source_id=int(selected_source_id))
                 selected_source_label = selected_source["label"]
             else:
                 selected_source_id = ""
 
-        paginator = Paginator(queryset, 15)
+        selected_source_pk = int(selected_source_id) if selected_source_id else None
+        listing_items = self.get_listing_queryset(
+            selected_tag_id=selected_tag.id if selected_tag is not None else None,
+            selected_source_id=selected_source_pk,
+        )
+
+        paginator = Paginator(listing_items, 15)
         context["listing_items"] = paginator.get_page(request.GET.get("page"))
         context["available_tags"] = available_tags
         context["available_sources"] = available_sources

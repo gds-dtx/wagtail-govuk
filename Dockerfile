@@ -48,7 +48,7 @@ RUN python manage.py collectstatic --noinput
 
 # TODO: Replace with a health endpoint that runs some basic checks on the application, e.g. database connectivity
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-    CMD curl http://127.0.0.1:8000/api/ || exit 1
+    CMD curl -f --max-time 2 http://127.0.0.1:8000/api/ || exit 1
 
 # Runtime command that executes when "docker run" is called, it does the
 # following:

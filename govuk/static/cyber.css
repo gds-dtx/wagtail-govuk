@@ -3,3 +3,52 @@
   --govuk-brand-colour: #158187;
   --govuk-secondary-colour: #8AC0C3;
 }
+
+.progress-bar__container {
+    display: table;
+    width: 50%;
+    table-layout: fixed;
+    border-spacing: 10px;
+    height: 10px;
+    margin-top: -9px;
+    margin-bottom: 10px
+}
+
+.progress-bar__green {
+    display: table-cell;
+    border-style: solid;
+    border-width: 1.5px;
+    border-color: #4f4f4f;
+    background-color: #4f4f4f
+}
+
+.progress-bar__grey {
+    display: table-cell;
+    border-style: solid;
+    border-width: 1.5px;
+    border-color: #4f4f4f;
+    background-color: #4f4f4f
+}
+
+.progress-bar__white {
+    display: table-cell;
+    border-style: solid;
+    border-width: 1.5px;
+    border-color: #4f4f4f;
+    background-color: #efefef
+}
+
+.progress-bar__divider {
+    display: table-cell;
+    background-color: #fff;
+    width: 5%
+}
+
+.skill-definitions__container>.progress-bar__container {
+    width: 50%;
+    height: 11px
+}
+
+.skill-definitions__container>.progress-bar__container>.progress-bar__divider {
+    width: 5%
+}
