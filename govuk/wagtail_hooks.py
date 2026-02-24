@@ -1,22 +1,36 @@
+import base64
 import io
+import json
 from datetime import timedelta
 
 from draftjs_exporter.dom import DOM
 from django.conf import settings
 from django import forms
 from django.core.exceptions import ImproperlyConfigured, ValidationError
-from django.http import HttpResponseBadRequest, HttpResponseNotAllowed, JsonResponse
-from django.shortcuts import get_object_or_404, redirect
+from django.http import (
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseNotAllowed,
+    JsonResponse,
+)
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse, reverse_lazy
 from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils import timezone
 from wagtail import hooks
 from wagtail.admin import messages
 from wagtail.admin.auth import permission_denied, require_admin_access
+from wagtail.admin.menu import MenuItem
+from wagtail.admin.rich_text.converters.contentstate_models import Entity
 from wagtail.admin.rich_text.converters.html_to_contentstate import (
+    AtomicBlockEntityElementHandler,
+    BlockElementHandler,
     PageLinkElementHandler,
 )
 from wagtail.admin.rich_text.editors.draftail import features as draftail_features
+from wagtail.models import Page, Site
+from wagtail.rich_text import EmbedHandler
 from wagtail.rich_text.pages import PageLinkHandler
 from wagtail.snippets.models import register_snippet
 from wagtail.snippets.views.snippets import IndexView as SnippetIndexView
@@ -38,6 +52,12 @@ from govuk.models import (
     GovukTag,
     JWTGenerationError,
 )
+from govuk.page_import_export import (
+    PAGE_EXPORT_FORMAT,
+    build_page_export_payload,
+    dump_payload_as_json,
+    import_pages_from_payload,
+)
 
 GOVUK_BUTTON_FEATURE = "govuk-button"
 GOVUK_START_BUTTON_FEATURE = "govuk-start-button"
@@ -48,6 +68,33 @@ GOVUK_START_BUTTON_LINKTYPE = "govuk-start-button"
 GOVUK_BUTTON_STYLE_ATTR = "data-govuk-button-style"
 GOVUK_BUTTON_STYLE_DEFAULT = "default"
 GOVUK_BUTTON_STYLE_START = "start"
+RAW_HTML_FEATURE = "raw-html"
+RAW_HTML_ENTITY_TYPE = "RAW_HTML"
+RAW_HTML_EMBEDTYPE = "raw_html"
+INSET_TEXT_FEATURE = "inset-text"
+INSET_TEXT_BLOCK_TYPE = "inset-text"
+
+
+def _encode_raw_html(raw_html: str | None) -> str:
+    normalised_html = (raw_html or "").strip()
+    if not normalised_html:
+        return ""
+    return base64.urlsafe_b64encode(normalised_html.encode("utf-8")).decode("ascii")
+
+
+def _decode_raw_html(encoded_html: str | None) -> str:
+    normalised_encoded_html = (encoded_html or "").strip()
+    if not normalised_encoded_html:
+        return ""
+
+    # Base64 strings in embed attributes can be copied without padding.
+    padding = "=" * (-len(normalised_encoded_html) % 4)
+    try:
+        return base64.urlsafe_b64decode(
+            (normalised_encoded_html + padding).encode("ascii")
+        ).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return ""
 
 
 def _get_govuk_button_attributes(*, is_start: bool) -> dict[str, str]:
@@ -136,12 +183,45 @@ class GovukStartButtonLinkHandler(GovukButtonLinkHandler):
     is_start = True
 
 
+class RawHtmlElementHandler(AtomicBlockEntityElementHandler):
+    def create_entity(self, name, attrs, state, contentstate):
+        return Entity(
+            RAW_HTML_ENTITY_TYPE,
+            "MUTABLE",
+            {"html": _decode_raw_html(attrs.get("html", ""))},
+        )
+
+
+class RawHtmlEmbedHandler(EmbedHandler):
+    identifier = RAW_HTML_EMBEDTYPE
+
+    @classmethod
+    def expand_db_attributes_many(cls, attrs_list: list[dict]) -> list[str]:
+        return [_decode_raw_html(attrs.get("html", "")) for attrs in attrs_list]
+
+
+def raw_html_entity(props: dict):
+    return DOM.create_element(
+        "embed",
+        {
+            "embedtype": RAW_HTML_EMBEDTYPE,
+            "html": _encode_raw_html(props.get("html", "")),
+        },
+    )
+
+
 @hooks.register("register_rich_text_features")
 def register_govuk_button_rich_text_features(features):
     features.register_link_type(GovukButtonLinkHandler)
     features.register_link_type(GovukStartButtonLinkHandler)
+    features.register_embed_type(RawHtmlEmbedHandler)
 
-    for feature_name in (GOVUK_BUTTON_FEATURE, GOVUK_START_BUTTON_FEATURE):
+    for feature_name in (
+        GOVUK_BUTTON_FEATURE,
+        GOVUK_START_BUTTON_FEATURE,
+        RAW_HTML_FEATURE,
+        INSET_TEXT_FEATURE,
+    ):
         if feature_name not in features.default_features:
             features.default_features.append(feature_name)
 
@@ -197,8 +277,8 @@ def register_govuk_button_rich_text_features(features):
         draftail_features.EntityFeature(
             {
                 "type": GOVUK_START_BUTTON_ENTITY_TYPE,
-                "label": "Btn",
                 "description": "Start button link",
+                "icon": "login",
                 **common_editor_plugin_args,
             },
             js=[
@@ -219,6 +299,62 @@ def register_govuk_button_rich_text_features(features):
             "to_database_format": {
                 "entity_decorators": {
                     GOVUK_START_BUTTON_ENTITY_TYPE: govuk_start_button_entity
+                }
+            },
+        },
+    )
+
+    features.register_editor_plugin(
+        "draftail",
+        RAW_HTML_FEATURE,
+        draftail_features.EntityFeature(
+            {
+                "type": RAW_HTML_ENTITY_TYPE,
+                "description": "Raw HTML block",
+                "icon": "code",
+            },
+            js=["govuk/js/draftail-raw-html.js"],
+        ),
+    )
+    features.register_converter_rule(
+        "contentstate",
+        RAW_HTML_FEATURE,
+        {
+            "from_database_format": {
+                f'embed[embedtype="{RAW_HTML_EMBEDTYPE}"]': RawHtmlElementHandler(),
+            },
+            "to_database_format": {
+                "entity_decorators": {RAW_HTML_ENTITY_TYPE: raw_html_entity}
+            },
+        },
+    )
+
+    features.register_editor_plugin(
+        "draftail",
+        INSET_TEXT_FEATURE,
+        draftail_features.BlockFeature(
+            {
+                "type": INSET_TEXT_BLOCK_TYPE,
+                "description": "Inset text",
+                "icon": "openquote",
+            }
+        ),
+    )
+    features.register_converter_rule(
+        "contentstate",
+        INSET_TEXT_FEATURE,
+        {
+            "from_database_format": {
+                'div[class="govuk-inset-text"]': BlockElementHandler(
+                    INSET_TEXT_BLOCK_TYPE
+                ),
+            },
+            "to_database_format": {
+                "block_map": {
+                    INSET_TEXT_BLOCK_TYPE: {
+                        "element": "div",
+                        "props": {"class": "govuk-inset-text"},
+                    }
                 }
             },
         },
@@ -362,6 +498,206 @@ def _user_can_change_eddsa_key_setting(request, *, site) -> bool:
         "change",
         site,
     )
+
+
+def _all_admin_sites() -> list[Site]:
+    return list(
+        Site.objects.select_related("root_page").order_by(
+            "-is_default_site", "hostname", "port"
+        )
+    )
+
+
+def _selected_site_for_request(request) -> Site | None:
+    sites = _all_admin_sites()
+    if not sites:
+        return None
+
+    raw_site_id = (
+        request.GET.get("site_id")
+        or request.GET.get("site")
+        or request.POST.get("site_id")
+        or ""
+    ).strip()
+    if raw_site_id.isdigit():
+        selected_site = next(
+            (site for site in sites if site.pk == int(raw_site_id)),
+            None,
+        )
+        if selected_site is not None:
+            return selected_site
+
+    default_site = next((site for site in sites if site.is_default_site), None)
+    return default_site or sites[0]
+
+
+def _import_export_admin_url(site_id: int) -> str:
+    return f"{reverse('govuk_pages_import_export')}?site_id={site_id}"
+
+
+def _normalised_selected_page_ids(raw_page_ids: list[str]) -> list[int]:
+    page_ids: list[int] = []
+    for raw_page_id in raw_page_ids:
+        raw_value = (raw_page_id or "").strip()
+        if raw_value.isdigit():
+            page_ids.append(int(raw_value))
+    return page_ids
+
+
+def _page_rows_for_site(site: Site) -> list[dict]:
+    root_page = site.root_page.specific
+    pages = (
+        Page.objects.descendant_of(root_page, inclusive=False)
+        .specific()
+        .order_by("path")
+    )
+    return [
+        {
+            "id": page.pk,
+            "title": page.title,
+            "slug": page.slug,
+            "depth": max(page.depth - root_page.depth - 1, 0),
+            "model_label": page._meta.label,
+            "is_private": page.view_restrictions.exists(),
+        }
+        for page in pages
+    ]
+
+
+@hooks.register("register_admin_menu_item")
+def register_pages_import_export_menu_item():
+    return MenuItem(
+        "Import / Export",
+        reverse("govuk_pages_import_export"),
+        icon_name="download",
+        order=700,
+    )
+
+
+@require_admin_access
+def pages_import_export_index_view(request):
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET"])
+
+    selected_site = _selected_site_for_request(request)
+    if selected_site is None:
+        messages.error(request, "No sites are configured yet.")
+        return redirect(reverse("wagtailadmin_home"))
+
+    return render(
+        request,
+        "govuk/admin/pages_import_export.html",
+        {
+            "header_title": "Import / Export",
+            "page_title": "Import / Export",
+            "page_subtitle": f"Site: {selected_site.hostname}",
+            "header_icon": "download",
+            "sites": _all_admin_sites(),
+            "selected_site": selected_site,
+            "page_rows": _page_rows_for_site(selected_site),
+        },
+    )
+
+
+@require_admin_access
+def pages_export_view(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    selected_site = _selected_site_for_request(request)
+    if selected_site is None:
+        messages.error(request, "No sites are configured yet.")
+        return redirect(reverse("wagtailadmin_home"))
+
+    redirect_url = _import_export_admin_url(selected_site.pk)
+    selected_page_ids = _normalised_selected_page_ids(request.POST.getlist("page_ids"))
+    if not selected_page_ids:
+        messages.error(request, "Select at least one page to export.")
+        return redirect(redirect_url)
+
+    selected_pages = list(
+        Page.objects.descendant_of(selected_site.root_page, inclusive=False)
+        .filter(pk__in=selected_page_ids)
+        .specific()
+        .order_by("path")
+    )
+    if not selected_pages:
+        messages.error(request, "No matching pages were found for export.")
+        return redirect(redirect_url)
+
+    payload = build_page_export_payload(site=selected_site, pages=selected_pages)
+    file_contents = dump_payload_as_json(payload)
+    timestamp = timezone.now().strftime("%Y%m%d-%H%M%S")
+    file_name = f"pages-export-site-{selected_site.pk}-{timestamp}.json"
+
+    response = HttpResponse(file_contents, content_type="application/json")
+    response["Content-Disposition"] = f'attachment; filename="{file_name}"'
+    return response
+
+
+@require_admin_access
+def pages_import_view(request):
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+
+    selected_site = _selected_site_for_request(request)
+    if selected_site is None:
+        messages.error(request, "No sites are configured yet.")
+        return redirect(reverse("wagtailadmin_home"))
+
+    redirect_url = _import_export_admin_url(selected_site.pk)
+    uploaded_file = request.FILES.get("json_file")
+    if uploaded_file is None:
+        messages.error(request, "Choose a JSON export file to import.")
+        return redirect(redirect_url)
+
+    try:
+        payload_text = uploaded_file.read().decode("utf-8-sig")
+    except UnicodeDecodeError:
+        messages.error(request, "Import file must be UTF-8 encoded JSON.")
+        return redirect(redirect_url)
+
+    try:
+        payload = json.loads(payload_text)
+    except json.JSONDecodeError:
+        messages.error(request, "Import file must contain valid JSON.")
+        return redirect(redirect_url)
+
+    if not isinstance(payload, dict):
+        messages.error(request, "Import payload must be a JSON object.")
+        return redirect(redirect_url)
+
+    payload_format = (payload.get("format") or "").strip()
+    if payload_format and payload_format != PAGE_EXPORT_FORMAT:
+        messages.error(
+            request,
+            (
+                "Unsupported import format. "
+                f"Expected '{PAGE_EXPORT_FORMAT}', got '{payload_format}'."
+            ),
+        )
+        return redirect(redirect_url)
+
+    result = import_pages_from_payload(
+        payload=payload,
+        site=selected_site,
+        user=request.user,
+    )
+    messages.success(
+        request,
+        (
+            "Import complete. "
+            f"Processed {result.processed}, created {result.created}, "
+            f"updated {result.updated}, skipped {result.skipped}."
+        ),
+    )
+    if result.errors:
+        preview = "; ".join(result.errors[:3])
+        if len(result.errors) > 3:
+            preview = f"{preview}; and {len(result.errors) - 3} more."
+        messages.warning(request, f"Some items were skipped: {preview}")
+
+    return redirect(redirect_url)
 
 
 @require_admin_access
@@ -581,9 +917,7 @@ def generate_eddsa_jwt_view(request, site_id: int):
         )
 
     if lifetime_seconds < 1 or lifetime_seconds > 86400:
-        return HttpResponseBadRequest(
-            "lifetime_seconds must be between 1 and 86400."
-        )
+        return HttpResponseBadRequest("lifetime_seconds must be between 1 and 86400.")
 
     try:
         access_token = key_settings.generate_jwt(
@@ -660,6 +994,21 @@ def delete_eddsa_key_pair_view(request, key_pair_id: int):
 @hooks.register("register_admin_urls")
 def register_content_discovery_admin_urls():
     return [
+        path(
+            "pages/import-export/",
+            pages_import_export_index_view,
+            name="govuk_pages_import_export",
+        ),
+        path(
+            "pages/import-export/export/",
+            pages_export_view,
+            name="govuk_pages_export",
+        ),
+        path(
+            "pages/import-export/import/",
+            pages_import_view,
+            name="govuk_pages_import",
+        ),
         path(
             "content-discovery/sync/source/<int:source_id>/",
             sync_content_discovery_source_view,

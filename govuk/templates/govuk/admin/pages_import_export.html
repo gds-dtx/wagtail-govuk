@@ -1,0 +1,73 @@
+{% extends "wagtailadmin/generic/base.html" %}
+{% load i18n %}
+
+{% block main_content %}
+    <form method="get" class="w-mb-8">
+        <label class="w-block w-mb-1" for="import-export-site-id">{% trans "Site" %}</label>
+        <div class="w-flex w-gap-3 w-items-end w-flex-wrap">
+            <select id="import-export-site-id" name="site_id" class="w-min-w-64">
+                {% for site in sites %}
+                    <option value="{{ site.id }}" {% if site.id == selected_site.id %}selected{% endif %}>
+                        {{ site.hostname }}{% if site.is_default_site %} ({% trans "default" %}){% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+            <button class="button button-secondary" type="submit">{% trans "Switch site" %}</button>
+        </div>
+    </form>
+
+    <section class="w-mb-10">
+        <h2 class="w-h3 w-mb-2">{% trans "Export pages" %}</h2>
+        <p class="help w-mb-4">
+            {% trans "Select one or more pages. Child pages are exported with each selected page in a structured JSON format including page settings and privacy restrictions." %}
+        </p>
+        <form method="post" action="{% url 'govuk_pages_export' %}">
+            {% csrf_token %}
+            <input type="hidden" name="site_id" value="{{ selected_site.id }}">
+            <div class="w-mb-4 w-p-4" style="border: 1px solid #d8dde0; max-height: 24rem; overflow-y: auto;">
+                {% for row in page_rows %}
+                    <label class="w-flex w-items-start w-gap-2 w-mb-2">
+                        <input type="checkbox" name="page_ids" value="{{ row.id }}">
+                        <span>
+                            <span style="padding-left: {{ row.depth }}rem;">
+                                {{ row.title }}
+                            </span>
+                            <code class="w-ml-2">{{ row.slug }}</code>
+                            {% if row.is_private %}
+                                <span class="w-ml-2">{% trans "(private)" %}</span>
+                            {% endif %}
+                            <div class="help">{{ row.model_label }}</div>
+                        </span>
+                    </label>
+                {% empty %}
+                    <p class="help">{% trans "No pages available to export for this site." %}</p>
+                {% endfor %}
+            </div>
+            <button class="button" type="submit">{% trans "Export selected pages" %}</button>
+        </form>
+    </section>
+
+    <section>
+        <h2 class="w-h3 w-mb-2">{% trans "Import pages" %}</h2>
+        <p class="help w-mb-4">
+            {% trans "Upload a JSON file created by this export tool. Existing pages with the same slug are overridden." %}
+        </p>
+        <form method="post"
+              action="{% url 'govuk_pages_import' %}"
+              enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="site_id" value="{{ selected_site.id }}">
+            <div class="w-flex w-gap-3 w-items-end w-flex-wrap">
+                <div>
+                    <label class="w-block w-mb-1" for="page-import-json-file">{% trans "JSON file" %}</label>
+                    <input id="page-import-json-file"
+                           type="file"
+                           name="json_file"
+                           accept="application/json,.json"
+                           required>
+                </div>
+                <button class="button button-secondary" type="submit">{% trans "Import JSON" %}</button>
+            </div>
+        </form>
+    </section>
+{% endblock %}
