@@ -80,6 +80,8 @@ def jwks_view(request):
 def search_view(request):
     query = (request.GET.get("query") or "").strip()
     page_number = request.GET.get("page", 1)
+    selected_tag = (request.GET.get("tag") or "").strip().lower()
+    selected_source = (request.GET.get("source") or "").strip()
     site = Site.find_for_request(request)
 
     results = search_backend.search(
@@ -89,6 +91,8 @@ def search_view(request):
             "site": site,
             "live": True,
             "public": not request.user.is_authenticated,
+            "tag": selected_tag,
+            "source": selected_source,
         },
         page=page_number,
     )
@@ -98,6 +102,11 @@ def search_view(request):
         {
             "query": query,
             "results": results,
+            "available_tags": getattr(results, "available_tags", []),
+            "available_sources": getattr(results, "available_sources", []),
+            "selected_tag": getattr(results, "selected_tag", None),
+            "selected_source_id": getattr(results, "selected_source_id", ""),
+            "selected_source_label": getattr(results, "selected_source_label", ""),
         },
     )
 

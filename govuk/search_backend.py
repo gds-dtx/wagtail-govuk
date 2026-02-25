@@ -11,6 +11,7 @@ from django.db import connections
 from django.db.models import Q, QuerySet, TextField
 from django.db.models.functions import Cast
 from django.utils.html import strip_tags
+from django.utils.text import slugify
 from django.utils import timezone
 from wagtail.models import Page, Site
 
@@ -24,6 +25,7 @@ CARD_TAG_TEXT_WEIGHT = 1.0
 TAG_RESULT_WEIGHT = 1.2
 EXTERNAL_SOURCE_TEXT_WEIGHT = 0.4
 EXTERNAL_TAG_TEXT_WEIGHT = 0.6
+THIS_SITE_SOURCE_FILTER = "__this_site__"
 EXTERNAL_RECENCY_BOOST_BUCKETS: tuple[tuple[int, float], ...] = (
     (7, 8.0),
     (30, 5.0),
@@ -41,7 +43,10 @@ class SearchResultItem:
     score: float = 0.0
     breadcrumbs: list[dict[str, str]] = field(default_factory=list)
     tags: list[str] = field(default_factory=list)
+    tag_keys: list[str] = field(default_factory=list)
+    is_external: bool = False
     source_name: str = ""
+    source_id: int | None = None
     last_updated: datetime | None = None
 
 
@@ -51,10 +56,21 @@ class SearchBackend:
     ) -> PaginatorPage:
         filters = filters or {}
         clean_query = (query or "").strip()
+        selected_tag_key = self._normalised_tag_filter(filters.get("tag"))
+        selected_source_key = self._normalised_source_filter(filters.get("source"))
 
         if not clean_query:
             paginator = Paginator([], self._page_size(filters))
-            return paginator.get_page(page)
+            page_obj = paginator.get_page(page)
+            self._attach_filter_context(
+                page_obj,
+                available_tags=[],
+                available_sources=[],
+                selected_tag=None,
+                selected_source_id="",
+                selected_source_label="",
+            )
+            return page_obj
 
         page_results = self._build_page_results(clean_query, filters)
         hero_results = self._build_hero_results(clean_query, filters)
@@ -72,8 +88,51 @@ class SearchBackend:
             + external_content_results
         )
 
-        paginator = Paginator(combined_results, self._page_size(filters))
-        return paginator.get_page(page)
+        available_tags = self._available_tags(combined_results)
+        selected_tag = next(
+            (tag for tag in available_tags if tag["key"] == selected_tag_key),
+            None,
+        )
+        if selected_tag is None:
+            selected_tag_key = ""
+
+        available_sources = self._available_sources(
+            combined_results,
+            selected_tag_key=selected_tag_key,
+            this_site_source={
+                "id": THIS_SITE_SOURCE_FILTER,
+                "label": self._this_site_source_label(filters),
+            },
+        )
+        selected_source = None
+        if selected_source_key:
+            selected_source = next(
+                (
+                    source
+                    for source in available_sources
+                    if source["id"] == selected_source_key
+                ),
+                None,
+            )
+            if selected_source is None:
+                selected_source_key = ""
+
+        filtered_results = self._filter_results(
+            combined_results,
+            selected_tag_key=selected_tag_key,
+            selected_source_key=selected_source_key,
+        )
+        paginator = Paginator(filtered_results, self._page_size(filters))
+        page_obj = paginator.get_page(page)
+        self._attach_filter_context(
+            page_obj,
+            available_tags=available_tags,
+            available_sources=available_sources,
+            selected_tag=selected_tag,
+            selected_source_id=selected_source_key,
+            selected_source_label=selected_source["label"] if selected_source else "",
+        )
+        return page_obj
 
     def _build_page_results(
         self, query: str, filters: dict[str, Any]
@@ -91,7 +150,9 @@ class SearchBackend:
             specific_page = page.specific
             title = page.title
             description = page.search_description or ""
-            tag_labels = self._page_tag_labels(specific_page)
+            tag_items = self._page_tag_items(specific_page)
+            tag_labels = [tag["value"] for tag in tag_items]
+            tag_keys = [tag["key"] for tag in tag_items]
             tags_text = self._clean_text(" ".join(tag_labels))
             page_rank = float(getattr(page, "rank", 0.0) or 0.0)
             score = page_rank + self._text_relevance(
@@ -118,6 +179,7 @@ class SearchBackend:
                         include_page=False,
                     ),
                     tags=tag_labels,
+                    tag_keys=tag_keys,
                     last_updated=self._page_last_updated(page),
                 )
             )
@@ -147,18 +209,20 @@ class SearchBackend:
                 link_text = self._clean_text(card.get("link_text"))
                 link_url = (card.get("link_url") or "").strip()
                 card_tag_text: list[str] = []
-                card_tag_labels: list[str] = []
+                card_tag_items: list[dict[str, str]] = []
                 for tag in card.get("tags", []):
                     tag_text = self._tag_text(tag)
                     if tag_text:
                         card_tag_text.append(tag_text)
-                    tag_label = self._tag_label(tag)
-                    if tag_label:
-                        card_tag_labels.append(tag_label)
+                    tag_item = self._tag_item(tag)
+                    if tag_item:
+                        card_tag_items.append(tag_item)
                 tags_text = self._clean_text(" ".join(card_tag_text))
-                result_tags = self._unique_values(
-                    card_tag_labels + self._page_tag_labels(section_page)
+                result_tag_items = self._unique_tag_items(
+                    card_tag_items + self._page_tag_items(section_page)
                 )
+                result_tags = [tag["value"] for tag in result_tag_items]
+                result_tag_keys = [tag["key"] for tag in result_tag_items]
 
                 searchable_text = " ".join(
                     value
@@ -195,6 +259,7 @@ class SearchBackend:
                             include_page=True,
                         ),
                         tags=result_tags,
+                        tag_keys=result_tag_keys,
                         last_updated=self._page_last_updated(section_page),
                     )
                 )
@@ -219,7 +284,9 @@ class SearchBackend:
             )
 
             for page in queryset:
-                tag_labels = self._page_tag_labels(page)
+                tag_items = self._page_tag_items(page)
+                tag_labels = [tag["value"] for tag in tag_items]
+                tag_keys = [tag["key"] for tag in tag_items]
                 tags_text = self._clean_text(" ".join(tag_labels))
                 score = self._text_relevance(query, ((tags_text, TAG_RESULT_WEIGHT),))
                 if score <= 0:
@@ -241,6 +308,7 @@ class SearchBackend:
                             include_page=False,
                         ),
                         tags=tag_labels,
+                        tag_keys=tag_keys,
                         last_updated=self._page_last_updated(page),
                     )
                 )
@@ -264,7 +332,9 @@ class SearchBackend:
             for page in queryset:
                 hero_title = self._clean_text(getattr(page, "hero_title", ""))
                 hero_intro = self._clean_text(getattr(page, "hero_intro", ""))
-                tag_labels = self._page_tag_labels(page)
+                tag_items = self._page_tag_items(page)
+                tag_labels = [tag["value"] for tag in tag_items]
+                tag_keys = [tag["key"] for tag in tag_items]
                 score = float(
                     getattr(page, "hero_rank", None)
                     or self._text_relevance(
@@ -288,6 +358,7 @@ class SearchBackend:
                             include_page=False,
                         ),
                         tags=tag_labels,
+                        tag_keys=tag_keys,
                         last_updated=self._page_last_updated(page),
                     )
                 )
@@ -305,7 +376,9 @@ class SearchBackend:
 
         results: list[SearchResultItem] = []
         for item in queryset:
-            tag_labels = self._page_tag_labels(item)
+            tag_items = self._page_tag_items(item)
+            tag_labels = [tag["value"] for tag in tag_items]
+            tag_keys = [tag["key"] for tag in tag_items]
             tags_text = self._clean_text(" ".join(tag_labels))
             source_name = self._clean_text(getattr(item.source, "name", ""))
             item_rank = float(getattr(item, "external_rank", 0.0) or 0.0)
@@ -340,7 +413,10 @@ class SearchBackend:
                     url=item.url,
                     score=score,
                     tags=tag_labels,
+                    tag_keys=tag_keys,
+                    is_external=True,
                     source_name=source_name,
+                    source_id=item.source_id,
                     last_updated=self._external_content_last_updated(item),
                 )
             )
@@ -617,6 +693,42 @@ class SearchBackend:
 
         return self._clean_text(tag)
 
+    def _tag_key(self, tag: Any) -> str:
+        if not tag:
+            return ""
+
+        key = self._clean_text(getattr(tag, "slug", "") or getattr(tag, "key", ""))
+        if key:
+            return key.lower()
+
+        value = self._clean_text(getattr(tag, "name", "") or getattr(tag, "value", ""))
+        if value:
+            slugified_value = slugify(value)
+            if slugified_value:
+                return slugified_value.lower()
+            return value.lower()
+
+        text_value = self._clean_text(tag)
+        slugified_text = slugify(text_value)
+        if slugified_text:
+            return slugified_text.lower()
+        return text_value.lower()
+
+    def _tag_item(self, tag: Any) -> dict[str, str] | None:
+        tag_key = self._tag_key(tag)
+        tag_label = self._tag_label(tag)
+        if not tag_label and tag_key:
+            tag_label = tag_key
+        if not tag_key and tag_label:
+            slugified_label = slugify(tag_label)
+            if slugified_label:
+                tag_key = slugified_label.lower()
+            else:
+                tag_key = tag_label.lower()
+        if not tag_key or not tag_label:
+            return None
+        return {"key": tag_key, "value": tag_label}
+
     def _unique_values(self, values: list[str]) -> list[str]:
         unique_values: list[str] = []
         seen: set[str] = set()
@@ -631,17 +743,34 @@ class SearchBackend:
             unique_values.append(clean_value)
         return unique_values
 
-    def _page_tag_labels(self, page: Any) -> list[str]:
+    def _unique_tag_items(self, items: list[dict[str, str]]) -> list[dict[str, str]]:
+        unique_items: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for item in items:
+            key = self._clean_text(item.get("key", "")).lower()
+            value = self._clean_text(item.get("value", ""))
+            if not key or not value:
+                continue
+            if key in seen:
+                continue
+            seen.add(key)
+            unique_items.append({"key": key, "value": value})
+        return unique_items
+
+    def _page_tag_items(self, page: Any) -> list[dict[str, str]]:
         tags_manager = getattr(page, "tags", None)
         if not tags_manager:
             return []
 
-        labels: list[str] = []
+        items: list[dict[str, str]] = []
         for tag in tags_manager.all():
-            label = self._tag_label(tag)
-            if label:
-                labels.append(label)
-        return self._unique_values(labels)
+            item = self._tag_item(tag)
+            if item:
+                items.append(item)
+        return self._unique_tag_items(items)
+
+    def _page_tag_labels(self, page: Any) -> list[str]:
+        return [tag["value"] for tag in self._page_tag_items(page)]
 
     def _tag_result_description(self, page: Any) -> str:
         tags_manager = getattr(page, "tags", None)
@@ -678,6 +807,112 @@ class SearchBackend:
             unique_results.append(item)
 
         return unique_results
+
+    def _normalised_tag_filter(self, value: Any) -> str:
+        return self._clean_text(value).lower()
+
+    def _normalised_source_filter(self, value: Any) -> str:
+        source_value = self._clean_text(value)
+        if not source_value:
+            return ""
+        if source_value == THIS_SITE_SOURCE_FILTER:
+            return THIS_SITE_SOURCE_FILTER
+        if not source_value.isdigit():
+            return ""
+
+        parsed_source_id = int(source_value)
+        if parsed_source_id <= 0:
+            return ""
+        return str(parsed_source_id)
+
+    def _this_site_source_label(self, filters: dict[str, Any]) -> str:
+        site = filters.get("site")
+        if isinstance(site, Site):
+            site_name = self._clean_text(site.site_name)
+            if site_name:
+                return f"{site_name} (this site)"
+        return "This site"
+
+    def _available_tags(self, results: list[SearchResultItem]) -> list[dict[str, str]]:
+        tag_items: list[dict[str, str]] = []
+        for result in results:
+            for key, value in zip(result.tag_keys, result.tags):
+                tag_items.append({"key": key, "value": value})
+
+        unique_items = self._unique_tag_items(tag_items)
+        return sorted(unique_items, key=lambda item: item["value"].lower())
+
+    def _available_sources(
+        self,
+        results: list[SearchResultItem],
+        *,
+        selected_tag_key: str = "",
+        this_site_source: dict[str, str] | None = None,
+    ) -> list[dict[str, str]]:
+        source_results = results
+        if selected_tag_key:
+            source_results = [
+                result for result in results if selected_tag_key in result.tag_keys
+            ]
+
+        sources_by_id: dict[int, str] = {}
+        for result in source_results:
+            if result.source_id is None:
+                continue
+            source_label = self._clean_text(result.source_name)
+            if not source_label:
+                continue
+            sources_by_id[result.source_id] = source_label
+
+        available_sources = [
+            {"id": str(source_id), "label": source_label}
+            for source_id, source_label in sources_by_id.items()
+        ]
+        available_sources.sort(key=lambda source: source["label"].lower())
+        if this_site_source:
+            available_sources = [this_site_source] + available_sources
+        return available_sources
+
+    def _filter_results(
+        self,
+        results: list[SearchResultItem],
+        *,
+        selected_tag_key: str = "",
+        selected_source_key: str = "",
+    ) -> list[SearchResultItem]:
+        filtered_results = results
+        if selected_tag_key:
+            filtered_results = [
+                result for result in filtered_results if selected_tag_key in result.tag_keys
+            ]
+        if selected_source_key == THIS_SITE_SOURCE_FILTER:
+            filtered_results = [
+                result for result in filtered_results if not result.is_external
+            ]
+        elif selected_source_key:
+            selected_source_id = int(selected_source_key)
+            filtered_results = [
+                result
+                for result in filtered_results
+                if result.is_external and result.source_id == selected_source_id
+            ]
+        return filtered_results
+
+    def _attach_filter_context(
+        self,
+        page_obj: PaginatorPage,
+        *,
+        available_tags: list[dict[str, str]],
+        available_sources: list[dict[str, str]],
+        selected_tag: dict[str, str] | None,
+        selected_source_id: str,
+        selected_source_label: str,
+    ) -> None:
+        page_obj.available_tags = available_tags
+        page_obj.available_sources = available_sources
+        page_obj.selected_tag = selected_tag
+        page_obj.selected_source_id = selected_source_id
+        page_obj.selected_source_label = selected_source_label
 
     def _text_relevance(
         self, query: str, weighted_values: tuple[tuple[Any, float], ...]

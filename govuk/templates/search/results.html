@@ -6,24 +6,76 @@
     <div class="section-cards-container">
         <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
             <h1 class="govuk-heading-l">Search result{{ results.paginator.count|pluralize }}</h1>
-            <!--form action="{% url 'search' %}"
-              method="get"
-              role="search"
-              class="govuk-!-margin-bottom-6">
-            <div class="govuk-form-group">
-                <label class="govuk-label" for="search-query">
-                    Search
-                    {% if current_site.site_name %}
-                        {{ current_site.site_name }}
-                    {% else %}
-                        this site
-                    {% endif %}
-                </label>
-                <input class="govuk-input govuk-!-width-two-thirds" id="search-query" name="query" type="search" value="query" />
-            </div>
-            <button class="govuk-button" data-module="govuk-button" type="submit">Search</button>
-            </form -->
             {% if query %}
+                {% if available_tags or available_sources %}
+                    <details class="govuk-details govuk-!-margin-bottom-2"
+                             data-module="govuk-details"
+                             {% if selected_tag or selected_source_id %}open{% endif %}>
+                        <summary class="govuk-details__summary">
+                            <span class="govuk-details__summary-text">Filters</span>
+                        </summary>
+                        <div class="govuk-details__text">
+                            {% if selected_tag or selected_source_label %}
+                                <p class="govuk-body-s govuk-!-margin-top-0 govuk-!-margin-bottom-3">
+                                    Showing results
+                                    {% if selected_tag and selected_source_label %}
+                                        for <strong>{{ selected_tag.value }}</strong> from <strong>{{ selected_source_label }}</strong>.
+                                    {% elif selected_tag %}
+                                        for <strong>{{ selected_tag.value }}</strong>.
+                                    {% elif selected_source_label %}
+                                        from <strong>{{ selected_source_label }}</strong>.
+                                    {% endif %}
+                                </p>
+                            {% endif %}
+                            <form method="get" class="govuk-!-margin-bottom-0">
+                                <input type="hidden" name="query" value="{{ query }}">
+                                <div class="listing-filters">
+                                    {% if available_tags %}
+                                        <div class="listing-filters__group">
+                                            <div class="govuk-form-group">
+                                                <label class="govuk-label" for="search-tag-filter">Filter by tag</label>
+                                                <select class="govuk-select" id="search-tag-filter" name="tag">
+                                                    <option value="">All tags</option>
+                                                    {% for tag in available_tags %}
+                                                        <option value="{{ tag.key|urlencode }}"
+                                                                {% if selected_tag and selected_tag.key == tag.key %}selected{% endif %}>
+                                                            {{ tag.value }}
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                    {% if available_sources %}
+                                        <div class="listing-filters__group">
+                                            <div class="govuk-form-group">
+                                                <label class="govuk-label" for="search-source-filter">Filter by source</label>
+                                                <select class="govuk-select" id="search-source-filter" name="source">
+                                                    <option value="">All sources</option>
+                                                    {% for source in available_sources %}
+                                                        <option value="{{ source.id|urlencode }}"
+                                                                {% if selected_source_id == source.id %}selected{% endif %}>
+                                                            {{ source.label }}
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            </div>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                <div class="govuk-button-group govuk-!-margin-bottom-0">
+                                    <button type="submit" class="govuk-button">Apply filters</button>
+                                    {% if selected_tag or selected_source_id %}
+                                        <a href="?query={{ query|urlencode }}"
+                                           role="button"
+                                           draggable="false"
+                                           class="govuk-button govuk-button--secondary">Clear filters</a>
+                                    {% endif %}
+                                </div>
+                            </form>
+                        </div>
+                    </details>
+                {% endif %}
                 <p class="govuk-body">
                     {{ results.paginator.count|default:0|comma_number }} result{{ results.paginator.count|pluralize }}
                 </p>
@@ -63,12 +115,12 @@
                         <p class="govuk-body govuk-!-margin-top-4 govuk-!-margin-bottom-0">
                             {% if results.has_previous %}
                                 <a class="govuk-link govuk-!-margin-right-4"
-                                   href="?query={{ query|urlencode }}&page={{ results.previous_page_number }}">Previous</a>
+                                   href="?query={{ query|urlencode }}{% if selected_tag %}&tag={{ selected_tag.key|urlencode }}{% endif %}{% if selected_source_id %}&source={{ selected_source_id|urlencode }}{% endif %}&page={{ results.previous_page_number }}">Previous</a>
                             {% endif %}
                             Page {{ results.number }} of {{ results.paginator.num_pages }}
                             {% if results.has_next %}
                                 <a class="govuk-link govuk-!-margin-left-4"
-                                   href="?query={{ query|urlencode }}&page={{ results.next_page_number }}">Next</a>
+                                   href="?query={{ query|urlencode }}{% if selected_tag %}&tag={{ selected_tag.key|urlencode }}{% endif %}{% if selected_source_id %}&source={{ selected_source_id|urlencode }}{% endif %}&page={{ results.next_page_number }}">Next</a>
                             {% endif %}
                         </p>
                     {% endif %}
