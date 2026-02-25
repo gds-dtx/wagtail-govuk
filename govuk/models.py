@@ -22,6 +22,7 @@ from django.db import models, transaction
 from django.db.models import Q
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+from django.utils.text import slugify
 from django.utils.text import Truncator
 from modelcluster.contrib.taggit import ClusterTaggableManager
 from modelcluster.fields import ParentalKey
@@ -48,6 +49,23 @@ SIGNING_ALGORITHM_CHOICES = (
     (SIGNING_ALGORITHM_ES256, "ES256 (P-256)"),
 )
 SIGNING_ALGORITHM_VALUES = {value for value, _ in SIGNING_ALGORITHM_CHOICES}
+SKILL_LEVEL_CHOICES = (
+    ("awareness", "Awareness"),
+    ("working", "Working"),
+    ("practitioner", "Practitioner"),
+    ("expert", "Expert"),
+)
+SKILL_LEVEL_LABELS = dict(SKILL_LEVEL_CHOICES)
+SKILL_LEVEL_VALUES = {value for value, _ in SKILL_LEVEL_CHOICES}
+SKILL_LEVEL_LABEL_TO_VALUE = {
+    label.lower(): value for value, label in SKILL_LEVEL_CHOICES
+}
+SKILL_LEVEL_ORDINALS = {
+    "awareness": "first",
+    "working": "second",
+    "practitioner": "third",
+    "expert": "fourth",
+}
 
 SigningPublicKey = Ed25519PublicKey | ec.EllipticCurvePublicKey
 SigningPrivateKey = Ed25519PrivateKey | ec.EllipticCurvePrivateKey
@@ -203,6 +221,39 @@ def _normalised_htm(value: str | None) -> str:
             "Claim 'htm' must be an HTTP method like GET, POST, PUT or DELETE."
         )
     return htm
+
+
+def _normalised_skill_level(value: str | None) -> str:
+    raw_level = (value or "").strip().lower()
+    if raw_level in SKILL_LEVEL_VALUES:
+        return raw_level
+
+    mapped_level = SKILL_LEVEL_LABEL_TO_VALUE.get(raw_level)
+    if mapped_level:
+        return mapped_level
+    return ""
+
+
+def _next_unique_slug(
+    *,
+    model_class,
+    candidate: str,
+    instance_id: int | None = None,
+    fallback: str,
+) -> str:
+    base_slug = (candidate or "").strip("-")
+    if not base_slug:
+        base_slug = fallback
+    base_slug = base_slug[:120]
+
+    slug_value = base_slug
+    suffix = 2
+    while model_class.objects.filter(slug=slug_value).exclude(pk=instance_id).exists():
+        suffix_text = f"-{suffix}"
+        max_base_length = 120 - len(suffix_text)
+        slug_value = f"{base_slug[:max_base_length]}{suffix_text}"
+        suffix += 1
+    return slug_value
 
 
 @register_setting(icon="warning")
@@ -864,6 +915,357 @@ class GovukTag(TagBase):
         ordering = ["slug"]
 
 
+class GovukSkill(models.Model):
+    slug = models.SlugField(
+        max_length=120,
+        unique=True,
+        blank=True,
+        help_text="Optional key used for links, for example forensics.",
+    )
+    title = models.CharField(
+        max_length=255,
+        help_text="Skill name, for example Forensics.",
+    )
+    body = RichTextField(
+        blank=True,
+        features=["bold", "italic", "link", "ul", "ol"],
+        help_text="Short description of the skill.",
+    )
+    awareness_points = StreamField(
+        [
+            (
+                "point",
+                blocks.TextBlock(
+                    required=False,
+                    max_length=500,
+                    rows=3,
+                ),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        help_text="Optional awareness-level points.",
+    )
+    working_points = StreamField(
+        [
+            (
+                "point",
+                blocks.TextBlock(
+                    required=False,
+                    max_length=500,
+                    rows=3,
+                ),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        help_text="Optional working-level points.",
+    )
+    practitioner_points = StreamField(
+        [
+            (
+                "point",
+                blocks.TextBlock(
+                    required=False,
+                    max_length=500,
+                    rows=3,
+                ),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        help_text="Optional practitioner-level points.",
+    )
+    expert_points = StreamField(
+        [
+            (
+                "point",
+                blocks.TextBlock(
+                    required=False,
+                    max_length=500,
+                    rows=3,
+                ),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        help_text="Optional expert-level points.",
+    )
+
+    panels = [
+        FieldPanel("slug"),
+        FieldPanel("title"),
+        FieldPanel("body"),
+        FieldPanel("awareness_points"),
+        FieldPanel("working_points"),
+        FieldPanel("practitioner_points"),
+        FieldPanel("expert_points"),
+    ]
+
+    class Meta:
+        verbose_name = "Skill"
+        verbose_name_plural = "Skills"
+        ordering = ["title", "slug"]
+
+    @staticmethod
+    def _normalised_stream_points(stream_value) -> list[dict]:
+        if not stream_value:
+            return []
+
+        cleaned_entries: list[dict] = []
+        for block in stream_value:
+            block_type = getattr(block, "block_type", None)
+            block_value = getattr(block, "value", None)
+
+            if isinstance(block, dict):
+                block_type = block.get("type")
+                block_value = block.get("value")
+            elif isinstance(block, str):
+                block_type = "point"
+                block_value = block
+
+            if block_type != "point":
+                continue
+            point = (block_value or "").strip()
+            if point:
+                cleaned_entries.append({"type": "point", "value": point})
+        return cleaned_entries
+
+    def clean(self):
+        super().clean()
+        self.title = (self.title or "").strip()
+        slug_candidate = slugify((self.slug or self.title or "").strip())[:120]
+        self.slug = _next_unique_slug(
+            model_class=type(self),
+            candidate=slug_candidate,
+            instance_id=self.pk,
+            fallback="skill",
+        )
+        self.awareness_points = self._normalised_stream_points(self.awareness_points)
+        self.working_points = self._normalised_stream_points(self.working_points)
+        self.practitioner_points = self._normalised_stream_points(
+            self.practitioner_points
+        )
+        self.expert_points = self._normalised_stream_points(self.expert_points)
+
+    def points_for_level(self, level: str | None) -> list[str]:
+        level_key = _normalised_skill_level(level)
+        if not level_key:
+            return []
+
+        points_field_map = {
+            "awareness": self.awareness_points,
+            "working": self.working_points,
+            "practitioner": self.practitioner_points,
+            "expert": self.expert_points,
+        }
+        stream_value = points_field_map.get(level_key)
+        if stream_value is None:
+            return []
+        return [entry["value"] for entry in self._normalised_stream_points(stream_value)]
+
+    def get_level_rows(self) -> list[dict]:
+        level_rows: list[dict] = []
+        for level_key, level_label in SKILL_LEVEL_CHOICES:
+            level_rows.append(
+                {
+                    "key": level_key,
+                    "label": level_label,
+                    "ordinal": SKILL_LEVEL_ORDINALS.get(level_key, ""),
+                    "points": self.points_for_level(level_key),
+                }
+            )
+        return level_rows
+
+    def __str__(self) -> str:
+        return self.title or self.slug
+
+    def save(self, *args, **kwargs):
+        self.title = (self.title or "").strip()
+        slug_candidate = slugify((self.slug or self.title or "").strip())[:120]
+        self.slug = _next_unique_slug(
+            model_class=type(self),
+            candidate=slug_candidate,
+            instance_id=self.pk,
+            fallback="skill",
+        )
+        self.awareness_points = self._normalised_stream_points(self.awareness_points)
+        self.working_points = self._normalised_stream_points(self.working_points)
+        self.practitioner_points = self._normalised_stream_points(
+            self.practitioner_points
+        )
+        self.expert_points = self._normalised_stream_points(self.expert_points)
+        super().save(*args, **kwargs)
+
+
+class GovukRole(models.Model):
+    slug = models.SlugField(
+        max_length=120,
+        unique=True,
+        blank=True,
+        help_text="Optional key used for links, for example digital-forensics-analyst.",
+    )
+    title = models.CharField(
+        max_length=255,
+        help_text="Role name, for example Digital forensics analyst.",
+    )
+    body = RichTextField(
+        blank=True,
+        features=["bold", "italic", "link", "ul", "ol"],
+        help_text="Optional summary for this role.",
+    )
+    levels = StreamField(
+        [
+            (
+                "level",
+                blocks.StructBlock(
+                    [
+                        (
+                            "title",
+                            blocks.CharBlock(
+                                required=True,
+                                max_length=255,
+                                help_text=(
+                                    "Role level name, for example "
+                                    "Associate digital forensics analyst."
+                                ),
+                            ),
+                        ),
+                        (
+                            "description",
+                            blocks.RichTextBlock(
+                                required=False,
+                                features=["bold", "italic", "link", "ul", "ol"],
+                            ),
+                        ),
+                        (
+                            "skills",
+                            blocks.ListBlock(
+                                blocks.StructBlock(
+                                    [
+                                        (
+                                            "skill",
+                                            SnippetChooserBlock(
+                                                "govuk.GovukSkill",
+                                                required=True,
+                                            ),
+                                        ),
+                                        (
+                                            "level",
+                                            blocks.ChoiceBlock(
+                                                required=True,
+                                                choices=SKILL_LEVEL_CHOICES,
+                                            ),
+                                        ),
+                                    ],
+                                    icon="pick",
+                                    label="Skill requirement",
+                                ),
+                                required=False,
+                                help_text=(
+                                    "Add one or more skill requirements for this role level."
+                                ),
+                            ),
+                        ),
+                    ],
+                    icon="user",
+                    label="Role level",
+                ),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        help_text="Role levels and their associated skills.",
+    )
+
+    panels = [
+        FieldPanel("slug"),
+        FieldPanel("title"),
+        FieldPanel("body"),
+        FieldPanel("levels"),
+    ]
+
+    class Meta:
+        verbose_name = "Role"
+        verbose_name_plural = "Roles"
+        ordering = ["title", "slug"]
+
+    def clean(self):
+        super().clean()
+        self.title = (self.title or "").strip()
+        slug_candidate = slugify((self.slug or self.title or "").strip())[:120]
+        self.slug = _next_unique_slug(
+            model_class=type(self),
+            candidate=slug_candidate,
+            instance_id=self.pk,
+            fallback="role",
+        )
+
+    @staticmethod
+    def _skill_level_label(level: str | None) -> str:
+        level_key = _normalised_skill_level(level)
+        if not level_key:
+            return ""
+        return SKILL_LEVEL_LABELS.get(level_key, level_key.title())
+
+    def get_levels_with_skills(self) -> list[dict]:
+        role_levels: list[dict] = []
+        for level_block in self.levels:
+            if level_block.block_type != "level":
+                continue
+
+            level_value = level_block.value
+            role_level_title = (level_value.get("title") or "").strip()
+            role_level_description = level_value.get("description") or ""
+            skill_rows: list[dict] = []
+
+            for skill_requirement in level_value.get("skills") or []:
+                skill = skill_requirement.get("skill")
+                required_level = _normalised_skill_level(skill_requirement.get("level"))
+                if skill is None or not required_level:
+                    continue
+
+                skill_rows.append(
+                    {
+                        "skill": skill,
+                        "required_level": required_level,
+                        "required_level_label": self._skill_level_label(required_level),
+                        "points": skill.points_for_level(required_level),
+                    }
+                )
+
+            skill_rows.sort(
+                key=lambda row: (
+                    (row["skill"].title or "").strip().lower(),
+                    row["skill"].pk or 0,
+                )
+            )
+
+            role_levels.append(
+                {
+                    "title": role_level_title,
+                    "description": role_level_description,
+                    "skills": skill_rows,
+                }
+            )
+
+        return role_levels
+
+    def __str__(self) -> str:
+        return self.title or self.slug
+
+    def save(self, *args, **kwargs):
+        self.title = (self.title or "").strip()
+        slug_candidate = slugify((self.slug or self.title or "").strip())[:120]
+        self.slug = _next_unique_slug(
+            model_class=type(self),
+            candidate=slug_candidate,
+            instance_id=self.pk,
+            fallback="role",
+        )
+        super().save(*args, **kwargs)
+
+
 class ContentDiscoverySource(Orderable):
     settings = ParentalKey(
         "govuk.ContentDiscoverySettings",
@@ -1154,11 +1556,15 @@ class ContentPage(Page):
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
     ]
     subpage_types = [
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
     ]
     enable_hero_styling = models.BooleanField(
         default=False,
@@ -1199,6 +1605,237 @@ class ContentPage(Page):
         FieldPanel("enable_free_text_heading_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
+
+
+class RolePage(Page):
+    parent_page_types = [
+        "govuk.ContentPage",
+        "govuk.SectionPage",
+        "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
+    ]
+    subpage_types = [
+        "govuk.ContentPage",
+        "govuk.SectionPage",
+        "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
+    ]
+    enable_hero_styling = models.BooleanField(
+        default=False,
+        verbose_name="Enable hero styling",
+        help_text="When enabled, this page uses hero styling.",
+    )
+    enable_combined_service_navigation_and_hero_styling = models.BooleanField(
+        default=False,
+        verbose_name="Enable combined service navigation and hero styling",
+        help_text="When enabled, this page uses a combined service navigation and hero styling.",
+    )
+    hero_title = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional hero heading. If blank, the page title is used.",
+    )
+    hero_intro = RichTextField(
+        blank=True,
+        features=["bold", "italic", "link"],
+    )
+    body = RichTextField(blank=True)
+    enable_free_text_heading_navigation = models.BooleanField(
+        default=False,
+        verbose_name="Enable sidebar heading navigation",
+        help_text="Show free text in a two-thirds and one-third layout with an automatic clickable heading list.",
+    )
+    selected_roles = StreamField(
+        [
+            (
+                "role",
+                SnippetChooserBlock(
+                    "govuk.GovukRole",
+                    required=False,
+                ),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        help_text="Select one or more roles to render on this page.",
+    )
+
+    content_panels = Page.content_panels + [
+        FieldPanel("hero_title"),
+        FieldPanel("hero_intro"),
+        FieldPanel("body"),
+        FieldPanel("selected_roles"),
+    ]
+
+    settings_panels = Page.settings_panels + [
+        FieldPanel("enable_hero_styling"),
+        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("enable_free_text_heading_navigation"),
+    ]
+
+    @classmethod
+    def can_create_at(cls, parent):
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return False
+        return super().can_create_at(parent)
+
+    @classmethod
+    def can_exist_under(cls, parent):
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return False
+        return super().can_exist_under(parent)
+
+    @staticmethod
+    def _extract_role_id(value) -> int | None:
+        if type(value) is int and value > 0:
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.isdigit():
+                parsed = int(stripped)
+                if parsed > 0:
+                    return parsed
+        role_pk = getattr(value, "pk", None)
+        if type(role_pk) is int and role_pk > 0:
+            return role_pk
+        if isinstance(value, dict):
+            for key in ("value", "id", "pk"):
+                extracted = RolePage._extract_role_id(value.get(key))
+                if extracted:
+                    return extracted
+        return None
+
+    def get_selected_role_ids(self) -> list[int]:
+        role_ids: list[int] = []
+        seen: set[int] = set()
+
+        for block in self.selected_roles:
+            role_id = self._extract_role_id(getattr(block, "value", None))
+            if role_id and role_id not in seen:
+                role_ids.append(role_id)
+                seen.add(role_id)
+
+        if not role_ids:
+            for raw_block in getattr(self.selected_roles, "raw_data", []) or []:
+                role_id = self._extract_role_id(raw_block)
+                if role_id and role_id not in seen:
+                    role_ids.append(role_id)
+                    seen.add(role_id)
+        return role_ids
+
+    def get_selected_roles(self) -> list[GovukRole]:
+        role_ids = self.get_selected_role_ids()
+        if not role_ids:
+            return []
+
+        roles_by_id = {
+            role.pk: role for role in GovukRole.objects.filter(pk__in=role_ids)
+        }
+        return [roles_by_id[role_id] for role_id in role_ids if role_id in roles_by_id]
+
+    def get_role_sections(self) -> list[dict]:
+        return [
+            {
+                "role": role,
+                "levels": role.get_levels_with_skills(),
+            }
+            for role in self.get_selected_roles()
+        ]
+
+    def get_context(self, request, *args, **kwargs):
+        context = super().get_context(request, *args, **kwargs)
+        context["role_sections"] = self.get_role_sections()
+        return context
+
+
+class SkillsAZPage(Page):
+    parent_page_types = [
+        "govuk.ContentPage",
+        "govuk.SectionPage",
+        "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
+    ]
+    subpage_types = [
+        "govuk.ContentPage",
+        "govuk.SectionPage",
+        "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
+    ]
+    enable_hero_styling = models.BooleanField(
+        default=False,
+        verbose_name="Enable hero styling",
+        help_text="When enabled, this page uses hero styling.",
+    )
+    enable_combined_service_navigation_and_hero_styling = models.BooleanField(
+        default=False,
+        verbose_name="Enable combined service navigation and hero styling",
+        help_text="When enabled, this page uses a combined service navigation and hero styling.",
+    )
+    hero_title = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Optional hero heading. If blank, the page title is used.",
+    )
+    hero_intro = RichTextField(
+        blank=True,
+        features=["bold", "italic", "link"],
+    )
+    body = RichTextField(blank=True)
+    enable_free_text_heading_navigation = models.BooleanField(
+        default=False,
+        verbose_name="Enable sidebar heading navigation",
+        help_text="Show free text in a two-thirds and one-third layout with an automatic clickable heading list.",
+    )
+
+    content_panels = Page.content_panels + [
+        FieldPanel("hero_title"),
+        FieldPanel("hero_intro"),
+        FieldPanel("body"),
+    ]
+
+    settings_panels = Page.settings_panels + [
+        FieldPanel("enable_hero_styling"),
+        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("enable_free_text_heading_navigation"),
+    ]
+
+    @classmethod
+    def can_create_at(cls, parent):
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return False
+        return super().can_create_at(parent)
+
+    @classmethod
+    def can_exist_under(cls, parent):
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return False
+        return super().can_exist_under(parent)
+
+    def get_skill_sections(self) -> list[dict]:
+        skills = list(GovukSkill.objects.all())
+        skills.sort(
+            key=lambda skill: (
+                (skill.title or "").strip().lower(),
+                (skill.slug or "").strip().lower(),
+                skill.pk or 0,
+            )
+        )
+        return [
+            {
+                "skill": skill,
+                "level_rows": skill.get_level_rows(),
+            }
+            for skill in skills
+        ]
+
+    def get_context(self, request, *args, **kwargs):
+        context = super().get_context(request, *args, **kwargs)
+        context["skill_sections"] = self.get_skill_sections()
+        return context
 
 
 class TagListingsPage(Page):
@@ -1251,11 +1888,15 @@ class TagListingsPage(Page):
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
     ]
     subpage_types = [
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
     ]
 
     content_panels = Page.content_panels + [
@@ -1587,11 +2228,15 @@ class SectionPage(Page):
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
     ]
     subpage_types = [
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
+        "govuk.RolePage",
+        "govuk.SkillsAZPage",
     ]
 
     content_panels = Page.content_panels + [
@@ -1672,7 +2317,11 @@ __all__ = [
     "Feedback",
     "FooterSettings",
     "GovukTag",
+    "GovukSkill",
+    "GovukRole",
     "PhaseBannerSettings",
+    "RolePage",
+    "SkillsAZPage",
     "SectionPage",
     "SectionPageTag",
     "TagListingsPage",

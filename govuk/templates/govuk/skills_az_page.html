@@ -1,0 +1,72 @@
+{% extends "wagtailcore/page.html" %}
+{% load wagtailcore_tags %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-margin-bottom-6">
+        {% if self.body %}
+            <div class="govuk-body rich-text-content govuk-!-margin-bottom-4">{{ self.body|richtext }}</div>
+        {% endif %}
+        {% if skill_sections %}
+            <div class="govuk-accordion" data-module="govuk-accordion" id="skills-accordion">
+                {% for skill_section in skill_sections %}
+                    <div class="govuk-accordion__section">
+                        <div class="govuk-accordion__section-header">
+                            <h2 class="govuk-accordion__section-heading">
+                                <span class="govuk-accordion__section-button"
+                                      id="skills-accordion-heading-{{ forloop.counter }}">
+                                    <span id="{{ skill_section.skill.slug }}">{{ skill_section.skill.title }}</span>
+                                </span>
+                            </h2>
+                        </div>
+                        <div id="skills-accordion-content-{{ forloop.counter }}"
+                             class="govuk-accordion__section-content">
+                            {% if skill_section.skill.body %}
+                                <div class="govuk-body">{{ skill_section.skill.body|richtext }}</div>
+                            {% endif %}
+                            <table class="govuk-table">
+                                <thead class="govuk-table__head">
+                                    <tr class="govuk-table__row">
+                                        <th scope="col" class="govuk-table__header">Skill level</th>
+                                        <th scope="col" class="govuk-table__header">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="govuk-table__body">
+                                    {% for level_row in skill_section.level_rows %}
+                                        <tr class="govuk-table__row">
+                                            <td class="govuk-table__cell">
+                                                <p class="govuk-body govuk-!-font-size-19">{{ level_row.label }}</p>
+                                                <span class="govuk-visually-hidden">{{ level_row.label }} is the {{ level_row.ordinal }} of four ascending skill levels</span>
+                                                <div class="progress-bar__container" aria-hidden="true">
+                                                    <div class="progress-bar__grey" aria-hidden="true"></div>
+                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                    <div class="progress-bar__{% if level_row.key == 'working' or level_row.key == 'practitioner' or level_row.key == 'expert' %}grey{% else %}white{% endif %}"
+                                                         aria-hidden="true"></div>
+                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                    <div class="progress-bar__{% if level_row.key == 'practitioner' or level_row.key == 'expert' %}grey{% else %}white{% endif %}"
+                                                         aria-hidden="true"></div>
+                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                    <div class="progress-bar__{% if level_row.key == 'expert' %}grey{% else %}white{% endif %}"
+                                                         aria-hidden="true"></div>
+                                                </div>
+                                            </td>
+                                            <td class="govuk-table__cell govuk-!-width-two-thirds">
+                                                {% if level_row.points %}
+                                                    <ul class="govuk-list govuk-list--bullet">
+                                                        {% for point in level_row.points %}<li class="govuk-body">{{ point }}</li>{% endfor %}
+                                                    </ul>
+                                                {% else %}
+                                                    <p class="govuk-body govuk-!-margin-bottom-0">No description provided.</p>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="govuk-body">No skills found.</p>
+        {% endif %}
+    </div>
+{% endblock %}

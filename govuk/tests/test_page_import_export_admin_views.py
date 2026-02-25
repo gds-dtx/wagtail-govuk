@@ -3,14 +3,24 @@ import json
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import Page, PageViewRestriction, Site
 
-from govuk.models import ContentPage, GovukTag, SectionPage
+from govuk.models import ContentPage, GovukRole, GovukSkill, GovukTag, SectionPage
 from govuk.page_import_export import PAGE_EXPORT_FORMAT
 
 
+def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
+    return {
+        "SKILLS": skills_enabled,
+        "ORGANISATIONS": False,
+        "PEOPLE_FINDER": False,
+        "FEEDBACK": False,
+    }
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
 class PageImportExportAdminViewTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
@@ -42,6 +52,16 @@ class PageImportExportAdminViewTests(TestCase):
         self.assertContains(response, "benefits")
         self.assertContains(response, "Apply")
         self.assertContains(response, "apply")
+        self.assertContains(response, "Select one or more skills to export.")
+        self.assertContains(response, "Select one or more roles to export.")
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    def test_import_export_index_hides_skills_and_roles_sections_when_disabled(self):
+        response = self.client.get(self.index_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Select one or more skills to export.")
+        self.assertNotContains(response, "Select one or more roles to export.")
 
     def test_export_includes_children_privacy_and_page_settings(self):
         self.content_page.show_in_menus = True
@@ -81,6 +101,63 @@ class PageImportExportAdminViewTests(TestCase):
         self.assertEqual(exported_content["settings"]["seo_title"], "Apply for support")
         self.assertEqual(exported_content["privacy"][0]["type"], PageViewRestriction.GROUPS)
         self.assertEqual(exported_content["privacy"][0]["groups"], ["Import editors"])
+
+    def test_export_includes_selected_skills_and_roles(self):
+        forensics = GovukSkill.objects.create(
+            title="Forensics",
+            body="<p>Collect and analyse evidence.</p>",
+            working_points=[
+                {
+                    "type": "point",
+                    "value": "Analyses evidence from digital investigations.",
+                }
+            ],
+        )
+        security_testing = GovukSkill.objects.create(
+            title="Security testing",
+            body="<p>Run assurance testing for services.</p>",
+        )
+        incident_responder = GovukRole.objects.create(
+            title="Incident responder",
+            body="<p>Responds to cyber incidents.</p>",
+            levels=[
+                {
+                    "type": "level",
+                    "value": {
+                        "title": "Associate incident responder",
+                        "description": "<p>Supports investigations.</p>",
+                        "skills": [
+                            {"skill": forensics.pk, "level": "working"},
+                            {"skill": security_testing.pk, "level": "awareness"},
+                        ],
+                    },
+                }
+            ],
+        )
+
+        response = self.client.post(
+            self.export_url,
+            data={
+                "site_id": self.site.pk,
+                "skill_ids": [forensics.pk],
+                "role_ids": [incident_responder.pk],
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content)
+        self.assertEqual(payload["pages"], [])
+        self.assertEqual(len(payload["skills"]), 1)
+        self.assertEqual(payload["skills"][0]["slug"], forensics.slug)
+        self.assertEqual(len(payload["roles"]), 1)
+        self.assertEqual(payload["roles"][0]["slug"], incident_responder.slug)
+        self.assertEqual(
+            payload["roles"][0]["levels"][0]["skills"],
+            [
+                {"skill_slug": forensics.slug, "level": "working"},
+                {"skill_slug": security_testing.slug, "level": "awareness"},
+            ],
+        )
 
     def test_import_overrides_existing_page_by_slug(self):
         GovukTag.objects.create(slug="housing-benefit", name="Housing benefit")
@@ -198,4 +275,113 @@ class PageImportExportAdminViewTests(TestCase):
         self.assertEqual(
             list(restriction.groups.values_list("name", flat=True)),
             ["Import group"],
+        )
+
+    def test_import_creates_and_updates_skills_and_roles(self):
+        existing_skill = GovukSkill.objects.create(
+            title="Forensics",
+            body="<p>Old forensics summary.</p>",
+        )
+        existing_role = GovukRole.objects.create(
+            title="Incident responder",
+            body="<p>Old role summary.</p>",
+            levels=[],
+        )
+
+        payload = {
+            "format": PAGE_EXPORT_FORMAT,
+            "pages": [],
+            "skills": [
+                {
+                    "slug": existing_skill.slug,
+                    "title": "Forensics updated",
+                    "body": "<p>Updated forensics summary.</p>",
+                    "awareness_points": [
+                        {
+                            "type": "point",
+                            "value": "Understands evidence handling.",
+                        }
+                    ],
+                    "working_points": [],
+                    "practitioner_points": [],
+                    "expert_points": [],
+                },
+                {
+                    "slug": "security-testing",
+                    "title": "Security testing",
+                    "body": "<p>Run assurance testing for services.</p>",
+                    "awareness_points": [],
+                    "working_points": [
+                        {
+                            "type": "point",
+                            "value": "Performs repeatable security tests.",
+                        }
+                    ],
+                    "practitioner_points": [],
+                    "expert_points": [],
+                },
+            ],
+            "roles": [
+                {
+                    "slug": existing_role.slug,
+                    "title": "Incident responder",
+                    "body": "<p>Updated role summary.</p>",
+                    "levels": [
+                        {
+                            "title": "Associate incident responder",
+                            "description": "<p>Supports investigations.</p>",
+                            "skills": [
+                                {
+                                    "skill_slug": existing_skill.slug,
+                                    "level": "working",
+                                },
+                                {
+                                    "skill_slug": "security-testing",
+                                    "level": "awareness",
+                                },
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+
+        upload = SimpleUploadedFile(
+            "skills-roles.json",
+            json.dumps(payload).encode("utf-8"),
+            content_type="application/json",
+        )
+        response = self.client.post(
+            self.import_url,
+            data={
+                "site_id": self.site.pk,
+                "json_file": upload,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], f"{self.index_url}?site_id={self.site.pk}")
+
+        existing_skill.refresh_from_db()
+        existing_role.refresh_from_db()
+        imported_security_testing = GovukSkill.objects.get(slug="security-testing")
+
+        self.assertEqual(existing_skill.title, "Forensics updated")
+        self.assertEqual(existing_skill.body, "<p>Updated forensics summary.</p>")
+        self.assertEqual(
+            [point["value"] for point in existing_skill.awareness_points],
+            ["Understands evidence handling."],
+        )
+        self.assertEqual(
+            [point["value"] for point in imported_security_testing.working_points],
+            ["Performs repeatable security tests."],
+        )
+
+        role_levels = existing_role.get_levels_with_skills()
+        self.assertEqual(existing_role.body, "<p>Updated role summary.</p>")
+        self.assertEqual(len(role_levels), 1)
+        self.assertEqual(role_levels[0]["title"], "Associate incident responder")
+        self.assertEqual(
+            [skill_row["skill"].slug for skill_row in role_levels[0]["skills"]],
+            ["forensics", "security-testing"],
         )

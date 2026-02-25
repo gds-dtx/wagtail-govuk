@@ -49,6 +49,8 @@ from govuk.models import (
     EdDSAKeySettings,
     ExternalContentItem,
     Feedback,
+    GovukRole,
+    GovukSkill,
     GovukTag,
     JWTGenerationError,
 )
@@ -410,6 +412,28 @@ class ExternalContentItemViewSet(SnippetViewSet):
     search_fields = ["title", "url"]
 
 
+class GovukSkillViewSet(SnippetViewSet):
+    model = GovukSkill
+    icon = "pick"
+    add_to_admin_menu = True
+    menu_label = "Skills"
+    menu_name = "govuk-skills"
+    menu_order = 215
+    list_display = ["title", "slug"]
+    search_fields = ["title", "slug", "body"]
+
+
+class GovukRoleViewSet(SnippetViewSet):
+    model = GovukRole
+    icon = "user"
+    add_to_admin_menu = True
+    menu_label = "Roles"
+    menu_name = "govuk-roles"
+    menu_order = 216
+    list_display = ["title", "slug"]
+    search_fields = ["title", "slug", "body"]
+
+
 class FeedbackIndexView(SnippetIndexView):
     def _get_title_column(self, *args, **kwargs):
         column = super()._get_title_column(*args, **kwargs)
@@ -535,13 +559,13 @@ def _import_export_admin_url(site_id: int) -> str:
     return f"{reverse('govuk_pages_import_export')}?site_id={site_id}"
 
 
-def _normalised_selected_page_ids(raw_page_ids: list[str]) -> list[int]:
-    page_ids: list[int] = []
-    for raw_page_id in raw_page_ids:
-        raw_value = (raw_page_id or "").strip()
+def _normalised_selected_ids(raw_ids: list[str]) -> list[int]:
+    selected_ids: list[int] = []
+    for raw_id in raw_ids:
+        raw_value = (raw_id or "").strip()
         if raw_value.isdigit():
-            page_ids.append(int(raw_value))
-    return page_ids
+            selected_ids.append(int(raw_value))
+    return selected_ids
 
 
 def _page_rows_for_site(site: Site) -> list[dict]:
@@ -564,6 +588,26 @@ def _page_rows_for_site(site: Site) -> list[dict]:
     ]
 
 
+def _skill_rows() -> list[dict]:
+    return list(
+        GovukSkill.objects.order_by("title", "slug").values(
+            "id",
+            "title",
+            "slug",
+        )
+    )
+
+
+def _role_rows() -> list[dict]:
+    return list(
+        GovukRole.objects.order_by("title", "slug").values(
+            "id",
+            "title",
+            "slug",
+        )
+    )
+
+
 @hooks.register("register_admin_menu_item")
 def register_pages_import_export_menu_item():
     return MenuItem(
@@ -584,6 +628,8 @@ def pages_import_export_index_view(request):
         messages.error(request, "No sites are configured yet.")
         return redirect(reverse("wagtailadmin_home"))
 
+    skills_feature_enabled = settings.FEATURE_FLAGS.get("SKILLS")
+
     return render(
         request,
         "govuk/admin/pages_import_export.html",
@@ -595,6 +641,9 @@ def pages_import_export_index_view(request):
             "sites": _all_admin_sites(),
             "selected_site": selected_site,
             "page_rows": _page_rows_for_site(selected_site),
+            "skills_feature_enabled": skills_feature_enabled,
+            "skill_rows": _skill_rows() if skills_feature_enabled else [],
+            "role_rows": _role_rows() if skills_feature_enabled else [],
         },
     )
 
@@ -610,9 +659,24 @@ def pages_export_view(request):
         return redirect(reverse("wagtailadmin_home"))
 
     redirect_url = _import_export_admin_url(selected_site.pk)
-    selected_page_ids = _normalised_selected_page_ids(request.POST.getlist("page_ids"))
-    if not selected_page_ids:
-        messages.error(request, "Select at least one page to export.")
+    skills_feature_enabled = settings.FEATURE_FLAGS.get("SKILLS")
+    selected_page_ids = _normalised_selected_ids(request.POST.getlist("page_ids"))
+    selected_skill_ids = (
+        _normalised_selected_ids(request.POST.getlist("skill_ids"))
+        if skills_feature_enabled
+        else []
+    )
+    selected_role_ids = (
+        _normalised_selected_ids(request.POST.getlist("role_ids"))
+        if skills_feature_enabled
+        else []
+    )
+
+    if not selected_page_ids and not selected_skill_ids and not selected_role_ids:
+        if skills_feature_enabled:
+            messages.error(request, "Select at least one page, skill or role to export.")
+        else:
+            messages.error(request, "Select at least one page to export.")
         return redirect(redirect_url)
 
     selected_pages = list(
@@ -621,11 +685,33 @@ def pages_export_view(request):
         .specific()
         .order_by("path")
     )
-    if not selected_pages:
-        messages.error(request, "No matching pages were found for export.")
+    selected_skills = (
+        list(GovukSkill.objects.filter(pk__in=selected_skill_ids).order_by("title", "slug"))
+        if skills_feature_enabled
+        else []
+    )
+    selected_roles = (
+        list(GovukRole.objects.filter(pk__in=selected_role_ids).order_by("title", "slug"))
+        if skills_feature_enabled
+        else []
+    )
+
+    if not selected_pages and not selected_skills and not selected_roles:
+        if skills_feature_enabled:
+            messages.error(
+                request,
+                "No matching pages, skills or roles were found for export.",
+            )
+        else:
+            messages.error(request, "No matching pages were found for export.")
         return redirect(redirect_url)
 
-    payload = build_page_export_payload(site=selected_site, pages=selected_pages)
+    payload = build_page_export_payload(
+        site=selected_site,
+        pages=selected_pages,
+        skills=selected_skills,
+        roles=selected_roles,
+    )
     file_contents = dump_payload_as_json(payload)
     timestamp = timezone.now().strftime("%Y%m%d-%H%M%S")
     file_name = f"pages-export-site-{selected_site.pk}-{timestamp}.json"
@@ -1062,5 +1148,8 @@ def _register_snippet_if_needed(viewset):
 
 _register_snippet_if_needed(GovukTagViewSet)
 _register_snippet_if_needed(ExternalContentItemViewSet)
+if settings.FEATURE_FLAGS.get("SKILLS"):
+    _register_snippet_if_needed(GovukSkillViewSet)
+    _register_snippet_if_needed(GovukRoleViewSet)
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)

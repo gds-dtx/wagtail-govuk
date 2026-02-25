@@ -1,37 +1,45 @@
 {% extends "wagtailadmin/generic/base.html" %}
 {% load i18n %}
-
 {% block main_content %}
     <form method="get" class="w-mb-8">
         <label class="w-block w-mb-1" for="import-export-site-id">{% trans "Site" %}</label>
         <div class="w-flex w-gap-3 w-items-end w-flex-wrap">
             <select id="import-export-site-id" name="site_id" class="w-min-w-64">
                 {% for site in sites %}
-                    <option value="{{ site.id }}" {% if site.id == selected_site.id %}selected{% endif %}>
-                        {{ site.hostname }}{% if site.is_default_site %} ({% trans "default" %}){% endif %}
+                    <option value="{{ site.id }}"
+                            {% if site.id == selected_site.id %}selected{% endif %}>
+                        {{ site.hostname }}
+                        {% if site.is_default_site %}
+                            ({% trans "default" %})
+                        {% endif %}
                     </option>
                 {% endfor %}
             </select>
             <button class="button button-secondary" type="submit">{% trans "Switch site" %}</button>
         </div>
     </form>
-
     <section class="w-mb-10">
-        <h2 class="w-h3 w-mb-2">{% trans "Export pages" %}</h2>
+        <h2 class="w-h3 w-mb-2">{% trans "Export" %}</h2>
         <p class="help w-mb-4">
-            {% trans "Select one or more pages. Child pages are exported with each selected page in a structured JSON format including page settings and privacy restrictions." %}
+            {% if skills_feature_enabled %}
+                {% trans "Select one or more pages, skills or roles. Child pages are exported with each selected page in a structured JSON format including page settings and privacy restrictions." %}
+            {% else %}
+                {% trans "Select one or more pages. Child pages are exported with each selected page in a structured JSON format including page settings and privacy restrictions." %}
+            {% endif %}
         </p>
         <form method="post" action="{% url 'govuk_pages_export' %}">
             {% csrf_token %}
             <input type="hidden" name="site_id" value="{{ selected_site.id }}">
-            <div class="w-mb-4 w-p-4" style="border: 1px solid #d8dde0; max-height: 24rem; overflow-y: auto;">
+            <h3 class="w-h5 w-mb-2">{% trans "Pages" %}</h3>
+            <div class="w-mb-4 w-p-4"
+                 style="border: 1px solid #d8dde0;
+                        max-height: 24rem;
+                        overflow-y: auto">
                 {% for row in page_rows %}
                     <label class="w-flex w-items-start w-gap-2 w-mb-2">
                         <input type="checkbox" name="page_ids" value="{{ row.id }}">
                         <span>
-                            <span style="padding-left: {{ row.depth }}rem;">
-                                {{ row.title }}
-                            </span>
+                            <span style="padding-left: {{ row.depth }}rem;">{{ row.title }}</span>
                             <code class="w-ml-2">{{ row.slug }}</code>
                             {% if row.is_private %}
                                 <span class="w-ml-2">{% trans "(private)" %}</span>
@@ -43,14 +51,55 @@
                     <p class="help">{% trans "No pages available to export for this site." %}</p>
                 {% endfor %}
             </div>
-            <button class="button" type="submit">{% trans "Export selected pages" %}</button>
+            {% if skills_feature_enabled %}
+                <h3 class="w-h5 w-mb-2">{% trans "Skills" %}</h3>
+                <p class="help w-mb-2">{% trans "Select one or more skills to export." %}</p>
+                <div class="w-mb-4 w-p-4"
+                     style="border: 1px solid #d8dde0;
+                            max-height: 16rem;
+                            overflow-y: auto">
+                    {% for row in skill_rows %}
+                        <label class="w-flex w-items-start w-gap-2 w-mb-2">
+                            <input type="checkbox" name="skill_ids" value="{{ row.id }}">
+                            <span>
+                                {{ row.title }}
+                                <code class="w-ml-2">{{ row.slug }}</code>
+                            </span>
+                        </label>
+                    {% empty %}
+                        <p class="help">{% trans "No skills available to export." %}</p>
+                    {% endfor %}
+                </div>
+                <h3 class="w-h5 w-mb-2">{% trans "Roles" %}</h3>
+                <p class="help w-mb-2">{% trans "Select one or more roles to export." %}</p>
+                <div class="w-mb-4 w-p-4"
+                     style="border: 1px solid #d8dde0;
+                            max-height: 16rem;
+                            overflow-y: auto">
+                    {% for row in role_rows %}
+                        <label class="w-flex w-items-start w-gap-2 w-mb-2">
+                            <input type="checkbox" name="role_ids" value="{{ row.id }}">
+                            <span>
+                                {{ row.title }}
+                                <code class="w-ml-2">{{ row.slug }}</code>
+                            </span>
+                        </label>
+                    {% empty %}
+                        <p class="help">{% trans "No roles available to export." %}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <button class="button" type="submit">{% trans "Export selected" %}</button>
         </form>
     </section>
-
     <section>
-        <h2 class="w-h3 w-mb-2">{% trans "Import pages" %}</h2>
+        <h2 class="w-h3 w-mb-2">{% trans "Import" %}</h2>
         <p class="help w-mb-4">
-            {% trans "Upload a JSON file created by this export tool. Existing pages with the same slug are overridden." %}
+            {% if skills_feature_enabled %}
+                {% trans "Upload a JSON file created by this export tool. Existing pages, skills and roles with the same slug are overridden." %}
+            {% else %}
+                {% trans "Upload a JSON file created by this export tool. Existing pages with the same slug are overridden." %}
+            {% endif %}
         </p>
         <form method="post"
               action="{% url 'govuk_pages_import' %}"

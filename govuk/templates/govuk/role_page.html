@@ -1,0 +1,91 @@
+{% extends "wagtailcore/page.html" %}
+{% load wagtailcore_tags %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-margin-bottom-6">
+        {% if self.body or role_sections %}
+            <div class="govuk-!-margin-bottom-3">
+                <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
+                     {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
+                    {% if self.enable_free_text_heading_navigation %}
+                        <div class="govuk-grid-column-one-third" data-auto-heading-side-column>
+                            <nav class="free-text-heading-nav"
+                                 aria-label="Page contents"
+                                 data-auto-heading-nav>
+                                <h2 class="govuk-heading-s free-text-heading-nav__title">On this page</h2>
+                            </nav>
+                        </div>
+                    {% endif %}
+                    <div class="{% if self.enable_free_text_heading_navigation %}govuk-grid-column-two-thirds{% else %}govuk-grid-column-full{% endif %}"
+                         {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
+                        <div class="govuk-body rich-text-content"
+                             {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
+                            {% if self.body %}{{ self.body|richtext }}{% endif %}
+                            {% for role_section in role_sections %}
+                                <section>
+                                    {% if role_section.role.title %}<h2 class="govuk-heading-l">{{ role_section.role.title }}</h2>{% endif %}
+                                    {% if role_section.role.body %}<div class="govuk-body">{{ role_section.role.body|richtext }}</div>{% endif %}
+                                    {% for role_level in role_section.levels %}
+                                        {% if role_level.title %}<h3 class="govuk-heading-m">{{ forloop.counter }}. {{ role_level.title }}</h3>{% endif %}
+                                        {% if role_level.description %}<div class="govuk-body">{{ role_level.description|richtext }}</div>{% endif %}
+                                        {% if role_level.skills %}
+                                            <table class="govuk-table">
+                                                <thead class="govuk-table__head">
+                                                    <tr class="govuk-table__row">
+                                                        <th scope="col" class="govuk-table__header">Skill</th>
+                                                        <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Description</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody class="govuk-table__body">
+                                                    {% for skill_row in role_level.skills %}
+                                                        <tr class="govuk-table__row">
+                                                            <th scope="row" class="govuk-table__header">
+                                                                <p class="govuk-!-margin-bottom-1 govuk-!-font-weight-bold">{{ skill_row.skill.title }}</p>
+                                                                <p class="govuk-body-s">Level: {{ skill_row.required_level_label }}</p>
+                                                                <span class="govuk-visually-hidden">{{ skill_row.required_level_label }} is the
+                                                                    {% if skill_row.required_level == 'awareness' %}
+                                                                        first
+                                                                    {% elif skill_row.required_level == 'working' %}
+                                                                        second
+                                                                    {% elif skill_row.required_level == 'practitioner' %}
+                                                                        third
+                                                                    {% else %}
+                                                                        fourth
+                                                                    {% endif %}
+                                                                of four ascending skill levels</span>
+                                                                <div class="progress-bar__container">
+                                                                    <div class="progress-bar__grey" aria-hidden="true"></div>
+                                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                                    <div class="progress-bar__{% if skill_row.required_level == 'working' or skill_row.required_level == 'practitioner' or skill_row.required_level == 'expert' %}grey{% else %}white{% endif %}"
+                                                                         aria-hidden="true"></div>
+                                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                                    <div class="progress-bar__{% if skill_row.required_level == 'practitioner' or skill_row.required_level == 'expert' %}grey{% else %}white{% endif %}"
+                                                                         aria-hidden="true"></div>
+                                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                                    <div class="progress-bar__{% if skill_row.required_level == 'expert' %}grey{% else %}white{% endif %}"
+                                                                         aria-hidden="true"></div>
+                                                                </div>
+                                                            </th>
+                                                            <td class="govuk-table__cell">
+                                                                {% if skill_row.points %}
+                                                                    <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
+                                                                        {% for point in skill_row.points %}<li>{{ point }}</li>{% endfor %}
+                                                                    </ul>
+                                                                {% endif %}
+                                                            </td>
+                                                        </tr>
+                                                    {% endfor %}
+                                                </tbody>
+                                            </table>
+                                        {% endif %}
+                                    {% endfor %}
+                                </section>
+                            {% empty %}
+                                {% if not self.body %}<p class="govuk-body">No roles selected.</p>{% endif %}
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}

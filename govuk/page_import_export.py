@@ -5,6 +5,7 @@ from decimal import Decimal
 from uuid import UUID
 
 from django.apps import apps
+from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.exceptions import FieldDoesNotExist, ValidationError
 from django.db import transaction
@@ -14,8 +15,9 @@ from django.utils.text import slugify
 from django.utils import timezone
 from wagtail.fields import StreamField
 from wagtail.models import Page, PageViewRestriction, Site
+from wagtail.rich_text import RichText
 
-from govuk.models import GovukTag
+from govuk.models import GovukRole, GovukSkill, GovukTag
 
 PAGE_EXPORT_FORMAT = "govuk-page-import-export/v1"
 BASE_PAGE_LOCAL_FIELD_NAMES = {field.name for field in Page._meta.local_fields}
@@ -29,6 +31,13 @@ CORE_PAGE_SETTING_FIELDS = (
     "go_live_at",
     "expire_at",
 )
+SKILL_POINT_FIELD_NAMES = (
+    "awareness_points",
+    "working_points",
+    "practitioner_points",
+    "expert_points",
+)
+SKILL_LEVEL_CHOICES = {"awareness", "working", "practitioner", "expert"}
 
 
 @dataclass
@@ -40,9 +49,15 @@ class PageImportResult:
     errors: list[str] = field(default_factory=list)
 
 
-def build_page_export_payload(*, site: Site, pages: list[Page]) -> dict:
+def build_page_export_payload(
+    *,
+    site: Site,
+    pages: list[Page],
+    skills: list[GovukSkill] | None = None,
+    roles: list[GovukRole] | None = None,
+) -> dict:
     selected_roots = _deduplicate_selected_roots(pages)
-    return {
+    payload = {
         "format": PAGE_EXPORT_FORMAT,
         "exported_at": timezone.now().isoformat(),
         "site": {
@@ -53,6 +68,30 @@ def build_page_export_payload(*, site: Site, pages: list[Page]) -> dict:
         },
         "pages": [_serialise_page_tree(page) for page in selected_roots],
     }
+    if settings.FEATURE_FLAGS.get("SKILLS"):
+        payload["skills"] = [
+            _serialise_skill(skill)
+            for skill in sorted(
+                (skills or []),
+                key=lambda row: (
+                    (row.title or "").strip().lower(),
+                    (row.slug or "").strip().lower(),
+                    row.pk or 0,
+                ),
+            )
+        ]
+        payload["roles"] = [
+            _serialise_role(role)
+            for role in sorted(
+                (roles or []),
+                key=lambda row: (
+                    (row.title or "").strip().lower(),
+                    (row.slug or "").strip().lower(),
+                    row.pk or 0,
+                ),
+            )
+        ]
+    return payload
 
 
 def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportResult:
@@ -62,11 +101,41 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
         result.errors.append("Import payload must be a JSON object.")
         return result
 
-    raw_pages = payload.get("pages")
+    raw_pages = payload.get("pages", [])
+    if raw_pages is None:
+        raw_pages = []
     if not isinstance(raw_pages, list):
         result.skipped += 1
         result.errors.append("Payload must contain a 'pages' array.")
         return result
+
+    raw_skills: list = []
+    raw_roles: list = []
+    if settings.FEATURE_FLAGS.get("SKILLS"):
+        raw_skills = payload.get("skills", []) or []
+        raw_roles = payload.get("roles", []) or []
+        if not isinstance(raw_skills, list):
+            result.skipped += 1
+            result.errors.append("Payload 'skills' value must be an array when provided.")
+            return result
+        if not isinstance(raw_roles, list):
+            result.skipped += 1
+            result.errors.append("Payload 'roles' value must be an array when provided.")
+            return result
+
+    if not raw_pages and not raw_skills and not raw_roles:
+        result.skipped += 1
+        if settings.FEATURE_FLAGS.get("SKILLS"):
+            result.errors.append(
+                "Payload must contain at least one entry in 'pages', 'skills' or 'roles'."
+            )
+        else:
+            result.errors.append("Payload must contain at least one entry in 'pages'.")
+        return result
+
+    if settings.FEATURE_FLAGS.get("SKILLS"):
+        _import_skills(raw_skills, result=result)
+        _import_roles(raw_roles, result=result)
 
     site_root = site.root_page.specific
     for node in raw_pages:
@@ -107,6 +176,66 @@ def _serialise_page_tree(page: Page) -> dict:
             for child in specific_page.get_children().order_by("path")
         ],
     }
+
+
+def _serialise_skill(skill: GovukSkill) -> dict:
+    return {
+        "slug": skill.slug,
+        "title": skill.title,
+        "body": _serialise_value(skill.body),
+        "awareness_points": _serialise_stream_field(skill, "awareness_points"),
+        "working_points": _serialise_stream_field(skill, "working_points"),
+        "practitioner_points": _serialise_stream_field(
+            skill,
+            "practitioner_points",
+        ),
+        "expert_points": _serialise_stream_field(skill, "expert_points"),
+    }
+
+
+def _serialise_role(role: GovukRole) -> dict:
+    return {
+        "slug": role.slug,
+        "title": role.title,
+        "body": _serialise_value(role.body),
+        "levels": _serialise_role_levels(role),
+    }
+
+
+def _serialise_stream_field(instance, field_name: str):
+    model_field = instance._meta.get_field(field_name)
+    raw_value = model_field.value_from_object(instance)
+    return _serialise_value(model_field.get_prep_value(raw_value))
+
+
+def _serialise_role_levels(role: GovukRole) -> list[dict]:
+    levels_payload: list[dict] = []
+    for level_block in role.levels:
+        if level_block.block_type != "level":
+            continue
+
+        level_value = level_block.value
+        skill_requirements_payload: list[dict[str, str]] = []
+        for raw_skill_requirement in level_value.get("skills") or []:
+            skill_slug = _skill_slug_from_value(raw_skill_requirement.get("skill"))
+            required_level = _normalised_skill_level(raw_skill_requirement.get("level"))
+            if not skill_slug or not required_level:
+                continue
+            skill_requirements_payload.append(
+                {
+                    "skill_slug": skill_slug,
+                    "level": required_level,
+                }
+            )
+
+        levels_payload.append(
+            {
+                "title": str(level_value.get("title") or "").strip(),
+                "description": _serialise_value(level_value.get("description")),
+                "skills": skill_requirements_payload,
+            }
+        )
+    return levels_payload
 
 
 def _serialise_page_settings(page: Page) -> dict:
@@ -169,6 +298,8 @@ def _serialise_privacy(page: Page) -> list[dict]:
 def _serialise_value(value):
     if value is None:
         return None
+    if isinstance(value, RichText):
+        return value.source
     if isinstance(value, (datetime, date, time)):
         return value.isoformat()
     if isinstance(value, UUID):
@@ -180,6 +311,194 @@ def _serialise_value(value):
     if isinstance(value, (list, tuple)):
         return [_serialise_value(inner_value) for inner_value in value]
     return value
+
+
+def _import_skills(raw_skills: list, *, result: PageImportResult):
+    for node in raw_skills:
+        _import_skill_node(node=node, result=result)
+
+
+def _import_skill_node(*, node, result: PageImportResult):
+    result.processed += 1
+    if not isinstance(node, dict):
+        result.skipped += 1
+        result.errors.append("Skipped skill entry because it is not an object.")
+        return
+
+    slug = _normalised_slug(node.get("slug") or node.get("title"))
+    if not slug:
+        result.skipped += 1
+        result.errors.append("Skipped skill entry because the slug is missing.")
+        return
+
+    existing_skill = GovukSkill.objects.filter(slug=slug).first()
+    if existing_skill is None:
+        action = "create"
+        skill = GovukSkill(slug=slug)
+    else:
+        action = "update"
+        skill = existing_skill
+
+    default_title = slug.replace("-", " ").strip().title() or slug
+    skill.slug = slug
+    skill.title = str(node.get("title") or skill.title or default_title).strip() or default_title
+    skill.body = str(node.get("body") or "")
+    for field_name in SKILL_POINT_FIELD_NAMES:
+        setattr(skill, field_name, _deserialise_skill_points(node.get(field_name)))
+
+    try:
+        skill.full_clean()
+        skill.save()
+    except (ValidationError, ValueError) as exc:
+        result.skipped += 1
+        result.errors.append(f"Skipped skill '{slug}': {exc}")
+        return
+
+    if action == "create":
+        result.created += 1
+    else:
+        result.updated += 1
+
+
+def _deserialise_skill_points(raw_points) -> list[dict[str, str]]:
+    if not isinstance(raw_points, list):
+        return []
+
+    points_payload: list[dict[str, str]] = []
+    for raw_point in raw_points:
+        if isinstance(raw_point, dict):
+            point_value = raw_point.get("value")
+            point_type = str(raw_point.get("type") or "point").strip()
+            if point_type != "point":
+                continue
+        else:
+            point_value = raw_point
+
+        point_text = str(point_value or "").strip()
+        if not point_text:
+            continue
+        points_payload.append(
+            {
+                "type": "point",
+                "value": point_text,
+            }
+        )
+    return points_payload
+
+
+def _import_roles(raw_roles: list, *, result: PageImportResult):
+    for node in raw_roles:
+        _import_role_node(node=node, result=result)
+
+
+def _import_role_node(*, node, result: PageImportResult):
+    result.processed += 1
+    if not isinstance(node, dict):
+        result.skipped += 1
+        result.errors.append("Skipped role entry because it is not an object.")
+        return
+
+    slug = _normalised_slug(node.get("slug") or node.get("title"))
+    if not slug:
+        result.skipped += 1
+        result.errors.append("Skipped role entry because the slug is missing.")
+        return
+
+    existing_role = GovukRole.objects.filter(slug=slug).first()
+    if existing_role is None:
+        action = "create"
+        role = GovukRole(slug=slug)
+    else:
+        action = "update"
+        role = existing_role
+
+    default_title = slug.replace("-", " ").strip().title() or slug
+    role.slug = slug
+    role.title = str(node.get("title") or role.title or default_title).strip() or default_title
+    role.body = str(node.get("body") or "")
+    role.levels = _deserialise_role_levels(
+        node.get("levels"),
+        role_slug=slug,
+        result=result,
+    )
+
+    try:
+        role.full_clean()
+        role.save()
+    except (ValidationError, ValueError) as exc:
+        result.skipped += 1
+        result.errors.append(f"Skipped role '{slug}': {exc}")
+        return
+
+    if action == "create":
+        result.created += 1
+    else:
+        result.updated += 1
+
+
+def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportResult) -> list[dict]:
+    if not isinstance(raw_levels, list):
+        return []
+
+    levels_payload: list[dict] = []
+    for raw_level in raw_levels:
+        if not isinstance(raw_level, dict):
+            continue
+
+        raw_skill_requirements = raw_level.get("skills")
+        if not isinstance(raw_skill_requirements, list):
+            raw_skill_requirements = []
+
+        skill_requirements_payload: list[dict[str, object]] = []
+        for raw_skill_requirement in raw_skill_requirements:
+            if not isinstance(raw_skill_requirement, dict):
+                continue
+
+            required_level = _normalised_skill_level(raw_skill_requirement.get("level"))
+            if not required_level:
+                continue
+
+            raw_skill_value = raw_skill_requirement.get("skill")
+            skill_slug = _normalised_slug(
+                raw_skill_requirement.get("skill_slug")
+                or ("" if str(raw_skill_value or "").isdigit() else raw_skill_value)
+            )
+            skill_id = raw_skill_requirement.get("skill_id") or raw_skill_value
+            skill = None
+            if skill_slug:
+                skill = GovukSkill.objects.filter(slug=skill_slug).only("pk").first()
+            if skill is None and str(skill_id or "").isdigit():
+                skill = GovukSkill.objects.filter(pk=int(skill_id)).only("pk", "slug").first()
+                if skill is not None and not skill_slug:
+                    skill_slug = skill.slug
+
+            if skill is None:
+                result.errors.append(
+                    (
+                        f"Role '{role_slug}' skipped skill requirement "
+                        f"for missing skill '{skill_slug or skill_id}'."
+                    )
+                )
+                continue
+
+            skill_requirements_payload.append(
+                {
+                    "skill": skill.pk,
+                    "level": required_level,
+                }
+            )
+
+        levels_payload.append(
+            {
+                "type": "level",
+                "value": {
+                    "title": str(raw_level.get("title") or "").strip(),
+                    "description": raw_level.get("description") or "",
+                    "skills": skill_requirements_payload,
+                },
+            }
+        )
+    return levels_payload
 
 
 def _import_page_node(*, node, parent_page: Page, site_root: Page, user, result: PageImportResult):
@@ -455,6 +774,28 @@ def _resolve_model_class(model_label: str):
 def _normalised_slug(value) -> str:
     slug = slugify(str(value or "").strip())
     return slug[:255]
+
+
+def _normalised_skill_level(value) -> str:
+    level = str(value or "").strip().lower()
+    if level in SKILL_LEVEL_CHOICES:
+        return level
+    return ""
+
+
+def _skill_slug_from_value(raw_skill_value) -> str:
+    if isinstance(raw_skill_value, GovukSkill):
+        return _normalised_slug(raw_skill_value.slug)
+
+    if isinstance(raw_skill_value, dict):
+        raw_skill_value = raw_skill_value.get("slug") or raw_skill_value.get("skill_slug")
+
+    if str(raw_skill_value or "").isdigit():
+        matching_skill = GovukSkill.objects.filter(pk=int(raw_skill_value)).only("slug").first()
+        if matching_skill is not None:
+            return _normalised_slug(matching_skill.slug)
+
+    return _normalised_slug(raw_skill_value)
 
 
 def _coerce_bool(value) -> bool:
