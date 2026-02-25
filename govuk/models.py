@@ -1963,39 +1963,41 @@ class TagListingsPage(Page):
             "latest_revision_created_at",
             "first_published_at",
         )
-        content_pages = (
+        page_querysets = [
             ContentPage.objects.live()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
-            .distinct()
-        )
-        section_pages = (
+            .distinct(),
             SectionPage.objects.live()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
-            .distinct()
-        )
+            .distinct(),
+            RolePage.objects.live()
+            .filter(tags__id__in=tag_ids)
+            .annotate(sort_updated=page_sort_updated)
+            .distinct(),
+        ]
         if request is None or not request.user.is_authenticated:
-            content_pages = content_pages.public()
-            section_pages = section_pages.public()
+            page_querysets = [queryset.public() for queryset in page_querysets]
 
         page_items: list[dict] = []
-        for page in list(content_pages) + list(section_pages):
-            page_items.append(
-                {
-                    "id": page.id,
-                    "url": page.url or page.url_path,
-                    "title": page.hero_title or page.title,
-                    "summary": page.hero_intro or page.search_description or "",
-                    "source": None,
-                    "metadata": {},
-                    "updated_at": page.last_published_at or page.sort_updated,
-                    "created_at": page.first_published_at,
-                    "published_at": page.first_published_at,
-                    "last_seen_at": page.last_published_at,
-                    "sort_updated": page.sort_updated,
-                }
-            )
+        for queryset in page_querysets:
+            for page in queryset:
+                page_items.append(
+                    {
+                        "id": page.id,
+                        "url": page.url or page.url_path,
+                        "title": page.hero_title or page.title,
+                        "summary": page.hero_intro or page.search_description or "",
+                        "source": None,
+                        "metadata": {},
+                        "updated_at": page.last_published_at or page.sort_updated,
+                        "created_at": page.first_published_at,
+                        "published_at": page.first_published_at,
+                        "last_seen_at": page.last_published_at,
+                        "sort_updated": page.sort_updated,
+                    }
+                )
         return page_items
 
     def get_listing_queryset(

@@ -17,7 +17,7 @@ import re
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 from pathlib import Path
 
-VERSION = "7.3-039"
+VERSION = "7.3-040"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent

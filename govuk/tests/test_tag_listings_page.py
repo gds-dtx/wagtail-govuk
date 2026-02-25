@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from wagtail.models import PageViewRestriction, Site
 
 from govuk.models import (
@@ -9,11 +9,22 @@ from govuk.models import (
     ExternalContentItem,
     ExternalContentItemTag,
     GovukTag,
+    RolePage,
     SectionPage,
     TagListingsPage,
 )
 
 
+def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
+    return {
+        "SKILLS": skills_enabled,
+        "ORGANISATIONS": False,
+        "PEOPLE_FINDER": False,
+        "FEEDBACK": False,
+    }
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
 class TagListingsPageQuerysetTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
@@ -60,6 +71,16 @@ class TagListingsPageQuerysetTests(TestCase):
         )
         self.section_page_beta.tags.add(self.beta_tag)
         self.section_page_beta.save_revision().publish()
+
+        self.role_page_alpha = self.root_page.add_child(
+            instance=RolePage(
+                title="Alpha role page",
+                slug="alpha-role-page",
+                body="",
+            )
+        )
+        self.role_page_alpha.tags.add(self.alpha_tag)
+        self.role_page_alpha.save_revision().publish()
 
         self.gamma_page = self.root_page.add_child(
             instance=ContentPage(title="Gamma page", slug="gamma-page", body="")
@@ -122,6 +143,7 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertIn(self.external_beta.url, urls)
         self.assertIn(self.content_page_alpha.url, urls)
         self.assertIn(self.section_page_beta.url, urls)
+        self.assertIn(self.role_page_alpha.url, urls)
 
         self.assertNotIn(self.external_gamma.url, urls)
         self.assertNotIn(self.gamma_page.url, urls)
@@ -132,6 +154,15 @@ class TagListingsPageQuerysetTests(TestCase):
         urls = {item["url"] for item in items}
 
         self.assertEqual(urls, {self.external_beta.url, self.section_page_beta.url})
+
+    def test_get_listing_queryset_applies_selected_tag_to_role_pages(self):
+        items = self.listings_page.get_listing_queryset(selected_tag_id=self.alpha_tag.id)
+        urls = {item["url"] for item in items}
+
+        self.assertIn(self.external_alpha.url, urls)
+        self.assertIn(self.content_page_alpha.url, urls)
+        self.assertIn(self.role_page_alpha.url, urls)
+        self.assertNotIn(self.section_page_beta.url, urls)
 
     def test_get_listing_queryset_applies_selected_source_to_external_only(self):
         items = self.listings_page.get_listing_queryset(
@@ -178,6 +209,7 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Alpha external")
         self.assertContains(response, "Alpha page")
+        self.assertContains(response, "Alpha role page")
         self.assertNotContains(response, "Private alpha page")
 
     def test_tag_filter_page_response_includes_private_pages_for_logged_in_users(self):
