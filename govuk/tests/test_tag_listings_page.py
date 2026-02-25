@@ -154,6 +154,21 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertNotContains(response, "Alpha external")
         self.assertNotContains(response, "Alpha page")
 
+    def test_tag_listings_page_shows_last_updated_by_default(self):
+        response = self.client.get(self.listings_page.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Last updated:")
+
+    def test_tag_listings_page_can_hide_last_updated(self):
+        self.listings_page.hide_last_updated = True
+        self.listings_page.save_revision().publish()
+
+        response = self.client.get(self.listings_page.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Last updated:")
+
     def test_tag_filter_page_response_excludes_private_pages_for_anonymous_users(self):
         self.listings_page.enable_tag_filter = True
         self.listings_page.save_revision().publish()

@@ -1237,6 +1237,11 @@ class TagListingsPage(Page):
         verbose_name="Enable source filter",
         help_text="Show a source filter control above the listings.",
     )
+    hide_last_updated = models.BooleanField(
+        default=False,
+        verbose_name="Hide last updated",
+        help_text="Hide the last updated date below each listing.",
+    )
     tags = ClusterTaggableManager(
         through="govuk.TagListingsPageTag",
         blank=True,
@@ -1265,6 +1270,7 @@ class TagListingsPage(Page):
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("enable_tag_filter"),
         FieldPanel("enable_source_filter"),
+        FieldPanel("hide_last_updated"),
         FieldPanel("enable_free_text_heading_navigation"),
     ]
 
