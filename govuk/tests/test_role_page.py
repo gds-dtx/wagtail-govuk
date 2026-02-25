@@ -1,7 +1,7 @@
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import GovukRole, GovukSkill, RolePage
+from govuk.models import GovukRole, GovukSkill, GovukTag, RolePage
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -143,6 +143,17 @@ class RolePageTests(TestCase):
         self.assertContains(
             response,
             "Analyses digital evidence and investigates incidents.",
+        )
+
+    def test_role_page_supports_tags(self):
+        policy_tag = GovukTag.objects.create(slug="policy", name="Policy")
+        security_tag = GovukTag.objects.create(slug="security", name="Security")
+
+        self.role_page.tags.set([security_tag, policy_tag])
+
+        self.assertEqual(
+            list(self.role_page.tags.order_by("slug").values_list("slug", flat=True)),
+            ["policy", "security"],
         )
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))

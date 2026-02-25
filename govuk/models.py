@@ -1517,6 +1517,23 @@ class ContentPageTag(TaggedItemBase):
     ]
 
 
+class RolePageTag(TaggedItemBase):
+    content_object = ParentalKey(
+        "govuk.RolePage",
+        related_name="tagged_items",
+        on_delete=models.CASCADE,
+    )
+    tag = models.ForeignKey(
+        "govuk.GovukTag",
+        related_name="role_page_tagged_items",
+        on_delete=models.CASCADE,
+    )
+
+    panels = [
+        FieldPanel("tag"),
+    ]
+
+
 class SectionPageTag(TaggedItemBase):
     content_object = ParentalKey(
         "govuk.SectionPage",
@@ -1647,6 +1664,7 @@ class RolePage(Page):
         verbose_name="Enable sidebar heading navigation",
         help_text="Show free text in a two-thirds and one-third layout with an automatic clickable heading list.",
     )
+    tags = ClusterTaggableManager(through="govuk.RolePageTag", blank=True)
     selected_roles = StreamField(
         [
             (
@@ -1673,6 +1691,7 @@ class RolePage(Page):
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("enable_free_text_heading_navigation"),
+        InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
 
     @classmethod
