@@ -66,6 +66,17 @@ SKILL_LEVEL_ORDINALS = {
     "practitioner": "third",
     "expert": "fourth",
 }
+SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES = [
+    "h2",
+    "h3",
+    "h4",
+    "bold",
+    "italic",
+    "link",
+    "ul",
+    "ol",
+    "inset-text",
+]
 
 SigningPublicKey = Ed25519PublicKey | ec.EllipticCurvePublicKey
 SigningPrivateKey = Ed25519PrivateKey | ec.EllipticCurvePrivateKey
@@ -928,7 +939,7 @@ class GovukSkill(models.Model):
     )
     body = RichTextField(
         blank=True,
-        features=["bold", "italic", "link", "ul", "ol"],
+        features=SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES,
         help_text="Short description of the skill.",
     )
     awareness_points = StreamField(
@@ -1111,7 +1122,7 @@ class GovukRole(models.Model):
     )
     body = RichTextField(
         blank=True,
-        features=["bold", "italic", "link", "ul", "ol"],
+        features=SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES,
         help_text="Optional summary for this role.",
     )
     levels = StreamField(

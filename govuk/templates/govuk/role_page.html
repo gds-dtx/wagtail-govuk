@@ -22,7 +22,6 @@
                             {% if self.body %}{{ self.body|richtext }}{% endif %}
                             {% for role_section in role_sections %}
                                 <section>
-                                    {% if role_section.role.title %}<h2 class="govuk-heading-l">{{ role_section.role.title }}</h2>{% endif %}
                                     {% if role_section.role.body %}<div class="govuk-body">{{ role_section.role.body|richtext }}</div>{% endif %}
                                     {% for role_level in role_section.levels %}
                                         {% if role_level.title %}<h3 class="govuk-heading-m">{{ forloop.counter }}. {{ role_level.title }}</h3>{% endif %}
