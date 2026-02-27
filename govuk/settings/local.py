@@ -4,6 +4,7 @@ from .base import *
 # Local settings - these are used for local development and testing
 
 DEBUG = True
+WHITENOISE_USE_FINDERS = True
 INCOMING_REQUEST_INFO_LOGGING = True
 CONTENT_DISCOVERY_REQUEST_INFO_LOGGING = True
 

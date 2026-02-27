@@ -12,6 +12,7 @@ dependencies = [
   "Django>=6.0.2",
   "wagtail==7.3",
   "gunicorn==25.1.0",
+  "whitenoise==6.9.0",
   "django-allauth[socialaccount,openid]==65.14.3",
   "djangorestframework-simplejwt[crypto]>=5.4.0",
   "psycopg2-binary==2.9.11",
