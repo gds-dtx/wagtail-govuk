@@ -17,13 +17,27 @@ import re
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 from pathlib import Path
 
-VERSION = "7.3-042"
+VERSION = "7.3-043"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
 
 SITE_ID = 1
 logger = logging.getLogger(__name__)
+
+
+def _parse_csv_env(var_name: str) -> list[str]:
+    _var = os.getenv(var_name)
+    if _var:
+        return [item.strip() for item in _var.split(",") if item.strip()]
+    return []
+
+
+def _bool_env(var_name: str, default: bool = False) -> bool:
+    _var = os.getenv(var_name)
+    if _var and len(_var) > 0 and _var.lower()[0] in ["t", "y", "1"]:
+        return True
+    return default
 
 
 def _parse_admin_user_emails(raw_emails: str | None) -> list[str]:
@@ -190,6 +204,17 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
+SESSION_ENGINE = (
+    "django.contrib.sessions.backends.db"  # may in future want a separate cache db
+)
+SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", default=False)
+SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "sessionid")
+SESSION_COOKIE_AGE = int(
+    os.getenv("SESSION_COOKIE_AGE", 60 * 60 * 12)
+)  # 12 hour default
+SESSION_EXPIRE_AT_BROWSER_CLOSE = False  # keep until age is reached
+SESSION_SAVE_EVERY_REQUEST = False  # avoid sliding expiry on each request
+ACCOUNT_SESSION_REMEMBER = False
 ACCOUNT_EMAIL_VERIFICATION = "none"
 SOCIALACCOUNT_ONLY = True
 ACCOUNT_ADAPTER = "govuk.adapters.AccountAdapter"
@@ -239,21 +264,7 @@ SOCIALACCOUNT_PROVIDERS = {
 }
 
 
-def _parse_csv_env(var_name: str) -> list[str]:
-    _var = os.getenv(var_name)
-    if _var:
-        return [item.strip() for item in _var.split(",") if item.strip()]
-    return []
-
-
 ADDITIONAL_CSS = _parse_csv_env("ADDITIONAL_CSS")
-
-
-def _bool_env(var_name: str, default: bool = False) -> bool:
-    _var = os.getenv(var_name)
-    if _var and len(_var) > 0 and _var.lower()[0] in ["t", "y", "1"]:
-        return True
-    return default
 
 
 def _resolve_log_level(raw_level: str | None, default: str = "INFO") -> str:
