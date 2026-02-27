@@ -1,6 +1,8 @@
 import os
 from .base import *
 
+# Local settings - these are used for local development and testing
+
 DEBUG = True
 INCOMING_REQUEST_INFO_LOGGING = True
 CONTENT_DISCOVERY_REQUEST_INFO_LOGGING = True
@@ -16,4 +18,11 @@ DATABASES = {
 
 WAGTAILADMIN_BASE_URL = "http://localhost:8000"
 
-# ADDITIONAL_CSS = ["/static/cyber.css"]
+ADDITIONAL_CSS = ["/static/cyber.css"]
+
+FEATURE_FLAGS = {
+    "SKILLS": True,
+    "ORGANISATIONS": True,
+    "PEOPLE_FINDER": True,
+    "FEEDBACK": True,
+}

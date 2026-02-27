@@ -1,9 +1,9 @@
 import os
 from .base import *
 
-# Development settings - these are used in development and test environments
+# Live settings - these are used in production and staging environments
 
-DEBUG = True
+DEBUG = False
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 DATABASES = {
