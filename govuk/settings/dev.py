@@ -3,7 +3,7 @@ from .base import *
 
 # Development settings - these are used in development and test environments
 
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "True") == "True"
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 DATABASES = {
