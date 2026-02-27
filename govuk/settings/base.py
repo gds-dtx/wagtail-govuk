@@ -202,6 +202,7 @@ def sync_default_site_from_env() -> dict[str, int]:
 # Application definition
 
 INSTALLED_APPS = [
+    "whitenoise.runserver_nostatic",
     "govuk.apps.GovukConfig",
     # "search",
     "wagtail.contrib.forms",
