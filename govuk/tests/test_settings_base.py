@@ -1,7 +1,8 @@
 import os
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase, override_settings
+from wagtail.models import Site
 
 from govuk.settings import base as base_settings
 
@@ -127,3 +128,41 @@ class ResolveLogLevelTests(SimpleTestCase):
 
     def test_returns_default_when_value_is_unsupported(self):
         self.assertEqual(base_settings._resolve_log_level("TRACE"), "INFO")
+
+
+class SyncDefaultSiteFromEnvTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.get(pk=1)
+        self.site.hostname = "localhost"
+        self.site.port = 80
+        self.site.save(update_fields=["hostname", "port"])
+
+    @override_settings(DEFAULT_SITE_PORT=443)
+    def test_sync_updates_hostname_and_port_when_domain_is_set(self):
+        with patch.dict(os.environ, {"DOMAIN": "service.example.gov.uk"}, clear=False):
+            result = base_settings.sync_default_site_from_env()
+
+        self.site.refresh_from_db()
+        self.assertEqual(result, {"updated": 1})
+        self.assertEqual(self.site.hostname, "service.example.gov.uk")
+        self.assertEqual(self.site.port, 443)
+
+    @override_settings(DEFAULT_SITE_PORT=443)
+    def test_sync_updates_port_when_domain_is_empty(self):
+        with patch.dict(os.environ, {"DOMAIN": ""}, clear=False):
+            result = base_settings.sync_default_site_from_env()
+
+        self.site.refresh_from_db()
+        self.assertEqual(result, {"updated": 1})
+        self.assertEqual(self.site.hostname, "localhost")
+        self.assertEqual(self.site.port, 443)
+
+    @override_settings(DEFAULT_SITE_PORT=None)
+    def test_sync_skips_when_domain_and_port_are_not_set(self):
+        with patch.dict(os.environ, {"DOMAIN": ""}, clear=False):
+            result = base_settings.sync_default_site_from_env()
+
+        self.site.refresh_from_db()
+        self.assertEqual(result, {"updated": 0})
+        self.assertEqual(self.site.hostname, "localhost")
+        self.assertEqual(self.site.port, 80)

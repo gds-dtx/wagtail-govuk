@@ -23,6 +23,15 @@ def _sync_admin_users_after_migrate(app_config, **kwargs):
         )
 
 
+def _sync_default_site_after_migrate(app_config, **kwargs):
+    if app_config.label != "wagtailcore":
+        return
+
+    from govuk.settings.base import sync_default_site_from_env
+
+    sync_default_site_from_env()
+
+
 class GovukConfig(AppConfig):
     name = "govuk"
     verbose_name = "GOV.UK"
@@ -43,4 +52,8 @@ class GovukConfig(AppConfig):
         post_migrate.connect(
             _sync_admin_users_after_migrate,
             dispatch_uid="govuk.sync_admin_users_after_migrate",
+        )
+        post_migrate.connect(
+            _sync_default_site_after_migrate,
+            dispatch_uid="govuk.sync_default_site_after_migrate",
         )

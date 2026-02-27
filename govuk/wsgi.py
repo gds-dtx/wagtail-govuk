@@ -14,9 +14,10 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "govuk.settings.local")
 application = get_wsgi_application()
 
 try:
-    from govuk.settings.base import sync_admin_users_from_env
+    from govuk.settings.base import sync_admin_users_from_env, sync_default_site_from_env
 
     sync_admin_users_from_env()
+    sync_default_site_from_env()
 except (OperationalError, ProgrammingError):
     # Database tables may not exist during early startup or migration phases.
     pass

@@ -17,7 +17,7 @@ import re
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 from pathlib import Path
 
-VERSION = "7.3-045"
+VERSION = "7.3-046"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
@@ -147,6 +147,52 @@ def sync_admin_users_from_env() -> dict[str, int]:
             logger.info("Updated admin user from ADMIN_USER_EMAILS: %s", email)
 
     return {"created": created_count, "updated": updated_count}
+
+
+def sync_default_site_from_env() -> dict[str, int]:
+    domain = (os.getenv("DOMAIN") or "").strip()
+
+    from django.conf import settings as django_settings
+    from wagtail.models import Site
+
+    raw_port = getattr(django_settings, "DEFAULT_SITE_PORT", None)
+    desired_port: int | None = None
+    if raw_port is not None:
+        try:
+            desired_port = int(raw_port)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Skipping default site port sync; DEFAULT_SITE_PORT is invalid: %r",
+                raw_port,
+            )
+
+    if not domain and desired_port is None:
+        return {"updated": 0}
+
+    site = Site.objects.filter(pk=SITE_ID).first()
+    if not site:
+        site = Site.objects.filter(is_default_site=True).first()
+    if not site:
+        return {"updated": 0}
+
+    changed_fields: list[str] = []
+    if domain and site.hostname != domain:
+        site.hostname = domain
+        changed_fields.append("hostname")
+    if desired_port is not None and site.port != desired_port:
+        site.port = desired_port
+        changed_fields.append("port")
+
+    if not changed_fields:
+        return {"updated": 0}
+
+    site.save(update_fields=changed_fields)
+    logger.info(
+        "Synced default site from env: hostname=%s port=%s",
+        site.hostname,
+        site.port,
+    )
+    return {"updated": 1}
 
 
 # Quick-start development settings - unsuitable for production
