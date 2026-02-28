@@ -32,6 +32,7 @@ from wagtail import blocks
 from wagtail.admin.panels import FieldPanel, InlinePanel
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
 from wagtail.fields import RichTextField, StreamField
+from wagtail.images.blocks import ImageChooserBlock
 from wagtail.models import Orderable, Page
 from wagtail.snippets.blocks import SnippetChooserBlock
 
@@ -1869,6 +1870,10 @@ class SkillsAZPage(Page):
 
 
 class TagListingsPage(Page):
+    class SortOrder(models.TextChoices):
+        NEWEST_FIRST = "newest_first", "Newest first"
+        ALPHABETICAL = "alphabetical_az", "Alphabetical (A-Z)"
+
     enable_hero_styling = models.BooleanField(
         default=False,
         verbose_name="Enable hero styling",
@@ -1909,6 +1914,13 @@ class TagListingsPage(Page):
         verbose_name="Hide last updated",
         help_text="Hide the last updated date below each listing.",
     )
+    sort_order = models.CharField(
+        max_length=20,
+        choices=SortOrder.choices,
+        default=SortOrder.NEWEST_FIRST,
+        verbose_name="Sort order",
+        help_text="Choose how listing cards are ordered.",
+    )
     tags = ClusterTaggableManager(
         through="govuk.TagListingsPageTag",
         blank=True,
@@ -1942,6 +1954,7 @@ class TagListingsPage(Page):
         FieldPanel("enable_tag_filter"),
         FieldPanel("enable_source_filter"),
         FieldPanel("hide_last_updated"),
+        FieldPanel("sort_order"),
         FieldPanel("enable_free_text_heading_navigation"),
     ]
 
@@ -2062,13 +2075,21 @@ class TagListingsPage(Page):
                 self._page_listing_items(tag_ids=tag_ids, request=request)
             )
 
-        listing_items.sort(
-            key=lambda item: (
-                item["sort_updated"].timestamp() if item["sort_updated"] else 0.0,
-                item["id"],
-            ),
-            reverse=True,
-        )
+        if self.sort_order == self.SortOrder.ALPHABETICAL:
+            listing_items.sort(
+                key=lambda item: (
+                    (item.get("title") or item.get("url") or "").strip().lower(),
+                    item["id"],
+                ),
+            )
+        else:
+            listing_items.sort(
+                key=lambda item: (
+                    item["sort_updated"].timestamp() if item["sort_updated"] else 0.0,
+                    item["id"],
+                ),
+                reverse=True,
+            )
         return listing_items
 
     def get_context(self, request, *args, **kwargs):
@@ -2189,6 +2210,28 @@ class SectionPage(Page):
                                             blocks.CharBlock(
                                                 required=True,
                                                 max_length=120,
+                                            ),
+                                        ),
+                                        (
+                                            "image",
+                                            ImageChooserBlock(
+                                                required=False,
+                                                help_text="Optional header image for this card.",
+                                            ),
+                                        ),
+                                        (
+                                            "image_fit",
+                                            blocks.ChoiceBlock(
+                                                choices=[
+                                                    ("cover", "Cover"),
+                                                    ("contain", "Contain"),
+                                                ],
+                                                default="cover",
+                                                required=True,
+                                                help_text=(
+                                                    "How the header image should fit "
+                                                    "inside the card."
+                                                ),
                                             ),
                                         ),
                                         (

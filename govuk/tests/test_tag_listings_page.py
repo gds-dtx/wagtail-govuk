@@ -173,6 +173,20 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertEqual(urls, {self.external_alpha.url})
         self.assertTrue(all(item["source"] is not None for item in items))
 
+    def test_get_listing_queryset_can_sort_alphabetically(self):
+        self.listings_page.sort_order = TagListingsPage.SortOrder.ALPHABETICAL
+        self.listings_page.save_revision().publish()
+        self.listings_page = self.listings_page.specific
+
+        items = self.listings_page.get_listing_queryset()
+        titles = [item["title"] or item["url"] for item in items]
+        expected_titles = sorted(
+            titles,
+            key=lambda value: (value or "").strip().lower(),
+        )
+
+        self.assertEqual(titles, expected_titles)
+
     def test_tag_filter_page_response_includes_external_and_internal_results(self):
         self.listings_page.enable_tag_filter = True
         self.listings_page.save_revision().publish()
