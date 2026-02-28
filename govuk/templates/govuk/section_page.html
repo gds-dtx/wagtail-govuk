@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load wagtailcore_tags %}
+{% load wagtailcore_tags wagtailimages_tags %}
 {% block title %}{{ self.seo_title|default:self.title }}{% endblock %}
 {% block content %}
     {% for row in self.rows %}
@@ -12,27 +12,34 @@
                             <div class="section-cards">
                                 {% with card_count=row.value.cards|length %}
                                     {% for card in row.value.cards %}
-                                        <div class="section-card">
-                                            <h3 class="govuk-heading-s govuk-!-margin-bottom-0">
-                                                {% if card.link_url %}
-                                                    <a class="govuk-link govuk-link--no-underline govuk-link--no-visited-state"
-                                                       href="{{ card.link_url }}">{{ card.title }}</a>
-                                                {% else %}
-                                                    {{ card.title }}
-                                                {% endif %}
-                                            </h3>
-                                            {% if card.text %}
-                                                <div class="govuk-body section-card__text {% if not card.link_text %}govuk-!-margin-bottom-0{% endif %}">
-                                                    {{ card.text|richtext }}
+                                        <div class="section-card{% if card.image %} section-card--with-image{% endif %}">
+                                            {% if card.image %}
+                                                <div class="section-card--image {% if card.image_fit == "contain" %}section-card--image--contain{% else %}section-card--image--cover{% endif %}">
+                                                    {% picture card.image format-{avif,webp,jpeg} width-720 %}
                                                 </div>
                                             {% endif %}
-                                            {% if card.link_text and card.link_url %}
-                                                <a href="{{ card.link_url }}"
-                                                   role="button"
-                                                   draggable="false"
-                                                   class="govuk-button govuk-!-margin-bottom-2"
-                                                   data-module="govuk-button">{{ card.link_text }}</a>
-                                            {% endif %}
+                                            <div class="section-card--content">
+                                                <h3 class="govuk-heading-s govuk-!-margin-bottom-0">
+                                                    {% if card.link_url %}
+                                                        <a class="govuk-link govuk-link--no-underline govuk-link--no-visited-state"
+                                                           href="{{ card.link_url }}">{{ card.title }}</a>
+                                                    {% else %}
+                                                        {{ card.title }}
+                                                    {% endif %}
+                                                </h3>
+                                                {% if card.text %}
+                                                    <div class="govuk-body section-card__text {% if not card.link_text %}govuk-!-margin-bottom-0{% endif %}">
+                                                        {{ card.text|richtext }}
+                                                    </div>
+                                                {% endif %}
+                                                {% if card.link_text and card.link_url %}
+                                                    <a href="{{ card.link_url }}"
+                                                       role="button"
+                                                       draggable="false"
+                                                       class="govuk-button govuk-!-margin-bottom-2"
+                                                       data-module="govuk-button">{{ card.link_text }}</a>
+                                                {% endif %}
+                                            </div>
                                         </div>
                                     {% endfor %}
                                 {% endwith %}

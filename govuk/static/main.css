@@ -49,6 +49,40 @@
     line-height: 1.1904761905;
 }
 
+@media (max-width: 15rem) {
+    * {
+        font-size: 1rem !important;
+    }
+    .govuk-width-container, .hero {
+        margin-left: 0.3rem;
+        margin-right: 0.3rem;
+    }
+    .govuk-phase-banner__text {
+        display: block;
+        padding-top: 0.5em;
+    }
+    .section-cards {
+        grid-template-columns: auto !important;
+        gap: 1rem !important;
+        width: auto;
+    }
+    .section-card:not(.section-card--with-image),
+    .section-card--with-image .section-card--content {
+        padding: 0.5rem !important;
+    }
+    * {
+        word-break: break-word;
+    }
+    .govuk-header__logotype {
+        width: 90%;
+        height: auto;
+    }
+    ul {
+        padding-inline-start: 0.8rem;
+    }
+}
+
+
 @media (min-width: 1280px) {
     .hero {
         margin-right: auto !important;
@@ -85,6 +119,35 @@
     }
 }
 
+.section-card--with-image {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.section-card--with-image .section-card--content {
+  padding: 1.75rem;
+}
+
+.section-card--image {
+  width: 100%;
+  background: #f3f2f1;
+}
+
+.section-card--image img {
+  display: block;
+  width: 100%;
+  max-height: 12rem;
+  height: auto;
+}
+
+.section-card--image--cover img {
+  object-fit: cover;
+}
+
+.section-card--image--contain img {
+  object-fit: contain;
+}
+
 .section-cards-container {
     padding: 30px 0;
     background-color: #f8f7f4;
@@ -92,8 +155,8 @@
 
 .section-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(285px, 1fr));
-  gap: 26px;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1.5rem;
 }
 
 .section-card {
@@ -127,7 +190,7 @@
 
 .app-site-search__input {
     flex: 1 1 auto;
-    min-width: 14rem;
+    width: 100%;
     border: 0;
 }
 
