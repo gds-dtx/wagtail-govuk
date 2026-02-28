@@ -5,10 +5,13 @@ from django.utils import timezone
 from wagtail.models import Site
 
 from govuk.models import (
+    ContentPage,
     ContentDiscoverySettings,
     ContentDiscoverySource,
     ExternalContentItem,
     GovukTag,
+    SectionPage,
+    TagListingsPage,
 )
 from govuk.search_backend import search_backend
 
@@ -95,3 +98,92 @@ class SearchBackendExternalContentRankingTests(TestCase):
         self.assertIn(source_match_item.url, urls_in_order)
         self.assertIn(title_match_item.url, urls_in_order)
         self.assertEqual(urls_in_order[0], title_match_item.url)
+
+
+class SearchBackendDescriptionFallbackTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+    def _result_for_url(self, query: str, url: str):
+        page = search_backend.search(query, filters={"site": self.site}, page=1)
+        return next((item for item in page.object_list if item.url == url), None)
+
+    def test_page_results_prefer_hero_intro_over_search_description(self):
+        page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Hero intro precedence page",
+                slug="hero-intro-precedence-page",
+                hero_intro="<p>Hero intro summary</p>",
+                search_description="Meta summary",
+                body="",
+            )
+        )
+        page.save_revision().publish()
+
+        result = self._result_for_url("hero intro precedence", page.url)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.search_description, "Hero intro summary")
+
+    def test_page_results_fall_back_to_meta_description_when_hero_is_blank(self):
+        page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Meta fallback page",
+                slug="meta-fallback-page",
+                hero_intro="",
+                search_description="Meta only summary",
+                body="",
+            )
+        )
+        page.save_revision().publish()
+
+        result = self._result_for_url("meta fallback", page.url)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.search_description, "Meta only summary")
+
+    def test_tag_results_prefer_hero_intro_over_search_description(self):
+        tag = GovukTag.objects.create(slug="backend-hero-tag", name="Backend hero tag")
+        page = self.root_page.add_child(
+            instance=SectionPage(
+                title="Tagged hero section",
+                slug="tagged-hero-section",
+                hero_intro="<p>Section hero summary</p>",
+                search_description="Section meta summary",
+                rows=[],
+                free_text="",
+            )
+        )
+        page.tags.add(tag)
+        page.save_revision().publish()
+
+        result = self._result_for_url("backend hero tag", page.url)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.search_description, "Section hero summary")
+
+    def test_tag_listings_page_results_prefer_hero_intro_over_search_description(self):
+        parent = self.root_page.add_child(
+            instance=ContentPage(
+                title="Tag listings parent",
+                slug="tag-listings-parent",
+                body="",
+            )
+        )
+        parent.save_revision().publish()
+        page = parent.add_child(
+            instance=TagListingsPage(
+                title="Tag listings hero precedence",
+                slug="tag-listings-hero-precedence",
+                hero_intro="<p>Tag listings hero summary</p>",
+                search_description="Tag listings meta summary",
+                free_text="",
+            )
+        )
+        page.save_revision().publish()
+
+        result = self._result_for_url("tag listings hero precedence", page.url)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.search_description, "Tag listings hero summary")

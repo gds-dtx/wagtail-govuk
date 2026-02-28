@@ -149,7 +149,7 @@ class SearchBackend:
         for page in queryset:
             specific_page = page.specific
             title = page.title
-            description = page.search_description or ""
+            description = self._page_search_description(specific_page)
             tag_items = self._page_tag_items(specific_page)
             tag_labels = [tag["value"] for tag in tag_items]
             tag_keys = [tag["key"] for tag in tag_items]
@@ -247,7 +247,7 @@ class SearchBackend:
                         title=title or section_page.title,
                         search_description=(
                             text
-                            or section_page.search_description
+                            or self._page_search_description(section_page)
                             or f"Card in {section_page.title}"
                         ),
                         url=link_url or section_url,
@@ -292,9 +292,9 @@ class SearchBackend:
                 if score <= 0:
                     continue
 
-                description = page.search_description or self._tag_result_description(
+                description = self._page_search_description(
                     page
-                )
+                ) or self._tag_result_description(page)
                 results.append(
                     SearchResultItem(
                         title=page.title,
@@ -348,7 +348,7 @@ class SearchBackend:
                 results.append(
                     SearchResultItem(
                         title=page.title,
-                        search_description=hero_intro or page.search_description or "",
+                        search_description=self._page_search_description(page),
                         url=self._page_url(page, request),
                         score=score,
                         breadcrumbs=self._page_breadcrumbs(
@@ -637,6 +637,12 @@ class SearchBackend:
             getattr(page, "last_published_at", None),
             getattr(page, "first_published_at", None),
         )
+
+    def _page_search_description(self, page: Any) -> str:
+        hero_intro = self._clean_text(getattr(page, "hero_intro", ""))
+        if hero_intro:
+            return hero_intro
+        return self._clean_text(getattr(page, "search_description", ""))
 
     def _external_content_last_updated(
         self, item: ExternalContentItem
