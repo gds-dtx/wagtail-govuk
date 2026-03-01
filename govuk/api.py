@@ -1,6 +1,7 @@
 from urllib.parse import urljoin
 
 from django.conf import settings
+from django.db import DatabaseError, connection
 from django.db.models import Count, Q
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
@@ -21,6 +22,42 @@ from govuk.models import ContentDiscoverySource, ExternalContentItem, GovukTag
 from govuk.utils import normalised_text
 
 AUTH_QUERY_PARAMETERS = frozenset({"bearer"})
+DEFAULT_API_REPOSITORY_URL = "https://github.com/govuk-digital-backbone/wagtail-govuk"
+
+
+def _get_api_version():
+    return getattr(settings, "VERSION", "unknown")
+
+
+def _get_common_api_meta():
+    return {
+        "repository_url": getattr(
+            settings, "API_REPOSITORY_URL", DEFAULT_API_REPOSITORY_URL
+        ),
+        "version": _get_api_version(),
+    }
+
+
+def _add_common_meta(response_data):
+    if not isinstance(response_data, dict):
+        return response_data
+
+    existing_meta = response_data.get("meta")
+    if isinstance(existing_meta, dict):
+        response_data["meta"] = {**existing_meta, **_get_common_api_meta()}
+    else:
+        response_data["meta"] = _get_common_api_meta()
+    return response_data
+
+
+def _check_database_health():
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            cursor.fetchone()
+    except DatabaseError:
+        return False
+    return True
 
 
 class PagePrivacyField(serializers.Field):
@@ -52,6 +89,12 @@ class PagePrivacyField(serializers.Field):
 class AuthenticatedAPIViewSetMixin:
     authentication_classes = [InternalAccessJWTAuthentication]
     permission_classes = [IsAuthenticated]
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        if hasattr(response, "data"):
+            _add_common_meta(response.data)
+        return response
 
 
 class PageTitleField(serializers.Field):
@@ -349,14 +392,34 @@ def _build_api_absolute_url(request, path):
 
 def api_root_view(request):
     return JsonResponse(
-        {
-            "endpoints": {
-                **_build_wagtail_endpoint_links(request),
-                "externalcontent": _build_external_content_endpoint_links(request),
-            },
-        }
+        _add_common_meta(
+            {
+                "endpoints": {
+                    **_build_wagtail_endpoint_links(request),
+                    "externalcontent": _build_external_content_endpoint_links(request),
+                    "health": _build_api_absolute_url(request, reverse("api_health")),
+                },
+            }
+        )
     )
 
 
 def api_externalcontent_root_view(request):
-    return JsonResponse({"endpoints": _build_external_content_endpoint_links(request)})
+    return JsonResponse(
+        _add_common_meta({"endpoints": _build_external_content_endpoint_links(request)})
+    )
+
+
+def api_health_view(request):
+    database_ok = _check_database_health()
+    status = 200 if database_ok else 503
+    return JsonResponse(
+        _add_common_meta(
+            {
+                "health": {
+                    "database": "ok" if database_ok else "error",
+                }
+            }
+        ),
+        status=status,
+    )

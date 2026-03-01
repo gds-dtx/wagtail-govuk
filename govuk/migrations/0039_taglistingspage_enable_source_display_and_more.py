@@ -4,20 +4,27 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('govuk', '0038_contentdiscoverysource_consume_tags_and_more'),
+        ("govuk", "0038_contentdiscoverysource_consume_tags_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='taglistingspage',
-            name='enable_source_display',
-            field=models.BooleanField(default=True, help_text='Show source labels on listing cards.', verbose_name='Enable source display'),
+            model_name="taglistingspage",
+            name="enable_source_display",
+            field=models.BooleanField(
+                default=False,
+                help_text="Show source labels on listing cards.",
+                verbose_name="Enable source display",
+            ),
         ),
         migrations.AddField(
-            model_name='taglistingspage',
-            name='enable_tag_display',
-            field=models.BooleanField(default=True, help_text='Show tag labels on listing cards.', verbose_name='Enable tag display'),
+            model_name="taglistingspage",
+            name="enable_tag_display",
+            field=models.BooleanField(
+                default=False,
+                help_text="Show tag labels on listing cards.",
+                verbose_name="Enable tag display",
+            ),
         ),
     ]

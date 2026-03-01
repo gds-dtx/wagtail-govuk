@@ -12,6 +12,7 @@ from govuk.api import (
     ExternalContentItemsAPIView,
     ExternalContentSourcesAPIView,
     api_externalcontent_root_view,
+    api_health_view,
     api_root_view,
     api_router,
 )
@@ -46,6 +47,7 @@ urlpatterns = [
     path("admin/", include(wagtailadmin_urls)),
     path("documents/", include(wagtaildocs_urls)),
     path("api/", api_root_view, name="api_root"),
+    path("api/health/", api_health_view, name="api_health"),
     path(
         "api/externalcontent/",
         api_externalcontent_root_view,

@@ -1,6 +1,9 @@
+from unittest.mock import patch
+
 from django.test import TestCase
 from wagtail.models import Site
 
+from govuk.api import DEFAULT_API_REPOSITORY_URL, _get_api_version
 from govuk.models import (
     ContentPage,
     ContentDiscoverySettings,
@@ -11,7 +14,14 @@ from govuk.models import (
 )
 
 
-class ApiRootAndWagtailEndpointTests(TestCase):
+class ApiMetaAssertionsMixin:
+    def assert_api_meta(self, payload):
+        self.assertIn("meta", payload)
+        self.assertEqual(payload["meta"]["repository_url"], DEFAULT_API_REPOSITORY_URL)
+        self.assertEqual(payload["meta"]["version"], _get_api_version())
+
+
+class ApiRootAndWagtailEndpointTests(ApiMetaAssertionsMixin, TestCase):
     def test_api_root_lists_versionless_wagtail_and_externalcontent_endpoints(self):
         response = self.client.get("/api/")
 
@@ -31,13 +41,16 @@ class ApiRootAndWagtailEndpointTests(TestCase):
                 "/api/externalcontent/items/"
             )
         )
+        self.assertTrue(body["endpoints"]["health"].endswith("/api/health/"))
+        self.assert_api_meta(body)
 
     def test_pages_listing_is_available_without_v2_prefix(self):
         response = self.client.get("/api/pages/")
 
         self.assertEqual(response.status_code, 200)
-        self.assertIn("meta", response.json())
-        self.assertIn("items", response.json())
+        body = response.json()
+        self.assert_api_meta(body)
+        self.assertIn("items", body)
 
     def test_externalcontent_root_lists_sources_and_items_urls(self):
         response = self.client.get("/api/externalcontent/")
@@ -51,9 +64,10 @@ class ApiRootAndWagtailEndpointTests(TestCase):
         self.assertTrue(
             body["endpoints"]["items"].endswith("/api/externalcontent/items/")
         )
+        self.assert_api_meta(body)
 
 
-class PagesApiSerializerTests(TestCase):
+class PagesApiSerializerTests(ApiMetaAssertionsMixin, TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
@@ -113,6 +127,7 @@ class PagesApiSerializerTests(TestCase):
             None,
         )
         self.assertIsNotNone(page_item)
+        self.assert_api_meta(response.json())
         self.assertEqual(page_item["title"], "Generic listing hero title")
         self.assertEqual(page_item["description"], "<p>Generic listing hero intro</p>")
 
@@ -164,6 +179,7 @@ class PagesApiSerializerTests(TestCase):
 
         response = self.client.get("/api/pages/")
         self.assertEqual(response.status_code, 200)
+        self.assert_api_meta(response.json())
         page_item = next(
             (
                 item
@@ -175,8 +191,22 @@ class PagesApiSerializerTests(TestCase):
         self.assertIsNotNone(page_item)
         self.assertEqual(page_item["tags"], ["alpha", "beta"])
 
+    def test_pages_detail_includes_common_api_meta(self):
+        page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Page detail metadata",
+                slug="pages-api-detail-meta",
+                body="",
+            )
+        )
+        page.save_revision().publish()
 
-class ExternalContentApiTests(TestCase):
+        response = self.client.get(f"/api/pages/{page.id}/")
+        self.assertEqual(response.status_code, 200)
+        self.assert_api_meta(response.json())
+
+
+class ExternalContentApiTests(ApiMetaAssertionsMixin, TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.discovery_settings = ContentDiscoverySettings.for_site(self.site)
@@ -305,6 +335,7 @@ class ExternalContentApiTests(TestCase):
         sources_page_one = self.client.get("/api/externalcontent/sources/")
         self.assertEqual(sources_page_one.status_code, 200)
         sources_payload = sources_page_one.json()
+        self.assert_api_meta(sources_payload)
         self.assertEqual(sources_payload["meta"]["total_count"], 18)
         self.assertEqual(len(sources_payload["items"]), 15)
         self.assertIsNotNone(sources_payload["meta"]["next"])
@@ -316,6 +347,7 @@ class ExternalContentApiTests(TestCase):
         items_page_one = self.client.get("/api/externalcontent/items/")
         self.assertEqual(items_page_one.status_code, 200)
         items_payload = items_page_one.json()
+        self.assert_api_meta(items_payload)
         self.assertEqual(items_payload["meta"]["total_count"], 19)
         self.assertEqual(len(items_payload["items"]), 15)
         self.assertIsNotNone(items_payload["meta"]["next"])
@@ -323,3 +355,20 @@ class ExternalContentApiTests(TestCase):
         items_page_two = self.client.get("/api/externalcontent/items/", {"page": 2})
         self.assertEqual(items_page_two.status_code, 200)
         self.assertEqual(len(items_page_two.json()["items"]), 4)
+
+
+class HealthApiTests(ApiMetaAssertionsMixin, TestCase):
+    def test_health_endpoint_reports_database_ok(self):
+        response = self.client.get("/api/health/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["health"]["database"], "ok")
+        self.assert_api_meta(payload)
+
+    def test_health_endpoint_returns_503_when_database_check_fails(self):
+        with patch("govuk.api._check_database_health", return_value=False):
+            response = self.client.get("/api/health/")
+        self.assertEqual(response.status_code, 503)
+        payload = response.json()
+        self.assertEqual(payload["health"]["database"], "error")
+        self.assert_api_meta(payload)
