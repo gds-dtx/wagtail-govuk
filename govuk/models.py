@@ -46,8 +46,8 @@ DEFAULT_JWT_LIFETIME = timedelta(minutes=5)
 SIGNING_ALGORITHM_EDDSA = "EdDSA"
 SIGNING_ALGORITHM_ES256 = "ES256"
 SIGNING_ALGORITHM_CHOICES = (
-    (SIGNING_ALGORITHM_EDDSA, "EdDSA (Ed25519)"),
     (SIGNING_ALGORITHM_ES256, "ES256 (P-256)"),
+    (SIGNING_ALGORITHM_EDDSA, "EdDSA (Ed25519)"),
 )
 SIGNING_ALGORITHM_VALUES = {value for value, _ in SIGNING_ALGORITHM_CHOICES}
 SKILL_LEVEL_CHOICES = (
@@ -1074,7 +1074,9 @@ class GovukSkill(models.Model):
         stream_value = points_field_map.get(level_key)
         if stream_value is None:
             return []
-        return [entry["value"] for entry in self._normalised_stream_points(stream_value)]
+        return [
+            entry["value"] for entry in self._normalised_stream_points(stream_value)
+        ]
 
     def get_level_rows(self) -> list[dict]:
         level_rows: list[dict] = []
@@ -1306,6 +1308,23 @@ class ContentDiscoverySource(Orderable):
             "primary key from Settings > Signing keys."
         ),
     )
+    sync_source = models.BooleanField(
+        default=False,
+        verbose_name="Sync from remote source and hide any missing",
+        help_text=(
+            "When enabled, this remote source will be synced and any "
+            "missing items previously discovered will be hidden. Disabled "
+            "(default) will just keep adding discovered content."
+        ),
+    )
+    consume_tags = models.BooleanField(
+        default=False,
+        verbose_name="Consume tags from remote source",
+        help_text=(
+            "When enabled, if the remote source content has tags they will be "
+            "applied to the discovered content."
+        ),
+    )
     default_tags = StreamField(
         [
             (
@@ -1326,6 +1345,7 @@ class ContentDiscoverySource(Orderable):
         FieldPanel("url"),
         FieldPanel("disable_tls_verification"),
         FieldPanel("send_signed_bearer_jwt"),
+        FieldPanel("sync_source"),
         FieldPanel("default_tags"),
     ]
 
@@ -1450,6 +1470,10 @@ class ExternalContentItem(ClusterableModel):
         default=False,
         help_text="Hide this item from external content listings.",
     )
+    private = models.BooleanField(
+        default=False,
+        help_text="Set this item private, accessible to any logged-in users.",
+    )
     metadata = models.JSONField(
         blank=True,
         default=dict,
@@ -1468,6 +1492,7 @@ class ExternalContentItem(ClusterableModel):
         FieldPanel("updated_at"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
         FieldPanel("hidden"),
+        FieldPanel("private"),
         FieldPanel("metadata"),
     ]
 
@@ -1969,14 +1994,15 @@ class TagListingsPage(Page):
             return [selected_tag_id]
         return configured_tag_ids
 
-    def _external_listing_queryset(self, *, tag_ids: list[int]):
+    def _external_listing_queryset(self, *, tag_ids: list[int], request=None):
         if not tag_ids:
             return ExternalContentItem.objects.none()
-        return (
-            ExternalContentItem.objects.filter(hidden=False, tags__id__in=tag_ids)
-            .distinct()
-            .select_related("source")
+        queryset = ExternalContentItem.objects.filter(
+            hidden=False, tags__id__in=tag_ids
         )
+        if request is None or not request.user.is_authenticated:
+            queryset = queryset.filter(private=False)
+        return queryset.distinct().select_related("source")
 
     def _page_listing_items(self, *, tag_ids: list[int], request=None) -> list[dict]:
         if not tag_ids:
@@ -2037,7 +2063,10 @@ class TagListingsPage(Page):
         if not tag_ids:
             return []
 
-        external_queryset = self._external_listing_queryset(tag_ids=tag_ids).annotate(
+        external_queryset = self._external_listing_queryset(
+            tag_ids=tag_ids,
+            request=request,
+        ).annotate(
             sort_updated=Coalesce(
                 "updated_at",
                 "created_at",
@@ -2112,7 +2141,7 @@ class TagListingsPage(Page):
         selected_tag_id = selected_tag.id if selected_tag is not None else None
         source_tag_ids = self._effective_tag_ids(selected_tag_id=selected_tag_id)
         source_rows = (
-            self._external_listing_queryset(tag_ids=source_tag_ids)
+            self._external_listing_queryset(tag_ids=source_tag_ids, request=request)
             .exclude(source__isnull=True)
             .values("source_id", "source__name", "source__url")
             .distinct()

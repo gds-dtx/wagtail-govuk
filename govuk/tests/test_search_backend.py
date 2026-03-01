@@ -100,6 +100,63 @@ class SearchBackendExternalContentRankingTests(TestCase):
         self.assertEqual(urls_in_order[0], title_match_item.url)
 
 
+class SearchBackendExternalContentVisibilityTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        settings = ContentDiscoverySettings.for_site(self.site)
+        self.source = ContentDiscoverySource.objects.create(
+            settings=settings,
+            sort_order=0,
+            name="Visibility source",
+            url="https://example.gov.uk/visibility-feed.xml",
+        )
+        self.public_item = ExternalContentItem.objects.create(
+            source=self.source,
+            url="https://example.gov.uk/visibility-public-item",
+            title="Private external visibility public",
+            hidden=False,
+            private=False,
+        )
+        self.private_item = ExternalContentItem.objects.create(
+            source=self.source,
+            url="https://example.gov.uk/visibility-private-item",
+            title="Private external visibility restricted",
+            hidden=False,
+            private=True,
+        )
+        self.hidden_private_item = ExternalContentItem.objects.create(
+            source=self.source,
+            url="https://example.gov.uk/visibility-hidden-private-item",
+            title="Private external visibility hidden",
+            hidden=True,
+            private=True,
+        )
+
+    def test_external_results_exclude_private_items_when_public_filter_is_enabled(self):
+        page = search_backend.search(
+            "private external visibility",
+            filters={"site": self.site, "public": True},
+            page=1,
+        )
+        urls = {item.url for item in page.object_list}
+
+        self.assertIn(self.public_item.url, urls)
+        self.assertNotIn(self.private_item.url, urls)
+        self.assertNotIn(self.hidden_private_item.url, urls)
+
+    def test_external_results_include_private_items_when_public_filter_is_disabled(self):
+        page = search_backend.search(
+            "private external visibility",
+            filters={"site": self.site, "public": False},
+            page=1,
+        )
+        urls = {item.url for item in page.object_list}
+
+        self.assertIn(self.public_item.url, urls)
+        self.assertIn(self.private_item.url, urls)
+        self.assertNotIn(self.hidden_private_item.url, urls)
+
+
 class SearchBackendDescriptionFallbackTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)

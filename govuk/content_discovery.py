@@ -491,6 +491,11 @@ def sync_content_discovery_source(
             existing_urls.add(entry_url)
             result.created += 1
 
+    if source.sync_source:
+        ExternalContentItem.objects.filter(source=source, hidden=False).exclude(
+            url__in=seen_urls
+        ).update(hidden=True)
+
     return result
 
 

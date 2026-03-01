@@ -5,6 +5,7 @@ from django.db.models import Count, Q
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.urls import reverse
+from django.utils.html import strip_tags
 from rest_framework import generics, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -17,6 +18,7 @@ from wagtail.images.api.v2.views import ImagesAPIViewSet
 
 from govuk.authentication import InternalAccessJWTAuthentication
 from govuk.models import ContentDiscoverySource, ExternalContentItem, GovukTag
+from govuk.utils import normalised_text
 
 AUTH_QUERY_PARAMETERS = frozenset({"bearer"})
 
@@ -52,12 +54,92 @@ class AuthenticatedAPIViewSetMixin:
     permission_classes = [IsAuthenticated]
 
 
+class PageTitleField(serializers.Field):
+    def __init__(self, **kwargs):
+        kwargs.setdefault("read_only", True)
+        kwargs.setdefault("source", "*")
+        super().__init__(**kwargs)
+
+    def to_representation(self, page):
+        page_specific = getattr(page, "specific", page)
+        for candidate in (page_specific, page):
+            if hero_title := str(getattr(candidate, "hero_title", "") or ""):
+                if norm := normalised_text(hero_title):
+                    return norm
+        for candidate in (page_specific, page):
+            if title := str(getattr(candidate, "title", "") or ""):
+                if norm := normalised_text(title):
+                    return norm
+        return ""
+
+
+class PageDescriptionField(serializers.Field):
+    def __init__(self, **kwargs):
+        kwargs.setdefault("read_only", True)
+        kwargs.setdefault("source", "*")
+        super().__init__(**kwargs)
+
+    def to_representation(self, page):
+        page_specific = getattr(page, "specific", page)
+        for candidate in (page_specific, page):
+            if hero_intro := str(getattr(candidate, "hero_intro", "") or ""):
+                if norm := normalised_text(hero_intro):
+                    return norm
+        for candidate in (page_specific, page):
+            if search_desc := str(getattr(candidate, "search_description", "") or ""):
+                if norm := normalised_text(search_desc):
+                    return norm
+
+        return None
+
+
+class PageTagSlugsField(serializers.Field):
+    def __init__(self, **kwargs):
+        kwargs.setdefault("read_only", True)
+        kwargs.setdefault("source", "*")
+        super().__init__(**kwargs)
+
+    def to_representation(self, page):
+        merged_slugs: set[str] = set()
+        page_specific = getattr(page, "specific", page)
+
+        for candidate in (page, page_specific):
+            tags_manager = getattr(candidate, "tags", None)
+            if tags_manager:
+                merged_slugs.update(
+                    slug
+                    for slug in tags_manager.all().values_list("slug", flat=True)
+                    if slug
+                )
+
+            tagged_items_manager = getattr(candidate, "tagged_items", None)
+            if tagged_items_manager:
+                merged_slugs.update(
+                    slug
+                    for slug in tagged_items_manager.all().values_list(
+                        "tag__slug", flat=True
+                    )
+                    if slug
+                )
+
+        return sorted(merged_slugs)
+
+
 class WagtailPages(AuthenticatedAPIViewSetMixin, PagesAPIViewSet):
     permission_classes = [AllowAny]
+    body_fields = PagesAPIViewSet.body_fields + [
+        APIField("title", serializer=PageTitleField()),
+        APIField("description", serializer=PageDescriptionField()),
+        APIField("tags", serializer=PageTagSlugsField()),
+    ]
     meta_fields = PagesAPIViewSet.meta_fields + [
         APIField("privacy", serializer=PagePrivacyField()),
     ]
-    listing_default_fields = PagesAPIViewSet.listing_default_fields + ["privacy"]
+    listing_default_fields = PagesAPIViewSet.listing_default_fields + [
+        "privacy",
+        "description",
+        "tags",
+    ]
     known_query_parameters = PagesAPIViewSet.known_query_parameters.union(
         AUTH_QUERY_PARAMETERS
     )

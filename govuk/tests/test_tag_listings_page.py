@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 from wagtail.models import PageViewRestriction, Site
 
 from govuk.models import (
@@ -226,6 +226,39 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertContains(response, "Alpha role page")
         self.assertNotContains(response, "Private alpha page")
 
+    def test_get_listing_queryset_excludes_private_external_items_for_anonymous_users(
+        self,
+    ):
+        private_external = ExternalContentItem.objects.create(
+            source=self.source_one,
+            url="https://example.gov.uk/private-alpha-external",
+            title="Private alpha external",
+            hidden=False,
+            private=True,
+        )
+        ExternalContentItemTag.objects.create(
+            content_object=private_external,
+            tag=self.alpha_tag,
+        )
+        hidden_private_external = ExternalContentItem.objects.create(
+            source=self.source_one,
+            url="https://example.gov.uk/hidden-private-alpha-external",
+            title="Hidden private alpha external",
+            hidden=True,
+            private=True,
+        )
+        ExternalContentItemTag.objects.create(
+            content_object=hidden_private_external,
+            tag=self.alpha_tag,
+        )
+
+        items = self.listings_page.get_listing_queryset(selected_tag_id=self.alpha_tag.id)
+        urls = {item["url"] for item in items}
+
+        self.assertIn(self.external_alpha.url, urls)
+        self.assertNotIn(private_external.url, urls)
+        self.assertNotIn(hidden_private_external.url, urls)
+
     def test_tag_filter_page_response_includes_private_pages_for_logged_in_users(self):
         self.listings_page.enable_tag_filter = True
         self.listings_page.save_revision().publish()
@@ -242,3 +275,46 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertContains(response, "Alpha external")
         self.assertContains(response, "Alpha page")
         self.assertContains(response, "Private alpha page")
+
+    def test_get_listing_queryset_includes_private_external_items_for_authenticated_users(
+        self,
+    ):
+        private_external = ExternalContentItem.objects.create(
+            source=self.source_one,
+            url="https://example.gov.uk/private-alpha-external",
+            title="Private alpha external",
+            hidden=False,
+            private=True,
+        )
+        ExternalContentItemTag.objects.create(
+            content_object=private_external,
+            tag=self.alpha_tag,
+        )
+        hidden_private_external = ExternalContentItem.objects.create(
+            source=self.source_one,
+            url="https://example.gov.uk/hidden-private-alpha-external",
+            title="Hidden private alpha external",
+            hidden=True,
+            private=True,
+        )
+        ExternalContentItemTag.objects.create(
+            content_object=hidden_private_external,
+            tag=self.alpha_tag,
+        )
+
+        user = get_user_model().objects.create_user(
+            username="tag-listing-external-private-user",
+            password="password",
+        )
+        request = RequestFactory().get(self.listings_page.url)
+        request.user = user
+
+        items = self.listings_page.get_listing_queryset(
+            selected_tag_id=self.alpha_tag.id,
+            request=request,
+        )
+        urls = {item["url"] for item in items}
+
+        self.assertIn(self.external_alpha.url, urls)
+        self.assertIn(private_external.url, urls)
+        self.assertNotIn(hidden_private_external.url, urls)

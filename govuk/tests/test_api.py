@@ -2,6 +2,7 @@ from django.test import TestCase
 from wagtail.models import Site
 
 from govuk.models import (
+    ContentPage,
     ContentDiscoverySettings,
     ContentDiscoverySource,
     ExternalContentItem,
@@ -50,6 +51,129 @@ class ApiRootAndWagtailEndpointTests(TestCase):
         self.assertTrue(
             body["endpoints"]["items"].endswith("/api/externalcontent/items/")
         )
+
+
+class PagesApiSerializerTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.tag_alpha = GovukTag.objects.create(slug="alpha", name="Alpha")
+        self.tag_beta = GovukTag.objects.create(slug="beta", name="Beta")
+
+    def _page_item_by_slug(self, *, slug: str) -> dict:
+        response = self.client.get("/api/pages/", {"type": "govuk.ContentPage"})
+        self.assertEqual(response.status_code, 200)
+        items = response.json()["items"]
+        for item in items:
+            if item["meta"]["slug"] == slug:
+                return item
+        self.fail(f"Could not find page item with slug '{slug}'.")
+
+    def test_pages_api_uses_hero_title_hero_intro_and_tag_slugs(self):
+        page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Fallback page title",
+                slug="pages-api-hero-values",
+                hero_title="Hero page title",
+                hero_intro="<p>Hero page intro</p>",
+                search_description="Meta page summary",
+                body="",
+            )
+        )
+        page.tags.add(self.tag_beta, self.tag_alpha)
+        page.save_revision().publish()
+
+        page_item = self._page_item_by_slug(slug="pages-api-hero-values")
+
+        self.assertEqual(page_item["title"], "Hero page title")
+        self.assertEqual(page_item["description"], "<p>Hero page intro</p>")
+        self.assertEqual(page_item["tags"], ["alpha", "beta"])
+
+    def test_pages_api_uses_hero_fields_in_generic_listing(self):
+        page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Generic listing fallback title",
+                slug="pages-api-generic-listing-hero-values",
+                hero_title="Generic listing hero title",
+                hero_intro="<p>Generic listing hero intro</p>",
+                search_description="Generic listing meta summary",
+                body="",
+            )
+        )
+        page.save_revision().publish()
+
+        response = self.client.get("/api/pages/")
+        self.assertEqual(response.status_code, 200)
+        page_item = next(
+            (
+                item
+                for item in response.json()["items"]
+                if item["meta"]["slug"] == "pages-api-generic-listing-hero-values"
+            ),
+            None,
+        )
+        self.assertIsNotNone(page_item)
+        self.assertEqual(page_item["title"], "Generic listing hero title")
+        self.assertEqual(page_item["description"], "<p>Generic listing hero intro</p>")
+
+    def test_pages_api_description_falls_back_to_meta_then_null(self):
+        meta_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Meta description page",
+                slug="pages-api-meta-description",
+                hero_title="",
+                hero_intro="",
+                search_description="Meta-only summary",
+                body="",
+            )
+        )
+        meta_page.save_revision().publish()
+
+        empty_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="No description page",
+                slug="pages-api-no-description",
+                hero_title="",
+                hero_intro="",
+                search_description="",
+                body="",
+            )
+        )
+        empty_page.save_revision().publish()
+
+        meta_item = self._page_item_by_slug(slug="pages-api-meta-description")
+        empty_item = self._page_item_by_slug(slug="pages-api-no-description")
+
+        self.assertEqual(meta_item["title"], "Meta description page")
+        self.assertEqual(meta_item["description"], "Meta-only summary")
+        self.assertEqual(meta_item["tags"], [])
+        self.assertEqual(empty_item["description"], None)
+        self.assertEqual(empty_item["tags"], [])
+
+    def test_pages_api_merges_tags_with_settings_tagged_items(self):
+        page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Merged tag page",
+                slug="pages-api-merged-tags",
+                body="",
+            )
+        )
+        page.tags.add(self.tag_alpha)
+        page.tagged_items.create(tag=self.tag_beta)
+        page.save_revision().publish()
+
+        response = self.client.get("/api/pages/")
+        self.assertEqual(response.status_code, 200)
+        page_item = next(
+            (
+                item
+                for item in response.json()["items"]
+                if item["meta"]["slug"] == "pages-api-merged-tags"
+            ),
+            None,
+        )
+        self.assertIsNotNone(page_item)
+        self.assertEqual(page_item["tags"], ["alpha", "beta"])
 
 
 class ExternalContentApiTests(TestCase):

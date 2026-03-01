@@ -16,6 +16,7 @@ from django.utils import timezone
 from wagtail.models import Page, Site
 
 from govuk.models import ContentPage, ExternalContentItem, SectionPage
+from govuk.utils import normalised_text
 
 DEFAULT_PAGE_SIZE = 15
 SEARCH_CONFIG = "english"
@@ -153,7 +154,7 @@ class SearchBackend:
             tag_items = self._page_tag_items(specific_page)
             tag_labels = [tag["value"] for tag in tag_items]
             tag_keys = [tag["key"] for tag in tag_items]
-            tags_text = self._clean_text(" ".join(tag_labels))
+            tags_text = normalised_text(" ".join(tag_labels))
             page_rank = float(getattr(page, "rank", 0.0) or 0.0)
             score = page_rank + self._text_relevance(
                 query,
@@ -204,9 +205,9 @@ class SearchBackend:
             section_rank = float(getattr(section_page, "card_rank", 0.0) or 0.0)
 
             for card in self._section_cards(section_page):
-                title = self._clean_text(card.get("title"))
-                text = self._clean_text(card.get("text"))
-                link_text = self._clean_text(card.get("link_text"))
+                title = normalised_text(card.get("title"))
+                text = normalised_text(card.get("text"))
+                link_text = normalised_text(card.get("link_text"))
                 link_url = (card.get("link_url") or "").strip()
                 card_tag_text: list[str] = []
                 card_tag_items: list[dict[str, str]] = []
@@ -217,7 +218,7 @@ class SearchBackend:
                     tag_item = self._tag_item(tag)
                     if tag_item:
                         card_tag_items.append(tag_item)
-                tags_text = self._clean_text(" ".join(card_tag_text))
+                tags_text = normalised_text(" ".join(card_tag_text))
                 result_tag_items = self._unique_tag_items(
                     card_tag_items + self._page_tag_items(section_page)
                 )
@@ -287,7 +288,7 @@ class SearchBackend:
                 tag_items = self._page_tag_items(page)
                 tag_labels = [tag["value"] for tag in tag_items]
                 tag_keys = [tag["key"] for tag in tag_items]
-                tags_text = self._clean_text(" ".join(tag_labels))
+                tags_text = normalised_text(" ".join(tag_labels))
                 score = self._text_relevance(query, ((tags_text, TAG_RESULT_WEIGHT),))
                 if score <= 0:
                     continue
@@ -330,8 +331,8 @@ class SearchBackend:
                 queryset = self._search_hero_sqlite(queryset, query)
 
             for page in queryset:
-                hero_title = self._clean_text(getattr(page, "hero_title", ""))
-                hero_intro = self._clean_text(getattr(page, "hero_intro", ""))
+                hero_title = normalised_text(getattr(page, "hero_title", ""))
+                hero_intro = normalised_text(getattr(page, "hero_intro", ""))
                 tag_items = self._page_tag_items(page)
                 tag_labels = [tag["value"] for tag in tag_items]
                 tag_keys = [tag["key"] for tag in tag_items]
@@ -379,8 +380,8 @@ class SearchBackend:
             tag_items = self._page_tag_items(item)
             tag_labels = [tag["value"] for tag in tag_items]
             tag_keys = [tag["key"] for tag in tag_items]
-            tags_text = self._clean_text(" ".join(tag_labels))
-            source_name = self._clean_text(getattr(item.source, "name", ""))
+            tags_text = normalised_text(" ".join(tag_labels))
+            source_name = normalised_text(getattr(item.source, "name", ""))
             item_rank = float(getattr(item, "external_rank", 0.0) or 0.0)
             recency_boost = self._external_recency_boost(item)
             score = (
@@ -400,7 +401,7 @@ class SearchBackend:
             if score <= 0:
                 continue
 
-            description = self._clean_text(item.summary)
+            description = normalised_text(item.summary)
             if not description and source_name:
                 description = f"Source: {source_name}"
             if not description:
@@ -560,6 +561,8 @@ class SearchBackend:
         queryset = ExternalContentItem.objects.filter(hidden=False).select_related(
             "source", "source__settings__site"
         )
+        if filters.get("public", True):
+            queryset = queryset.filter(private=False)
         site = filters.get("site")
         if isinstance(site, Site):
             queryset = queryset.filter(
@@ -639,10 +642,10 @@ class SearchBackend:
         )
 
     def _page_search_description(self, page: Any) -> str:
-        hero_intro = self._clean_text(getattr(page, "hero_intro", ""))
+        hero_intro = normalised_text(getattr(page, "hero_intro", ""))
         if hero_intro:
             return hero_intro
-        return self._clean_text(getattr(page, "search_description", ""))
+        return normalised_text(getattr(page, "search_description", ""))
 
     def _external_content_last_updated(
         self, item: ExternalContentItem
@@ -678,43 +681,43 @@ class SearchBackend:
         if not tag:
             return ""
 
-        key = self._clean_text(getattr(tag, "slug", "") or getattr(tag, "key", ""))
-        value = self._clean_text(getattr(tag, "name", "") or getattr(tag, "value", ""))
+        key = normalised_text(getattr(tag, "slug", "") or getattr(tag, "key", ""))
+        value = normalised_text(getattr(tag, "name", "") or getattr(tag, "value", ""))
         if key or value:
             return " ".join(part for part in (key, value) if part)
 
-        return self._clean_text(tag)
+        return normalised_text(tag)
 
     def _tag_label(self, tag: Any) -> str:
         if not tag:
             return ""
 
-        value = self._clean_text(getattr(tag, "name", "") or getattr(tag, "value", ""))
+        value = normalised_text(getattr(tag, "name", "") or getattr(tag, "value", ""))
         if value:
             return value
 
-        key = self._clean_text(getattr(tag, "slug", "") or getattr(tag, "key", ""))
+        key = normalised_text(getattr(tag, "slug", "") or getattr(tag, "key", ""))
         if key:
             return key
 
-        return self._clean_text(tag)
+        return normalised_text(tag)
 
     def _tag_key(self, tag: Any) -> str:
         if not tag:
             return ""
 
-        key = self._clean_text(getattr(tag, "slug", "") or getattr(tag, "key", ""))
+        key = normalised_text(getattr(tag, "slug", "") or getattr(tag, "key", ""))
         if key:
             return key.lower()
 
-        value = self._clean_text(getattr(tag, "name", "") or getattr(tag, "value", ""))
+        value = normalised_text(getattr(tag, "name", "") or getattr(tag, "value", ""))
         if value:
             slugified_value = slugify(value)
             if slugified_value:
                 return slugified_value.lower()
             return value.lower()
 
-        text_value = self._clean_text(tag)
+        text_value = normalised_text(tag)
         slugified_text = slugify(text_value)
         if slugified_text:
             return slugified_text.lower()
@@ -739,7 +742,7 @@ class SearchBackend:
         unique_values: list[str] = []
         seen: set[str] = set()
         for value in values:
-            clean_value = self._clean_text(value)
+            clean_value = normalised_text(value)
             if not clean_value:
                 continue
             normalised = clean_value.lower()
@@ -753,8 +756,8 @@ class SearchBackend:
         unique_items: list[dict[str, str]] = []
         seen: set[str] = set()
         for item in items:
-            key = self._clean_text(item.get("key", "")).lower()
-            value = self._clean_text(item.get("value", ""))
+            key = normalised_text(item.get("key", "")).lower()
+            value = normalised_text(item.get("value", ""))
             if not key or not value:
                 continue
             if key in seen:
@@ -785,7 +788,7 @@ class SearchBackend:
 
         values: list[str] = []
         for tag in tags_manager.all():
-            value = self._clean_text(getattr(tag, "name", ""))
+            value = normalised_text(getattr(tag, "name", ""))
             if value:
                 values.append(value)
         if not values:
@@ -815,10 +818,10 @@ class SearchBackend:
         return unique_results
 
     def _normalised_tag_filter(self, value: Any) -> str:
-        return self._clean_text(value).lower()
+        return normalised_text(value).lower()
 
     def _normalised_source_filter(self, value: Any) -> str:
-        source_value = self._clean_text(value)
+        source_value = normalised_text(value)
         if not source_value:
             return ""
         if source_value == THIS_SITE_SOURCE_FILTER:
@@ -834,7 +837,7 @@ class SearchBackend:
     def _this_site_source_label(self, filters: dict[str, Any]) -> str:
         site = filters.get("site")
         if isinstance(site, Site):
-            site_name = self._clean_text(site.site_name)
+            site_name = normalised_text(site.site_name)
             if site_name:
                 return f"{site_name} (this site)"
         return "This site"
@@ -865,7 +868,7 @@ class SearchBackend:
         for result in source_results:
             if result.source_id is None:
                 continue
-            source_label = self._clean_text(result.source_name)
+            source_label = normalised_text(result.source_name)
             if not source_label:
                 continue
             sources_by_id[result.source_id] = source_label
@@ -889,7 +892,9 @@ class SearchBackend:
         filtered_results = results
         if selected_tag_key:
             filtered_results = [
-                result for result in filtered_results if selected_tag_key in result.tag_keys
+                result
+                for result in filtered_results
+                if selected_tag_key in result.tag_keys
             ]
         if selected_source_key == THIS_SITE_SOURCE_FILTER:
             filtered_results = [
@@ -928,7 +933,7 @@ class SearchBackend:
         score = 0.0
 
         for value, weight in weighted_values:
-            text = self._clean_text(value).lower()
+            text = normalised_text(value).lower()
             if not text:
                 continue
             if query_lower in text:
