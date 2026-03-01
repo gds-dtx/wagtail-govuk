@@ -1346,6 +1346,7 @@ class ContentDiscoverySource(Orderable):
         FieldPanel("disable_tls_verification"),
         FieldPanel("send_signed_bearer_jwt"),
         FieldPanel("sync_source"),
+        FieldPanel("consume_tags"),
         FieldPanel("default_tags"),
     ]
 
@@ -1512,28 +1513,37 @@ class ExternalContentItem(ClusterableModel):
         return self.title or self.url
 
     @classmethod
-    def upsert_from_url(cls, *, url: str, source=None, **defaults):
+    def upsert_from_url(cls, *, url: str, source=None, tags=None, **defaults):
         normalised_url = url.strip()
         item, _ = cls.objects.update_or_create(
             url=normalised_url,
             defaults={"source": source, **defaults},
         )
+        tags_to_apply = []
         if source:
-            source_tags = source.get_default_tags()
-            if source_tags:
-                existing_tag_ids = set(
-                    item.tagged_items.values_list("tag_id", flat=True)
+            tags_to_apply.extend(source.get_default_tags())
+        if tags:
+            tags_to_apply.extend(tags)
+        if tags_to_apply:
+            existing_tag_ids = set(item.tagged_items.values_list("tag_id", flat=True))
+            pending_tag_ids: set[int] = set()
+            rows_to_add = []
+            for tag in tags_to_apply:
+                tag_id = getattr(tag, "pk", None)
+                if (
+                    not tag_id
+                    or tag_id in existing_tag_ids
+                    or tag_id in pending_tag_ids
+                ):
+                    continue
+                rows_to_add.append(ExternalContentItemTag(content_object=item, tag=tag))
+                pending_tag_ids.add(tag_id)
+
+            if rows_to_add:
+                ExternalContentItemTag.objects.bulk_create(
+                    rows_to_add,
+                    ignore_conflicts=True,
                 )
-                rows_to_add = [
-                    ExternalContentItemTag(content_object=item, tag=source_tag)
-                    for source_tag in source_tags
-                    if source_tag.pk not in existing_tag_ids
-                ]
-                if rows_to_add:
-                    ExternalContentItemTag.objects.bulk_create(
-                        rows_to_add,
-                        ignore_conflicts=True,
-                    )
         return item
 
 
@@ -1934,6 +1944,16 @@ class TagListingsPage(Page):
         verbose_name="Enable source filter",
         help_text="Show a source filter control above the listings.",
     )
+    enable_source_display = models.BooleanField(
+        default=False,
+        verbose_name="Enable source display",
+        help_text="Show source labels on listing cards.",
+    )
+    enable_tag_display = models.BooleanField(
+        default=False,
+        verbose_name="Enable tag display",
+        help_text="Show tag labels on listing cards.",
+    )
     hide_last_updated = models.BooleanField(
         default=False,
         verbose_name="Hide last updated",
@@ -1976,8 +1996,10 @@ class TagListingsPage(Page):
     settings_panels = Page.settings_panels + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
-        FieldPanel("enable_tag_filter"),
         FieldPanel("enable_source_filter"),
+        FieldPanel("enable_source_display"),
+        FieldPanel("enable_tag_filter"),
+        FieldPanel("enable_tag_display"),
         FieldPanel("hide_last_updated"),
         FieldPanel("sort_order"),
         FieldPanel("enable_free_text_heading_navigation"),
@@ -1985,14 +2007,6 @@ class TagListingsPage(Page):
 
     def _configured_tag_ids(self) -> list[int]:
         return list(self.tags.values_list("id", flat=True))
-
-    def _effective_tag_ids(self, *, selected_tag_id: int | None = None) -> list[int]:
-        configured_tag_ids = self._configured_tag_ids()
-        if not configured_tag_ids:
-            return []
-        if selected_tag_id is not None and selected_tag_id in configured_tag_ids:
-            return [selected_tag_id]
-        return configured_tag_ids
 
     def _external_listing_queryset(self, *, tag_ids: list[int], request=None):
         if not tag_ids:
@@ -2002,9 +2016,9 @@ class TagListingsPage(Page):
         )
         if request is None or not request.user.is_authenticated:
             queryset = queryset.filter(private=False)
-        return queryset.distinct().select_related("source")
+        return queryset.distinct().select_related("source").prefetch_related("tags")
 
-    def _page_listing_items(self, *, tag_ids: list[int], request=None) -> list[dict]:
+    def _page_listing_querysets(self, *, tag_ids: list[int], request=None):
         if not tag_ids:
             return []
 
@@ -2017,21 +2031,38 @@ class TagListingsPage(Page):
             ContentPage.objects.live()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
+            .prefetch_related("tags")
             .distinct(),
             SectionPage.objects.live()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
+            .prefetch_related("tags")
             .distinct(),
             RolePage.objects.live()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
+            .prefetch_related("tags")
             .distinct(),
         ]
         if request is None or not request.user.is_authenticated:
             page_querysets = [queryset.public() for queryset in page_querysets]
+        return page_querysets
+
+    def _page_listing_items(
+        self,
+        *,
+        tag_ids: list[int],
+        selected_tag_id: int | None = None,
+        request=None,
+    ) -> list[dict]:
+        page_querysets = self._page_listing_querysets(tag_ids=tag_ids, request=request)
+        if not page_querysets:
+            return []
 
         page_items: list[dict] = []
         for queryset in page_querysets:
+            if selected_tag_id is not None:
+                queryset = queryset.filter(tags__id=selected_tag_id)
             for page in queryset:
                 page_items.append(
                     {
@@ -2040,6 +2071,7 @@ class TagListingsPage(Page):
                         "title": page.hero_title or page.title,
                         "summary": page.hero_intro or page.search_description or "",
                         "source": None,
+                        "tags": [tag.name for tag in page.tags.all()],
                         "metadata": {},
                         "updated_at": page.last_published_at or page.sort_updated,
                         "created_at": page.first_published_at,
@@ -2050,6 +2082,44 @@ class TagListingsPage(Page):
                 )
         return page_items
 
+    def _available_filter_tags(
+        self, *, tag_ids: list[int], request=None
+    ) -> list["GovukTag"]:
+        if not tag_ids:
+            return []
+
+        available_tag_ids: set[int] = set(tag_ids)
+
+        external_item_ids = list(
+            self._external_listing_queryset(
+                tag_ids=tag_ids, request=request
+            ).values_list("id", flat=True)
+        )
+        if external_item_ids:
+            available_tag_ids.update(
+                ExternalContentItemTag.objects.filter(
+                    content_object_id__in=external_item_ids
+                ).values_list("tag_id", flat=True)
+            )
+
+        page_querysets = self._page_listing_querysets(tag_ids=tag_ids, request=request)
+        for page_queryset, through_model in (
+            (page_querysets[0], ContentPageTag),
+            (page_querysets[1], SectionPageTag),
+            (page_querysets[2], RolePageTag),
+        ):
+            page_ids = list(page_queryset.values_list("id", flat=True))
+            if page_ids:
+                available_tag_ids.update(
+                    through_model.objects.filter(
+                        content_object_id__in=page_ids
+                    ).values_list("tag_id", flat=True)
+                )
+
+        return list(
+            GovukTag.objects.filter(id__in=available_tag_ids).order_by("name", "slug")
+        )
+
     def get_listing_queryset(
         self,
         *,
@@ -2059,14 +2129,17 @@ class TagListingsPage(Page):
     ) -> list[dict]:
         # Keep this as the single data-source entry point so external content and
         # tagged Wagtail pages remain filtered and sorted consistently.
-        tag_ids = self._effective_tag_ids(selected_tag_id=selected_tag_id)
-        if not tag_ids:
+        configured_tag_ids = self._configured_tag_ids()
+        if not configured_tag_ids:
             return []
 
         external_queryset = self._external_listing_queryset(
-            tag_ids=tag_ids,
+            tag_ids=configured_tag_ids,
             request=request,
-        ).annotate(
+        )
+        if selected_tag_id is not None:
+            external_queryset = external_queryset.filter(tags__id=selected_tag_id)
+        external_queryset = external_queryset.annotate(
             sort_updated=Coalesce(
                 "updated_at",
                 "created_at",
@@ -2090,6 +2163,7 @@ class TagListingsPage(Page):
                     "title": item.title,
                     "summary": item.summary,
                     "source": {"name": source_label} if source_label else None,
+                    "tags": [tag.name for tag in item.tags.all()],
                     "metadata": item.metadata or {},
                     "updated_at": item.updated_at,
                     "created_at": item.created_at,
@@ -2101,7 +2175,11 @@ class TagListingsPage(Page):
 
         if selected_source_id is None:
             listing_items.extend(
-                self._page_listing_items(tag_ids=tag_ids, request=request)
+                self._page_listing_items(
+                    tag_ids=configured_tag_ids,
+                    selected_tag_id=selected_tag_id,
+                    request=request,
+                )
             )
 
         if self.sort_order == self.SortOrder.ALPHABETICAL:
@@ -2124,7 +2202,11 @@ class TagListingsPage(Page):
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
 
-        available_tags = list(self.tags.all())
+        configured_tag_ids = self._configured_tag_ids()
+        available_tags = self._available_filter_tags(
+            tag_ids=configured_tag_ids,
+            request=request,
+        )
         selected_tag = None
         selected_tag_slug = ""
         if self.enable_tag_filter:
@@ -2138,11 +2220,14 @@ class TagListingsPage(Page):
         available_sources = []
         selected_source_id = ""
         selected_source_label = ""
-        selected_tag_id = selected_tag.id if selected_tag is not None else None
-        source_tag_ids = self._effective_tag_ids(selected_tag_id=selected_tag_id)
+        source_queryset = self._external_listing_queryset(
+            tag_ids=configured_tag_ids,
+            request=request,
+        )
+        if selected_tag is not None:
+            source_queryset = source_queryset.filter(tags__id=selected_tag.id)
         source_rows = (
-            self._external_listing_queryset(tag_ids=source_tag_ids, request=request)
-            .exclude(source__isnull=True)
+            source_queryset.exclude(source__isnull=True)
             .values("source_id", "source__name", "source__url")
             .distinct()
             .order_by("source__name", "source__url")

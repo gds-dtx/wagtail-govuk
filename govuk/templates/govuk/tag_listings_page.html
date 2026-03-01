@@ -89,10 +89,17 @@
                                         <a class="govuk-link govuk-link--no-underline govuk-link--no-visited-state"
                                            href="{{ item.url }}">{{ item.title|default:item.url }}</a>
                                     </h2>
-                                    {% if item.source and item.source.name %}
-                                        <p class="tags-container">
-                                            <strong class="govuk-tag">{{ item.source.name }}</strong>
-                                        </p>
+                                    {% if self.enable_source_display or self.enable_tag_display %}
+                                        {% if item.source or item.tags %}
+                                            <p class="govuk-body-s govuk-!-margin-top-2 govuk-!-margin-bottom-2 tags-container">
+                                                {% if self.enable_source_display and item.source and item.source.name %}
+                                                    <strong class="govuk-tag">{{ item.source.name }}</strong>
+                                                {% endif %}
+                                                {% if self.enable_tag_display and item.tags %}
+                                                    {% for tag in item.tags %}<strong class="govuk-tag govuk-tag--grey">{{ tag }}</strong>{% endfor %}
+                                                {% endif %}
+                                            </p>
+                                        {% endif %}
                                     {% endif %}
                                     {% if item.summary and item.summary != "None" %}
                                         <p class="govuk-body section-card__text">{{ item.summary|striptags|truncatechars:280 }}</p>

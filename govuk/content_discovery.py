@@ -23,6 +23,7 @@ from govuk.models import (
     ContentDiscoverySource,
     EdDSAKeySettings,
     ExternalContentItem,
+    GovukTag,
     JWTGenerationError,
 )
 
@@ -48,6 +49,7 @@ class FeedEntry:
     author_names: list[str]
     published_raw: str
     updated_raw: str
+    tags: list[str] = field(default_factory=list)
     metadata: dict[str, object] = field(default_factory=dict)
 
 
@@ -179,6 +181,11 @@ def _parse_atom_root(root: ElementTree.Element) -> list[FeedEntry]:
             author_name = _find_text(author_node, "name", namespace)
             if author_name:
                 author_names.append(author_name)
+        entry_tags: list[str] = []
+        for category_node in entry_node.findall(_qualified_name("category", namespace)):
+            category_term = (category_node.attrib.get("term") or "").strip()
+            if category_term:
+                entry_tags.append(category_term)
 
         entries.append(
             FeedEntry(
@@ -192,6 +199,7 @@ def _parse_atom_root(root: ElementTree.Element) -> list[FeedEntry]:
                 author_names=author_names,
                 published_raw=published_raw,
                 updated_raw=updated_raw,
+                tags=entry_tags,
             )
         )
 
@@ -241,6 +249,15 @@ def _parse_rss_root(root: ElementTree.Element) -> list[FeedEntry]:
         )
         if not updated_raw:
             updated_raw = published_raw
+        entry_tags: list[str] = []
+        for category_node in list(item_node):
+            if _local_name(category_node.tag) != "category":
+                continue
+            category_term = (
+                category_node.attrib.get("term") or _element_text(category_node)
+            ).strip()
+            if category_term:
+                entry_tags.append(category_term)
 
         entries.append(
             FeedEntry(
@@ -254,6 +271,7 @@ def _parse_rss_root(root: ElementTree.Element) -> list[FeedEntry]:
                 author_names=_find_all_text_local_name(item_node, "author", "creator"),
                 published_raw=published_raw,
                 updated_raw=updated_raw,
+                tags=entry_tags,
             )
         )
 
@@ -360,6 +378,7 @@ def parse_github_org_repositories(json_content: str | bytes) -> list[FeedEntry]:
                 author_names=author_names,
                 published_raw=created_raw,
                 updated_raw=updated_raw,
+                tags=topics,
                 metadata=github_metadata,
             )
         )
@@ -473,10 +492,14 @@ def sync_content_discovery_source(
             for key, value in metadata.items()
             if value not in (None, "", [], {})
         }
+        consumed_tags = (
+            _resolve_consumed_tags(entry.tags) if source.consume_tags else []
+        )
 
         ExternalContentItem.upsert_from_url(
             url=entry_url,
             source=source,
+            tags=consumed_tags,
             title=entry.title,
             summary=entry.summary,
             published_at=entry.created_at,
@@ -497,6 +520,55 @@ def sync_content_discovery_source(
         ).update(hidden=True)
 
     return result
+
+
+def _normalise_consumed_tag(raw_value: str) -> str:
+    return "-".join((raw_value or "").strip().lower().split())
+
+
+def _consumed_tag_name(slug: str) -> str:
+    return slug.replace("-", " ").strip().title()
+
+
+def _resolve_consumed_tags(raw_tags: list[str]) -> list[GovukTag]:
+    ordered_slugs: list[str] = []
+    seen_slugs: set[str] = set()
+    for raw_tag in raw_tags:
+        slug = _normalise_consumed_tag(str(raw_tag))
+        if not slug or slug in seen_slugs:
+            continue
+        seen_slugs.add(slug)
+        ordered_slugs.append(slug)
+
+    if not ordered_slugs:
+        return []
+
+    tags_by_slug = {tag.slug: tag for tag in GovukTag.objects.filter(slug__in=ordered_slugs)}
+    resolved_tags: list[GovukTag] = []
+    for slug in ordered_slugs:
+        tag = tags_by_slug.get(slug)
+        if tag is None:
+            try:
+                tag = GovukTag.objects.create(
+                    slug=slug,
+                    name=_consumed_tag_name(slug),
+                )
+            except Exception as exc:
+                # Keep sync resilient if a remote tag cannot be persisted.
+                existing_tag = GovukTag.objects.filter(slug=slug).first()
+                if existing_tag is not None:
+                    tag = existing_tag
+                else:
+                    logger.warning(
+                        "Skipping consumed tag '%s' due to tag creation error: %s",
+                        slug,
+                        exc,
+                    )
+                    continue
+            tags_by_slug[slug] = tag
+        resolved_tags.append(tag)
+
+    return resolved_tags
 
 
 def sync_content_discovery_sources(

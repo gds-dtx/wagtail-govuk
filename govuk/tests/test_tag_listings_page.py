@@ -149,6 +149,18 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertNotIn(self.gamma_page.url, urls)
         self.assertNotIn(self.private_alpha_page.url, urls)
 
+    def test_source_and_tag_display_are_enabled_by_default(self):
+        self.assertTrue(self.listings_page.enable_source_display)
+        self.assertTrue(self.listings_page.enable_tag_display)
+
+    def test_get_listing_queryset_includes_tags_for_external_and_internal_items(self):
+        items = self.listings_page.get_listing_queryset()
+        item_by_url = {item["url"]: item for item in items}
+
+        self.assertEqual(item_by_url[self.external_alpha.url]["tags"], ["Alpha"])
+        self.assertEqual(item_by_url[self.content_page_alpha.url]["tags"], ["Alpha"])
+        self.assertEqual(item_by_url[self.section_page_beta.url]["tags"], ["Beta"])
+
     def test_get_listing_queryset_applies_selected_tag_to_external_and_pages(self):
         items = self.listings_page.get_listing_queryset(selected_tag_id=self.beta_tag.id)
         urls = {item["url"] for item in items}
@@ -318,3 +330,51 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertIn(self.external_alpha.url, urls)
         self.assertIn(private_external.url, urls)
         self.assertNotIn(hidden_private_external.url, urls)
+
+    def test_available_filter_tags_include_tags_present_on_in_scope_items(self):
+        alpha_gamma_external = ExternalContentItem.objects.create(
+            source=self.source_one,
+            url="https://example.gov.uk/alpha-gamma",
+            title="Alpha gamma external",
+            hidden=False,
+        )
+        ExternalContentItemTag.objects.create(
+            content_object=alpha_gamma_external,
+            tag=self.alpha_tag,
+        )
+        ExternalContentItemTag.objects.create(
+            content_object=alpha_gamma_external,
+            tag=self.gamma_tag,
+        )
+
+        available_tags = self.listings_page._available_filter_tags(
+            tag_ids=self.listings_page._configured_tag_ids(),
+        )
+        available_slugs = {tag.slug for tag in available_tags}
+
+        self.assertIn(self.alpha_tag.slug, available_slugs)
+        self.assertIn(self.beta_tag.slug, available_slugs)
+        self.assertIn(self.gamma_tag.slug, available_slugs)
+
+    def test_get_listing_queryset_supports_filtering_by_non_configured_scoped_tag(self):
+        alpha_gamma_external = ExternalContentItem.objects.create(
+            source=self.source_one,
+            url="https://example.gov.uk/alpha-gamma",
+            title="Alpha gamma external",
+            hidden=False,
+        )
+        ExternalContentItemTag.objects.create(
+            content_object=alpha_gamma_external,
+            tag=self.alpha_tag,
+        )
+        ExternalContentItemTag.objects.create(
+            content_object=alpha_gamma_external,
+            tag=self.gamma_tag,
+        )
+
+        items = self.listings_page.get_listing_queryset(selected_tag_id=self.gamma_tag.id)
+        urls = {item["url"] for item in items}
+
+        self.assertIn(alpha_gamma_external.url, urls)
+        self.assertNotIn(self.external_gamma.url, urls)
+        self.assertNotIn(self.gamma_page.url, urls)
