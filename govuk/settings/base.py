@@ -19,7 +19,7 @@ from pathlib import Path
 
 from django.utils.csp import CSP
 
-VERSION = "7.3-054"
+VERSION = "7.3-055"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
