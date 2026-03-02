@@ -17,7 +17,9 @@ import re
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 from pathlib import Path
 
-VERSION = "7.3-054"
+from django.utils.csp import CSP
+
+VERSION = "7.3-055"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
@@ -237,6 +239,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "govuk.middleware.IncomingRequestDebugLoggingMiddleware",
+    "govuk.middleware.SecurityHeadersMiddleware",
+    "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "govuk.middleware.WellKnownCorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -255,6 +259,14 @@ MIDDLEWARE = [
 SESSION_ENGINE = (
     "django.contrib.sessions.backends.db"  # may in future want a separate cache db
 )
+# HSTS — only active when the connection is HTTPS (request.is_secure() is True).
+# Set HSTS_SECONDS to a non-zero value in production (31536000 = 1 year).
+# HSTS_INCLUDE_SUBDOMAINS and HSTS_PRELOAD should only be enabled once you are
+# confident every subdomain and hostname is served over HTTPS.
+SECURE_HSTS_SECONDS = int(os.getenv("HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _bool_env("HSTS_INCLUDE_SUBDOMAINS", default=False)
+SECURE_HSTS_PRELOAD = _bool_env("HSTS_PRELOAD", default=False)
+
 SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", default=False)
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "sessionid")
 SESSION_COOKIE_AGE = int(
@@ -440,6 +452,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "django.template.context_processors.csp",
                 "govuk.context_processors.navigation_and_breadcrumbs",
             ],
         },
@@ -530,6 +543,41 @@ WAGTAILSEARCH_BACKENDS = {
 # Base URL to use when referring to full URLs within the Wagtail admin backend -
 # e.g. in notification emails. Don't include '/admin' or a trailing slash
 # WAGTAILADMIN_BASE_URL = "http://example.com"
+
+# Content Security Policy (Django 6 built-in)
+# CSP.UNSAFE_INLINE is retained for Wagtail admin compatibility. In CSP3
+# browsers, the presence of CSP.NONCE in a directive causes 'unsafe-inline' to
+# be ignored for inline scripts — but because the nonce is generated lazily and
+# only appears in the header when {{ csp_nonce }} is evaluated in a template,
+# Wagtail admin pages (which don't use {{ csp_nonce }}) will have no nonce in
+# their CSP header and 'unsafe-inline' will continue to apply there.
+SECURE_CSP = {
+    "default-src": [CSP.SELF],
+    "script-src": [CSP.SELF, CSP.UNSAFE_INLINE, CSP.NONCE],
+    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
+    "img-src": [CSP.SELF, "data:", "blob:"],
+    "font-src": [CSP.SELF],
+    "connect-src": [CSP.SELF],
+    "frame-src": [CSP.NONE],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.SELF],
+    "form-action": [CSP.SELF],
+}
+
+# Report-only policy without 'unsafe-inline' to surface violations that would
+# occur under a stricter nonce-only policy, without actually blocking anything.
+SECURE_CSP_REPORT_ONLY = {
+    "default-src": [CSP.SELF],
+    "script-src": [CSP.SELF, CSP.NONCE],
+    "style-src": [CSP.SELF],
+    "img-src": [CSP.SELF, "data:", "blob:"],
+    "font-src": [CSP.SELF],
+    "connect-src": [CSP.SELF],
+    "frame-src": [CSP.NONE],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.SELF],
+    "form-action": [CSP.SELF],
+}
 
 # Allowed file extensions for documents in the document library.
 # This can be omitted to allow all files, but note that this may present a security risk

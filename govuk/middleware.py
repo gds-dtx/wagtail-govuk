@@ -31,6 +31,33 @@ class IncomingRequestDebugLoggingMiddleware:
         return self.get_response(request)
 
 
+class SecurityHeadersMiddleware:
+    """
+    Add security headers not covered by Django's built-in SecurityMiddleware:
+
+    - Permissions-Policy: restrict browser features this application does not use.
+    - Cache-Control: no-store on authentication-related paths so browsers and
+      shared proxies do not cache pages that may contain tokens or form state.
+    """
+
+    _PERMISSIONS_POLICY = (
+        "accelerometer=(), camera=(), display-capture=(),"
+        " geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
+    )
+
+    _NO_CACHE_PATHS = ("/login/", "/logout/", "/accounts/", "/oidc/")
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        response.headers.setdefault("Permissions-Policy", self._PERMISSIONS_POLICY)
+        if any(request.path.startswith(p) for p in self._NO_CACHE_PATHS):
+            response.headers.setdefault("Cache-Control", "no-store")
+        return response
+
+
 class WellKnownCorsMiddleware:
     """Allow cross-origin reads for well-known endpoints."""
 

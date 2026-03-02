@@ -40,7 +40,7 @@
     <body class="govuk-template__body app-body-class"
           data-test="My value"
           data-other="report:details">
-        <script>
+        <script nonce="{{ csp_nonce }}">
     document.body.className += ' js-enabled' + ('noModule' in HTMLScriptElement.prototype ? ' govuk-frontend-supported' : '');
         </script>
         <a href="#main-content"
@@ -299,7 +299,7 @@
             </div>
         </footer>
         <script type="module" src="{% static 'govuk-frontend-6.0.0.min.js' %}"></script>
-        <script type="module">
+        <script type="module" nonce="{{ csp_nonce }}">
     import {
       initAll
     } from '{% static 'govuk-frontend-6.0.0.min.js' %}'
