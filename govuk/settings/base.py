@@ -241,6 +241,7 @@ MIDDLEWARE = [
     "govuk.middleware.IncomingRequestDebugLoggingMiddleware",
     "govuk.middleware.SecurityHeadersMiddleware",
     "django.middleware.csp.ContentSecurityPolicyMiddleware",
+    "govuk.middleware.AdminCSPMiddleware",
     "govuk.middleware.WellKnownCorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
