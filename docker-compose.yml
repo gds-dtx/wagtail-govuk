@@ -1,0 +1,37 @@
+services:
+  db:
+    image: postgres:17-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: wagtail
+      POSTGRES_USER: wagtail
+      POSTGRES_PASSWORD: wagtail
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wagtail"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SETTINGS_MODULE: govuk.settings.dev
+      SECRET_KEY: change-me-in-production
+      DEBUG: "True"
+      DATABASE_HOST: db
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: wagtail
+      DATABASE_USER: wagtail
+      DATABASE_PASSWORD: wagtail
+      DOMAIN: localhost
+      BASE_URL: http://localhost:8000
+      SESSION_COOKIE_SECURE: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

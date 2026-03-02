@@ -237,6 +237,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "govuk.middleware.IncomingRequestDebugLoggingMiddleware",
+    "govuk.middleware.SecurityHeadersMiddleware",
+    "csp.middleware.CSPMiddleware",
     "govuk.middleware.WellKnownCorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -255,6 +257,14 @@ MIDDLEWARE = [
 SESSION_ENGINE = (
     "django.contrib.sessions.backends.db"  # may in future want a separate cache db
 )
+# HSTS — only active when the connection is HTTPS (request.is_secure() is True).
+# Set HSTS_SECONDS to a non-zero value in production (31536000 = 1 year).
+# HSTS_INCLUDE_SUBDOMAINS and HSTS_PRELOAD should only be enabled once you are
+# confident every subdomain and hostname is served over HTTPS.
+SECURE_HSTS_SECONDS = int(os.getenv("HSTS_SECONDS", "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _bool_env("HSTS_INCLUDE_SUBDOMAINS", default=False)
+SECURE_HSTS_PRELOAD = _bool_env("HSTS_PRELOAD", default=False)
+
 SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", default=False)
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "sessionid")
 SESSION_COOKIE_AGE = int(
@@ -530,6 +540,25 @@ WAGTAILSEARCH_BACKENDS = {
 # Base URL to use when referring to full URLs within the Wagtail admin backend -
 # e.g. in notification emails. Don't include '/admin' or a trailing slash
 # WAGTAILADMIN_BASE_URL = "http://example.com"
+
+# Content Security Policy (django-csp)
+# 'unsafe-inline' is required because Wagtail's admin uses inline scripts and
+# styles. A future improvement is to switch to nonce-based CSP once Wagtail
+# supports it, which would allow removing 'unsafe-inline' for script-src.
+CONTENT_SECURITY_POLICY = {
+    "DIRECTIVES": {
+        "default-src": ["'self'"],
+        "script-src": ["'self'", "'unsafe-inline'"],
+        "style-src": ["'self'", "'unsafe-inline'"],
+        "img-src": ["'self'", "data:", "blob:"],
+        "font-src": ["'self'"],
+        "connect-src": ["'self'"],
+        "frame-src": ["'none'"],
+        "object-src": ["'none'"],
+        "base-uri": ["'self'"],
+        "form-action": ["'self'"],
+    }
+}
 
 # Allowed file extensions for documents in the document library.
 # This can be omitted to allow all files, but note that this may present a security risk
