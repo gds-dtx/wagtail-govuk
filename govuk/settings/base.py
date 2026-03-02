@@ -17,6 +17,8 @@ import re
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 from pathlib import Path
 
+from django.utils.csp import CSP
+
 VERSION = "7.3-054"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -238,7 +240,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "govuk.middleware.IncomingRequestDebugLoggingMiddleware",
     "govuk.middleware.SecurityHeadersMiddleware",
-    "csp.middleware.CSPMiddleware",
+    "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "govuk.middleware.WellKnownCorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -450,6 +452,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "django.template.context_processors.csp",
                 "govuk.context_processors.navigation_and_breadcrumbs",
             ],
         },
@@ -541,23 +544,39 @@ WAGTAILSEARCH_BACKENDS = {
 # e.g. in notification emails. Don't include '/admin' or a trailing slash
 # WAGTAILADMIN_BASE_URL = "http://example.com"
 
-# Content Security Policy (django-csp)
-# 'unsafe-inline' is required because Wagtail's admin uses inline scripts and
-# styles. A future improvement is to switch to nonce-based CSP once Wagtail
-# supports it, which would allow removing 'unsafe-inline' for script-src.
-CONTENT_SECURITY_POLICY = {
-    "DIRECTIVES": {
-        "default-src": ["'self'"],
-        "script-src": ["'self'", "'unsafe-inline'"],
-        "style-src": ["'self'", "'unsafe-inline'"],
-        "img-src": ["'self'", "data:", "blob:"],
-        "font-src": ["'self'"],
-        "connect-src": ["'self'"],
-        "frame-src": ["'none'"],
-        "object-src": ["'none'"],
-        "base-uri": ["'self'"],
-        "form-action": ["'self'"],
-    }
+# Content Security Policy (Django 6 built-in)
+# CSP.UNSAFE_INLINE is retained for Wagtail admin compatibility. In CSP3
+# browsers, the presence of CSP.NONCE in a directive causes 'unsafe-inline' to
+# be ignored for inline scripts — but because the nonce is generated lazily and
+# only appears in the header when {{ csp_nonce }} is evaluated in a template,
+# Wagtail admin pages (which don't use {{ csp_nonce }}) will have no nonce in
+# their CSP header and 'unsafe-inline' will continue to apply there.
+SECURE_CSP = {
+    "default-src": [CSP.SELF],
+    "script-src": [CSP.SELF, CSP.UNSAFE_INLINE, CSP.NONCE],
+    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
+    "img-src": [CSP.SELF, "data:", "blob:"],
+    "font-src": [CSP.SELF],
+    "connect-src": [CSP.SELF],
+    "frame-src": [CSP.NONE],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.SELF],
+    "form-action": [CSP.SELF],
+}
+
+# Report-only policy without 'unsafe-inline' to surface violations that would
+# occur under a stricter nonce-only policy, without actually blocking anything.
+SECURE_CSP_REPORT_ONLY = {
+    "default-src": [CSP.SELF],
+    "script-src": [CSP.SELF, CSP.NONCE],
+    "style-src": [CSP.SELF],
+    "img-src": [CSP.SELF, "data:", "blob:"],
+    "font-src": [CSP.SELF],
+    "connect-src": [CSP.SELF],
+    "frame-src": [CSP.NONE],
+    "object-src": [CSP.NONE],
+    "base-uri": [CSP.SELF],
+    "form-action": [CSP.SELF],
 }
 
 # Allowed file extensions for documents in the document library.

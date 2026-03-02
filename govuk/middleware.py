@@ -41,7 +41,7 @@ class SecurityHeadersMiddleware:
     """
 
     _PERMISSIONS_POLICY = (
-        "accelerometer=(), ambient-light-sensor=(), camera=(), display-capture=(),"
+        "accelerometer=(), camera=(), display-capture=(),"
         " geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
     )
 

@@ -16,7 +16,6 @@ dependencies = [
   "django-allauth[socialaccount,openid]==65.14.3",
   "djangorestframework-simplejwt[crypto]>=5.4.0",
   "psycopg2-binary==2.9.11",
-  "django-csp>=4.0",
 ]
 
 [tool.setuptools]
