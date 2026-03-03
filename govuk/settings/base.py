@@ -19,7 +19,7 @@ from pathlib import Path
 
 from django.utils.csp import CSP
 
-VERSION = "7.3-056"
+VERSION = "7.3-057"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
@@ -242,6 +242,7 @@ MIDDLEWARE = [
     "govuk.middleware.SecurityHeadersMiddleware",
     "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "govuk.middleware.AdminCSPMiddleware",
+    "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "govuk.middleware.WellKnownCorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -267,6 +268,9 @@ SESSION_ENGINE = (
 SECURE_HSTS_SECONDS = int(os.getenv("HSTS_SECONDS", "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = _bool_env("HSTS_INCLUDE_SUBDOMAINS", default=False)
 SECURE_HSTS_PRELOAD = _bool_env("HSTS_PRELOAD", default=False)
+
+# Set value for X-Frame-Options header
+X_FRAME_OPTIONS = os.getenv("X_FRAME_OPTIONS", "SAMEORIGIN")
 
 SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", default=False)
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "sessionid")
