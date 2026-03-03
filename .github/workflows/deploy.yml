@@ -31,7 +31,8 @@ jobs:
             exit 1
           fi
           RELEASE=$(printf '%03d' "${{ github.run_number }}")
-          VERSION="${WAGTAIL_VERSION}-${RELEASE}"
+          SHA=$(git rev-parse --short=7 HEAD)
+          VERSION="${WAGTAIL_VERSION}-${RELEASE}-${SHA}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: 'Build Inventory Image'
