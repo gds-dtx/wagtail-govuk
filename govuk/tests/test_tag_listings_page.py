@@ -149,9 +149,9 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertNotIn(self.gamma_page.url, urls)
         self.assertNotIn(self.private_alpha_page.url, urls)
 
-    def test_source_and_tag_display_are_enabled_by_default(self):
-        self.assertTrue(self.listings_page.enable_source_display)
-        self.assertTrue(self.listings_page.enable_tag_display)
+    def test_source_and_tag_display_are_disabled_by_default(self):
+        self.assertFalse(self.listings_page.enable_source_display)
+        self.assertFalse(self.listings_page.enable_tag_display)
 
     def test_get_listing_queryset_includes_tags_for_external_and_internal_items(self):
         items = self.listings_page.get_listing_queryset()

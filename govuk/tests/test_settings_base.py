@@ -99,6 +99,24 @@ class BoolEnvTests(SimpleTestCase):
                 base_settings._bool_env("CONTENT_DISCOVERY_REQUEST_INFO_LOGGING")
             )
 
+    def test_bool_env_treats_false_like_values_as_false(self):
+        with patch.dict(
+            os.environ,
+            {"CONTENT_DISCOVERY_REQUEST_INFO_LOGGING": "false"},
+            clear=True,
+        ):
+            self.assertFalse(
+                base_settings._bool_env("CONTENT_DISCOVERY_REQUEST_INFO_LOGGING")
+            )
+
+    def test_bool_env_can_disable_default_true_values(self):
+        with patch.dict(
+            os.environ,
+            {"NOINDEX": "0"},
+            clear=True,
+        ):
+            self.assertFalse(base_settings._bool_env("NOINDEX", default=True))
+
 
 class LoggingSettingsTests(SimpleTestCase):
     def test_uses_logging_json_formatter_for_console_logs(self):
@@ -120,8 +138,8 @@ class ResolveLogLevelTests(SimpleTestCase):
     def test_returns_default_when_value_is_missing(self):
         self.assertEqual(base_settings._resolve_log_level(None), "INFO")
 
-    def test_maps_verbose_to_info(self):
-        self.assertEqual(base_settings._resolve_log_level("VERBOSE"), "INFO")
+    def test_maps_verbose_to_debug(self):
+        self.assertEqual(base_settings._resolve_log_level("VERBOSE"), "DEBUG")
 
     def test_returns_normalised_supported_level(self):
         self.assertEqual(base_settings._resolve_log_level("debug"), "DEBUG")

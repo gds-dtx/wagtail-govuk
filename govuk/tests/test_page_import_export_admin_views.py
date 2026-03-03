@@ -366,14 +366,24 @@ class PageImportExportAdminViewTests(TestCase):
         existing_role.refresh_from_db()
         imported_security_testing = GovukSkill.objects.get(slug="security-testing")
 
+        def _point_values(points):
+            values = []
+            for point in points:
+                raw = getattr(point, "value", point)
+                if isinstance(raw, dict):
+                    values.append(raw.get("value", ""))
+                else:
+                    values.append(raw)
+            return values
+
         self.assertEqual(existing_skill.title, "Forensics updated")
         self.assertEqual(existing_skill.body, "<p>Updated forensics summary.</p>")
         self.assertEqual(
-            [point["value"] for point in existing_skill.awareness_points],
+            _point_values(existing_skill.awareness_points),
             ["Understands evidence handling."],
         )
         self.assertEqual(
-            [point["value"] for point in imported_security_testing.working_points],
+            _point_values(imported_security_testing.working_points),
             ["Performs repeatable security tests."],
         )
 
