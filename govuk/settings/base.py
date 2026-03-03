@@ -570,21 +570,6 @@ SECURE_CSP_ADMIN["script-src"] = [*SECURE_CSP_ADMIN.get("script-src", []), CSP.U
 SECURE_CSP_ADMIN["style-src"] = [*SECURE_CSP_ADMIN.get("style-src", []), CSP.UNSAFE_INLINE]
 SECURE_CSP_ADMIN["connect-src"] = [*SECURE_CSP_ADMIN.get("connect-src", []), "https://releases.wagtail.org"]
 
-# Report-only policy without 'unsafe-inline' to surface violations that would
-# occur under a stricter nonce-only policy, without actually blocking anything.
-SECURE_CSP_REPORT_ONLY = {
-    "default-src": [CSP.SELF],
-    "script-src": [CSP.SELF, CSP.NONCE],
-    "style-src": [CSP.SELF],
-    "img-src": [CSP.SELF, "data:", "blob:"],
-    "font-src": [CSP.SELF],
-    "connect-src": [CSP.SELF],
-    "frame-src": [CSP.NONE],
-    "object-src": [CSP.NONE],
-    "base-uri": [CSP.SELF],
-    "form-action": [CSP.SELF],
-}
-
 # Allowed file extensions for documents in the document library.
 # This can be omitted to allow all files, but note that this may present a security risk
 # if untrusted users are allowed to upload files -
