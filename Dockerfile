@@ -11,8 +11,11 @@ EXPOSE 8000
 # 1. Force Python stdout and stderr streams to be unbuffered.
 # 2. Set PORT variable that is used by Gunicorn. This should match "EXPOSE"
 #    command.
+# 3. Accept VERSION build arg and expose it as an environment variable.
+ARG VERSION=dev
 ENV PYTHONUNBUFFERED=1 \
-    PORT=8000
+    PORT=8000 \
+    VERSION=${VERSION}
 
 # Install system packages required by Wagtail and Django.
 RUN apt-get update --yes --quiet && apt-get install --yes --quiet --no-install-recommends \
