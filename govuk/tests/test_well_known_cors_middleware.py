@@ -1,13 +1,13 @@
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase
 
-from govuk.middleware import WellKnownCorsMiddleware
+from govuk.middleware import CorsMiddleware
 
 
-class WellKnownCorsMiddlewareTests(SimpleTestCase):
+class CorsMiddlewareTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
-        self.middleware = WellKnownCorsMiddleware(lambda request: HttpResponse("ok"))
+        self.middleware = CorsMiddleware(lambda request: HttpResponse("ok"))
 
     def test_sets_wildcard_origin_header_for_well_known_paths(self):
         request = self.factory.get("/.well-known/jwks.json")
@@ -26,7 +26,7 @@ class WellKnownCorsMiddlewareTests(SimpleTestCase):
         self.assertNotIn("Access-Control-Allow-Origin", response)
 
     def test_preserves_existing_origin_header_for_well_known_paths(self):
-        middleware = WellKnownCorsMiddleware(
+        middleware = CorsMiddleware(
             lambda request: HttpResponse(
                 "ok",
                 headers={"Access-Control-Allow-Origin": "https://example.com"},

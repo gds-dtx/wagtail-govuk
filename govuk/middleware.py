@@ -74,16 +74,16 @@ class AdminCSPMiddleware:
         return response
 
 
-class WellKnownCorsMiddleware:
-    """Allow cross-origin reads for well-known endpoints."""
+class CorsMiddleware:
+    """Allow cross-origin reads for well-known and API endpoints."""
 
     def __init__(self, get_response):
         self.get_response = get_response
-        self.path_prefix = "/.well-known/"
+        self.path_prefixes = ["/.well-known/", "/api/"]
 
     def __call__(self, request):
         response = self.get_response(request)
-        if request.path.startswith(self.path_prefix):
+        if any(request.path.startswith(p) for p in self.path_prefixes):
             response.headers.setdefault("Access-Control-Allow-Origin", "*")
         return response
 
@@ -96,7 +96,10 @@ class AdminOIDCLoginMiddleware:
         self.admin_prefixes = ("/admin/", "/django-admin/")
 
     def __call__(self, request):
-        if request.path.startswith(self.admin_prefixes) and not request.user.is_authenticated:
+        if (
+            request.path.startswith(self.admin_prefixes)
+            and not request.user.is_authenticated
+        ):
             next_url = request.get_full_path()
             request.session[ADMIN_OIDC_NEXT_URL_KEY] = next_url
             return redirect(build_oidc_login_url(next_url))

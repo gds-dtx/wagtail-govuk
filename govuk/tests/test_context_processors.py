@@ -11,6 +11,7 @@ class NavigationAndBreadcrumbsContextTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
+    @override_settings(ADDITIONAL_CSS=[])
     @patch("govuk.context_processors.Site.find_for_request", return_value=None)
     def test_exposes_debug_version_and_settings_module(self, mocked_find_for_request):
         request = self.factory.get("/")
@@ -25,6 +26,7 @@ class NavigationAndBreadcrumbsContextTests(SimpleTestCase):
         self.assertEqual(context["app_debug"], settings.DEBUG)
         self.assertEqual(context["app_version"], settings.VERSION)
         self.assertEqual(context["additional_css"], [])
+        self.assertEqual(context["noindex"], settings.NOINDEX)
         self.assertEqual(context["django_settings_module"], "govuk.settings.local")
         self.assertEqual(context["service_navigation_items"], [])
         self.assertEqual(context["breadcrumbs"], [])
@@ -56,4 +58,14 @@ class NavigationAndBreadcrumbsContextTests(SimpleTestCase):
         self.assertEqual(
             context["additional_css"], ["/static/cyber.css", "/static/other.css"]
         )
+        mocked_find_for_request.assert_called_once_with(request)
+
+    @override_settings(NOINDEX=False)
+    @patch("govuk.context_processors.Site.find_for_request", return_value=None)
+    def test_exposes_noindex_setting_value(self, mocked_find_for_request):
+        request = self.factory.get("/")
+
+        context = navigation_and_breadcrumbs(request)
+
+        self.assertFalse(context["noindex"])
         mocked_find_for_request.assert_called_once_with(request)

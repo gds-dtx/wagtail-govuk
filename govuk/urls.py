@@ -29,6 +29,8 @@ from govuk.views import (
     search_view,
     wagtail_logout_redirect,
 )
+from govuk.view_robots import robots_txt_view
+from govuk.view_securitytxt import security_txt_view
 
 admin.autodiscover()
 admin.site.login = secure_admin_login(admin.site.login)
@@ -67,11 +69,13 @@ urlpatterns = [
     path("gen/custom.css", custom_css_view, name="govuk_custom_css"),
     path("gen/custom.js", custom_js_view, name="govuk_custom_js"),
     path(".well-known/jwks.json", jwks_view, name="govuk_jwks"),
+    path(".well-known/security.txt", security_txt_view, name="govuk_security_txt"),
     path("assets/<path:path>", assets_alias_view, name="assets_alias"),
     path("accounts/profile/", profile_view, name="account_profile"),
     path("accounts/logout/", account_logout_redirect, name="account_logout"),
     path("accounts/", include("allauth.urls")),
     path("search/", search_view, name="search"),
+    path("robots.txt", robots_txt_view, name="govuk_robots_txt"),
 ]
 
 if settings.FEATURE_FLAGS.get("FEEDBACK"):

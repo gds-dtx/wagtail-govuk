@@ -20,6 +20,7 @@ def navigation_and_breadcrumbs(request):
         "app_debug": settings.DEBUG,
         "app_version": getattr(settings, "VERSION", ""),
         "additional_css": additional_css,
+        "noindex": bool(getattr(settings, "NOINDEX", False)),
         "django_settings_module": os.getenv("DJANGO_SETTINGS_MODULE")
         or getattr(settings, "SETTINGS_MODULE", ""),
     }
