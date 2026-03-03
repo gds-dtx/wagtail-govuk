@@ -58,6 +58,25 @@ class SecurityHeadersMiddleware:
         return response
 
 
+class AdminCSPMiddleware:
+    """
+    Override the CSP for /admin pages to allow specific CSP exceptions,
+    which are used by the Wagtail admin user interface.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if request.path.startswith("/admin/"):
+            admin_csp = {**settings.SECURE_CSP}
+            admin_csp["img-src"] = [*admin_csp.get("img-src", []), "https://www.gravatar.com"]
+            admin_csp["connect-src"] = [*admin_csp.get("connect-src", []), "https://releases.wagtail.org"]
+            response._csp_config = admin_csp
+        return response
+
+
 class WellKnownCorsMiddleware:
     """Allow cross-origin reads for well-known endpoints."""
 

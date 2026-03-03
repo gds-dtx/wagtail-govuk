@@ -19,7 +19,7 @@ from pathlib import Path
 
 from django.utils.csp import CSP
 
-VERSION = "7.3-055"
+VERSION = "7.3-056"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
@@ -241,6 +241,7 @@ MIDDLEWARE = [
     "govuk.middleware.IncomingRequestDebugLoggingMiddleware",
     "govuk.middleware.SecurityHeadersMiddleware",
     "django.middleware.csp.ContentSecurityPolicyMiddleware",
+    "govuk.middleware.AdminCSPMiddleware",
     "govuk.middleware.WellKnownCorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
