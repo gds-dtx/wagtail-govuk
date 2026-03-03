@@ -70,10 +70,7 @@ class AdminCSPMiddleware:
     def __call__(self, request):
         response = self.get_response(request)
         if request.path.startswith("/admin/"):
-            admin_csp = {**settings.SECURE_CSP}
-            admin_csp["img-src"] = [*admin_csp.get("img-src", []), "https://www.gravatar.com"]
-            admin_csp["connect-src"] = [*admin_csp.get("connect-src", []), "https://releases.wagtail.org"]
-            response._csp_config = admin_csp
+            response._csp_config = settings.SECURE_CSP_ADMIN
         return response
 
 

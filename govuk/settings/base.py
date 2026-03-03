@@ -19,7 +19,7 @@ from pathlib import Path
 
 from django.utils.csp import CSP
 
-VERSION = "7.3-057"
+VERSION = "7.3-058"
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
 BASE_DIR = PROJECT_DIR.parent
@@ -550,16 +550,10 @@ WAGTAILSEARCH_BACKENDS = {
 # WAGTAILADMIN_BASE_URL = "http://example.com"
 
 # Content Security Policy (Django 6 built-in)
-# CSP.UNSAFE_INLINE is retained for Wagtail admin compatibility. In CSP3
-# browsers, the presence of CSP.NONCE in a directive causes 'unsafe-inline' to
-# be ignored for inline scripts — but because the nonce is generated lazily and
-# only appears in the header when {{ csp_nonce }} is evaluated in a template,
-# Wagtail admin pages (which don't use {{ csp_nonce }}) will have no nonce in
-# their CSP header and 'unsafe-inline' will continue to apply there.
 SECURE_CSP = {
     "default-src": [CSP.SELF],
-    "script-src": [CSP.SELF, CSP.UNSAFE_INLINE, CSP.NONCE],
-    "style-src": [CSP.SELF, CSP.UNSAFE_INLINE],
+    "script-src": [CSP.SELF, CSP.NONCE],
+    "style-src": [CSP.SELF],
     "img-src": [CSP.SELF, "data:", "blob:"],
     "font-src": [CSP.SELF],
     "connect-src": [CSP.SELF],
@@ -568,6 +562,13 @@ SECURE_CSP = {
     "base-uri": [CSP.SELF],
     "form-action": [CSP.SELF],
 }
+
+# Different CSP options used by AdminCSPMiddleware
+SECURE_CSP_ADMIN = {**SECURE_CSP}
+SECURE_CSP_ADMIN["img-src"] = [*SECURE_CSP_ADMIN.get("img-src", []), "www.gravatar.com"]
+SECURE_CSP_ADMIN["script-src"] = [*SECURE_CSP_ADMIN.get("script-src", []), CSP.UNSAFE_INLINE]
+SECURE_CSP_ADMIN["style-src"] = [*SECURE_CSP_ADMIN.get("style-src", []), CSP.UNSAFE_INLINE]
+SECURE_CSP_ADMIN["connect-src"] = [*SECURE_CSP_ADMIN.get("connect-src", []), "https://releases.wagtail.org"]
 
 # Report-only policy without 'unsafe-inline' to surface violations that would
 # occur under a stricter nonce-only policy, without actually blocking anything.
