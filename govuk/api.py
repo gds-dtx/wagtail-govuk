@@ -400,13 +400,17 @@ def api_root_view(request):
                     "health": _build_api_absolute_url(request, reverse("api_health")),
                 },
             }
-        )
+        ),
+        json_dumps_params={"indent": 2, "sort_keys": True},
     )
 
 
 def api_externalcontent_root_view(request):
     return JsonResponse(
-        _add_common_meta({"endpoints": _build_external_content_endpoint_links(request)})
+        _add_common_meta(
+            {"endpoints": _build_external_content_endpoint_links(request)}
+        ),
+        json_dumps_params={"indent": 2, "sort_keys": True},
     )
 
 
@@ -422,4 +426,5 @@ def api_health_view(request):
             }
         ),
         status=status,
+        json_dumps_params={"indent": 2, "sort_keys": True},
     )

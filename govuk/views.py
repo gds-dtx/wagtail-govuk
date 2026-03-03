@@ -73,7 +73,9 @@ def jwks_view(request):
     if not jwks_keys:
         raise Http404
 
-    return JsonResponse({"keys": jwks_keys})
+    return JsonResponse(
+        {"keys": jwks_keys}, json_dumps_params={"indent": 2, "sort_keys": True}
+    )
 
 
 @require_http_methods(["GET"])
