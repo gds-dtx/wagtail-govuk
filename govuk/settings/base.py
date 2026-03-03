@@ -565,7 +565,7 @@ SECURE_CSP = {
 
 # Different CSP options used by AdminCSPMiddleware
 SECURE_CSP_ADMIN = {**SECURE_CSP}
-SECURE_CSP_ADMIN["img-src"] = [*SECURE_CSP_ADMIN.get("img-src", []), "https://www.gravatar.com"]
+SECURE_CSP_ADMIN["img-src"] = [*SECURE_CSP_ADMIN.get("img-src", []), "www.gravatar.com"]
 SECURE_CSP_ADMIN["script-src"] = [*SECURE_CSP_ADMIN.get("script-src", []), CSP.UNSAFE_INLINE]
 SECURE_CSP_ADMIN["style-src"] = [*SECURE_CSP_ADMIN.get("style-src", []), CSP.UNSAFE_INLINE]
 SECURE_CSP_ADMIN["connect-src"] = [*SECURE_CSP_ADMIN.get("connect-src", []), "https://releases.wagtail.org"]
