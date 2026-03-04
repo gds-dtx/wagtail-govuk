@@ -25,7 +25,7 @@ jobs:
       - name: Read app version
         id: app_version
         run: |
-          WAGTAIL_VERSION="$(grep -E '"wagtail==[0-9]+\.[0-9]+"' pyproject.toml | sed -E 's/.*wagtail==([0-9]+\.[0-9]+).*/\1/')"
+          WAGTAIL_VERSION="$(grep -E '"wagtail==[0-9\.]+"' pyproject.toml | sed -E 's/.*wagtail==([0-9\.]+).*/\1/')"
           if [ -z "$WAGTAIL_VERSION" ]; then
             echo "Unable to determine Wagtail version from pyproject.toml" >&2
             exit 1
