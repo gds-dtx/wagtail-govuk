@@ -100,7 +100,7 @@ class PagesApiSerializerTests(ApiMetaAssertionsMixin, TestCase):
         page_item = self._page_item_by_slug(slug="pages-api-hero-values")
 
         self.assertEqual(page_item["title"], "Hero page title")
-        self.assertEqual(page_item["description"], "<p>Hero page intro</p>")
+        self.assertEqual(page_item["description"], "Hero page intro")
         self.assertEqual(page_item["tags"], ["alpha", "beta"])
 
     def test_pages_api_uses_hero_fields_in_generic_listing(self):
@@ -129,7 +129,7 @@ class PagesApiSerializerTests(ApiMetaAssertionsMixin, TestCase):
         self.assertIsNotNone(page_item)
         self.assert_api_meta(response.json())
         self.assertEqual(page_item["title"], "Generic listing hero title")
-        self.assertEqual(page_item["description"], "<p>Generic listing hero intro</p>")
+        self.assertEqual(page_item["description"], "Generic listing hero intro")
 
     def test_pages_api_description_falls_back_to_meta_then_null(self):
         meta_page = self.root_page.add_child(

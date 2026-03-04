@@ -1,0 +1,31 @@
+name: PR Tests
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  django-check-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run Django system checks
+        run: python manage.py check
+
+      - name: Run Django tests
+        run: python manage.py test

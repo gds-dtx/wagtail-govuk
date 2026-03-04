@@ -674,7 +674,9 @@ def pages_export_view(request):
 
     if not selected_page_ids and not selected_skill_ids and not selected_role_ids:
         if skills_feature_enabled:
-            messages.error(request, "Select at least one page, skill or role to export.")
+            messages.error(
+                request, "Select at least one page, skill or role to export."
+            )
         else:
             messages.error(request, "Select at least one page to export.")
         return redirect(redirect_url)
@@ -686,12 +688,18 @@ def pages_export_view(request):
         .order_by("path")
     )
     selected_skills = (
-        list(GovukSkill.objects.filter(pk__in=selected_skill_ids).order_by("title", "slug"))
+        list(
+            GovukSkill.objects.filter(pk__in=selected_skill_ids).order_by(
+                "title", "slug"
+            )
+        )
         if skills_feature_enabled
         else []
     )
     selected_roles = (
-        list(GovukRole.objects.filter(pk__in=selected_role_ids).order_by("title", "slug"))
+        list(
+            GovukRole.objects.filter(pk__in=selected_role_ids).order_by("title", "slug")
+        )
         if skills_feature_enabled
         else []
     )
@@ -1025,7 +1033,8 @@ def generate_eddsa_jwt_view(request, site_id: int):
             "alg": getattr(primary_key_pair, "algorithm", ""),
             "htm": (htm or "").strip().upper() or None,
             "htu": htu,
-        }
+        },
+        json_dumps_params={"indent": 2, "sort_keys": True},
     )
 
 

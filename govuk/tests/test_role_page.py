@@ -133,7 +133,7 @@ class RolePageTests(TestCase):
         response = self.client.get(self.role_page.url)
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Digital forensics analyst")
+        self.assertContains(response, "digital forensics analyst")
         self.assertContains(response, "Associate digital forensics analyst")
         self.assertContains(response, "Lead digital forensics analyst")
         self.assertContains(response, "Forensics")

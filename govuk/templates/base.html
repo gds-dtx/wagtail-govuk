@@ -35,6 +35,10 @@
         <link rel="manifest" href="{% static 'assets/manifest.json' %}">
         <meta property="og:image"
               content="{% static 'assets/images/govuk-opengraph-image.png' %}">
+        {% if noindex %}
+            <meta name="robots" content="noindex, nofollow" />
+            <meta name="googlebot" content="noindex, nofollow" />
+        {% endif %}
         {% block extra_head %}{% endblock %}
     </head>
     <body class="govuk-template__body app-body-class"

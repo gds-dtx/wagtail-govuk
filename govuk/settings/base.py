@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/{{ docs_version }}/ref/settings/
 import logging
 import os
 import re
+import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 from pathlib import Path
@@ -26,6 +27,7 @@ BASE_DIR = PROJECT_DIR.parent
 
 SITE_ID = 1
 logger = logging.getLogger(__name__)
+RUNNING_TESTS = "test" in sys.argv or "PYTEST_CURRENT_TEST" in os.environ
 
 
 def _parse_csv_env(var_name: str) -> list[str]:
@@ -35,11 +37,15 @@ def _parse_csv_env(var_name: str) -> list[str]:
     return []
 
 
-def _bool_env(var_name: str, default: bool = False) -> bool:
+def _bool_env(var_name: str, default: bool = None) -> bool:
     _var = os.getenv(var_name)
-    if _var and len(_var) > 0 and _var.lower()[0] in ["t", "y", "1"]:
-        return True
-    return default
+    if _var and len(_var) > 0:
+        _var = _var.lower()[0]
+        if _var in ["t", "y", "1"]:
+            return True
+        if _var in ["f", "n", "0"]:
+            return False
+    return False if default is None else default
 
 
 def _parse_admin_user_emails(raw_emails: str | None) -> list[str]:
@@ -69,6 +75,10 @@ def _resolve_simple_jwt_audience(
             return audiences[0]
         if audiences:
             return tuple(audiences)
+
+    legacy_audience = os.getenv("OIDC_TOKEN_AUDIENCE")
+    if legacy_audience:
+        return legacy_audience
 
     return default_audience
 
@@ -243,7 +253,7 @@ MIDDLEWARE = [
     "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "govuk.middleware.AdminCSPMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "govuk.middleware.WellKnownCorsMiddleware",
+    "govuk.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -272,6 +282,8 @@ SECURE_HSTS_PRELOAD = _bool_env("HSTS_PRELOAD", default=False)
 # Set value for X-Frame-Options header
 X_FRAME_OPTIONS = os.getenv("X_FRAME_OPTIONS", "SAMEORIGIN")
 
+NOINDEX = _bool_env("NOINDEX", default=True)
+
 SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", default=False)
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "sessionid")
 SESSION_COOKIE_AGE = int(
@@ -291,6 +303,10 @@ OIDC_JWKS_URL = os.getenv(
 )
 OIDC_END_SESSION_URL = os.getenv(
     "OIDC_END_SESSION_URL", "https://sso.service.security.gov.uk/sign-out"
+)
+SECURITYTXT_LOCATION = os.getenv(
+    "SECURITYTXT_LOCATION",
+    "https://vulnerability-reporting.service.security.gov.uk/.well-known/security.txt",
 )
 SIMPLE_JWT_AUDIENCE = _resolve_simple_jwt_audience(OIDC_CLIENT_ID)
 SOCIALACCOUNT_OPENID_CONNECT_URL_PREFIX = "oidc"
@@ -523,7 +539,11 @@ STORAGES = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
-        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if RUNNING_TESTS
+            else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        ),
     },
 }
 
@@ -566,9 +586,18 @@ SECURE_CSP = {
 # Different CSP options used by AdminCSPMiddleware
 SECURE_CSP_ADMIN = {**SECURE_CSP}
 SECURE_CSP_ADMIN["img-src"] = [*SECURE_CSP_ADMIN.get("img-src", []), "www.gravatar.com"]
-SECURE_CSP_ADMIN["script-src"] = [*SECURE_CSP_ADMIN.get("script-src", []), CSP.UNSAFE_INLINE]
-SECURE_CSP_ADMIN["style-src"] = [*SECURE_CSP_ADMIN.get("style-src", []), CSP.UNSAFE_INLINE]
-SECURE_CSP_ADMIN["connect-src"] = [*SECURE_CSP_ADMIN.get("connect-src", []), "https://releases.wagtail.org"]
+SECURE_CSP_ADMIN["script-src"] = [
+    *SECURE_CSP_ADMIN.get("script-src", []),
+    CSP.UNSAFE_INLINE,
+]
+SECURE_CSP_ADMIN["style-src"] = [
+    *SECURE_CSP_ADMIN.get("style-src", []),
+    CSP.UNSAFE_INLINE,
+]
+SECURE_CSP_ADMIN["connect-src"] = [
+    *SECURE_CSP_ADMIN.get("connect-src", []),
+    "https://releases.wagtail.org",
+]
 
 # Allowed file extensions for documents in the document library.
 # This can be omitted to allow all files, but note that this may present a security risk
