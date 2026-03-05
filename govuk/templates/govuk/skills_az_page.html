@@ -2,8 +2,13 @@
 {% load wagtailcore_tags %}
 {% block content %}
     <div class="govuk-width-container govuk-!-margin-bottom-6">
-        {% if self.body %}
-            <div class="govuk-body rich-text-content govuk-!-margin-bottom-4">{{ self.body|richtext }}</div>
+        {% if self.body or self.author or self.show_last_updated_date %}
+            <div class="govuk-!-margin-bottom-4">
+                {% include "includes/page_content_metadata.html" with page=self %}
+                {% if self.body %}
+                    <div class="govuk-body rich-text-content">{{ self.body|richtext }}</div>
+                {% endif %}
+            </div>
         {% endif %}
         {% if skill_sections %}
             <div class="govuk-accordion" data-module="govuk-accordion" id="skills-accordion">

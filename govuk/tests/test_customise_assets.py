@@ -72,3 +72,41 @@ class CustomiseAssetsTests(TestCase):
         self.assertEqual(custom_response.status_code, 200)
         self.assertContains(custom_response, "/gen/custom.css")
         self.assertContains(custom_response, "/gen/custom.js")
+
+    def test_base_template_uses_embedded_govuk_logo_by_default(self):
+        response = self.client.get(reverse("search"), data={"query": "service"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'aria-label="GOV.UK"')
+        self.assertNotContains(response, '/static/crown.svg')
+
+    def test_base_template_can_render_uk_government_crown_logo(self):
+        self.customise_settings.header_logo = "uk-government"
+        self.customise_settings.save()
+
+        response = self.client.get(reverse("search"), data={"query": "service"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'src="/static/crown.svg"')
+        self.assertContains(response, 'alt="UK Government"')
+        self.assertNotContains(response, 'aria-label="GOV.UK"')
+
+    def test_base_template_search_placeholder_hides_site_name_by_default(self):
+        self.site.site_name = "Example Service"
+        self.site.save(update_fields=["site_name"])
+
+        response = self.client.get(reverse("search"), data={"query": "service"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'placeholder="Search this site"')
+
+    def test_base_template_search_placeholder_can_show_site_name(self):
+        self.site.site_name = "Example Service"
+        self.site.save(update_fields=["site_name"])
+        self.customise_settings.show_site_name_in_search_box = True
+        self.customise_settings.save()
+
+        response = self.client.get(reverse("search"), data={"query": "service"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'placeholder="Search Example Service"')

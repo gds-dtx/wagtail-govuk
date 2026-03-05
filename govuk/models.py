@@ -33,7 +33,7 @@ from wagtail.admin.panels import FieldPanel, InlinePanel
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
 from wagtail.fields import RichTextField, StreamField
 from wagtail.images.blocks import ImageChooserBlock
-from wagtail.models import Orderable, Page
+from wagtail.models import Orderable, Page, Site
 from wagtail.snippets.blocks import SnippetChooserBlock
 
 
@@ -67,6 +67,7 @@ SKILL_LEVEL_ORDINALS = {
     "practitioner": "third",
     "expert": "fourth",
 }
+THIS_SITE_SOURCE_FILTER = "__this_site__"
 SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES = [
     "h2",
     "h3",
@@ -333,6 +334,19 @@ class FooterSettings(BaseSiteSetting):
 
 @register_setting(icon="cog")
 class CustomiseSettings(BaseSiteSetting):
+    header_logo = models.CharField(
+        max_length=20,
+        choices=[
+            ("govuk", "GOV.UK"),
+            ("uk-government", "UK Government"),
+        ],
+        default="govuk",
+        help_text="Select the header logo to display.",
+    )
+    show_site_name_in_search_box = models.BooleanField(
+        default=False,
+        help_text="Include the site name in the header search label and placeholder.",
+    )
     hero_background_color = models.CharField(
         max_length=7,
         blank=True,
@@ -359,6 +373,8 @@ class CustomiseSettings(BaseSiteSetting):
     )
 
     panels = [
+        FieldPanel("header_logo"),
+        FieldPanel("show_site_name_in_search_box"),
         FieldPanel("hero_background_color"),
         FieldPanel("hero_text_color"),
         FieldPanel("extra_css"),
@@ -1649,6 +1665,17 @@ class ContentPage(Page):
         blank=True,
         features=["bold", "italic", "link"],
     )
+    author = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Optional author name displayed above the main content.",
+    )
+    show_last_updated_date = models.BooleanField(
+        default=False,
+        verbose_name="Show last updated date",
+        help_text="Show the page last updated date above the main content.",
+    )
     body = RichTextField(blank=True)
     enable_free_text_heading_navigation = models.BooleanField(
         default=False,
@@ -1660,12 +1687,14 @@ class ContentPage(Page):
     content_panels = Page.content_panels + [
         FieldPanel("hero_title"),
         FieldPanel("hero_intro"),
+        FieldPanel("author"),
         FieldPanel("body"),
     ]
 
     settings_panels = Page.settings_panels + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("show_last_updated_date"),
         FieldPanel("enable_free_text_heading_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
@@ -1705,6 +1734,17 @@ class RolePage(Page):
         blank=True,
         features=["bold", "italic", "link"],
     )
+    author = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Optional author name displayed above the main content.",
+    )
+    show_last_updated_date = models.BooleanField(
+        default=False,
+        verbose_name="Show last updated date",
+        help_text="Show the page last updated date above the main content.",
+    )
     body = RichTextField(blank=True)
     enable_free_text_heading_navigation = models.BooleanField(
         default=False,
@@ -1730,6 +1770,7 @@ class RolePage(Page):
     content_panels = Page.content_panels + [
         FieldPanel("hero_title"),
         FieldPanel("hero_intro"),
+        FieldPanel("author"),
         FieldPanel("body"),
         FieldPanel("selected_roles"),
     ]
@@ -1737,6 +1778,7 @@ class RolePage(Page):
     settings_panels = Page.settings_panels + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("show_last_updated_date"),
         FieldPanel("enable_free_text_heading_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
@@ -1850,6 +1892,17 @@ class SkillsAZPage(Page):
         blank=True,
         features=["bold", "italic", "link"],
     )
+    author = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Optional author name displayed above the main content.",
+    )
+    show_last_updated_date = models.BooleanField(
+        default=False,
+        verbose_name="Show last updated date",
+        help_text="Show the page last updated date above the main content.",
+    )
     body = RichTextField(blank=True)
     enable_free_text_heading_navigation = models.BooleanField(
         default=False,
@@ -1860,12 +1913,14 @@ class SkillsAZPage(Page):
     content_panels = Page.content_panels + [
         FieldPanel("hero_title"),
         FieldPanel("hero_intro"),
+        FieldPanel("author"),
         FieldPanel("body"),
     ]
 
     settings_panels = Page.settings_panels + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("show_last_updated_date"),
         FieldPanel("enable_free_text_heading_navigation"),
     ]
 
@@ -1928,6 +1983,17 @@ class TagListingsPage(Page):
         blank=True,
         features=["bold", "italic", "link"],
     )
+    author = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Optional author name displayed above the main content.",
+    )
+    show_last_updated_date = models.BooleanField(
+        default=False,
+        verbose_name="Show last updated date",
+        help_text="Show the page last updated date above the main content.",
+    )
     free_text = RichTextField(blank=True)
     enable_free_text_heading_navigation = models.BooleanField(
         default=False,
@@ -1953,6 +2019,14 @@ class TagListingsPage(Page):
         default=False,
         verbose_name="Enable tag display",
         help_text="Show tag labels on listing cards.",
+    )
+    show_private_cards_to_non_authenticated_users = models.BooleanField(
+        default=False,
+        verbose_name="Show private cards to non-authenticated users",
+        help_text=(
+            "Show cards for private pages to users who are not signed in. "
+            "Opening those pages still requires signing in."
+        ),
     )
     hide_last_updated = models.BooleanField(
         default=False,
@@ -1989,6 +2063,7 @@ class TagListingsPage(Page):
     content_panels = Page.content_panels + [
         FieldPanel("hero_title"),
         FieldPanel("hero_intro"),
+        FieldPanel("author"),
         InlinePanel("tagged_items", heading="Tags to list", label="Tag", min_num=1),
         FieldPanel("free_text"),
     ]
@@ -1996,10 +2071,12 @@ class TagListingsPage(Page):
     settings_panels = Page.settings_panels + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("show_last_updated_date"),
         FieldPanel("enable_source_filter"),
         FieldPanel("enable_source_display"),
         FieldPanel("enable_tag_filter"),
         FieldPanel("enable_tag_display"),
+        FieldPanel("show_private_cards_to_non_authenticated_users"),
         FieldPanel("hide_last_updated"),
         FieldPanel("sort_order"),
         FieldPanel("enable_free_text_heading_navigation"),
@@ -2007,6 +2084,17 @@ class TagListingsPage(Page):
 
     def _configured_tag_ids(self) -> list[int]:
         return list(self.tags.values_list("id", flat=True))
+
+    def _this_site_source_labels(self, *, request=None) -> tuple[str, str]:
+        site_name = ""
+        if request is not None:
+            site = Site.find_for_request(request)
+            if isinstance(site, Site):
+                site_name = (site.site_name or "").strip()
+
+        display_label = site_name or "This site"
+        filter_label = f"{site_name} (this site)" if site_name else "This site"
+        return display_label, filter_label
 
     def _external_listing_queryset(self, *, tag_ids: list[int], request=None):
         if not tag_ids:
@@ -2031,20 +2119,24 @@ class TagListingsPage(Page):
             ContentPage.objects.live()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
-            .prefetch_related("tags")
+            .prefetch_related("tags", "view_restrictions")
             .distinct(),
             SectionPage.objects.live()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
-            .prefetch_related("tags")
+            .prefetch_related("tags", "view_restrictions")
             .distinct(),
             RolePage.objects.live()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
-            .prefetch_related("tags")
+            .prefetch_related("tags", "view_restrictions")
             .distinct(),
         ]
-        if request is None or not request.user.is_authenticated:
+        is_authenticated = bool(request and request.user.is_authenticated)
+        if (
+            not is_authenticated
+            and not self.show_private_cards_to_non_authenticated_users
+        ):
             page_querysets = [queryset.public() for queryset in page_querysets]
         return page_querysets
 
@@ -2054,6 +2146,7 @@ class TagListingsPage(Page):
         tag_ids: list[int],
         selected_tag_id: int | None = None,
         request=None,
+        this_site_source_label: str = "",
     ) -> list[dict]:
         page_querysets = self._page_listing_querysets(tag_ids=tag_ids, request=request)
         if not page_querysets:
@@ -2070,8 +2163,13 @@ class TagListingsPage(Page):
                         "url": page.url or page.url_path,
                         "title": page.hero_title or page.title,
                         "summary": page.hero_intro or page.search_description or "",
-                        "source": None,
+                        "source": (
+                            {"name": this_site_source_label}
+                            if this_site_source_label
+                            else None
+                        ),
                         "tags": [tag.name for tag in page.tags.all()],
+                        "private": bool(page.view_restrictions.all()),
                         "metadata": {},
                         "updated_at": page.last_published_at or page.sort_updated,
                         "created_at": page.first_published_at,
@@ -2124,7 +2222,7 @@ class TagListingsPage(Page):
         self,
         *,
         selected_tag_id: int | None = None,
-        selected_source_id: int | None = None,
+        selected_source_id: int | str | None = None,
         request=None,
     ) -> list[dict]:
         # Keep this as the single data-source entry point so external content and
@@ -2132,6 +2230,17 @@ class TagListingsPage(Page):
         configured_tag_ids = self._configured_tag_ids()
         if not configured_tag_ids:
             return []
+
+        selected_source_key = selected_source_id
+        if isinstance(selected_source_key, str):
+            selected_source_key = selected_source_key.strip()
+            if not selected_source_key:
+                selected_source_key = None
+            elif selected_source_key != THIS_SITE_SOURCE_FILTER:
+                if selected_source_key.isdigit():
+                    selected_source_key = int(selected_source_key)
+                else:
+                    selected_source_key = None
 
         external_queryset = self._external_listing_queryset(
             tag_ids=configured_tag_ids,
@@ -2148,8 +2257,10 @@ class TagListingsPage(Page):
                 "first_seen_at",
             )
         )
-        if selected_source_id is not None:
-            external_queryset = external_queryset.filter(source_id=selected_source_id)
+        if selected_source_key == THIS_SITE_SOURCE_FILTER:
+            external_queryset = external_queryset.none()
+        elif isinstance(selected_source_key, int):
+            external_queryset = external_queryset.filter(source_id=selected_source_key)
 
         listing_items: list[dict] = []
         for item in external_queryset:
@@ -2164,6 +2275,7 @@ class TagListingsPage(Page):
                     "summary": item.summary,
                     "source": {"name": source_label} if source_label else None,
                     "tags": [tag.name for tag in item.tags.all()],
+                    "private": item.private,
                     "metadata": item.metadata or {},
                     "updated_at": item.updated_at,
                     "created_at": item.created_at,
@@ -2173,12 +2285,14 @@ class TagListingsPage(Page):
                 }
             )
 
-        if selected_source_id is None:
+        this_site_source_label, _ = self._this_site_source_labels(request=request)
+        if selected_source_key in {None, THIS_SITE_SOURCE_FILTER}:
             listing_items.extend(
                 self._page_listing_items(
                     tag_ids=configured_tag_ids,
                     selected_tag_id=selected_tag_id,
                     request=request,
+                    this_site_source_label=this_site_source_label,
                 )
             )
 
@@ -2220,12 +2334,20 @@ class TagListingsPage(Page):
         available_sources = []
         selected_source_id = ""
         selected_source_label = ""
+        selected_tag_id = selected_tag.id if selected_tag is not None else None
+        _, this_site_filter_label = self._this_site_source_labels(request=request)
+        available_sources.append(
+            {
+                "id": THIS_SITE_SOURCE_FILTER,
+                "label": this_site_filter_label,
+            }
+        )
         source_queryset = self._external_listing_queryset(
             tag_ids=configured_tag_ids,
             request=request,
         )
-        if selected_tag is not None:
-            source_queryset = source_queryset.filter(tags__id=selected_tag.id)
+        if selected_tag_id is not None:
+            source_queryset = source_queryset.filter(tags__id=selected_tag_id)
         source_rows = (
             source_queryset.exclude(source__isnull=True)
             .values("source_id", "source__name", "source__url")
@@ -2263,10 +2385,14 @@ class TagListingsPage(Page):
             else:
                 selected_source_id = ""
 
-        selected_source_pk = int(selected_source_id) if selected_source_id else None
+        selected_source_key: int | str | None = None
+        if selected_source_id == THIS_SITE_SOURCE_FILTER:
+            selected_source_key = THIS_SITE_SOURCE_FILTER
+        elif selected_source_id:
+            selected_source_key = int(selected_source_id)
         listing_items = self.get_listing_queryset(
-            selected_tag_id=selected_tag.id if selected_tag is not None else None,
-            selected_source_id=selected_source_pk,
+            selected_tag_id=selected_tag_id,
+            selected_source_id=selected_source_key,
             request=request,
         )
 
@@ -2299,6 +2425,17 @@ class SectionPage(Page):
     hero_intro = RichTextField(
         blank=True,
         features=["bold", "italic", "link"],
+    )
+    author = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text="Optional author name displayed above the main content.",
+    )
+    show_last_updated_date = models.BooleanField(
+        default=False,
+        verbose_name="Show last updated date",
+        help_text="Show the page last updated date above the main content.",
     )
     tags = ClusterTaggableManager(through="govuk.SectionPageTag", blank=True)
     rows = StreamField(
@@ -2431,6 +2568,7 @@ class SectionPage(Page):
     content_panels = Page.content_panels + [
         FieldPanel("hero_title"),
         FieldPanel("hero_intro"),
+        FieldPanel("author"),
         FieldPanel("rows"),
         FieldPanel("free_text"),
     ]
@@ -2438,6 +2576,7 @@ class SectionPage(Page):
     settings_panels = Page.settings_panels + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("show_last_updated_date"),
         FieldPanel("enable_free_text_heading_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]

@@ -171,6 +171,7 @@ class SearchBackendDescriptionFallbackTests(TestCase):
             instance=ContentPage(
                 title="Hero intro precedence page",
                 slug="hero-intro-precedence-page",
+                hero_title="Hero intro display title",
                 hero_intro="<p>Hero intro summary</p>",
                 search_description="Meta summary",
                 body="",
@@ -181,6 +182,7 @@ class SearchBackendDescriptionFallbackTests(TestCase):
         result = self._result_for_url("hero intro precedence", page.url)
 
         self.assertIsNotNone(result)
+        self.assertEqual(result.title, "Hero intro display title")
         self.assertEqual(result.search_description, "Hero intro summary")
 
     def test_page_results_fall_back_to_meta_description_when_hero_is_blank(self):
@@ -206,6 +208,7 @@ class SearchBackendDescriptionFallbackTests(TestCase):
             instance=SectionPage(
                 title="Tagged hero section",
                 slug="tagged-hero-section",
+                hero_title="Tagged hero display title",
                 hero_intro="<p>Section hero summary</p>",
                 search_description="Section meta summary",
                 rows=[],
@@ -218,6 +221,7 @@ class SearchBackendDescriptionFallbackTests(TestCase):
         result = self._result_for_url("backend hero tag", page.url)
 
         self.assertIsNotNone(result)
+        self.assertEqual(result.title, "Tagged hero display title")
         self.assertEqual(result.search_description, "Section hero summary")
 
     def test_tag_listings_page_results_prefer_hero_intro_over_search_description(self):
@@ -233,6 +237,7 @@ class SearchBackendDescriptionFallbackTests(TestCase):
             instance=TagListingsPage(
                 title="Tag listings hero precedence",
                 slug="tag-listings-hero-precedence",
+                hero_title="Tag listings hero display title",
                 hero_intro="<p>Tag listings hero summary</p>",
                 search_description="Tag listings meta summary",
                 free_text="",
@@ -243,4 +248,5 @@ class SearchBackendDescriptionFallbackTests(TestCase):
         result = self._result_for_url("tag listings hero precedence", page.url)
 
         self.assertIsNotNone(result)
+        self.assertEqual(result.title, "Tag listings hero display title")
         self.assertEqual(result.search_description, "Tag listings hero summary")

@@ -11,6 +11,7 @@ from govuk.models import (
     GovukTag,
     RolePage,
     SectionPage,
+    THIS_SITE_SOURCE_FILTER,
     TagListingsPage,
 )
 
@@ -29,6 +30,10 @@ class TagListingsPageQuerysetTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
+        self.this_site_source_filter_label = (
+            f"{self.site.site_name} (this site)" if self.site.site_name else "This site"
+        )
+        self.this_site_source_display_label = self.site.site_name or "This site"
 
         self.alpha_tag = GovukTag.objects.create(slug="alpha", name="Alpha")
         self.beta_tag = GovukTag.objects.create(slug="beta", name="Beta")
@@ -185,6 +190,18 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertEqual(urls, {self.external_alpha.url})
         self.assertTrue(all(item["source"] is not None for item in items))
 
+    def test_get_listing_queryset_applies_this_site_source_to_internal_only(self):
+        items = self.listings_page.get_listing_queryset(
+            selected_source_id=THIS_SITE_SOURCE_FILTER
+        )
+        urls = {item["url"] for item in items}
+
+        self.assertIn(self.content_page_alpha.url, urls)
+        self.assertIn(self.section_page_beta.url, urls)
+        self.assertIn(self.role_page_alpha.url, urls)
+        self.assertNotIn(self.external_alpha.url, urls)
+        self.assertNotIn(self.external_beta.url, urls)
+
     def test_get_listing_queryset_can_sort_alphabetically(self):
         self.listings_page.sort_order = TagListingsPage.SortOrder.ALPHABETICAL
         self.listings_page.save_revision().publish()
@@ -226,6 +243,46 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "Last updated:")
 
+    def test_tag_listings_source_filter_includes_this_site_option(self):
+        self.listings_page.enable_source_filter = True
+        self.listings_page.save_revision().publish()
+
+        response = self.client.get(self.listings_page.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.this_site_source_filter_label)
+        self.assertContains(response, 'value="__this_site__"')
+
+    def test_tag_listings_this_site_source_filter_excludes_external_results(self):
+        self.listings_page.enable_source_filter = True
+        self.listings_page.save_revision().publish()
+
+        response = self.client.get(
+            self.listings_page.url,
+            {"source": THIS_SITE_SOURCE_FILTER},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Alpha page")
+        self.assertContains(response, "Beta section")
+        self.assertContains(response, "Alpha role page")
+        self.assertNotContains(response, "Alpha external")
+        self.assertNotContains(response, "Beta external")
+
+    def test_tag_listings_show_this_site_source_tag_for_internal_results(self):
+        self.listings_page.enable_source_display = True
+        self.listings_page.save_revision().publish()
+
+        response = self.client.get(self.listings_page.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'<strong class="govuk-tag">{self.this_site_source_display_label}</strong>',
+            count=3,
+            html=True,
+        )
+
     def test_tag_filter_page_response_excludes_private_pages_for_anonymous_users(self):
         self.listings_page.enable_tag_filter = True
         self.listings_page.save_revision().publish()
@@ -237,6 +294,39 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertContains(response, "Alpha page")
         self.assertContains(response, "Alpha role page")
         self.assertNotContains(response, "Private alpha page")
+
+    def test_get_listing_queryset_includes_private_pages_for_anonymous_users_when_enabled(
+        self,
+    ):
+        self.listings_page.show_private_cards_to_non_authenticated_users = True
+        self.listings_page.save_revision().publish()
+        self.listings_page = self.listings_page.specific
+
+        items = self.listings_page.get_listing_queryset(selected_tag_id=self.alpha_tag.id)
+        urls = {item["url"] for item in items}
+
+        self.assertIn(self.content_page_alpha.url, urls)
+        self.assertIn(self.private_alpha_page.url, urls)
+        self.assertIn(self.role_page_alpha.url, urls)
+
+    def test_tag_filter_page_response_includes_private_pages_for_anonymous_users_when_enabled(
+        self,
+    ):
+        self.listings_page.enable_tag_filter = True
+        self.listings_page.show_private_cards_to_non_authenticated_users = True
+        self.listings_page.save_revision().publish()
+        self.listings_page = self.listings_page.specific
+
+        response = self.client.get(self.listings_page.url, {"tag": self.alpha_tag.slug})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Private alpha page")
+        self.assertContains(
+            response,
+            '<strong class="govuk-tag govuk-tag--grey">Private</strong>',
+            count=1,
+            html=True,
+        )
 
     def test_get_listing_queryset_excludes_private_external_items_for_anonymous_users(
         self,
@@ -330,6 +420,62 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertIn(self.external_alpha.url, urls)
         self.assertIn(private_external.url, urls)
         self.assertNotIn(hidden_private_external.url, urls)
+
+        item_by_url = {item["url"]: item for item in items}
+        self.assertFalse(item_by_url[self.external_alpha.url]["private"])
+        self.assertTrue(item_by_url[private_external.url]["private"])
+
+    def test_get_listing_queryset_marks_private_internal_pages_for_authenticated_users(
+        self,
+    ):
+        user = get_user_model().objects.create_user(
+            username="tag-listing-page-private-user",
+            password="password",
+        )
+        request = RequestFactory().get(self.listings_page.url)
+        request.user = user
+
+        items = self.listings_page.get_listing_queryset(
+            selected_tag_id=self.alpha_tag.id,
+            request=request,
+        )
+        item_by_url = {item["url"]: item for item in items}
+
+        self.assertFalse(item_by_url[self.content_page_alpha.url]["private"])
+        self.assertTrue(item_by_url[self.private_alpha_page.url]["private"])
+
+    def test_tag_filter_page_response_shows_private_badges(self):
+        self.listings_page.enable_tag_filter = True
+        self.listings_page.enable_tag_display = True
+        self.listings_page.save_revision().publish()
+
+        private_external = ExternalContentItem.objects.create(
+            source=self.source_one,
+            url="https://example.gov.uk/private-alpha-external",
+            title="Private alpha external",
+            hidden=False,
+            private=True,
+        )
+        ExternalContentItemTag.objects.create(
+            content_object=private_external,
+            tag=self.alpha_tag,
+        )
+
+        user = get_user_model().objects.create_user(
+            username="tag-listing-private-badge-user",
+            password="password",
+        )
+        self.client.force_login(user)
+
+        response = self.client.get(self.listings_page.url, {"tag": self.alpha_tag.slug})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            '<strong class="govuk-tag govuk-tag--grey">Private</strong>',
+            count=2,
+            html=True,
+        )
 
     def test_available_filter_tags_include_tags_present_on_in_scope_items(self):
         alpha_gamma_external = ExternalContentItem.objects.create(

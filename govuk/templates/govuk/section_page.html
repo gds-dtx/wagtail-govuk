@@ -21,7 +21,7 @@
                                             <div class="section-card--content">
                                                 <h3 class="govuk-heading-s govuk-!-margin-bottom-0">
                                                     {% if card.link_url %}
-                                                        <a class="govuk-link govuk-link--no-underline govuk-link--no-visited-state"
+                                                        <a class="govuk-link govuk-link--no-underline govuk-link--no-visited-state section-card__link--stretched"
                                                            href="{{ card.link_url }}">{{ card.title }}</a>
                                                     {% else %}
                                                         {{ card.title }}
@@ -50,7 +50,7 @@
             </div>
         {% endif %}
     {% endfor %}
-    {% if self.free_text %}
+    {% if self.free_text or self.author or self.show_last_updated_date %}
         <div class="govuk-width-container govuk-!-margin-top-3 govuk-!-margin-bottom-6">
             <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
                  {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
@@ -67,7 +67,8 @@
                      {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
                     <div class="govuk-body rich-text-content"
                          {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
-                        {{ self.free_text|richtext }}
+                        {% include "includes/page_content_metadata.html" with page=self %}
+                        {% if self.free_text %}{{ self.free_text|richtext }}{% endif %}
                     </div>
                 </div>
             </div>

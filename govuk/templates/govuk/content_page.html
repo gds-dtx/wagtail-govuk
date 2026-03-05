@@ -2,7 +2,7 @@
 {% load wagtailcore_tags %}
 {% block content %}
     <div class="govuk-width-container govuk-!-margin-bottom-6">
-        {% if self.body %}
+        {% if self.body or self.author or self.show_last_updated_date %}
             <div class="govuk-!-margin-bottom-3">
                 <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
                      {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
@@ -19,7 +19,8 @@
                          {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
                         <div class="govuk-body rich-text-content"
                              {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
-                            {{ self.body | richtext }}
+                            {% include "includes/page_content_metadata.html" with page=self %}
+                            {% if self.body %}{{ self.body | richtext }}{% endif %}
                         </div>
                     </div>
                 </div>

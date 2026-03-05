@@ -70,6 +70,7 @@ class SearchViewFilterTests(TestCase):
             if self.site.site_name
             else "This site"
         )
+        self.this_site_result_source_tag_label = self.site.site_name or "This site"
 
         self.alpha_tag = GovukTag.objects.create(slug="alpha", name="Alpha")
         self.beta_tag = GovukTag.objects.create(slug="beta", name="Beta")
@@ -177,3 +178,31 @@ class SearchViewFilterTests(TestCase):
         self.assertContains(response, "Filterable beta section")
         self.assertNotContains(response, "Filterable alpha external")
         self.assertNotContains(response, "Filterable beta external")
+
+    def test_search_results_show_this_site_source_tag_for_internal_results(self):
+        response = self.client.get(reverse("search"), {"query": "filterable"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'<strong class="govuk-tag">{self.this_site_result_source_tag_label}</strong>',
+            count=2,
+            html=True,
+        )
+
+    def test_search_results_prefer_hero_title_over_page_title(self):
+        page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Hero title fallback page",
+                slug="hero-title-fallback-page",
+                hero_title="Preferred hero page title",
+                body="",
+            )
+        )
+        page.save_revision().publish()
+
+        response = self.client.get(reverse("search"), {"query": "hero title fallback"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Preferred hero page title")
+        self.assertNotContains(response, "Hero title fallback page")

@@ -149,7 +149,8 @@ class SearchBackend:
         results: list[SearchResultItem] = []
         for page in queryset:
             specific_page = page.specific
-            title = page.title
+            title = normalised_text(page.title)
+            display_title = self._page_result_title(specific_page)
             description = self._page_search_description(specific_page)
             tag_items = self._page_tag_items(specific_page)
             tag_labels = [tag["value"] for tag in tag_items]
@@ -169,7 +170,7 @@ class SearchBackend:
                 continue
             results.append(
                 SearchResultItem(
-                    title=title,
+                    title=display_title or title,
                     search_description=description,
                     url=self._page_url(page, request),
                     score=score,
@@ -203,6 +204,7 @@ class SearchBackend:
         for section_page in section_pages:
             section_url = self._page_url(section_page, request)
             section_rank = float(getattr(section_page, "card_rank", 0.0) or 0.0)
+            section_title = self._page_result_title(section_page)
 
             for card in self._section_cards(section_page):
                 title = normalised_text(card.get("title"))
@@ -245,11 +247,11 @@ class SearchBackend:
                 )
                 results.append(
                     SearchResultItem(
-                        title=title or section_page.title,
+                        title=title or section_title,
                         search_description=(
                             text
                             or self._page_search_description(section_page)
-                            or f"Card in {section_page.title}"
+                            or f"Card in {section_title}"
                         ),
                         url=link_url or section_url,
                         score=score,
@@ -298,7 +300,7 @@ class SearchBackend:
                 ) or self._tag_result_description(page)
                 results.append(
                     SearchResultItem(
-                        title=page.title,
+                        title=self._page_result_title(page),
                         search_description=description,
                         url=self._page_url(page, request),
                         score=score,
@@ -348,7 +350,7 @@ class SearchBackend:
                 )
                 results.append(
                     SearchResultItem(
-                        title=page.title,
+                        title=self._page_result_title(page),
                         search_description=self._page_search_description(page),
                         url=self._page_url(page, request),
                         score=score,
@@ -646,6 +648,12 @@ class SearchBackend:
         if hero_intro:
             return hero_intro
         return normalised_text(getattr(page, "search_description", ""))
+
+    def _page_result_title(self, page: Any) -> str:
+        hero_title = normalised_text(getattr(page, "hero_title", ""))
+        if hero_title:
+            return hero_title
+        return normalised_text(getattr(page, "title", ""))
 
     def _external_content_last_updated(
         self, item: ExternalContentItem

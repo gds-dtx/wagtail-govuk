@@ -23,7 +23,7 @@
 }
 
 .govuk-width-container, .hero {
-    max-width: var(--govuk-content-width, 1200px);
+    max-width: var(--govuk-content-width, 950px);
     margin-right: 15px;
     margin-left: 15px;
 }
@@ -82,7 +82,7 @@
 }
 
 
-@media (min-width: 1280px) {
+@media (min-width: 1030px) {
     .hero {
         margin-right: auto !important;
         margin-left: auto !important;
@@ -97,6 +97,17 @@
             margin-left: auto !important;
         }
     }
+}
+
+@media (max-width: 1030px) {
+    .rich-text-content img {
+        width: 100%;
+        height: auto;
+    }
+}
+img.full-width {
+    width: 100%;
+    height: auto;
 }
 
 @media (min-width: 40.0625em) {
@@ -168,6 +179,7 @@ main > :nth-last-child(1 of .section-cards-container) {
   box-sizing: border-box;
   display: flex;          /* optional */
   flex-direction: column; /* optional */
+  position: relative;
   background: white;
   padding: 1.75rem;
   border: 3px solid rgb(243, 242, 241);
@@ -177,8 +189,29 @@ main > :nth-last-child(1 of .section-cards-container) {
   border-color: var(--govuk-brand-colour, rgb(29, 112, 184));
 }
 
-.section-card--clickable {
-  cursor: pointer;
+.section-card:focus-within {
+  border-color: var(--govuk-brand-colour, rgb(29, 112, 184));
+}
+
+.section-card__link--stretched::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.section-card :is(a:not(.section-card__link--stretched), button, input, select, textarea, summary, [role="button"]) {
+  position: relative;
+  z-index: 2;
+}
+
+.govuk-header__logo--ukgov {
+    width: 35px;
+    height: 30px;
+    fill: currentColor;
+    margin-right: .4375rem;
+    border-left: 0.2rem solid currentColor;
+    padding-left: 0.5rem;
 }
 
 .app-site-search {
@@ -305,11 +338,6 @@ main > :nth-last-child(1 of .section-cards-container) {
 
 @media (min-width: 40.0625em) {
     .free-text-heading-nav {
-        /*position: sticky;
-        top: 20px;
-        max-height: calc(100vh - 40px);
-        overflow-y: auto;
-        overscroll-behavior: contain;*/
         border-left: 4px solid var(--govuk-brand-colour, #1d70b8);
     }
 

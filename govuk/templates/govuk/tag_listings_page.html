@@ -86,20 +86,19 @@
                             {% for item in listing_items %}
                                 <article class="section-card">
                                     <h2 class="govuk-heading-s govuk-!-margin-bottom-0">
-                                        <a class="govuk-link govuk-link--no-underline govuk-link--no-visited-state"
+                                        <a class="govuk-link govuk-link--no-underline govuk-link--no-visited-state section-card__link--stretched"
                                            href="{{ item.url }}">{{ item.title|default:item.url }}</a>
                                     </h2>
-                                    {% if self.enable_source_display or self.enable_tag_display %}
-                                        {% if item.source or item.tags %}
+                                    {% if self.enable_source_display and item.source or item.private or self.enable_tag_display and item.tags %}
                                             <p class="govuk-body-s govuk-!-margin-top-2 govuk-!-margin-bottom-2 tags-container">
                                                 {% if self.enable_source_display and item.source and item.source.name %}
                                                     <strong class="govuk-tag">{{ item.source.name }}</strong>
                                                 {% endif %}
+                                                {% if item.private %}<strong class="govuk-tag govuk-tag--grey">Private</strong>{% endif %}
                                                 {% if self.enable_tag_display and item.tags %}
                                                     {% for tag in item.tags %}<strong class="govuk-tag govuk-tag--grey">{{ tag }}</strong>{% endfor %}
                                                 {% endif %}
                                             </p>
-                                        {% endif %}
                                     {% endif %}
                                     {% if item.summary and item.summary != "None" %}
                                         <p class="govuk-body section-card__text">{{ item.summary|striptags|truncatechars:280 }}</p>
@@ -144,7 +143,7 @@
             </div>
         </div>
     </div>
-    {% if self.free_text %}
+    {% if self.free_text or self.author or self.show_last_updated_date %}
         <div class="govuk-width-container govuk-!-margin-top-3 govuk-!-margin-bottom-6">
             <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
                  {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
@@ -161,7 +160,8 @@
                      {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
                     <div class="govuk-body rich-text-content"
                          {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
-                        {{ self.free_text|richtext }}
+                        {% include "includes/page_content_metadata.html" with page=self %}
+                        {% if self.free_text %}{{ self.free_text|richtext }}{% endif %}
                     </div>
                 </div>
             </div>
