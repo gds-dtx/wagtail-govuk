@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
@@ -8,7 +9,7 @@ from django.urls import reverse
 from wagtail.models import Page, PageViewRestriction, Site
 
 from govuk.models import ContentPage, GovukRole, GovukSkill, GovukTag, SectionPage
-from govuk.page_import_export import PAGE_EXPORT_FORMAT
+from govuk.page_import_export import PAGE_EXPORT_FORMAT, import_pages_from_payload
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -395,3 +396,142 @@ class PageImportExportAdminViewTests(TestCase):
             [skill_row["skill"].slug for skill_row in role_levels[0]["skills"]],
             ["forensics", "security-testing"],
         )
+
+    def test_import_order_is_tags_then_skills_roles_then_pages(self):
+        payload = {
+            "format": PAGE_EXPORT_FORMAT,
+            "tags": [{"slug": "alpha", "name": "Alpha"}],
+            "skills": [{"slug": "skill-one", "title": "Skill one"}],
+            "roles": [{"slug": "role-one", "title": "Role one", "levels": []}],
+            "pages": [{"model": "govuk.SectionPage", "settings": {"slug": "sequence-page"}}],
+        }
+
+        call_order: list[str] = []
+
+        def _record_tags(*, raw_tags, raw_pages):
+            call_order.append("tags")
+            return {"by_slug": {}, "by_name": {}}
+
+        def _record_skills(raw_skills, *, result):
+            call_order.append("skills")
+
+        def _record_roles(raw_roles, *, result):
+            call_order.append("roles")
+
+        def _record_pages(*args, **kwargs):
+            call_order.append("pages")
+
+        with (
+            patch("govuk.page_import_export._import_tags_from_payload", side_effect=_record_tags),
+            patch("govuk.page_import_export._import_skills", side_effect=_record_skills),
+            patch("govuk.page_import_export._import_roles", side_effect=_record_roles),
+            patch("govuk.page_import_export._import_page_node", side_effect=_record_pages),
+        ):
+            import_pages_from_payload(
+                payload=payload,
+                site=self.site,
+                user=self.admin_user,
+            )
+
+        self.assertEqual(call_order, ["tags", "skills", "roles", "pages"])
+
+    def test_import_creates_only_new_tags_and_sets_page_and_card_tags(self):
+        existing_tag = GovukTag.objects.create(slug="existing-tag", name="Existing tag")
+
+        payload = {
+            "format": PAGE_EXPORT_FORMAT,
+            "tags": [
+                {"slug": "existing-tag", "name": "Renamed existing tag"},
+                {"slug": "new-tag", "name": "New tag"},
+            ],
+            "pages": [
+                {
+                    "model": "govuk.SectionPage",
+                    "settings": {
+                        "title": "Tagged section",
+                        "draft_title": "Tagged section",
+                        "slug": "tagged-section",
+                        "seo_title": "",
+                        "search_description": "",
+                        "show_in_menus": False,
+                        "go_live_at": None,
+                        "expire_at": None,
+                    },
+                    "fields": {
+                        "enable_hero_styling": False,
+                        "enable_combined_service_navigation_and_hero_styling": False,
+                        "hero_title": "Tagged section",
+                        "hero_intro": "<p>Intro</p>",
+                        "rows": [
+                            {
+                                "id": "7371d28b-34be-49b0-a7d2-3b28ef9077d8",
+                                "type": "row",
+                                "value": {
+                                    "heading": "Row heading",
+                                    "cards": [
+                                        {
+                                            "id": "fdcc9257-a872-48f5-b292-a6f023bc5062",
+                                            "type": "item",
+                                            "value": {
+                                                "title": "Tagged card",
+                                                "image": None,
+                                                "image_fit": "cover",
+                                                "text": "<p>Card text</p>",
+                                                "link_text": "",
+                                                "link_url": "https://example.gov.uk",
+                                                "tags": [
+                                                    {
+                                                        "id": "5a0b48b8-c809-455b-a50d-cf7462411f2d",
+                                                        "type": "item",
+                                                        "value": "New tag",
+                                                    }
+                                                ],
+                                            },
+                                        }
+                                    ],
+                                },
+                            }
+                        ],
+                        "free_text": "",
+                        "enable_free_text_heading_navigation": False,
+                    },
+                    "tags": [
+                        {"slug": "existing-tag", "name": "Renamed existing tag"},
+                        {"slug": "new-tag", "name": "New tag"},
+                    ],
+                    "privacy": [],
+                    "children": [],
+                }
+            ],
+        }
+
+        upload = SimpleUploadedFile(
+            "pages.json",
+            json.dumps(payload).encode("utf-8"),
+            content_type="application/json",
+        )
+        response = self.client.post(
+            self.import_url,
+            data={
+                "site_id": self.site.pk,
+                "json_file": upload,
+            },
+        )
+
+        self.assertEqual(response.status_code, 302)
+
+        existing_tag.refresh_from_db()
+        self.assertEqual(existing_tag.name, "Existing tag")
+        self.assertTrue(GovukTag.objects.filter(slug="new-tag", name="New tag").exists())
+
+        imported_page = SectionPage.objects.get(slug="tagged-section")
+        self.assertEqual(
+            sorted(imported_page.tags.values_list("slug", flat=True)),
+            ["existing-tag", "new-tag"],
+        )
+
+        raw_card_tag_value = imported_page.rows.raw_data[0]["value"]["cards"][0]["value"]["tags"][0][
+            "value"
+        ]
+        self.assertIsInstance(raw_card_tag_value, int)
+        self.assertEqual(GovukTag.objects.get(pk=raw_card_tag_value).slug, "new-tag")

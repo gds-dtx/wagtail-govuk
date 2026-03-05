@@ -101,6 +101,14 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
         result.errors.append("Import payload must be a JSON object.")
         return result
 
+    raw_tags = payload.get("tags", [])
+    if raw_tags is None:
+        raw_tags = []
+    if not isinstance(raw_tags, list):
+        result.skipped += 1
+        result.errors.append("Payload 'tags' value must be an array when provided.")
+        return result
+
     raw_pages = payload.get("pages", [])
     if raw_pages is None:
         raw_pages = []
@@ -123,15 +131,17 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
             result.errors.append("Payload 'roles' value must be an array when provided.")
             return result
 
-    if not raw_pages and not raw_skills and not raw_roles:
+    if not raw_pages and not raw_skills and not raw_roles and not raw_tags:
         result.skipped += 1
         if settings.FEATURE_FLAGS.get("SKILLS"):
             result.errors.append(
-                "Payload must contain at least one entry in 'pages', 'skills' or 'roles'."
+                "Payload must contain at least one entry in 'tags', 'pages', 'skills' or 'roles'."
             )
         else:
-            result.errors.append("Payload must contain at least one entry in 'pages'.")
+            result.errors.append("Payload must contain at least one entry in 'tags' or 'pages'.")
         return result
+
+    tag_lookup = _import_tags_from_payload(raw_tags=raw_tags, raw_pages=raw_pages)
 
     if settings.FEATURE_FLAGS.get("SKILLS"):
         _import_skills(raw_skills, result=result)
@@ -145,12 +155,154 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
             site_root=site_root,
             user=user,
             result=result,
+            tag_lookup=tag_lookup,
         )
     return result
 
 
 def dump_payload_as_json(payload: dict) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _import_tags_from_payload(*, raw_tags: list, raw_pages: list) -> dict[str, dict[str, int]]:
+    tag_candidates = _collect_tag_candidates(raw_tags=raw_tags, raw_pages=raw_pages)
+    ordered_candidates: dict[str, str] = {}
+    for tag_slug, tag_name in tag_candidates:
+        if tag_slug not in ordered_candidates:
+            ordered_candidates[tag_slug] = tag_name
+
+    if not ordered_candidates:
+        return {"by_slug": {}, "by_name": {}}
+
+    candidate_slugs = list(ordered_candidates.keys())
+    existing_slugs = set(
+        GovukTag.objects.filter(slug__in=candidate_slugs).values_list("slug", flat=True)
+    )
+    tags_to_create = [
+        GovukTag(slug=tag_slug, name=tag_name or tag_slug)
+        for tag_slug, tag_name in ordered_candidates.items()
+        if tag_slug not in existing_slugs
+    ]
+    if tags_to_create:
+        GovukTag.objects.bulk_create(tags_to_create, ignore_conflicts=True)
+
+    lookup: dict[str, dict[str, int]] = {"by_slug": {}, "by_name": {}}
+    for tag in GovukTag.objects.filter(slug__in=candidate_slugs).only("id", "slug", "name"):
+        _update_tag_lookup(lookup, tag_id=tag.id, tag_slug=tag.slug, tag_name=tag.name)
+
+    for tag_slug, tag_name in ordered_candidates.items():
+        tag_id = lookup["by_slug"].get(tag_slug)
+        if tag_id is not None:
+            _update_tag_lookup(
+                lookup,
+                tag_id=tag_id,
+                tag_slug=tag_slug,
+                tag_name=tag_name,
+            )
+
+    return lookup
+
+
+def _collect_tag_candidates(*, raw_tags: list, raw_pages: list) -> list[tuple[str, str]]:
+    candidates = _extract_tag_candidates_from_tag_list(raw_tags)
+    if not isinstance(raw_pages, list):
+        return candidates
+
+    for node in raw_pages:
+        _collect_page_node_tag_candidates(node=node, candidates=candidates)
+    return candidates
+
+
+def _collect_page_node_tag_candidates(*, node, candidates: list[tuple[str, str]]):
+    if not isinstance(node, dict):
+        return
+
+    candidates.extend(_extract_tag_candidates_from_tag_list(node.get("tags")))
+
+    fields_data = node.get("fields")
+    if isinstance(fields_data, dict):
+        candidates.extend(_extract_tag_candidates_from_rows(fields_data.get("rows")))
+
+    child_entries = node.get("children")
+    if not isinstance(child_entries, list):
+        return
+    for child_node in child_entries:
+        _collect_page_node_tag_candidates(node=child_node, candidates=candidates)
+
+
+def _extract_tag_candidates_from_tag_list(raw_tags) -> list[tuple[str, str]]:
+    if not isinstance(raw_tags, list):
+        return []
+
+    candidates: list[tuple[str, str]] = []
+    for raw_tag in raw_tags:
+        if isinstance(raw_tag, dict):
+            raw_slug = raw_tag.get("slug") or raw_tag.get("key")
+            raw_name = raw_tag.get("name") or raw_tag.get("label")
+            if not raw_name and isinstance(raw_tag.get("value"), str):
+                raw_name = raw_tag.get("value")
+        elif isinstance(raw_tag, str):
+            raw_slug = raw_tag
+            raw_name = raw_tag
+        else:
+            continue
+
+        candidate = _normalised_tag_candidate(raw_slug=raw_slug, raw_name=raw_name)
+        if candidate is not None:
+            candidates.append(candidate)
+    return candidates
+
+
+def _extract_tag_candidates_from_rows(raw_rows) -> list[tuple[str, str]]:
+    if not isinstance(raw_rows, list):
+        return []
+
+    candidates: list[tuple[str, str]] = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            continue
+        row_value = raw_row.get("value")
+        if not isinstance(row_value, dict):
+            continue
+        raw_cards = row_value.get("cards")
+        if not isinstance(raw_cards, list):
+            continue
+
+        for raw_card in raw_cards:
+            if not isinstance(raw_card, dict):
+                continue
+            card_value = raw_card.get("value")
+            if not isinstance(card_value, dict):
+                continue
+            card_tags = card_value.get("tags")
+            if not isinstance(card_tags, list):
+                continue
+
+            for raw_card_tag in card_tags:
+                raw_tag_value = raw_card_tag.get("value") if isinstance(raw_card_tag, dict) else raw_card_tag
+                if isinstance(raw_tag_value, dict):
+                    raw_slug = raw_tag_value.get("slug") or raw_tag_value.get("key")
+                    raw_name = raw_tag_value.get("name") or raw_tag_value.get("label")
+                    if not raw_name and isinstance(raw_tag_value.get("value"), str):
+                        raw_name = raw_tag_value.get("value")
+                elif isinstance(raw_tag_value, str):
+                    raw_slug = raw_tag_value
+                    raw_name = raw_tag_value
+                else:
+                    continue
+
+                candidate = _normalised_tag_candidate(raw_slug=raw_slug, raw_name=raw_name)
+                if candidate is not None:
+                    candidates.append(candidate)
+    return candidates
+
+
+def _normalised_tag_candidate(*, raw_slug, raw_name) -> tuple[str, str] | None:
+    tag_slug = _normalised_slug(raw_slug or raw_name)
+    if not tag_slug:
+        return None
+    tag_name = (str(raw_name or raw_slug or tag_slug).strip() or tag_slug).strip()
+    return tag_slug, tag_name
 
 
 def _deduplicate_selected_roots(pages: list[Page]) -> list[Page]:
@@ -501,7 +653,15 @@ def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportRe
     return levels_payload
 
 
-def _import_page_node(*, node, parent_page: Page, site_root: Page, user, result: PageImportResult):
+def _import_page_node(
+    *,
+    node,
+    parent_page: Page,
+    site_root: Page,
+    user,
+    result: PageImportResult,
+    tag_lookup: dict[str, dict[str, int]] | None = None,
+):
     result.processed += 1
     if not isinstance(node, dict):
         result.skipped += 1
@@ -537,10 +697,10 @@ def _import_page_node(*, node, parent_page: Page, site_root: Page, user, result:
                 user=user,
             )
             _apply_page_settings(page, raw_settings)
-            _apply_page_fields(page, node.get("fields"))
+            _apply_page_fields(page, node.get("fields"), tag_lookup=tag_lookup)
             page.full_clean()
             page.save()
-            _apply_tags(page, node.get("tags"))
+            _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
             page.save()
             _apply_privacy(page, node.get("privacy"), user=user)
 
@@ -559,6 +719,7 @@ def _import_page_node(*, node, parent_page: Page, site_root: Page, user, result:
                         site_root=site_root,
                         user=user,
                         result=result,
+                        tag_lookup=tag_lookup,
                     )
     except (ValidationError, ValueError, PermissionError) as exc:
         result.skipped += 1
@@ -639,7 +800,7 @@ def _apply_page_settings(page: Page, settings_data: dict):
     page.draft_title = page.draft_title or page.title
 
 
-def _apply_page_fields(page: Page, fields_data):
+def _apply_page_fields(page: Page, fields_data, *, tag_lookup: dict[str, dict[str, int]] | None = None):
     if not isinstance(fields_data, dict):
         return
 
@@ -656,11 +817,18 @@ def _apply_page_fields(page: Page, fields_data):
         if model_field.many_to_many or model_field.one_to_many:
             continue
 
+        if (
+            isinstance(model_field, StreamField)
+            and page._meta.label == "govuk.SectionPage"
+            and field_name == "rows"
+        ):
+            raw_value = _normalise_section_row_card_tags(raw_value, tag_lookup=tag_lookup)
+
         python_value = _deserialise_model_field_value(model_field, raw_value)
         setattr(page, field_name, python_value)
 
 
-def _apply_tags(page: Page, tags_data):
+def _apply_tags(page: Page, tags_data, *, tag_lookup: dict[str, dict[str, int]] | None = None):
     if not hasattr(page, "tags"):
         return
 
@@ -676,22 +844,217 @@ def _apply_tags(page: Page, tags_data):
             raw_slug = raw_tag
             raw_name = raw_tag
 
-        tag_slug = _normalised_slug(raw_slug)
-        if not tag_slug:
-            continue
-        tag_name = (str(raw_name or "").strip() or tag_slug).strip()
+        tag_id = _resolve_tag_id_from_slug_and_name(
+            raw_slug=raw_slug,
+            raw_name=raw_name,
+            tag_lookup=tag_lookup,
+            create_if_missing=True,
+        )
+        if tag_id is not None:
+            tag_ids.append(tag_id)
 
+    tag_objects = list(GovukTag.objects.filter(id__in=tag_ids))
+    page.tags.set(tag_objects)
+
+
+def _normalise_section_row_card_tags(raw_rows, *, tag_lookup: dict[str, dict[str, int]] | None):
+    if not isinstance(raw_rows, list):
+        return raw_rows
+
+    normalised_rows: list = []
+    for raw_row in raw_rows:
+        if not isinstance(raw_row, dict):
+            normalised_rows.append(raw_row)
+            continue
+
+        row_value = raw_row.get("value")
+        if raw_row.get("type") != "row" or not isinstance(row_value, dict):
+            normalised_rows.append(raw_row)
+            continue
+
+        raw_cards = row_value.get("cards")
+        if not isinstance(raw_cards, list):
+            normalised_rows.append(raw_row)
+            continue
+
+        normalised_cards: list = []
+        for raw_card in raw_cards:
+            if not isinstance(raw_card, dict):
+                normalised_cards.append(raw_card)
+                continue
+
+            card_value = raw_card.get("value")
+            if raw_card.get("type") != "item" or not isinstance(card_value, dict):
+                normalised_cards.append(raw_card)
+                continue
+
+            raw_card_tags = card_value.get("tags")
+            if not isinstance(raw_card_tags, list):
+                normalised_cards.append(raw_card)
+                continue
+
+            normalised_card_tags: list[dict[str, object]] = []
+            for raw_card_tag in raw_card_tags:
+                normalised_card_tag = _normalise_section_card_tag_block(
+                    raw_card_tag,
+                    tag_lookup=tag_lookup,
+                )
+                if normalised_card_tag is not None:
+                    normalised_card_tags.append(normalised_card_tag)
+
+            updated_card_value = dict(card_value)
+            updated_card_value["tags"] = normalised_card_tags
+
+            updated_card = dict(raw_card)
+            updated_card["value"] = updated_card_value
+            normalised_cards.append(updated_card)
+
+        updated_row_value = dict(row_value)
+        updated_row_value["cards"] = normalised_cards
+
+        updated_row = dict(raw_row)
+        updated_row["value"] = updated_row_value
+        normalised_rows.append(updated_row)
+
+    return normalised_rows
+
+
+def _normalise_section_card_tag_block(raw_card_tag, *, tag_lookup: dict[str, dict[str, int]] | None):
+    tag_block_id = None
+    tag_block_type = "item"
+    raw_tag_value = raw_card_tag
+
+    if isinstance(raw_card_tag, dict):
+        tag_block_id = raw_card_tag.get("id")
+        tag_block_type = str(raw_card_tag.get("type") or "item").strip() or "item"
+        raw_tag_value = raw_card_tag.get("value")
+
+    tag_id = _resolve_tag_id(raw_tag_value, tag_lookup=tag_lookup)
+    if tag_id is None:
+        return None
+
+    payload: dict[str, object] = {
+        "type": tag_block_type,
+        "value": tag_id,
+    }
+    if tag_block_id not in {None, ""}:
+        payload["id"] = str(tag_block_id)
+    return payload
+
+
+def _resolve_tag_id(raw_tag_value, *, tag_lookup: dict[str, dict[str, int]] | None) -> int | None:
+    if isinstance(raw_tag_value, GovukTag):
+        return raw_tag_value.id
+
+    if isinstance(raw_tag_value, int):
+        if GovukTag.objects.filter(pk=raw_tag_value).exists():
+            return raw_tag_value
+        return None
+
+    if isinstance(raw_tag_value, str):
+        raw_text = raw_tag_value.strip()
+        if not raw_text:
+            return None
+        if raw_text.isdigit():
+            numeric_id = int(raw_text)
+            if GovukTag.objects.filter(pk=numeric_id).exists():
+                return numeric_id
+        return _resolve_tag_id_from_slug_and_name(
+            raw_slug=raw_text,
+            raw_name=raw_text,
+            tag_lookup=tag_lookup,
+            create_if_missing=True,
+        )
+
+    if isinstance(raw_tag_value, dict):
+        raw_tag_id = raw_tag_value.get("id") or raw_tag_value.get("pk") or raw_tag_value.get(
+            "value_id"
+        )
+        if str(raw_tag_id or "").isdigit():
+            numeric_id = int(raw_tag_id)
+            if GovukTag.objects.filter(pk=numeric_id).exists():
+                return numeric_id
+
+        raw_slug = raw_tag_value.get("slug") or raw_tag_value.get("key")
+        raw_name = raw_tag_value.get("name") or raw_tag_value.get("label")
+        if not raw_name and isinstance(raw_tag_value.get("value"), str):
+            raw_name = raw_tag_value.get("value")
+
+        return _resolve_tag_id_from_slug_and_name(
+            raw_slug=raw_slug,
+            raw_name=raw_name,
+            tag_lookup=tag_lookup,
+            create_if_missing=True,
+        )
+
+    return None
+
+
+def _resolve_tag_id_from_slug_and_name(
+    *,
+    raw_slug,
+    raw_name,
+    tag_lookup: dict[str, dict[str, int]] | None,
+    create_if_missing: bool,
+) -> int | None:
+    tag_slug = _normalised_slug(raw_slug or raw_name)
+    if not tag_slug:
+        return None
+
+    tag_name = (str(raw_name or raw_slug or tag_slug).strip() or tag_slug).strip()
+    tag_name_key = tag_name.lower()
+
+    by_slug = tag_lookup.setdefault("by_slug", {}) if isinstance(tag_lookup, dict) else {}
+    by_name = tag_lookup.setdefault("by_name", {}) if isinstance(tag_lookup, dict) else {}
+
+    existing_id = by_slug.get(tag_slug)
+    if existing_id is not None:
+        return existing_id
+    if tag_name_key:
+        existing_id = by_name.get(tag_name_key)
+        if existing_id is not None:
+            return existing_id
+
+    tag_obj = GovukTag.objects.filter(slug=tag_slug).only("id", "slug", "name").first()
+    if tag_obj is None and tag_name_key:
+        tag_obj = (
+            GovukTag.objects.filter(name__iexact=tag_name)
+            .order_by("id")
+            .only("id", "slug", "name")
+            .first()
+        )
+    if tag_obj is None and create_if_missing:
         tag_obj, _ = GovukTag.objects.get_or_create(
             slug=tag_slug,
             defaults={"name": tag_name},
         )
-        if not tag_obj.name and tag_name:
-            tag_obj.name = tag_name
-            tag_obj.save(update_fields=["name"])
-        tag_ids.append(tag_obj.id)
 
-    tag_objects = list(GovukTag.objects.filter(id__in=tag_ids))
-    page.tags.set(tag_objects)
+    if tag_obj is None:
+        return None
+    if not tag_obj.name and tag_name:
+        tag_obj.name = tag_name
+        tag_obj.save(update_fields=["name"])
+
+    _update_tag_lookup(
+        tag_lookup,
+        tag_id=tag_obj.id,
+        tag_slug=tag_obj.slug,
+        tag_name=tag_obj.name or tag_name,
+    )
+    return tag_obj.id
+
+
+def _update_tag_lookup(tag_lookup, *, tag_id: int, tag_slug: str, tag_name: str):
+    if not isinstance(tag_lookup, dict):
+        return
+
+    by_slug = tag_lookup.setdefault("by_slug", {})
+    by_name = tag_lookup.setdefault("by_name", {})
+    if tag_slug:
+        by_slug.setdefault(tag_slug, tag_id)
+    name_key = str(tag_name or "").strip().lower()
+    if name_key:
+        by_name.setdefault(name_key, tag_id)
 
 
 def _apply_privacy(page: Page, privacy_data, *, user):
