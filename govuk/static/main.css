@@ -62,7 +62,6 @@
         padding-top: 0.5em;
     }
     .section-cards {
-        grid-template-columns: auto !important;
         gap: 1rem !important;
         width: auto;
     }
@@ -149,15 +148,21 @@
 }
 
 .section-cards-container {
-    padding: 30px 0;
+    padding: 2em 0 0.2em 0;
     background-color: #f8f7f4;
+}
+
+main > :nth-last-child(1 of .section-cards-container) {
+    padding-bottom: 2em;
 }
 
 .section-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
   gap: 1.5rem;
+  grid-template-columns: 1fr;
 }
+@media (min-width: 40rem) { .section-cards { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 64rem) { .section-cards { grid-template-columns: repeat(3, 1fr); } }
 
 .section-card {
   box-sizing: border-box;

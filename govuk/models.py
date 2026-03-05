@@ -2393,8 +2393,8 @@ class SectionPage(Page):
                                     label="Card",
                                 ),
                                 min_num=1,
-                                max_num=15,
-                                help_text="Add between 1 and 15 cards in this row.",
+                                max_num=60,
+                                help_text="Add between 1 and 60 cards in this row.",
                             ),
                         ),
                     ],
@@ -2404,7 +2404,7 @@ class SectionPage(Page):
             ),
         ],
         blank=True,
-        help_text="Add one or more row sections. Each row can contain up to 15 cards.",
+        help_text="Add one or more row sections. Each row can contain up to 60 cards.",
     )
     free_text = RichTextField(blank=True)
     enable_free_text_heading_navigation = models.BooleanField(
