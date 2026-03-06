@@ -477,8 +477,11 @@ class PageImportExportAdminViewTests(TestCase):
                                                 "image": None,
                                                 "image_fit": "cover",
                                                 "text": "<p>Card text</p>",
-                                                "link_text": "",
-                                                "link_url": "https://example.gov.uk",
+                                                "link": {
+                                                    "title": "Learn more",
+                                                    "page": None,
+                                                    "external_url": "https://example.gov.uk",
+                                                },
                                                 "tags": [
                                                     {
                                                         "id": "5a0b48b8-c809-455b-a50d-cf7462411f2d",

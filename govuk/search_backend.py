@@ -27,12 +27,13 @@ TAG_RESULT_WEIGHT = 1.2
 EXTERNAL_SOURCE_TEXT_WEIGHT = 0.4
 EXTERNAL_TAG_TEXT_WEIGHT = 0.6
 THIS_SITE_SOURCE_FILTER = "__this_site__"
-EXTERNAL_RECENCY_BOOST_BUCKETS: tuple[tuple[int, float], ...] = (
-    (7, 8.0),
-    (30, 5.0),
-    (90, 3.0),
-    (180, 1.5),
-    (365, 0.75),
+INTERNAL_RESULT_BOOST = 4.0
+RECENCY_BOOST_BUCKETS: tuple[tuple[int, float], ...] = (
+    (7, 4.0),
+    (30, 2.5),
+    (90, 1.5),
+    (180, 0.75),
+    (365, 0.3),
 )
 
 
@@ -385,10 +386,8 @@ class SearchBackend:
             tags_text = normalised_text(" ".join(tag_labels))
             source_name = normalised_text(getattr(item.source, "name", ""))
             item_rank = float(getattr(item, "external_rank", 0.0) or 0.0)
-            recency_boost = self._external_recency_boost(item)
             score = (
                 item_rank
-                + recency_boost
                 + self._text_relevance(
                     query,
                     (
@@ -575,18 +574,49 @@ class SearchBackend:
     def _is_postgres(self, db_alias: str) -> bool:
         return connections[db_alias].vendor == "postgresql"
 
+    def _section_card_link_title(self, link_value: Any) -> str:
+        if not link_value:
+            return ""
+        if hasattr(link_value, "get"):
+            return normalised_text(link_value.get("title"))
+        return normalised_text(getattr(link_value, "title", ""))
+
+    def _section_card_link_url(self, link_value: Any) -> str:
+        if not link_value:
+            return ""
+
+        url = getattr(link_value, "url", None)
+        if isinstance(url, str):
+            return url.strip()
+
+        if not hasattr(link_value, "get"):
+            return ""
+
+        external_url = (link_value.get("external_url") or "").strip()
+        if external_url:
+            return external_url
+
+        page = link_value.get("page")
+        if page is None:
+            return ""
+
+        return (getattr(page, "url", "") or "").strip()
+
     def _section_cards(self, section_page: SectionPage) -> list[dict[str, Any]]:
         cards: list[dict[str, Any]] = []
         for block in section_page.rows:
             if block.block_type != "row":
                 continue
             for card in block.value.get("cards", []):
+                link_value = card.get("link")
+                link_text = self._section_card_link_title(link_value)
+                link_url = self._section_card_link_url(link_value)
                 cards.append(
                     {
                         "title": card.get("title"),
                         "text": card.get("text"),
-                        "link_text": card.get("link_text"),
-                        "link_url": card.get("link_url"),
+                        "link_text": link_text or card.get("link_text"),
+                        "link_url": link_url or card.get("link_url"),
                         "tags": card.get("tags", []),
                     }
                 )
@@ -665,8 +695,7 @@ class SearchBackend:
             getattr(item, "last_seen_at", None),
         )
 
-    def _external_recency_boost(self, item: ExternalContentItem) -> float:
-        last_updated = self._external_content_last_updated(item)
+    def _recency_boost(self, last_updated: datetime | None) -> float:
         if not isinstance(last_updated, datetime):
             return 0.0
 
@@ -675,10 +704,16 @@ class SearchBackend:
             now = now.replace(tzinfo=None)
 
         age_days = max((now - last_updated).days, 0)
-        for max_age_days, boost in EXTERNAL_RECENCY_BOOST_BUCKETS:
+        for max_age_days, boost in RECENCY_BOOST_BUCKETS:
             if age_days <= max_age_days:
                 return boost
         return 0.0
+
+    def _ranking_score(self, item: SearchResultItem) -> float:
+        score = float(item.score or 0.0) + self._recency_boost(item.last_updated)
+        if not item.is_external:
+            score += INTERNAL_RESULT_BOOST
+        return score
 
     def _clean_text(self, value: Any) -> str:
         if not value:
@@ -815,6 +850,9 @@ class SearchBackend:
     def _merge_results(self, results: list[SearchResultItem]) -> list[SearchResultItem]:
         unique_results: list[SearchResultItem] = []
         seen: set[tuple[str, str]] = set()
+
+        for item in results:
+            item.score = self._ranking_score(item)
 
         for item in sorted(results, key=lambda item: (-item.score, item.title.lower())):
             key = (item.title.lower(), item.url)

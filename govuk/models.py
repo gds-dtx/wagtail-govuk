@@ -30,6 +30,7 @@ from modelcluster.models import ClusterableModel
 from taggit.models import TagBase, TaggedItemBase
 from wagtail import blocks
 from wagtail.admin.panels import FieldPanel, InlinePanel
+from wagtail.blocks import StructValue
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
 from wagtail.fields import RichTextField, StreamField
 from wagtail.images.blocks import ImageChooserBlock
@@ -93,6 +94,35 @@ class SecretTextarea(forms.Textarea):
 
     def format_value(self, value):
         return ""
+
+
+class LinkStructValue(StructValue):
+    @property
+    def url(self):
+        external_url = (self.get("external_url") or "").strip()
+        if external_url:
+            return external_url
+        page = self.get("page")
+        return (page.url or "") if page else ""
+
+
+class LinkBlock(blocks.StructBlock):
+    title = blocks.CharBlock(
+        required=True,
+        max_length=120,
+    )
+    page = blocks.PageChooserBlock(
+        required=False,
+    )
+    external_url = blocks.URLBlock(
+        required=False,
+        help_text="Use an absolute external URL like https://www.gov.uk/help.",
+    )
+
+    class Meta:
+        icon = "link"
+        label = "Link"
+        value_class = LinkStructValue
 
 
 def _base64url_without_padding(raw_bytes: bytes) -> str:
@@ -300,27 +330,7 @@ class FooterSettings(BaseSiteSetting):
         [
             (
                 "link",
-                blocks.StructBlock(
-                    [
-                        (
-                            "title",
-                            blocks.CharBlock(
-                                required=True,
-                                max_length=120,
-                            ),
-                        ),
-                        (
-                            "url",
-                            blocks.CharBlock(
-                                required=True,
-                                max_length=500,
-                                help_text="Use a relative URL like /cookies or an absolute URL like https://www.gov.uk/help.",
-                            ),
-                        ),
-                    ],
-                    icon="link",
-                    label="Footer link",
-                ),
+                LinkBlock(),
             )
         ],
         blank=True,
@@ -2437,6 +2447,16 @@ class SectionPage(Page):
         verbose_name="Show last updated date",
         help_text="Show the page last updated date above the main content.",
     )
+    enable_tag_filter = models.BooleanField(
+        default=False,
+        verbose_name="Enable tag filter",
+        help_text="Show a tag filter control above the cards.",
+    )
+    enable_tag_display = models.BooleanField(
+        default=False,
+        verbose_name="Enable tag display",
+        help_text="Show tag labels on cards.",
+    )
     tags = ClusterTaggableManager(through="govuk.SectionPageTag", blank=True)
     rows = StreamField(
         [
@@ -2499,19 +2519,9 @@ class SectionPage(Page):
                                             ),
                                         ),
                                         (
-                                            "link_text",
-                                            blocks.CharBlock(
+                                            "link",
+                                            LinkBlock(
                                                 required=False,
-                                                max_length=80,
-                                                help_text="Optional button text.",
-                                            ),
-                                        ),
-                                        (
-                                            "link_url",
-                                            blocks.CharBlock(
-                                                required=False,
-                                                max_length=500,
-                                                help_text="Optional URL for the button, for example /apply or https://example.gov.uk/apply.",
                                             ),
                                         ),
                                         (
@@ -2577,9 +2587,101 @@ class SectionPage(Page):
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
+        FieldPanel("enable_tag_filter"),
+        FieldPanel("enable_tag_display"),
         FieldPanel("enable_free_text_heading_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
+
+    @staticmethod
+    def _card_tag_items(card) -> list[dict[str, str]]:
+        items: list[dict[str, str]] = []
+        seen: set[str] = set()
+        for tag in card.get("tags", []):
+            if not tag:
+                continue
+
+            key = (getattr(tag, "slug", "") or getattr(tag, "key", "")).strip().lower()
+            value = (getattr(tag, "name", "") or getattr(tag, "value", "")).strip()
+
+            if not key and isinstance(value, str):
+                key = slugify(value).strip().lower()
+            if not value and key:
+                value = key
+            if not key or not value or key in seen:
+                continue
+
+            seen.add(key)
+            items.append({"key": key, "value": value})
+        return items
+
+    def get_context(self, request, *args, **kwargs):
+        context = super().get_context(request, *args, **kwargs)
+
+        prepared_rows: list[dict] = []
+        available_tags_by_key: dict[str, str] = {}
+        for block in self.rows:
+            if block.block_type != "row":
+                continue
+
+            prepared_cards: list[dict] = []
+            for card in block.value.get("cards", []):
+                tag_items = self._card_tag_items(card)
+                tag_keys = {item["key"] for item in tag_items}
+                for item in tag_items:
+                    available_tags_by_key[item["key"]] = item["value"]
+                prepared_cards.append(
+                    {
+                        "card": card,
+                        "tag_keys": tag_keys,
+                    }
+                )
+
+            prepared_rows.append(
+                {
+                    "heading": block.value.get("heading"),
+                    "cards": prepared_cards,
+                }
+            )
+
+        selected_tag = None
+        selected_tag_key = ""
+        if self.enable_tag_filter:
+            selected_tag_key = (request.GET.get("tag") or "").strip().lower()
+            if selected_tag_key not in available_tags_by_key:
+                selected_tag_key = ""
+
+            if selected_tag_key:
+                selected_tag = {
+                    "key": selected_tag_key,
+                    "value": available_tags_by_key[selected_tag_key],
+                }
+
+        row_sections: list[dict] = []
+        for row in prepared_rows:
+            cards = [
+                card_entry["card"]
+                for card_entry in row["cards"]
+                if not selected_tag_key or selected_tag_key in card_entry["tag_keys"]
+            ]
+            if cards:
+                row_sections.append(
+                    {
+                        "heading": row["heading"],
+                        "cards": cards,
+                    }
+                )
+
+        context["available_tags"] = [
+            {"key": key, "value": value}
+            for key, value in sorted(
+                available_tags_by_key.items(),
+                key=lambda row: row[1].lower(),
+            )
+        ]
+        context["selected_tag"] = selected_tag
+        context["row_sections"] = row_sections
+        return context
 
 
 class Feedback(models.Model):

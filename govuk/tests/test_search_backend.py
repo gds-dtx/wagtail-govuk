@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.test import TestCase
 from django.utils import timezone
-from wagtail.models import Site
+from wagtail.models import Page, Site
 
 from govuk.models import (
     ContentPage,
@@ -250,3 +250,98 @@ class SearchBackendDescriptionFallbackTests(TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result.title, "Tag listings hero display title")
         self.assertEqual(result.search_description, "Tag listings hero summary")
+
+
+class SearchBackendInternalPriorityAndRecencyTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+        settings = ContentDiscoverySettings.for_site(self.site)
+        self.source = ContentDiscoverySource.objects.create(
+            settings=settings,
+            sort_order=0,
+            name="Priority source",
+            url="https://example.gov.uk/priority-feed.xml",
+        )
+
+    def _result_for_url(self, results, url: str):
+        return next((item for item in results if item.url == url), None)
+
+    def test_internal_results_rank_ahead_of_external_results(self):
+        query = "priority ranking query"
+        internal_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Priority ranking query guidance",
+                slug="priority-ranking-query-guidance",
+                body="",
+            )
+        )
+        internal_page.save_revision().publish()
+
+        external_item = ExternalContentItem.objects.create(
+            source=self.source,
+            url="https://example.gov.uk/priority-ranking-query-guidance",
+            title="Priority ranking query guidance",
+            summary="External matching item",
+            hidden=False,
+        )
+
+        page = search_backend.search(query, filters={"site": self.site}, page=1)
+        result_urls = [item.url for item in page.object_list]
+
+        self.assertIn(internal_page.url, result_urls)
+        self.assertIn(external_item.url, result_urls)
+        self.assertLess(
+            result_urls.index(internal_page.url),
+            result_urls.index(external_item.url),
+        )
+
+    def test_newer_internal_results_rank_ahead_of_older_internal_results(self):
+        query = "internal recency ranking"
+        old_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Internal recency ranking guidance",
+                slug="internal-recency-ranking-guidance-old",
+                body="",
+            )
+        )
+        old_page.save_revision().publish()
+
+        new_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Internal recency ranking guidance",
+                slug="internal-recency-ranking-guidance-new",
+                body="",
+            )
+        )
+        new_page.save_revision().publish()
+
+        now = timezone.now()
+        old_timestamp = now - timedelta(days=500)
+        Page.objects.filter(pk=old_page.pk).update(
+            latest_revision_created_at=old_timestamp,
+            last_published_at=old_timestamp,
+            first_published_at=old_timestamp,
+        )
+        Page.objects.filter(pk=new_page.pk).update(
+            latest_revision_created_at=now - timedelta(days=2),
+            last_published_at=now - timedelta(days=2),
+            first_published_at=now - timedelta(days=2),
+        )
+
+        page = search_backend.search(query, filters={"site": self.site}, page=1)
+        result_urls = [item.url for item in page.object_list]
+
+        self.assertIn(old_page.url, result_urls)
+        self.assertIn(new_page.url, result_urls)
+        self.assertLess(
+            result_urls.index(new_page.url),
+            result_urls.index(old_page.url),
+        )
+
+        old_result = self._result_for_url(page.object_list, old_page.url)
+        new_result = self._result_for_url(page.object_list, new_page.url)
+        self.assertIsNotNone(old_result)
+        self.assertIsNotNone(new_result)
+        self.assertGreater(new_result.score, old_result.score)
