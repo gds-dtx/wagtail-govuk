@@ -1686,6 +1686,11 @@ class ContentPage(Page):
         verbose_name="Show last updated date",
         help_text="Show the page last updated date above the main content.",
     )
+    show_page_content_metadata = models.BooleanField(
+        default=False,
+        verbose_name="Show page content metadata",
+        help_text="Show page metadata above the main content.",
+    )
     body = RichTextField(blank=True)
     enable_free_text_heading_navigation = models.BooleanField(
         default=False,
@@ -1705,6 +1710,7 @@ class ContentPage(Page):
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
+        FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_free_text_heading_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
@@ -1755,6 +1761,11 @@ class RolePage(Page):
         verbose_name="Show last updated date",
         help_text="Show the page last updated date above the main content.",
     )
+    show_page_content_metadata = models.BooleanField(
+        default=False,
+        verbose_name="Show page content metadata",
+        help_text="Show page metadata above the main content.",
+    )
     body = RichTextField(blank=True)
     enable_free_text_heading_navigation = models.BooleanField(
         default=False,
@@ -1789,6 +1800,7 @@ class RolePage(Page):
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
+        FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_free_text_heading_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
@@ -1913,6 +1925,11 @@ class SkillsAZPage(Page):
         verbose_name="Show last updated date",
         help_text="Show the page last updated date above the main content.",
     )
+    show_page_content_metadata = models.BooleanField(
+        default=False,
+        verbose_name="Show page content metadata",
+        help_text="Show page metadata above the main content.",
+    )
     body = RichTextField(blank=True)
     enable_free_text_heading_navigation = models.BooleanField(
         default=False,
@@ -1931,6 +1948,7 @@ class SkillsAZPage(Page):
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
+        FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_free_text_heading_navigation"),
     ]
 
@@ -2003,6 +2021,11 @@ class TagListingsPage(Page):
         default=False,
         verbose_name="Show last updated date",
         help_text="Show the page last updated date above the main content.",
+    )
+    show_page_content_metadata = models.BooleanField(
+        default=False,
+        verbose_name="Show page content metadata",
+        help_text="Show page metadata above the main content.",
     )
     free_text = RichTextField(blank=True)
     enable_free_text_heading_navigation = models.BooleanField(
@@ -2082,6 +2105,7 @@ class TagListingsPage(Page):
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
+        FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_source_filter"),
         FieldPanel("enable_source_display"),
         FieldPanel("enable_tag_filter"),
@@ -2447,6 +2471,11 @@ class SectionPage(Page):
         verbose_name="Show last updated date",
         help_text="Show the page last updated date above the main content.",
     )
+    show_page_content_metadata = models.BooleanField(
+        default=False,
+        verbose_name="Show page content metadata",
+        help_text="Show page metadata above the main content.",
+    )
     enable_tag_filter = models.BooleanField(
         default=False,
         verbose_name="Enable tag filter",
@@ -2587,6 +2616,7 @@ class SectionPage(Page):
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
+        FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_tag_filter"),
         FieldPanel("enable_tag_display"),
         FieldPanel("enable_free_text_heading_navigation"),

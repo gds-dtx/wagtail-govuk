@@ -1,6 +1,6 @@
 {% with updated=page.last_published_at|default:page.latest_revision_created_at|default:page.first_published_at is_private=page.view_restrictions.exists %}
     {% if page.author or page.show_last_updated_date and updated or is_private %}
-        <div class="govuk-body-s govuk-!-margin-bottom-3">
+        <div class="govuk-body-s govuk-!-margin-bottom-3 page-content-metadata">
             {% if is_private %}
                 <span class="govuk-visually-hidden">Page status:</span>
                 <strong class="govuk-tag">Private</strong>

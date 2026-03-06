@@ -19,7 +19,9 @@
                          {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
                         <div class="govuk-body rich-text-content"
                              {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
-                            {% include "includes/page_content_metadata.html" with page=self %}
+                            {% if self.show_page_content_metadata %}
+                                {% include "includes/page_content_metadata.html" with page=self %}
+                            {% endif %}
                             {% if self.body %}{{ self.body|richtext }}{% endif %}
                             {% for role_section in role_sections %}
                                 <section>
