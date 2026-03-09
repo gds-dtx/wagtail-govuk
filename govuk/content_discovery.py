@@ -109,6 +109,22 @@ def _find_all_text_local_name(node: ElementTree.Element, *names: str) -> list[st
     return values
 
 
+def _sanitise_summary_text(value: str) -> str:
+    cleaned = (value or "").strip()
+    if not cleaned:
+        return ""
+
+    # Some feeds double-encode HTML entities, so unescape until the value stops changing.
+    for _ in range(5):
+        unescaped = unescape(cleaned)
+        if unescaped == cleaned:
+            break
+        cleaned = unescaped
+
+    cleaned = cleaned.replace("\xa0", " ").replace("&nbsp;", " ")
+    return cleaned.strip()
+
+
 def _parse_timestamp(value: str) -> datetime | None:
     value = value.strip()
     if not value:
@@ -168,6 +184,7 @@ def _parse_atom_root(root: ElementTree.Element) -> list[FeedEntry]:
         summary = _find_text(entry_node, "summary", namespace)
         if not summary:
             summary = _find_text(entry_node, "content", namespace)
+        summary = _sanitise_summary_text(summary)
 
         published_raw = _find_text(entry_node, "published", namespace)
         updated_raw = _find_text(entry_node, "updated", namespace)
@@ -235,6 +252,7 @@ def _parse_rss_root(root: ElementTree.Element) -> list[FeedEntry]:
             "content",
             "encoded",
         )
+        summary = _sanitise_summary_text(summary)
         published_raw = _find_text_local_name(
             item_node,
             "pubDate",
@@ -335,7 +353,7 @@ def parse_github_org_repositories(json_content: str | bytes) -> list[FeedEntry]:
             continue
 
         title = str(repository.get("name", html_url)).strip()
-        summary = str(repository.get("description", "")).strip()
+        summary = _sanitise_summary_text(str(repository.get("description", "")))
         created_raw = str(repository.get("created_at", "")).strip()
         updated_raw = str(repository.get("updated_at", "")).strip()
         pushed_raw = str(repository.get("pushed_at", "")).strip()
@@ -543,7 +561,9 @@ def _resolve_consumed_tags(raw_tags: list[str]) -> list[GovukTag]:
     if not ordered_slugs:
         return []
 
-    tags_by_slug = {tag.slug: tag for tag in GovukTag.objects.filter(slug__in=ordered_slugs)}
+    tags_by_slug = {
+        tag.slug: tag for tag in GovukTag.objects.filter(slug__in=ordered_slugs)
+    }
     resolved_tags: list[GovukTag] = []
     for slug in ordered_slugs:
         tag = tags_by_slug.get(slug)

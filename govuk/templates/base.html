@@ -124,7 +124,7 @@
                                    name="query"
                                    type="search"
                                    value="{{ request.GET.query|default_if_none:'' }}"
-                                   placeholder="Search {% if customise_settings and customise_settings.show_site_name_in_search_box %}{% if current_site.site_name %}{{ current_site.site_name }}{% else %}this site{% endif %}{% endif %}" />
+                                   placeholder="Search{% if customise_settings and customise_settings.show_site_name_in_search_box %}{% if current_site.site_name %} {{ current_site.site_name }}{% else %} this site{% endif %}{% endif %}" />
                             <button class="govuk-button govuk-button--inverse app-site-search__button"
                                     data-module="govuk-button"
                                     type="submit">

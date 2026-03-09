@@ -7,6 +7,7 @@ from govuk.content_discovery import (
     FeedEntry,
     parse_atom_feed,
     parse_github_org_repositories,
+    parse_rss_feed,
     sync_content_discovery_source,
 )
 from govuk.models import (
@@ -53,6 +54,76 @@ class ContentDiscoveryTagParsingTests(TestCase):
 
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0].tags, ["architecture", "service-design"])
+
+    def test_parse_github_org_repositories_sanitises_description_nbsp(self):
+        payload = b"""
+            [
+              {
+                "html_url": "https://github.com/org/service",
+                "name": "service",
+                "description": "First&amp;nbsp;Second",
+                "topics": []
+              }
+            ]
+        """
+
+        entries = parse_github_org_repositories(payload)
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].summary, "First Second")
+
+    def test_parse_github_org_repositories_sanitises_doubly_encoded_description_nbsp(self):
+        payload = b"""
+            [
+              {
+                "html_url": "https://github.com/org/service",
+                "name": "service",
+                "description": "First&amp;amp;nbsp;Second",
+                "topics": []
+              }
+            ]
+        """
+
+        entries = parse_github_org_repositories(payload)
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].summary, "First Second")
+
+    def test_parse_atom_feed_sanitises_summary_nbsp(self):
+        atom_feed = b"""
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <entry>
+                <id>summary-entry</id>
+                <title>Summary entry</title>
+                <link rel="alternate" href="https://example.gov.uk/summary-entry" />
+                <summary>First&amp;nbsp;Second</summary>
+              </entry>
+            </feed>
+        """
+
+        entries = parse_atom_feed(atom_feed)
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].summary, "First Second")
+
+    def test_parse_rss_feed_sanitises_description_nbsp(self):
+        rss_feed = b"""
+            <rss version="2.0">
+              <channel>
+                <item>
+                  <guid>rss-summary-entry</guid>
+                  <title>RSS summary entry</title>
+                  <link>https://example.gov.uk/rss-summary-entry</link>
+                  <description><![CDATA[First&nbsp;Second&amp;nbsp;Third]]></description>
+                </item>
+              </channel>
+            </rss>
+        """
+
+        entries = parse_rss_feed(rss_feed)
+
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].summary, "First Second Third")
 
 
 class ContentDiscoveryConsumeTagsSyncTests(TestCase):
@@ -165,4 +236,3 @@ class ContentDiscoveryConsumeTagsSyncTests(TestCase):
             {"default-tag", "good-tag"},
         )
         self.assertFalse(GovukTag.objects.filter(slug="broken-tag").exists())
-

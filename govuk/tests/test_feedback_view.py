@@ -99,6 +99,21 @@ class FeedbackViewTests(TestCase):
         self.assertTrue(feedback.is_mobile)
         self.assertIsNotNone(feedback.created_at)
 
+    def test_authenticated_submission_redirects_to_named_feedback_route(self):
+        with _with_feedback_feature(True):
+            self.client.force_login(self.user)
+
+            response = self.client.post(
+                "/feedback",
+                data={
+                    "feedback_type": Feedback.FeedbackType.GENERAL,
+                    "comments": "General feedback",
+                },
+            )
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/feedback/?submitted=1")
+
     def test_submission_uses_header_referrer_when_hidden_field_missing(self):
         with _with_feedback_feature(True):
             self.client.force_login(self.user)

@@ -172,8 +172,8 @@ main > :nth-last-child(1 of .section-cards-container) {
   gap: 1.5rem;
   grid-template-columns: 1fr;
 }
-@media (min-width: 40rem) { .section-cards { grid-template-columns: repeat(2, 1fr); } }
-@media (min-width: 64rem) { .section-cards { grid-template-columns: repeat(3, 1fr); } }
+@media (min-width: 40rem) { .section-cards { grid-template-columns: repeat(auto-fill, minmax(300px,1fr)); } }
+@media (min-width: 64rem) { .section-cards { grid-template-columns: repeat(auto-fill, minmax(250px,1fr)); } }
 
 .section-card {
   box-sizing: border-box;

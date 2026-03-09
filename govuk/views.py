@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.staticfiles.views import serve as staticfiles_serve
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 from django.views.decorators.http import require_http_methods
 from wagtail.models import Site
@@ -221,7 +222,7 @@ def feedback_view(request):
             feedback.browser = _browser_from_user_agent(user_agent)
             feedback.is_mobile = _is_mobile_user_agent(user_agent)
             feedback.save()
-            return redirect(f"{request.path}?submitted=1")
+            return redirect(f"{reverse('feedback')}?submitted=1")
     else:
         initial = {"referrer": inferred_referrer}
         if inferred_feedback_type:

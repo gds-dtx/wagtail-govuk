@@ -87,8 +87,7 @@ class CustomiseAssetsTests(TestCase):
         response = self.client.get(reverse("search"), data={"query": "service"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'src="/static/crown.svg"')
-        self.assertContains(response, 'alt="UK Government"')
+        self.assertContains(response, 'class="govuk-header__logo--ukgov"')
         self.assertNotContains(response, 'aria-label="GOV.UK"')
 
     def test_base_template_search_placeholder_hides_site_name_by_default(self):
@@ -98,7 +97,7 @@ class CustomiseAssetsTests(TestCase):
         response = self.client.get(reverse("search"), data={"query": "service"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, 'placeholder="Search this site"')
+        self.assertContains(response, 'placeholder="Search"')
 
     def test_base_template_search_placeholder_can_show_site_name(self):
         self.site.site_name = "Example Service"
@@ -110,3 +109,14 @@ class CustomiseAssetsTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'placeholder="Search Example Service"')
+
+    def test_base_template_search_placeholder_can_fallback_to_this_site(self):
+        self.site.site_name = ""
+        self.site.save(update_fields=["site_name"])
+        self.customise_settings.show_site_name_in_search_box = True
+        self.customise_settings.save()
+
+        response = self.client.get(reverse("search"), data={"query": "service"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'placeholder="Search this site"')

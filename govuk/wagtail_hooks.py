@@ -1020,7 +1020,7 @@ def generate_eddsa_jwt_view(request, site_id: int):
             lifetime=timedelta(seconds=lifetime_seconds),
         )
     except (JWTGenerationError, ImproperlyConfigured) as exc:
-        return HttpResponseBadRequest(str(exc))
+        return _eddsa_jwt_generation_error_response(exc)
 
     primary_key_pair = key_settings.get_primary_key_pair()
     return JsonResponse(
@@ -1036,6 +1036,12 @@ def generate_eddsa_jwt_view(request, site_id: int):
         },
         json_dumps_params={"indent": 2, "sort_keys": True},
     )
+
+
+def _eddsa_jwt_generation_error_response(exc: Exception) -> HttpResponseBadRequest:
+    if settings.DEBUG:
+        return HttpResponseBadRequest(str(exc))
+    return HttpResponseBadRequest("Unable to generate JWT.")
 
 
 @require_admin_access

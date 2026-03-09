@@ -1,11 +1,14 @@
+from unittest.mock import patch
+
 import jwt
 from cryptography.hazmat.primitives import serialization
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import Site
 
-from govuk.models import EdDSAKeyPair, EdDSAKeySettings
+from govuk.models import EdDSAKeyPair, EdDSAKeySettings, JWTGenerationError
 
 
 class EdDSAKeyAdminViewTests(TestCase):
@@ -141,4 +144,37 @@ class EdDSAKeyAdminViewTests(TestCase):
         self.assertIn(
             "lifetime_seconds must be between 1 and 86400.",
             response.content.decode("utf-8"),
+        )
+
+    @override_settings(DEBUG=False)
+    def test_generate_jwt_view_hides_generation_exception_when_debug_disabled(self):
+        with patch.object(
+            EdDSAKeySettings,
+            "generate_jwt",
+            side_effect=JWTGenerationError("detailed generation failure"),
+        ):
+            response = self.client.post(
+                reverse("govuk_eddsa_generate_site_jwt", args=[self.site.pk]),
+                data={"lifetime_seconds": "120"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.content.decode("utf-8"), "Unable to generate JWT.")
+
+    @override_settings(DEBUG=True)
+    def test_generate_jwt_view_shows_generation_exception_when_debug_enabled(self):
+        with patch.object(
+            EdDSAKeySettings,
+            "generate_jwt",
+            side_effect=ImproperlyConfigured("detailed generation failure"),
+        ):
+            response = self.client.post(
+                reverse("govuk_eddsa_generate_site_jwt", args=[self.site.pk]),
+                data={"lifetime_seconds": "120"},
+            )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(
+            response.content.decode("utf-8"),
+            "detailed generation failure",
         )
