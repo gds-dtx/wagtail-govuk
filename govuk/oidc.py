@@ -9,6 +9,7 @@ from allauth.socialaccount.providers.openid_connect.views import (
 )
 from django.conf import settings
 from django.http import Http404
+from django.utils.http import url_has_allowed_host_and_scheme
 
 ADMIN_OIDC_NEXT_URL_KEY = "oidc_next_url"
 OIDC_ID_TOKEN_SESSION_KEY = "oidc_id_token"
@@ -21,6 +22,21 @@ def build_oidc_login_url(next_url: str | None = None) -> str:
     if next_url:
         return f"{base_url}?{urlencode({'next': next_url})}"
     return base_url
+
+
+def safe_oidc_next_url(request, next_url: str | None) -> str | None:
+    candidate = (next_url or "").strip()
+    if not candidate:
+        return None
+
+    if url_has_allowed_host_and_scheme(
+        candidate,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return candidate
+
+    return None
 
 
 def build_oidc_logout_url() -> str:

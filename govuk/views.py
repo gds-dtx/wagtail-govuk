@@ -19,6 +19,7 @@ from govuk.oidc import (
     build_oidc_login_url,
     build_oidc_logout_url,
     oidc_callback as allauth_oidc_callback,
+    safe_oidc_next_url,
 )
 from govuk.search_backend import search_backend
 
@@ -242,7 +243,17 @@ def feedback_view(request):
 
 
 def oidc_login_redirect(request):
-    next_url = request.GET.get("next") or request.session.get(ADMIN_OIDC_NEXT_URL_KEY)
+    next_url = safe_oidc_next_url(request, request.GET.get("next"))
+    if next_url is None:
+        next_url = safe_oidc_next_url(
+            request, request.session.get(ADMIN_OIDC_NEXT_URL_KEY)
+        )
+
+    if next_url:
+        request.session[ADMIN_OIDC_NEXT_URL_KEY] = next_url
+    else:
+        request.session.pop(ADMIN_OIDC_NEXT_URL_KEY, None)
+
     return redirect(build_oidc_login_url(next_url))
 
 
