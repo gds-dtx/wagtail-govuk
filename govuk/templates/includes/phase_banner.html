@@ -4,7 +4,7 @@
             {{ phase_banner_settings.phase_label|default:"Alpha" }}
         </strong>
         <span class="govuk-phase-banner__text">
-            This is a new service -
+            {{ phase_banner_settings.phase_text|default:"This is a new service - " }}
             {% if phase_banner_settings.feedback_url %}
                 your <a class="govuk-link" href="{{ phase_banner_settings.feedback_url }}">feedback</a> will help us to improve it.
             {% else %}
@@ -13,3 +13,4 @@
         </span>
     </p>
 </div>
+

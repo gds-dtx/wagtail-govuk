@@ -2,6 +2,9 @@
 :root {
   --govuk-brand-colour: #158187;
   --govuk-secondary-colour: #8AC0C3;
+  --govuk-link-colour:  #106165;
+  --govuk-link-hover-colour: #0b4144;
+
 }
 
 .progress-bar__container {
@@ -52,3 +55,14 @@
 .skill-definitions__container>.progress-bar__container>.progress-bar__divider {
     width: 5%
 }
+
+.govuk-footer__link:link, .govuk-footer__link:visited {
+    color: rgb(11, 12, 12);
+}
+
+/*requirements state that cards should be underlined so normal behaviour has been overriden*/
+
+.govuk-link--no-underline:not(:hover):not(:active) {
+    text-decoration: underline;
+}
+
