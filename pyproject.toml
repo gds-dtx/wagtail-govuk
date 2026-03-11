@@ -13,7 +13,7 @@ dependencies = [
   "wagtail==7.3.1",
   "gunicorn==25.1.0",
   "whitenoise==6.12.0",
-  "django-allauth[socialaccount,openid]==65.14.3",
+  "django-allauth[socialaccount,openid]==65.15.0",
   "djangorestframework-simplejwt[crypto]>=5.4.0",
   "psycopg2-binary==2.9.11",
 ]
