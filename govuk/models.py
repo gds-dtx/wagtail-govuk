@@ -316,11 +316,17 @@ class PhaseBannerSettings(BaseSiteSetting):
         default="",
         help_text="Feedback link URL, for example /feedback or https://example.gov.uk/feedback.",
     )
+    phase_text = models.CharField(
+        max_length=500,
+        default= "This is a new service - ",
+        help_text="Phase banners are used to show users your service is still being worked on.",
+    )
 
     panels = [
         FieldPanel("enabled"),
         FieldPanel("phase_label"),
         FieldPanel("feedback_url"),
+        FieldPanel("phase_text"),
     ]
 
 
