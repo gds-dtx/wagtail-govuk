@@ -86,7 +86,7 @@
                             {% for item in listing_items %}
                                 <article class="section-card">
                                     <h2 class="govuk-heading-s govuk-!-margin-bottom-0">
-                                        <a class="govuk-link govuk-link--no-underline govuk-link--no-visited-state section-card__link--stretched"
+                                        <a class="govuk-link govuk-link--no-visited-state section-card__link--stretched"
                                            href="{{ item.url }}">{{ item.title|default:item.url }}</a>
                                     </h2>
                                     {% if self.enable_source_display and item.source or item.private or self.enable_tag_display and item.tags %}
