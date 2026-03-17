@@ -2,6 +2,13 @@
 :root {
   --govuk-brand-colour: #158187;
   --govuk-secondary-colour: #8AC0C3;
+  --govuk-link-colour: #106165;
+  --govuk-link-hover-colour: #0b4144;
+}
+
+.govuk-footer {
+  --govuk-link-colour: #0b0c0c;
+  --govuk-link-hover-colour: #0b0c0c;
 }
 
 .progress-bar__container {
