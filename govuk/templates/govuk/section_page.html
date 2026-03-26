@@ -66,14 +66,16 @@
                                                 </div>
                                             {% endif %}
                                             <div class="section-card--content">
-                                                <h3 class="govuk-heading-s govuk-!-margin-bottom-0">
+                                                {% with card_heading_tag=row.heading|yesno:"h3,h2" %}
+                                                <{{ card_heading_tag }} class="govuk-heading-s govuk-!-margin-bottom-0">
                                                     {% if card_url %}
                                                         <a class="govuk-link govuk-link--no-visited-state section-card__link--stretched"
                                                            href="{{ card_url }}">{{ card.title }}</a>
                                                     {% else %}
                                                         {{ card.title }}
                                                     {% endif %}
-                                                </h3>
+                                                </{{ card_heading_tag }}>
+                                                {% endwith %}
                                                 {% if self.enable_tag_display and card.tags %}
                                                     <p class="govuk-body-s govuk-!-margin-top-2 govuk-!-margin-bottom-2 tags-container">
                                                         {% for tag in card.tags %}
