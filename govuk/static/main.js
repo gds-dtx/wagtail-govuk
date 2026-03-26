@@ -3,6 +3,7 @@
 // on page load
 document.addEventListener("DOMContentLoaded", function () {
   setHyperlinkClasses();
+  setListClasses();
   setAutoHeadingNavigation();
   addStartButtonSVG();
 });
@@ -25,6 +26,18 @@ function setHyperlinkClasses() {
         link.classList.add("govuk-link");
       });
     });
+  });
+}
+
+function setListClasses() {
+  // Unordered lists
+  document.querySelectorAll(".rich-text-content ul").forEach((el) => {
+    el.classList.add("govuk-list", "govuk-list--bullet");
+  });
+
+  // Ordered lists
+  document.querySelectorAll(".rich-text-content ol").forEach((el) => {
+    el.classList.add("govuk-list", "govuk-list--number");
   });
 }
 
