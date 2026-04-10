@@ -63,14 +63,6 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "extra_js",
-                    models.TextField(
-                        blank=True,
-                        default="",
-                        help_text="Optional additional JavaScript.",
-                    ),
-                ),
-                (
                     "site",
                     models.OneToOneField(
                         editable=False,

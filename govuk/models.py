@@ -318,7 +318,7 @@ class PhaseBannerSettings(BaseSiteSetting):
     )
     phase_text = models.CharField(
         max_length=500,
-        default= "This is a new service - ",
+        default="This is a new service - ",
         help_text="Phase banners are used to show users your service is still being worked on.",
     )
 
@@ -382,11 +382,6 @@ class CustomiseSettings(BaseSiteSetting):
         default="",
         help_text="Optional additional CSS appended after hero overrides.",
     )
-    extra_js = models.TextField(
-        blank=True,
-        default="",
-        help_text="Optional additional JavaScript.",
-    )
 
     panels = [
         FieldPanel("header_logo"),
@@ -394,7 +389,6 @@ class CustomiseSettings(BaseSiteSetting):
         FieldPanel("hero_background_color"),
         FieldPanel("hero_text_color"),
         FieldPanel("extra_css"),
-        FieldPanel("extra_js"),
     ]
 
     class Meta:
@@ -419,16 +413,9 @@ class CustomiseSettings(BaseSiteSetting):
 
         return "\n".join(sections).strip()
 
-    def render_custom_js(self) -> str:
-        return (self.extra_js or "").strip()
-
     @property
     def has_custom_css(self) -> bool:
         return bool(self.render_custom_css())
-
-    @property
-    def has_custom_js(self) -> bool:
-        return bool(self.render_custom_js())
 
 
 @register_setting(icon="search")

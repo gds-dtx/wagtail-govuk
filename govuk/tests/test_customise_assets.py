@@ -32,23 +32,8 @@ class CustomiseAssetsTests(TestCase):
         self.assertIn("color: #fefefe;", body)
         self.assertIn(".hero__title { text-transform: uppercase; }", body)
 
-    def test_custom_js_view_renders_extra_js(self):
-        self.customise_settings.extra_js = "window.customThemeReady = true;"
-        self.customise_settings.save()
-
-        response = self.client.get("/gen/custom.js")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response["Content-Type"], "application/javascript; charset=utf-8"
-        )
-        self.assertIn(
-            "window.customThemeReady = true;", response.content.decode("utf-8")
-        )
-
     def test_custom_asset_views_return_404_when_empty(self):
         self.assertEqual(self.client.get("/gen/custom.css").status_code, 404)
-        self.assertEqual(self.client.get("/gen/custom.js").status_code, 404)
 
     def test_hero_colours_require_hex_values(self):
         self.customise_settings.hero_background_color = "green"
@@ -62,23 +47,20 @@ class CustomiseAssetsTests(TestCase):
         no_custom_response = self.client.get(search_url, data={"query": "service"})
         self.assertEqual(no_custom_response.status_code, 200)
         self.assertNotContains(no_custom_response, "/gen/custom.css")
-        self.assertNotContains(no_custom_response, "/gen/custom.js")
 
         self.customise_settings.hero_background_color = "#001122"
-        self.customise_settings.extra_js = "window.enableCustom = true;"
         self.customise_settings.save()
 
         custom_response = self.client.get(search_url, data={"query": "service"})
         self.assertEqual(custom_response.status_code, 200)
         self.assertContains(custom_response, "/gen/custom.css")
-        self.assertContains(custom_response, "/gen/custom.js")
 
     def test_base_template_uses_embedded_govuk_logo_by_default(self):
         response = self.client.get(reverse("search"), data={"query": "service"})
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'aria-label="GOV.UK"')
-        self.assertNotContains(response, '/static/crown.svg')
+        self.assertNotContains(response, "/static/crown.svg")
 
     def test_base_template_can_render_uk_government_crown_logo(self):
         self.customise_settings.header_logo = "uk-government"
