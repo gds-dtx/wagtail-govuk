@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
+import socket
 import ssl
 
 from dataclasses import dataclass, field
@@ -10,6 +12,7 @@ from email.utils import parsedate_to_datetime
 from html import unescape
 from typing import Iterable
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from xml.etree import ElementTree
 
@@ -404,6 +407,41 @@ def parse_github_org_repositories(json_content: str | bytes) -> list[FeedEntry]:
     return entries
 
 
+def _normalise_source_hostname(url: str) -> str:
+    try:
+        hostname = urlparse(url).hostname or ""
+    except ValueError as exc:
+        raise ContentDiscoveryError(f"Invalid source URL '{url}': {exc}") from exc
+    return hostname.rstrip(".").lower()
+
+
+def _is_ip_literal_hostname(hostname: str) -> bool:
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        pass
+    else:
+        return True
+
+    return False
+
+
+def _validate_source_fetch_url(url: str) -> None:
+    hostname = _normalise_source_hostname(url)
+    if not hostname:
+        return
+
+    if hostname == "localhost" or hostname.endswith(".localhost"):
+        raise ContentDiscoveryError(
+            f"Could not fetch '{url}': localhost hosts are not allowed."
+        )
+
+    if _is_ip_literal_hostname(hostname):
+        raise ContentDiscoveryError(
+            f"Could not fetch '{url}': IP address hosts are not allowed."
+        )
+
+
 def fetch_source_content(
     url: str,
     *,
@@ -423,6 +461,8 @@ def fetch_source_content(
     }
     if authorization_header:
         headers["Authorization"] = authorization_header
+
+    _validate_source_fetch_url(url)
 
     request = Request(
         url,
