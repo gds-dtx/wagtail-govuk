@@ -9,12 +9,17 @@ import os
 from django.core.wsgi import get_wsgi_application
 from django.db import OperationalError, ProgrammingError
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "govuk.settings.local")
+from govuk.settings.runtime import resolve_wsgi_settings_module
+
+resolve_wsgi_settings_module(os.environ)
 
 application = get_wsgi_application()
 
 try:
-    from govuk.settings.base import sync_admin_users_from_env, sync_default_site_from_env
+    from govuk.settings.base import (
+        sync_admin_users_from_env,
+        sync_default_site_from_env,
+    )
 
     sync_admin_users_from_env()
     sync_default_site_from_env()
