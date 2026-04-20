@@ -13,7 +13,6 @@ class InternalAccessJWTAuthentication(JWTStatelessUserAuthentication):
     govuk/settings/base.py (JWKS URL, issuer, and allowed audiences).
     """
 
-    token_query_param = "bearer"
     max_id_token_age = timedelta(hours=12)
 
     def get_validated_token(self, raw_token):
@@ -36,15 +35,3 @@ class InternalAccessJWTAuthentication(JWTStatelessUserAuthentication):
             raise InvalidToken("Token 'iat' claim is in the future")
         if now - issued_at >= self.max_id_token_age:
             raise InvalidToken("Token is older than the maximum allowed 12 hours")
-
-    def authenticate(self, request):
-        authenticated = super().authenticate(request)
-        if authenticated is not None:
-            return authenticated
-
-        raw_token = request.query_params.get(self.token_query_param)
-        if not raw_token:
-            return None
-
-        validated_token = self.get_validated_token(raw_token.encode("utf-8"))
-        return self.get_user(validated_token), validated_token
