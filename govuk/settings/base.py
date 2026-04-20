@@ -275,7 +275,7 @@ SESSION_ENGINE = (
 # Set HSTS_SECONDS to a non-zero value in production (31536000 = 1 year).
 # HSTS_INCLUDE_SUBDOMAINS and HSTS_PRELOAD should only be enabled once you are
 # confident every subdomain and hostname is served over HTTPS.
-SECURE_HSTS_SECONDS = int(os.getenv("HSTS_SECONDS", "0"))
+SECURE_HSTS_SECONDS = int(os.getenv("HSTS_SECONDS", "31536000"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = _bool_env("HSTS_INCLUDE_SUBDOMAINS", default=False)
 SECURE_HSTS_PRELOAD = _bool_env("HSTS_PRELOAD", default=False)
 
@@ -284,7 +284,7 @@ X_FRAME_OPTIONS = os.getenv("X_FRAME_OPTIONS", "SAMEORIGIN")
 
 NOINDEX = _bool_env("NOINDEX", default=True)
 
-SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", default=False)
+SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", default=True)
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "sessionid")
 SESSION_COOKIE_AGE = int(
     os.getenv("SESSION_COOKIE_AGE", 60 * 60 * 12)

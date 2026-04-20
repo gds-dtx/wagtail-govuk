@@ -1,3 +1,7 @@
+# This docker-compose is only for local testing and development,
+# it is not used or suitable for production use.
+# (see separate wagtail-iac repo where ECS and RDS is configured).
+
 services:
   db:
     image: postgres:17-alpine

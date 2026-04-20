@@ -21,7 +21,6 @@ from govuk.authentication import InternalAccessJWTAuthentication
 from govuk.models import ContentDiscoverySource, ExternalContentItem, GovukTag
 from govuk.utils import normalised_text
 
-AUTH_QUERY_PARAMETERS = frozenset({"bearer"})
 DEFAULT_API_REPOSITORY_URL = "https://github.com/govuk-digital-backbone/wagtail-govuk"
 
 
@@ -183,24 +182,17 @@ class WagtailPages(AuthenticatedAPIViewSetMixin, PagesAPIViewSet):
         "description",
         "tags",
     ]
-    known_query_parameters = PagesAPIViewSet.known_query_parameters.union(
-        AUTH_QUERY_PARAMETERS
-    )
 
     def get_queryset(self):
         return super().get_queryset().prefetch_related("view_restrictions__groups")
 
 
 class WagtailImages(AuthenticatedAPIViewSetMixin, ImagesAPIViewSet):
-    known_query_parameters = ImagesAPIViewSet.known_query_parameters.union(
-        AUTH_QUERY_PARAMETERS
-    )
+    pass
 
 
 class WagtailDocuments(AuthenticatedAPIViewSetMixin, DocumentsAPIViewSet):
-    known_query_parameters = DocumentsAPIViewSet.known_query_parameters.union(
-        AUTH_QUERY_PARAMETERS
-    )
+    pass
 
 
 class GovukTagSerializer(serializers.ModelSerializer):

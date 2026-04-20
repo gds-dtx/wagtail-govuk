@@ -2,11 +2,6 @@
 {% block title %}Your profile{% endblock %}
 {% block content %}
     <div class="govuk-width-container">
-        {% if auth_id_token %}
-            <!-- auth id_token: {{ auth_id_token }} -->
-        {% else %}
-            <!-- auth id_token: unavailable -->
-        {% endif %}
         <h1 class="govuk-heading-l govuk-!-padding-top-6">Your profile</h1>
         <p class="govuk-body">These are the details for your current signed-in session.</p>
         <dl class="govuk-summary-list">

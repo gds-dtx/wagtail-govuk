@@ -61,15 +61,6 @@ def custom_css_view(request):
 
 
 @require_http_methods(["GET"])
-def custom_js_view(request):
-    custom_js = _customise_settings_for_request(request).render_custom_js()
-    if not custom_js:
-        raise Http404
-
-    return HttpResponse(custom_js, content_type="application/javascript; charset=utf-8")
-
-
-@require_http_methods(["GET"])
 def jwks_view(request):
     jwks_keys = _eddsa_key_settings_for_request(request).build_jwks_keys()
     if not jwks_keys:
