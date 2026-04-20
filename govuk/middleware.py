@@ -85,6 +85,7 @@ class CorsMiddleware:
         response = self.get_response(request)
         if any(request.path.startswith(p) for p in self.path_prefixes):
             response.headers.setdefault("Access-Control-Allow-Origin", "*")
+            response.headers.setdefault("Access-Control-Allow-Credentials", "false")
         return response
 
 
