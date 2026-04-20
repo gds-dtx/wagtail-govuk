@@ -13,7 +13,7 @@ from html import unescape
 from typing import Iterable
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 from xml.etree import ElementTree
 
 from django.conf import settings
@@ -436,10 +436,83 @@ def _validate_source_fetch_url(url: str) -> None:
             f"Could not fetch '{url}': localhost hosts are not allowed."
         )
 
+    if "." not in hostname:
+        raise ContentDiscoveryError(
+            f"Could not fetch '{url}': hostname appears invalid."
+        )
+
     if _is_ip_literal_hostname(hostname):
         raise ContentDiscoveryError(
             f"Could not fetch '{url}': IP address hosts are not allowed."
         )
+
+    if not hostname.split(".")[-1].isalpha():
+        raise ContentDiscoveryError(
+            f"Could not fetch '{url}': non-alpha TLDs are not allowed."
+        )
+
+
+def _validate_source_fetch_dns_resolution(url: str) -> None:
+    parsed_url = urlparse(url)
+    hostname = _normalise_source_hostname(url)
+    if not hostname:
+        return
+
+    try:
+        port = parsed_url.port
+    except ValueError as exc:
+        raise ContentDiscoveryError(f"Invalid source URL '{url}': {exc}") from exc
+    if port is None:
+        port = 443 if parsed_url.scheme.lower() == "https" else 80
+
+    try:
+        addrinfo = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise ContentDiscoveryError(
+            f"Could not fetch '{url}': could not resolve hostname '{hostname}': {exc}."
+        ) from exc
+
+    resolved_addresses = {
+        sockaddr[0]
+        for family, _, _, _, sockaddr in addrinfo
+        if family in (socket.AF_INET, socket.AF_INET6) and sockaddr
+    }
+    if not resolved_addresses:
+        raise ContentDiscoveryError(
+            f"Could not fetch '{url}': hostname '{hostname}' did not resolve to an IP address."
+        )
+
+    blocked_addresses = sorted(
+        address
+        for address in resolved_addresses
+        if not ipaddress.ip_address(address).is_global
+    )
+    if blocked_addresses:
+        raise ContentDiscoveryError(
+            f"Could not fetch '{url}': hostname resolved to non-public IP addresses: "
+            f"{', '.join(blocked_addresses)}."
+        )
+
+
+class _ValidatedSourceRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        _validate_source_fetch_url(newurl)
+        _validate_source_fetch_dns_resolution(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open_source_request(
+    request: Request,
+    *,
+    timeout: float,
+    disable_tls_verification: bool,
+):
+    handlers = [_ValidatedSourceRedirectHandler()]
+    if disable_tls_verification:
+        handlers.append(HTTPSHandler(context=ssl._create_unverified_context()))
+
+    opener = build_opener(*handlers)
+    return opener.open(request, timeout=timeout)
 
 
 def fetch_source_content(
@@ -463,6 +536,7 @@ def fetch_source_content(
         headers["Authorization"] = authorization_header
 
     _validate_source_fetch_url(url)
+    _validate_source_fetch_dns_resolution(url)
 
     request = Request(
         url,
@@ -478,12 +552,12 @@ def fetch_source_content(
             request_headers,
         )
 
-    request_kwargs = {"timeout": timeout}
-    if disable_tls_verification:
-        request_kwargs["context"] = ssl._create_unverified_context()
-
     try:
-        with urlopen(request, **request_kwargs) as response:
+        with _open_source_request(
+            request,
+            timeout=timeout,
+            disable_tls_verification=disable_tls_verification,
+        ) as response:
             body = response.read()
     except (HTTPError, URLError, OSError) as exc:
         raise ContentDiscoveryError(f"Could not fetch '{url}': {exc}") from exc
