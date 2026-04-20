@@ -1,3 +1,7 @@
+import importlib
+import sys
+from unittest.mock import patch, sentinel
+
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 
@@ -98,3 +102,28 @@ class ResolveWsgiSettingsModuleTests(SimpleTestCase):
                 environ={"DJANGO_SETTINGS_MODULE": LOCAL_SETTINGS_MODULE},
                 argv=["python", "-c", "import govuk.wsgi"],
             )
+
+
+class WsgiModuleTests(SimpleTestCase):
+    def test_import_does_not_sync_env_state(self):
+        sys.modules.pop("govuk.wsgi", None)
+
+        try:
+            with (
+                patch("govuk.settings.runtime.resolve_wsgi_settings_module"),
+                patch(
+                    "django.core.wsgi.get_wsgi_application",
+                    return_value=sentinel.application,
+                ),
+                patch("govuk.settings.base.sync_admin_users_from_env") as mock_admin_sync,
+                patch(
+                    "govuk.settings.base.sync_default_site_from_env"
+                ) as mock_site_sync,
+            ):
+                module = importlib.import_module("govuk.wsgi")
+        finally:
+            sys.modules.pop("govuk.wsgi", None)
+
+        self.assertIs(module.application, sentinel.application)
+        mock_admin_sync.assert_not_called()
+        mock_site_sync.assert_not_called()
