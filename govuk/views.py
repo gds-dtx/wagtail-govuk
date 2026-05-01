@@ -19,6 +19,7 @@ from govuk.oidc import (
     build_oidc_login_url,
     build_oidc_logout_url,
     oidc_callback as allauth_oidc_callback,
+    oidc_login as allauth_oidc_login,
     safe_oidc_next_url,
 )
 from govuk.search_backend import search_backend
@@ -250,6 +251,10 @@ def oidc_login_redirect(request):
 
 def oidc_callback(request, provider_id):
     return allauth_oidc_callback(request, provider_id)
+
+
+def oidc_login(request, provider_id):
+    return allauth_oidc_login(request, provider_id)
 
 
 @require_http_methods(["GET", "POST"])

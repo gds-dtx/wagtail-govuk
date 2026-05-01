@@ -23,6 +23,7 @@ from govuk.views import (
     feedback_view,
     jwks_view,
     oidc_callback,
+    oidc_login,
     oidc_login_redirect,
     profile_view,
     search_view,
@@ -37,8 +38,9 @@ admin.site.login = secure_admin_login(admin.site.login)
 urlpatterns = [
     path("login/", oidc_login_redirect, name="account_login"),
     path("accounts/login/", oidc_login_redirect),
+    path("accounts/oidc/<str:provider_id>/login/", oidc_login),
     path(
-        f"accounts/{settings.SOCIALACCOUNT_OPENID_CONNECT_URL_PREFIX}/<str:provider_id>/login/callback/",
+        "accounts/oidc/<str:provider_id>/login/callback/",
         oidc_callback,
         name="oidc_callback",
     ),
