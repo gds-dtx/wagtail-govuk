@@ -309,7 +309,6 @@ SECURITYTXT_LOCATION = os.getenv(
     "https://vulnerability-reporting.service.security.gov.uk/.well-known/security.txt",
 )
 SIMPLE_JWT_AUDIENCE = _resolve_simple_jwt_audience(OIDC_CLIENT_ID)
-SOCIALACCOUNT_OPENID_CONNECT_URL_PREFIX = "oidc"
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_PROVIDERS = {
     "openid_connect": {

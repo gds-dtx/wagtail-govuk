@@ -42,7 +42,7 @@ When using `govuk.settings.dev`, the following variables are required:
 - `DATABASE_HOST`: PostgreSQL host.
 - `DATABASE_PORT`: PostgreSQL port (defaults to `5432`).
 - `DOMAIN`: Hostname for `ALLOWED_HOSTS` (in addition to `*`).
-- `BASE_URL`: Full base URL used for CSRF, CORS, and Wagtail admin URLs (for example `https://example.com`).
+- `BASE_URL`: Full base URL used for CSRF, CORS, Wagtail admin URLs, and OIDC redirects (for example `https://example.com`).
 - `OIDC_CLIENT_ID`: Internal Access client ID.
 - `OIDC_CLIENT_SECRET`: Internal Access client secret.
 - `OIDC_JWKS_URL`: JWKS URL for API bearer token verification. Defaults to `https://sso.service.security.gov.uk/.well-known/jwks.json`.
