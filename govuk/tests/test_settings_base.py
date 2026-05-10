@@ -1,4 +1,6 @@
+import importlib
 import os
+import sys
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -146,6 +148,33 @@ class ResolveLogLevelTests(SimpleTestCase):
 
     def test_returns_default_when_value_is_unsupported(self):
         self.assertEqual(base_settings._resolve_log_level("TRACE"), "INFO")
+
+
+class DevSettingsTests(SimpleTestCase):
+    def test_exposes_base_url_from_environment(self):
+        module_name = "govuk.settings.dev"
+        original_module = sys.modules.pop(module_name, None)
+
+        try:
+            with patch.dict(
+                os.environ,
+                {"BASE_URL": "https://gds-cyber-001.dev.wagtail.ukps.digital/"},
+                clear=False,
+            ):
+                dev_settings = importlib.import_module(module_name)
+
+            self.assertEqual(
+                dev_settings.BASE_URL,
+                "https://gds-cyber-001.dev.wagtail.ukps.digital",
+            )
+            self.assertEqual(
+                dev_settings.WAGTAILADMIN_BASE_URL,
+                "https://gds-cyber-001.dev.wagtail.ukps.digital",
+            )
+        finally:
+            sys.modules.pop(module_name, None)
+            if original_module is not None:
+                sys.modules[module_name] = original_module
 
 
 class SyncDefaultSiteFromEnvTests(TestCase):
