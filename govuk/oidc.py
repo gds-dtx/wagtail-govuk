@@ -29,7 +29,11 @@ def build_oidc_callback_url(
     callback_path = reverse(
         "openid_connect_callback", kwargs={"provider_id": provider_id}
     )
-    redirect_base_url = (getattr(settings, "BASE_URL", None) or "").rstrip("/")
+    redirect_base_url = (
+        getattr(settings, "BASE_URL", None)
+        or getattr(settings, "WAGTAILADMIN_BASE_URL", None)
+        or ""
+    ).rstrip("/")
     if redirect_base_url:
         return urljoin(f"{redirect_base_url}/", callback_path.lstrip("/"))
 

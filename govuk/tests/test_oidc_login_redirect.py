@@ -127,6 +127,38 @@ class OIDCProviderLoginTests(TestCase):
             [expected_redirect_uri],
         )
 
+    @override_settings(
+        ALLOWED_HOSTS=["gds-cyber-001.dev.wagtail.ukps.digital"],
+        BASE_URL="",
+        WAGTAILADMIN_BASE_URL="https://gds-cyber-001.dev.wagtail.ukps.digital",
+        SOCIALACCOUNT_PROVIDERS=socialaccount_providers,
+    )
+    @patch.object(
+        SessionOIDCCallbackAdapter,
+        "openid_config",
+        new_callable=PropertyMock,
+    )
+    def test_authorize_redirect_falls_back_to_wagtailadmin_base_url(
+        self, mock_openid_config
+    ):
+        mock_openid_config.return_value = self.openid_config
+
+        response = self.client.get(
+            "/accounts/oidc/internal-access/login/",
+            HTTP_HOST="gds-cyber-001.dev.wagtail.ukps.digital:10443",
+            SERVER_PORT="10443",
+        )
+
+        params = parse_qs(urlsplit(response["Location"]).query)
+        expected_redirect_uri = (
+            "https://gds-cyber-001.dev.wagtail.ukps.digital"
+            "/accounts/oidc/internal-access/login/callback/"
+        )
+        self.assertEqual(
+            params["redirect_uri"],
+            [expected_redirect_uri],
+        )
+
 
 class AccountAdapterTests(TestCase):
     def setUp(self):
