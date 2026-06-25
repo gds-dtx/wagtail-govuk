@@ -37,5 +37,5 @@ jobs:
 
       - name: 'Build Inventory Image'
         run: |
-          docker build . --no-cache --build-arg VERSION=${{ steps.app_version.outputs.version }} --tag ghcr.io/govuk-digital-backbone/wagtail-govuk:${{ steps.app_version.outputs.version }}
-          docker push ghcr.io/govuk-digital-backbone/wagtail-govuk:${{ steps.app_version.outputs.version }}
+          docker build . --no-cache --build-arg VERSION=${{ steps.app_version.outputs.version }} --tag ghcr.io/gds-dtx/wagtail-govuk:${{ steps.app_version.outputs.version }}
+          docker push ghcr.io/gds-dtx/wagtail-govuk:${{ steps.app_version.outputs.version }}
