@@ -76,8 +76,8 @@ class OIDCProviderLoginTests(TestCase):
                     "settings": {
                         "fetch_userinfo": True,
                         "server_url": (
-                            "https://sso.service.security.gov.uk/.well-known/"
-                            "openid-configuration"
+                            "https://sso.service.security.gov.uk/oauth2/"
+                            ".well-known/openid-configuration"
                         ),
                         "token_auth_method": "client_secret_basic",
                         "uid_field": "sub",
