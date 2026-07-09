@@ -329,7 +329,7 @@ SOCIALACCOUNT_PROVIDERS = {
                     # token payload is used instead.
                     "fetch_userinfo": True,
                     "oauth_pkce_enabled": False,
-                    "server_url": "https://sso.service.security.gov.uk/.well-known/openid-configuration",
+                    "server_url": "https://sso.service.security.gov.uk/oauth2/.well-known/openid-configuration",
                     # Optional token endpoint authentication method.
                     # May be one of "client_secret_basic", "client_secret_post"
                     # If omitted, a method from the the server's
