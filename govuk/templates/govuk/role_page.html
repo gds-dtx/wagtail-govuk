@@ -80,6 +80,41 @@
                                             </table>
                                         {% endif %}
                                     {% endfor %}
+                                    {% if role_section.related_roles %}
+                                        <h2 class="govuk-heading-l" id="related-roles">Roles that share {{ role_section.display_role_name }} skills</h2>
+                                        <table class="govuk-table">
+                                            <thead class="govuk-table__head">
+                                                <tr class="govuk-table__row">
+                                                    <th scope="col" class="govuk-table__header">Role</th>
+                                                    <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Shared skills</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="govuk-table__body">
+                                                {% for related in role_section.related_roles %}
+                                                    <tr class="govuk-table__row">
+                                                        <th scope="row" class="govuk-table__header">
+                                                            {% if related.url %}
+                                                                <a href="{{ related.url }}" class="govuk-link">{{ related.role.title }}</a>
+                                                            {% else %}
+                                                                {{ related.role.title }}
+                                                            {% endif %}
+                                                        </th>
+                                                        <td class="govuk-table__cell">
+                                                            {% for skill in related.shared_skills %}
+                                                                <p class="govuk-body govuk-!-margin-bottom-1">
+                                                                    {% if skills_index_url %}
+                                                                        <a href="{{ skills_index_url }}#{{ skill.slug }}" class="govuk-link">{{ skill.title }}</a>
+                                                                    {% else %}
+                                                                        {{ skill.title }}
+                                                                    {% endif %}
+                                                                </p>
+                                                            {% endfor %}
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    {% endif %}
                                 </section>
                             {% empty %}
                                 {% if not self.body %}<p class="govuk-body">No roles selected.</p>{% endif %}
