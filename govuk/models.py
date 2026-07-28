@@ -69,6 +69,7 @@ SKILL_LEVEL_ORDINALS = {
     "expert": "fourth",
 }
 THIS_SITE_SOURCE_FILTER = "__this_site__"
+RELATED_ROLES_COUNT = 5
 SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES = [
     "h2",
     "h3",
@@ -1241,6 +1242,93 @@ class GovukRole(models.Model):
             return ""
         return SKILL_LEVEL_LABELS.get(level_key, level_key.title())
 
+    @staticmethod
+    def _extract_skill_id(value) -> int | None:
+        if type(value) is int and value > 0:
+            return value
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped.isdigit():
+                parsed = int(stripped)
+                if parsed > 0:
+                    return parsed
+        skill_pk = getattr(value, "pk", None)
+        if type(skill_pk) is int and skill_pk > 0:
+            return skill_pk
+        return None
+
+    def get_skill_ids(self) -> set[int]:
+        """Distinct ids of skills required at any level of this role."""
+        skill_ids: set[int] = set()
+
+        raw_levels = getattr(self.levels, "raw_data", None)
+        if raw_levels:
+            for raw_level in raw_levels:
+                if not isinstance(raw_level, dict) or raw_level.get("type") != "level":
+                    continue
+                raw_skills = (raw_level.get("value") or {}).get("skills") or []
+                for raw_entry in raw_skills:
+                    if not isinstance(raw_entry, dict):
+                        continue
+                    # ListBlock items appear either as plain struct dicts or
+                    # wrapped as {"type": "item", "value": {...}}.
+                    entry_value = raw_entry.get("value") if "skill" not in raw_entry else raw_entry
+                    if not isinstance(entry_value, dict):
+                        continue
+                    skill_id = self._extract_skill_id(entry_value.get("skill"))
+                    if skill_id:
+                        skill_ids.add(skill_id)
+            return skill_ids
+
+        for level_block in self.levels:
+            if level_block.block_type != "level":
+                continue
+            for skill_requirement in level_block.value.get("skills") or []:
+                skill_id = self._extract_skill_id(skill_requirement.get("skill"))
+                if skill_id:
+                    skill_ids.add(skill_id)
+        return skill_ids
+
+    def get_related_roles(self, count: int = RELATED_ROLES_COUNT) -> list[dict]:
+        """Other roles sharing skills with this one, most shared skills first.
+
+        Mirrors the DDaT Capability Framework behaviour: ordered by number of
+        shared skills descending then title, capped at ``count`` (the Strapi
+        site used a ``relatedRolesCount`` global setting defaulting to 5).
+        """
+        own_skill_ids = self.get_skill_ids()
+        if not own_skill_ids:
+            return []
+
+        matches: list[tuple[GovukRole, set[int]]] = []
+        for role in type(self).objects.exclude(pk=self.pk):
+            shared_ids = own_skill_ids & role.get_skill_ids()
+            if shared_ids:
+                matches.append((role, shared_ids))
+
+        matches.sort(
+            key=lambda match: (-len(match[1]), (match[0].title or "").strip().lower())
+        )
+        matches = matches[:count]
+
+        skills_by_id = GovukSkill.objects.in_bulk(
+            {skill_id for _, shared_ids in matches for skill_id in shared_ids}
+        )
+        return [
+            {
+                "role": role,
+                "shared_skills": sorted(
+                    (
+                        skills_by_id[skill_id]
+                        for skill_id in shared_ids
+                        if skill_id in skills_by_id
+                    ),
+                    key=lambda skill: (skill.title or "").strip().lower(),
+                ),
+            }
+            for role, shared_ids in matches
+        ]
+
     def get_levels_with_skills(self) -> list[dict]:
         role_levels: list[dict] = []
         for level_block in self.levels:
@@ -1867,9 +1955,42 @@ class RolePage(Page):
             for role in self.get_selected_roles()
         ]
 
+    def _role_page_urls_by_role_id(self) -> dict[int, str]:
+        urls: dict[int, str] = {}
+        for page in RolePage.objects.live().exclude(pk=self.pk):
+            page_url = page.url
+            if not page_url:
+                continue
+            for role_id in page.get_selected_role_ids():
+                urls.setdefault(role_id, page_url)
+        return urls
+
+    @staticmethod
+    def _display_role_name(title: str) -> str:
+        """Lowercase a role title for mid-sentence use, keeping acronyms."""
+        return " ".join(
+            word if word.isupper() else word.lower()
+            for word in (title or "").split()
+        )
+
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
-        context["role_sections"] = self.get_role_sections()
+        role_sections = self.get_role_sections()
+
+        role_page_urls = self._role_page_urls_by_role_id()
+        skills_page = SkillsAZPage.objects.live().first()
+        context["skills_index_url"] = skills_page.url if skills_page else ""
+
+        for section in role_sections:
+            section["display_role_name"] = self._display_role_name(
+                section["role"].title
+            )
+            section["related_roles"] = [
+                {**entry, "url": role_page_urls.get(entry["role"].pk, "")}
+                for entry in section["role"].get_related_roles()
+            ]
+
+        context["role_sections"] = role_sections
         return context
 
 
