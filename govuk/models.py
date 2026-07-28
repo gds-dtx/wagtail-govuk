@@ -1152,6 +1152,13 @@ class GovukRole(models.Model):
         max_length=255,
         help_text="Role name, for example Digital forensics analyst.",
     )
+    family = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Role family used to group roles, for example Data.",
+    )
     body = RichTextField(
         blank=True,
         features=SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES,
@@ -1224,6 +1231,7 @@ class GovukRole(models.Model):
     panels = [
         FieldPanel("slug"),
         FieldPanel("title"),
+        FieldPanel("family"),
         FieldPanel("body"),
         FieldPanel("levels"),
     ]

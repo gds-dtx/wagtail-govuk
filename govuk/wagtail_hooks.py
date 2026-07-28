@@ -431,8 +431,9 @@ class GovukRoleViewSet(SnippetViewSet):
     menu_label = "Roles"
     menu_name = "govuk-roles"
     menu_order = 216
-    list_display = ["title", "slug"]
-    search_fields = ["title", "slug", "body"]
+    list_display = ["title", "family", "slug"]
+    list_filter = ["family"]
+    search_fields = ["title", "slug", "body", "family"]
 
 
 class GovukChangelogEntryViewSet(SnippetViewSet):

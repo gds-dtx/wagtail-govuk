@@ -78,4 +78,6 @@ class SkillsWagtailHooksTests(SimpleTestCase):
 
         self.assertTrue(hooks_module.GovukRoleViewSet.add_to_admin_menu)
         self.assertEqual(hooks_module.GovukRoleViewSet.menu_label, "Roles")
-        self.assertEqual(hooks_module.GovukRoleViewSet.list_display, ["title", "slug"])
+        self.assertEqual(
+            hooks_module.GovukRoleViewSet.list_display, ["title", "family", "slug"]
+        )

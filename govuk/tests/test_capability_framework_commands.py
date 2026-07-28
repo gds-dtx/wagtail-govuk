@@ -8,7 +8,9 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
+from govuk.management.commands.import_capability_framework import SITE_NAME
 from govuk.models import (
+    ContentPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
@@ -186,6 +188,51 @@ class ImportCapabilityFrameworkTests(TestCase):
 
         with self.assertRaises(Exception):
             self._import()
+
+    def test_roles_record_their_family(self):
+        self._import()
+
+        self.assertEqual(GovukRole.objects.get(slug="data-engineer").family, "Data")
+        self.assertEqual(
+            GovukRole.objects.get(slug="chief-data-officer").family,
+            "Chief digital and data",
+        )
+
+    def test_placeholder_home_page_is_replaced_and_site_named(self):
+        self._import()
+
+        site = Site.objects.get(is_default_site=True)
+        home = site.root_page.specific
+        self.assertIsInstance(home, ContentPage)
+        self.assertEqual(home.slug, "home")
+        self.assertEqual(site.site_name, SITE_NAME)
+
+    def test_home_page_lists_every_role_grouped_by_family(self):
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        self.assertIn("Data roles", home.body)
+        self.assertIn("Chief digital and data roles", home.body)
+        for slug in ("data-engineer", "data-architect", "chief-data-officer"):
+            self.assertIn(RolePage.objects.get(slug=slug).url, home.body)
+        self.assertIn("Skills A to Z", home.body)
+
+    def test_home_page_is_reachable_and_links_resolve(self):
+        self._import()
+
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("Data engineer", body)
+        self.assertEqual(self.client.get("/data-engineer/").status_code, 200)
+
+    def test_second_import_keeps_the_same_home_page(self):
+        self._import()
+        first = Site.objects.get(is_default_site=True).root_page_id
+        self._import()
+
+        self.assertEqual(Site.objects.get(is_default_site=True).root_page_id, first)
+        self.assertEqual(ContentPage.objects.filter(slug="home").count(), 1)
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())

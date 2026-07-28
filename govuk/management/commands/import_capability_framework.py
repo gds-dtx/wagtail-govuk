@@ -3,8 +3,9 @@ import json
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
+from django.utils.html import escape
 from django.utils.text import slugify
-from wagtail.models import Page
+from wagtail.models import Page, Site
 
 from govuk.capability_framework import (
     NOT_IN_USE,
@@ -14,11 +15,18 @@ from govuk.capability_framework import (
     text_to_rich_html,
 )
 from govuk.models import (
+    ContentPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
     RolePage,
     SkillsAZPage,
+)
+
+SITE_NAME = "Government Digital and Data Profession Capability Framework"
+SITE_INTRO = (
+    "Learn about the digital, data and technology roles in government, "
+    "and the skills you need to do them."
 )
 
 SKILL_LEVELS = ("awareness", "working", "practitioner", "expert")
@@ -174,6 +182,7 @@ class Command(BaseCommand):
             else:
                 updated += 1
             role.title = role_data["title"]
+            role.family = role_data["family"]
 
             body_html = text_to_rich_html(role_data["description"])
             if role_data["is_scs"]:
@@ -205,7 +214,7 @@ class Command(BaseCommand):
         return results
 
     def create_pages(self, roles: list[dict]):
-        home = Page.objects.get(depth=2).specific
+        home = self.ensure_home_page()
         pages_created = pages_updated = 0
 
         for entry in roles:
@@ -232,3 +241,80 @@ class Command(BaseCommand):
             self.stdout.write("Created Skills A to Z page")
 
         self.stdout.write(f"Role pages: {pages_created} created, {pages_updated} updated")
+        self.write_home_page_content(home)
+
+    def ensure_home_page(self) -> Page:
+        """Return the site's home page, replacing Wagtail's default if present."""
+        site = Site.objects.filter(is_default_site=True).first()
+        if site is None:
+            return Page.objects.get(depth=2).specific
+
+        if site.site_name != SITE_NAME:
+            site.site_name = SITE_NAME
+            site.save(update_fields=["site_name"])
+
+        home = site.root_page.specific
+        if isinstance(home, ContentPage):
+            return home
+
+        # The starter site ships a placeholder home page that cannot hold the
+        # framework's introduction, so swap it for a content page once. The
+        # placeholder already owns the "home" slug, so claim it after removal.
+        root = home.get_parent()
+        new_home = ContentPage(
+            title=SITE_NAME, slug="framework-home", show_last_updated_date=True
+        )
+        root.add_child(instance=new_home)
+        new_home.save_revision().publish()
+
+        for child in list(home.get_children()):
+            child.move(new_home, pos="last-child")
+
+        site.root_page = new_home
+        site.save(update_fields=["root_page"])
+        home.refresh_from_db()
+        home.delete()
+
+        new_home.refresh_from_db()
+        new_home.slug = "home"
+        new_home.save()
+        new_home.save_revision().publish()
+        self.stdout.write("Replaced the placeholder home page")
+        return ContentPage.objects.get(pk=new_home.pk)
+
+    def write_home_page_content(self, home: Page):
+        """List every role, grouped by family, so the site is navigable."""
+        if not isinstance(home, ContentPage):
+            return
+
+        role_pages = {}
+        for page in RolePage.objects.live():
+            for role_id in page.get_selected_role_ids():
+                role_pages.setdefault(role_id, page)
+
+        families: dict[str, list] = {}
+        for role in GovukRole.objects.order_by("title"):
+            families.setdefault(role.family or "Other roles", []).append(role)
+
+        parts = [f"<p>{escape(SITE_INTRO)}</p>"]
+        for family in sorted(families):
+            heading = family if family.lower().endswith("roles") else f"{family} roles"
+            parts.append(f"<h2>{escape(heading)}</h2><ul>")
+            for role in families[family]:
+                page = role_pages.get(role.pk)
+                label = escape(role.title)
+                parts.append(
+                    f'<li><a href="{page.url}">{label}</a></li>' if page else f"<li>{label}</li>"
+                )
+            parts.append("</ul>")
+
+        skills_page = SkillsAZPage.objects.live().first()
+        if skills_page:
+            parts.append(
+                f'<h2>Further resources</h2><ul>'
+                f'<li><a href="{skills_page.url}">Skills A to Z</a></li></ul>'
+            )
+
+        home.body = "".join(parts)
+        home.save_revision().publish()
+        self.stdout.write(f"Home page: {len(families)} role families listed")
