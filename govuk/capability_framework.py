@@ -217,6 +217,28 @@ def changelog_html_to_note(html: str) -> str:
     return "\n".join(line for line in parser.lines if line)
 
 
+LEADERSHIP_HEADING = "Examples of leadership using this skill:"
+
+
+def split_leadership_examples(text: str) -> tuple[str, list[str]]:
+    """Separate a Senior Civil Service skill's description from its examples.
+
+    These skills are published as one block of prose::
+
+        You can:
+        - do the thing
+        Examples of leadership using this skill:
+        - lead on the thing
+
+    Returns the description text and the leadership bullet points.
+    """
+    if not text or LEADERSHIP_HEADING not in text:
+        return text or "", []
+
+    description, _, examples = text.partition(LEADERSHIP_HEADING)
+    return description.strip(), parse_points(examples)
+
+
 def parse_iso_date(value: str) -> date | None:
     try:
         return date.fromisoformat((value or "").strip())

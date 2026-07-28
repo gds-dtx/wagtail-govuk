@@ -12,6 +12,7 @@ from govuk.capability_framework import (
     changelog_note_to_html,
     parse_iso_date,
     parse_points,
+    split_leadership_examples,
     text_to_rich_html,
 )
 from govuk.models import (
@@ -119,7 +120,17 @@ class Command(BaseCommand):
                 else:
                     updated += 1
                 skill.title = title
-                skill.body = text_to_rich_html(row["Skill Description"])
+                description, leadership = split_leadership_examples(
+                    row["Skill Description"]
+                )
+                skill.body = text_to_rich_html(description)
+                skill.leadership_points = points_stream(leadership)
+                # Skills with leadership examples and no proficiency levels
+                # belong to Senior Civil Service roles.
+                skill.is_senior_civil_service = bool(leadership) or not any(
+                    row[level].strip()
+                    for level in ("Awareness", "Working", "Practitioner", "Expert")
+                )
                 skill.awareness_points = points_stream(parse_points(row["Awareness"]))
                 skill.working_points = points_stream(parse_points(row["Working"]))
                 skill.practitioner_points = points_stream(parse_points(row["Practitioner"]))
@@ -186,13 +197,18 @@ class Command(BaseCommand):
 
             body_html = text_to_rich_html(role_data["description"])
             if role_data["is_scs"]:
-                # MODEL GAP: GovukRole has no SCS shape (flat skills with
-                # leadership examples, no proficiency levels). Preserve the
-                # content in the body until a proper model exists.
-                for scs_skill in role_data["scs_skills"]:
-                    body_html += f"<h3>{scs_skill['name']}</h3>"
-                    body_html += text_to_rich_html(scs_skill["description"])
+                role.is_senior_civil_service = True
                 role.levels = json.dumps([])
+                scs_skill_ids = []
+                for scs_skill in role_data["scs_skills"]:
+                    skill = skills_by_slug.get(slugify(scs_skill["name"])[:120])
+                    if skill and skill.pk not in scs_skill_ids:
+                        scs_skill_ids.append(skill.pk)
+                role.scs_skills = json.dumps(
+                    [{"type": "skill", "value": pk} for pk in scs_skill_ids]
+                )
+                # NOTE: indicative SCS grades (SCS 1/2/3) are not in the CSV
+                # exports and need a Strapi-side export to populate.
             else:
                 role.levels = json.dumps(
                     [

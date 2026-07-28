@@ -22,6 +22,9 @@
                                       id="skills-accordion-heading-{{ forloop.counter }}">
                                     <span id="{{ skill_section.skill.slug }}">{{ skill_section.skill.title }}</span>
                                 </span>
+                                {% if skill_section.is_scs %}
+                                    <div class="govuk-accordion__section-summary govuk-body">Senior Civil Service</div>
+                                {% endif %}
                             </h2>
                         </div>
                         <div id="skills-accordion-content-{{ forloop.counter }}"
@@ -29,6 +32,13 @@
                             {% if skill_section.skill.body %}
                                 <div class="govuk-body">{{ skill_section.skill.body|richtext }}</div>
                             {% endif %}
+                            {% if skill_section.leadership_points %}
+                                <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Examples of leadership using this skill</h3>
+                                <ul class="govuk-list govuk-list--bullet">
+                                    {% for point in skill_section.leadership_points %}<li>{{ point }}</li>{% endfor %}
+                                </ul>
+                            {% endif %}
+                            {% if skill_section.level_rows %}
                             <table class="govuk-table">
                                 <thead class="govuk-table__head">
                                     <tr class="govuk-table__row">
@@ -68,6 +78,7 @@
                                     {% endfor %}
                                 </tbody>
                             </table>
+                            {% endif %}
                             {% if skill_section.roles %}
                                 <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Roles that require this skill</h3>
                                 <ul class="govuk-list">

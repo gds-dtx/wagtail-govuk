@@ -70,6 +70,11 @@ SKILL_LEVEL_ORDINALS = {
 }
 THIS_SITE_SOURCE_FILTER = "__this_site__"
 RELATED_ROLES_COUNT = 5
+SCS_GRADE_CHOICES = (
+    ("scs1", "SCS 1"),
+    ("scs2", "SCS 2"),
+    ("scs3", "SCS 3"),
+)
 SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES = [
     "h2",
     "h3",
@@ -1023,15 +1028,41 @@ class GovukSkill(models.Model):
         use_json_field=True,
         help_text="Optional expert-level points.",
     )
+    is_senior_civil_service = models.BooleanField(
+        default=False,
+        verbose_name="Senior Civil Service skill",
+        help_text=(
+            "Senior Civil Service skills describe leadership rather than "
+            "ascending proficiency levels."
+        ),
+    )
+    leadership_points = StreamField(
+        [
+            (
+                "point",
+                blocks.TextBlock(
+                    required=False,
+                    max_length=500,
+                    rows=3,
+                ),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        verbose_name="Examples of leadership",
+        help_text="Examples of leadership using this skill, for Senior Civil Service skills.",
+    )
 
     panels = [
         FieldPanel("slug"),
         FieldPanel("title"),
         FieldPanel("body"),
+        FieldPanel("is_senior_civil_service"),
         FieldPanel("awareness_points"),
         FieldPanel("working_points"),
         FieldPanel("practitioner_points"),
         FieldPanel("expert_points"),
+        FieldPanel("leadership_points"),
     ]
 
     class Meta:
@@ -1106,6 +1137,13 @@ class GovukSkill(models.Model):
     def get_roles_requiring_skill(self) -> list["GovukRole"]:
         """Roles that require this skill at any level, sorted by title."""
         return GovukRole.roles_by_skill_id().get(self.pk, [])
+
+    def get_leadership_points(self) -> list[str]:
+        """Examples of leadership, for Senior Civil Service skills."""
+        return [
+            entry["value"]
+            for entry in self._normalised_stream_points(self.leadership_points)
+        ]
 
     def get_level_rows(self) -> list[dict]:
         level_rows: list[dict] = []
@@ -1227,6 +1265,33 @@ class GovukRole(models.Model):
         use_json_field=True,
         help_text="Role levels and their associated skills.",
     )
+    is_senior_civil_service = models.BooleanField(
+        default=False,
+        verbose_name="Senior Civil Service role",
+        help_text=(
+            "Senior Civil Service roles have no role levels. Their skills are "
+            "listed flat, with examples of leadership."
+        ),
+    )
+    scs_grades = StreamField(
+        [("grade", blocks.ChoiceBlock(required=False, choices=SCS_GRADE_CHOICES))],
+        blank=True,
+        use_json_field=True,
+        verbose_name="Indicative Senior Civil Service grades",
+        help_text="Grades this role is most often performed at.",
+    )
+    scs_skills = StreamField(
+        [
+            (
+                "skill",
+                SnippetChooserBlock("govuk.GovukSkill", required=False),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        verbose_name="Senior Civil Service skills",
+        help_text="Skills required by this role, with no proficiency level.",
+    )
 
     panels = [
         FieldPanel("slug"),
@@ -1234,6 +1299,9 @@ class GovukRole(models.Model):
         FieldPanel("family"),
         FieldPanel("body"),
         FieldPanel("levels"),
+        FieldPanel("is_senior_civil_service"),
+        FieldPanel("scs_grades"),
+        FieldPanel("scs_skills"),
     ]
 
     class Meta:
@@ -1274,9 +1342,36 @@ class GovukRole(models.Model):
             return skill_pk
         return None
 
+    def get_scs_skills(self) -> list[dict]:
+        """Skills for a Senior Civil Service role, with leadership examples."""
+        skills: list[dict] = []
+        seen: set[int] = set()
+        for block in self.scs_skills:
+            skill = getattr(block, "value", None)
+            if skill is None or getattr(skill, "pk", None) in seen:
+                continue
+            seen.add(skill.pk)
+            skills.append(
+                {"skill": skill, "leadership_points": skill.get_leadership_points()}
+            )
+        return skills
+
+    def get_scs_grade_labels(self) -> list[str]:
+        labels = dict(SCS_GRADE_CHOICES)
+        return [
+            labels[block.value]
+            for block in self.scs_grades
+            if getattr(block, "value", None) in labels
+        ]
+
     def get_skill_ids(self) -> set[int]:
         """Distinct ids of skills required at any level of this role."""
         skill_ids: set[int] = set()
+        for block in self.scs_skills:
+            skill = getattr(block, "value", None)
+            skill_id = self._extract_skill_id(skill)
+            if skill_id:
+                skill_ids.add(skill_id)
 
         raw_levels = getattr(self.levels, "raw_data", None)
         if raw_levels:
@@ -2081,6 +2176,9 @@ class RolePage(Page):
             {
                 "role": role,
                 "levels": role.get_levels_with_skills(),
+                "is_scs": role.is_senior_civil_service,
+                "scs_skills": role.get_scs_skills(),
+                "scs_grades": role.get_scs_grade_labels(),
             }
             for role in self.get_selected_roles()
         ]
@@ -2213,7 +2311,9 @@ class SkillsAZPage(Page):
         return [
             {
                 "skill": skill,
-                "level_rows": skill.get_level_rows(),
+                "level_rows": [] if skill.is_senior_civil_service else skill.get_level_rows(),
+                "leadership_points": skill.get_leadership_points(),
+                "is_scs": skill.is_senior_civil_service,
                 "roles": [
                     {"role": role, "url": role_urls.get(role.pk, "")}
                     for role in roles_by_skill.get(skill.pk, [])

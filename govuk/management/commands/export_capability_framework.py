@@ -17,6 +17,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand
 
 from govuk.capability_framework import (
+    LEADERSHIP_HEADING,
     changelog_html_to_note,
     points_to_text,
     rich_html_to_text,
@@ -50,7 +51,19 @@ SKILL_COLUMNS = [
     "Roles that require Skill",
 ]
 CHANGELOG_COLUMNS = ["Timestamp", "Page", "Change note"]
+NOT_IN_USE = "NOT IN USE"
+SCS_ROLE_TYPE = "Senior Civil Service"
 SITE_WIDE_PAGE_NAME = "Homepage"
+
+
+def _scs_skill_description(skill_row: dict) -> str:
+    """Rebuild the published prose for a Senior Civil Service skill."""
+    description = rich_html_to_text(skill_row["skill"].body)
+    leadership = skill_row["leadership_points"]
+    if not leadership:
+        return description
+    bullets = "\n".join(f"- {point}" for point in leadership)
+    return f"{description}\n{LEADERSHIP_HEADING}\n{bullets}"
 
 
 class Command(BaseCommand):
@@ -75,11 +88,31 @@ class Command(BaseCommand):
             for role in GovukRole.objects.order_by("title"):
                 role_description = rich_html_to_text(role.body)
                 levels = role.get_levels_with_skills()
+                if role.is_senior_civil_service:
+                    # Senior Civil Service roles have flat skills and no
+                    # levels; the published export marks the level columns
+                    # as not in use.
+                    for skill_row in role.get_scs_skills():
+                        writer.writerow(
+                            {
+                                "Role Family": role.family,
+                                "Role": role.title,
+                                "Role Description": role_description,
+                                "Role Level": NOT_IN_USE,
+                                "Role Level Description": NOT_IN_USE,
+                                "Skill Name": skill_row["skill"].title,
+                                "Skill Description": _scs_skill_description(skill_row),
+                                "Skill Level": NOT_IN_USE,
+                                "Skill Level Description": NOT_IN_USE,
+                                "Role Type": SCS_ROLE_TYPE,
+                            }
+                        )
+                        rows += 1
+                    continue
                 if not levels:
-                    # Roles with no levels (currently Senior Civil Service
-                    # roles) still belong in the export.
                     writer.writerow(
                         {
+                            "Role Family": role.family,
                             "Role": role.title,
                             "Role Description": role_description,
                         }
@@ -91,6 +124,7 @@ class Command(BaseCommand):
                         skill = skill_row["skill"]
                         writer.writerow(
                             {
+                                "Role Family": role.family,
                                 "Role": role.title,
                                 "Role Description": role_description,
                                 "Role Level": level["title"],
@@ -115,9 +149,14 @@ class Command(BaseCommand):
             writer = csv.DictWriter(f, fieldnames=SKILL_COLUMNS)
             writer.writeheader()
             for skill in GovukSkill.objects.order_by("title"):
+                leadership = skill.get_leadership_points()
+                description = rich_html_to_text(skill.body)
+                if leadership:
+                    bullets = "\n".join(f"- {point}" for point in leadership)
+                    description = f"{description}\n{LEADERSHIP_HEADING}\n{bullets}"
                 row = {
                     "Skill Name": skill.title,
-                    "Skill Description": rich_html_to_text(skill.body),
+                    "Skill Description": description,
                     "Roles that require Skill": ", ".join(
                         role.title for role in roles_by_skill.get(skill.pk, [])
                     ),

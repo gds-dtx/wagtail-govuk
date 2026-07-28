@@ -118,13 +118,37 @@ class ImportCapabilityFrameworkTests(TestCase):
         self.assertTrue(page.live)
         self.assertEqual(SkillsAZPage.objects.live().count(), 1)
 
-    def test_scs_role_content_is_preserved_in_the_body(self):
+    def test_scs_role_is_flagged_with_flat_skills_and_no_levels(self):
         self._import()
 
         role = GovukRole.objects.get(slug="chief-data-officer")
+        self.assertTrue(role.is_senior_civil_service)
         self.assertEqual(role.get_levels_with_skills(), [])
-        self.assertIn("Strategic data planning", role.body)
-        self.assertIn("set a data strategy", role.body)
+
+        scs_skills = role.get_scs_skills()
+        self.assertEqual(
+            [row["skill"].title for row in scs_skills], ["Strategic data planning"]
+        )
+        self.assertIn("set a data strategy", scs_skills[0]["skill"].body)
+
+    def test_scs_skills_are_flagged_and_keep_leadership_examples(self):
+        (self.data_dir / "skills.csv").write_text(
+            SKILLS_CSV.replace(
+                '"You can:\n- set a data strategy",,,,,Chief data officer',
+                '"You can:\n- set a data strategy\n'
+                "Examples of leadership using this skill:\n"
+                '- persuading other leaders to invest",,,,,Chief data officer',
+            )
+        )
+
+        self._import()
+
+        skill = GovukSkill.objects.get(slug="strategic-data-planning")
+        self.assertTrue(skill.is_senior_civil_service)
+        self.assertEqual(
+            skill.get_leadership_points(), ["persuading other leaders to invest"]
+        )
+        self.assertNotIn("Examples of leadership", skill.body)
 
     def test_imports_changelog_entries_against_roles_and_site_wide(self):
         self._import()
@@ -286,12 +310,24 @@ class ExportCapabilityFrameworkTests(TestCase):
         )
         self.assertEqual(engineer_rows[0]["Skill Level"], "Working")
 
-    def test_roles_without_levels_still_appear(self):
+    def test_scs_roles_export_one_row_per_skill_with_levels_not_in_use(self):
         rows = self._rows("roles.csv")
         cdo_rows = [r for r in rows if r["Role"] == "Chief data officer"]
 
         self.assertEqual(len(cdo_rows), 1)
-        self.assertEqual(cdo_rows[0]["Role Level"], "")
+        row = cdo_rows[0]
+        self.assertEqual(row["Role Type"], "Senior Civil Service")
+        self.assertEqual(row["Role Level"], "NOT IN USE")
+        self.assertEqual(row["Skill Level"], "NOT IN USE")
+        self.assertEqual(row["Skill Name"], "Strategic data planning")
+        self.assertIn("set a data strategy", row["Skill Description"])
+
+    def test_role_family_is_exported(self):
+        rows = self._rows("roles.csv")
+        families = {r["Role"]: r["Role Family"] for r in rows}
+
+        self.assertEqual(families["Data engineer"], "Data")
+        self.assertEqual(families["Chief data officer"], "Chief digital and data")
 
     def test_exports_changelog_with_page_names(self):
         rows = self._rows("changelog.csv")

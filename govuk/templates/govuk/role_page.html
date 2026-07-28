@@ -26,6 +26,50 @@
                             {% for role_section in role_sections %}
                                 <section>
                                     {% if role_section.role.body %}<div class="govuk-body">{{ role_section.role.body|richtext }}</div>{% endif %}
+                                    {% if role_section.scs_grades %}
+                                        <p class="govuk-body">
+                                            This role is most often performed at the
+                                            <a class="govuk-link" href="/job-grades">Civil Service job grade</a> of:
+                                        </p>
+                                        <ul class="govuk-list govuk-list--bullet">
+                                            {% for grade in role_section.scs_grades %}<li>{{ grade }}</li>{% endfor %}
+                                        </ul>
+                                    {% endif %}
+                                    {% if role_section.scs_skills %}
+                                        <h2 class="govuk-heading-l" id="skills">Skills for {{ role_section.display_role_name }}</h2>
+                                        <table class="govuk-table">
+                                            <thead class="govuk-table__head">
+                                                <tr class="govuk-table__row">
+                                                    <th scope="col" class="govuk-table__header">Skill</th>
+                                                    <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Description, including examples of leadership</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="govuk-table__body">
+                                                {% for skill_row in role_section.scs_skills %}
+                                                    <tr class="govuk-table__row">
+                                                        <th scope="row" class="govuk-table__header">
+                                                            <p class="govuk-!-margin-bottom-1 govuk-!-font-weight-bold">
+                                                                {% if skills_index_url %}
+                                                                    <a href="{{ skills_index_url }}#{{ skill_row.skill.slug }}" class="govuk-link skill-name">{{ skill_row.skill.title }}</a>
+                                                                {% else %}
+                                                                    {{ skill_row.skill.title }}
+                                                                {% endif %}
+                                                            </p>
+                                                        </th>
+                                                        <td class="govuk-table__cell">
+                                                            {% if skill_row.skill.body %}{{ skill_row.skill.body|richtext }}{% endif %}
+                                                            {% if skill_row.leadership_points %}
+                                                                <p class="govuk-body govuk-!-margin-bottom-1">Examples of leadership using this skill:</p>
+                                                                <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
+                                                                    {% for point in skill_row.leadership_points %}<li>{{ point }}</li>{% endfor %}
+                                                                </ul>
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    {% endif %}
                                     {% for role_level in role_section.levels %}
                                         {% if role_level.title %}<h3 class="govuk-heading-m">{{ forloop.counter }}. {{ role_level.title }}</h3>{% endif %}
                                         {% if role_level.description %}<div class="govuk-body">{{ role_level.description|richtext }}</div>{% endif %}
