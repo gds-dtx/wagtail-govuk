@@ -1,75 +1,28 @@
-"""Import DDaT Capability Framework content from the public CSV exports.
-
-Prototype for the Strapi -> Wagtail migration. Reads the three CSVs published
-on the framework's download page (roles, skills, changelog) and upserts:
-
-- GovukSkill snippets (one per skill, with per-level points)
-- GovukRole snippets (one per role, levels + skill requirements in StreamField)
-- One RolePage per role under the site home page
-- One SkillsAZPage at /skills
-
-Idempotent: safe to re-run; records are matched by slug.
-
-Usage:
-    python manage.py import_capability_framework /path/to/data-dir
-"""
-
 import csv
 import json
-from collections import defaultdict
 from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
 from wagtail.models import Page
 
-from govuk.models import GovukRole, GovukSkill, RolePage, SkillsAZPage
+from govuk.capability_framework import (
+    NOT_IN_USE,
+    changelog_note_to_html,
+    parse_iso_date,
+    parse_points,
+    text_to_rich_html,
+)
+from govuk.models import (
+    GovukChangelogEntry,
+    GovukRole,
+    GovukSkill,
+    RolePage,
+    SkillsAZPage,
+)
 
 SKILL_LEVELS = ("awareness", "working", "practitioner", "expert")
-NOT_IN_USE = "NOT IN USE"
-
-
-def parse_points(text: str) -> list[str]:
-    """Turn 'You can:\n- point\n- point' into a list of point strings."""
-    if not text or text.strip() == NOT_IN_USE:
-        return []
-    points = []
-    for line in text.splitlines():
-        line = line.strip()
-        if line.startswith("- "):
-            points.append(line[2:].strip()[:500])
-    if not points:
-        cleaned = text.replace("You can:", "").strip()
-        if cleaned:
-            points.append(cleaned[:500])
-    return points
-
-
-def text_to_rich_html(text: str) -> str:
-    """Convert plain text with blank-line paragraphs and '-' bullets to HTML."""
-    if not text or text.strip() == NOT_IN_USE:
-        return ""
-    html_parts: list[str] = []
-    bullets: list[str] = []
-
-    def flush_bullets():
-        nonlocal bullets
-        if bullets:
-            items = "".join(f"<li>{b}</li>" for b in bullets)
-            html_parts.append(f"<ul>{items}</ul>")
-            bullets = []
-
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            flush_bullets()
-        elif line.startswith("- "):
-            bullets.append(line[2:].strip())
-        else:
-            flush_bullets()
-            html_parts.append(f"<p>{line}</p>")
-    flush_bullets()
-    return "".join(html_parts)
+SITE_WIDE_CHANGELOG_PAGES = {"homepage", "home page", "home"}
 
 
 def points_stream(points: list[str]) -> str:
@@ -93,6 +46,54 @@ class Command(BaseCommand):
         skills_by_slug = self.import_skills(skills_csv)
         roles = self.import_roles(roles_csv, skills_by_slug)
         self.create_pages(roles)
+
+        changelog_csv = data_dir / "changelog.csv"
+        if changelog_csv.exists():
+            self.import_changelog(changelog_csv)
+        else:
+            self.stdout.write("No changelog.csv found, skipping changelog import")
+
+    def import_changelog(self, changelog_csv: Path):
+        roles_by_slug = {role.slug: role for role in GovukRole.objects.all()}
+        skills_by_slug = {skill.slug: skill for skill in GovukSkill.objects.all()}
+
+        created = skipped = 0
+        unmatched: set[str] = set()
+        with open(changelog_csv) as f:
+            for row in csv.DictReader(f):
+                entry_date = parse_iso_date(row.get("Timestamp", ""))
+                note_html = changelog_note_to_html(row.get("Change note", ""))
+                if not entry_date or not note_html:
+                    skipped += 1
+                    continue
+
+                page_name = (row.get("Page") or "").strip()
+                role = skill = None
+                if page_name.lower() not in SITE_WIDE_CHANGELOG_PAGES:
+                    page_slug = slugify(page_name)[:120]
+                    role = roles_by_slug.get(page_slug)
+                    if role is None:
+                        skill = skills_by_slug.get(page_slug)
+                    if role is None and skill is None:
+                        unmatched.add(page_name)
+                        skipped += 1
+                        continue
+
+                # Match on the natural key so re-runs do not duplicate entries.
+                _, was_created = GovukChangelogEntry.objects.get_or_create(
+                    date=entry_date,
+                    role=role,
+                    skill=skill,
+                    note=note_html,
+                    defaults={"live": True},
+                )
+                created += int(was_created)
+
+        self.stdout.write(f"Changelog: {created} created, {skipped} skipped")
+        if unmatched:
+            self.stdout.write(
+                "  unmatched pages: " + ", ".join(sorted(unmatched)[:10])
+            )
 
     def import_skills(self, skills_csv: Path) -> dict[str, GovukSkill]:
         created = updated = 0

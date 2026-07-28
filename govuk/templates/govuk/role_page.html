@@ -115,6 +115,25 @@
                                             </tbody>
                                         </table>
                                     {% endif %}
+                                    {% if role_section.changelog.entries %}
+                                        <h2 class="govuk-heading-l" id="updates">Updates</h2>
+                                        <p class="govuk-body">
+                                            <strong>Published</strong> {{ role_section.changelog.published_date|date:"j F Y" }}
+                                            <br>
+                                            <strong>Last updated</strong> {{ role_section.changelog.last_updated_date|date:"j F Y" }}
+                                        </p>
+                                        <dl class="govuk-summary-list">
+                                            {% for entry in role_section.changelog.entries %}
+                                                <div class="govuk-summary-list__row">
+                                                    <dt class="govuk-summary-list__key">
+                                                        {{ entry.date|date:"j F Y" }}
+                                                        {% if entry.change_type %}<br><span class="govuk-body-s">{{ entry.change_type }}</span>{% endif %}
+                                                    </dt>
+                                                    <dd class="govuk-summary-list__value">{{ entry.note|richtext }}</dd>
+                                                </div>
+                                            {% endfor %}
+                                        </dl>
+                                    {% endif %}
                                 </section>
                             {% empty %}
                                 {% if not self.body %}<p class="govuk-body">No roles selected.</p>{% endif %}

@@ -1098,6 +1098,15 @@ class GovukSkill(models.Model):
             entry["value"] for entry in self._normalised_stream_points(stream_value)
         ]
 
+    def get_changelog(self) -> dict:
+        """Published entries for this skill, newest first, with key dates."""
+        entries = list(self.changelog_entries.filter(live=True))
+        return {"entries": entries, **_changelog_dates(entries)}
+
+    def get_roles_requiring_skill(self) -> list["GovukRole"]:
+        """Roles that require this skill at any level, sorted by title."""
+        return GovukRole.roles_by_skill_id().get(self.pk, [])
+
     def get_level_rows(self) -> list[dict]:
         level_rows: list[dict] = []
         for level_key, level_label in SKILL_LEVEL_CHOICES:
@@ -1329,6 +1338,26 @@ class GovukRole(models.Model):
             for role, shared_ids in matches
         ]
 
+    def get_changelog(self) -> dict:
+        """Published entries for this role, newest first, with key dates."""
+        entries = list(self.changelog_entries.filter(live=True))
+        return {"entries": entries, **_changelog_dates(entries)}
+
+    @classmethod
+    def roles_by_skill_id(cls) -> dict[int, list["GovukRole"]]:
+        """Map each skill id to the roles requiring it, sorted by role title.
+
+        Built in a single pass so pages listing many skills do not inspect
+        every role's StreamField repeatedly.
+        """
+        index: dict[int, list[GovukRole]] = {}
+        for role in cls.objects.all():
+            for skill_id in role.get_skill_ids():
+                index.setdefault(skill_id, []).append(role)
+        for roles in index.values():
+            roles.sort(key=lambda role: (role.title or "").strip().lower())
+        return index
+
     def get_levels_with_skills(self) -> list[dict]:
         role_levels: list[dict] = []
         for level_block in self.levels:
@@ -1385,6 +1414,84 @@ class GovukRole(models.Model):
             fallback="role",
         )
         super().save(*args, **kwargs)
+
+
+class GovukChangelogEntry(models.Model):
+    """A dated note describing a change to the framework.
+
+    Entries with no role or skill are site-wide and appear on the framework
+    home page; entries attached to a role or skill appear in the "Updates"
+    section of the relevant page.
+    """
+
+    date = models.DateField(
+        db_index=True,
+        help_text="Date the change was published.",
+    )
+    role = models.ForeignKey(
+        "govuk.GovukRole",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="changelog_entries",
+        help_text="Leave blank for a site-wide update.",
+    )
+    skill = models.ForeignKey(
+        "govuk.GovukSkill",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="changelog_entries",
+        help_text="Leave blank for a site-wide update.",
+    )
+    change_type = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label, for example New role or Skills updated.",
+    )
+    note = RichTextField(
+        features=["bold", "italic", "link", "ul", "ol"],
+        help_text="What changed.",
+    )
+    live = models.BooleanField(
+        default=True,
+        verbose_name="Published",
+        help_text="Unpublish to hide this entry without deleting it.",
+    )
+
+    panels = [
+        FieldPanel("date"),
+        FieldPanel("role"),
+        FieldPanel("skill"),
+        FieldPanel("change_type"),
+        FieldPanel("note"),
+        FieldPanel("live"),
+    ]
+
+    class Meta:
+        verbose_name = "Changelog entry"
+        verbose_name_plural = "Changelog entries"
+        ordering = ["-date", "pk"]
+
+    def clean(self):
+        super().clean()
+        if self.role_id and self.skill_id:
+            raise ValidationError(
+                "Choose either a role or a skill for this entry, not both."
+            )
+
+    def __str__(self) -> str:
+        subject = self.role or self.skill or "Framework"
+        return f"{subject} - {self.date}"
+
+
+def _changelog_dates(entries) -> dict[str, object]:
+    """First and last publication dates for a set of changelog entries."""
+    dates = sorted(entry.date for entry in entries if entry.date)
+    if not dates:
+        return {"published_date": None, "last_updated_date": None}
+    return {"published_date": dates[0], "last_updated_date": dates[-1]}
 
 
 class ContentDiscoverySource(Orderable):
@@ -1797,6 +1904,21 @@ class ContentPage(Page):
     ]
 
 
+def role_page_urls_by_role_id(*, exclude_page_id: int | None = None) -> dict[int, str]:
+    """Map each role id to the URL of a live page that renders it."""
+    urls: dict[int, str] = {}
+    pages = RolePage.objects.live()
+    if exclude_page_id is not None:
+        pages = pages.exclude(pk=exclude_page_id)
+    for page in pages:
+        page_url = page.url
+        if not page_url:
+            continue
+        for role_id in page.get_selected_role_ids():
+            urls.setdefault(role_id, page_url)
+    return urls
+
+
 class RolePage(Page):
     parent_page_types = [
         "govuk.ContentPage",
@@ -1955,16 +2077,6 @@ class RolePage(Page):
             for role in self.get_selected_roles()
         ]
 
-    def _role_page_urls_by_role_id(self) -> dict[int, str]:
-        urls: dict[int, str] = {}
-        for page in RolePage.objects.live().exclude(pk=self.pk):
-            page_url = page.url
-            if not page_url:
-                continue
-            for role_id in page.get_selected_role_ids():
-                urls.setdefault(role_id, page_url)
-        return urls
-
     @staticmethod
     def _display_role_name(title: str) -> str:
         """Lowercase a role title for mid-sentence use, keeping acronyms."""
@@ -1977,7 +2089,7 @@ class RolePage(Page):
         context = super().get_context(request, *args, **kwargs)
         role_sections = self.get_role_sections()
 
-        role_page_urls = self._role_page_urls_by_role_id()
+        role_page_urls = role_page_urls_by_role_id(exclude_page_id=self.pk)
         skills_page = SkillsAZPage.objects.live().first()
         context["skills_index_url"] = skills_page.url if skills_page else ""
 
@@ -1989,6 +2101,7 @@ class RolePage(Page):
                 {**entry, "url": role_page_urls.get(entry["role"].pk, "")}
                 for entry in section["role"].get_related_roles()
             ]
+            section["changelog"] = section["role"].get_changelog()
 
         context["role_sections"] = role_sections
         return context
@@ -2087,10 +2200,16 @@ class SkillsAZPage(Page):
                 skill.pk or 0,
             )
         )
+        roles_by_skill = GovukRole.roles_by_skill_id()
+        role_urls = role_page_urls_by_role_id()
         return [
             {
                 "skill": skill,
                 "level_rows": skill.get_level_rows(),
+                "roles": [
+                    {"role": role, "url": role_urls.get(role.pk, "")}
+                    for role in roles_by_skill.get(skill.pk, [])
+                ],
             }
             for skill in skills
         ]

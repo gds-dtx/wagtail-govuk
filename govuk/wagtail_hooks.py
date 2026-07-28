@@ -49,6 +49,7 @@ from govuk.models import (
     EdDSAKeySettings,
     ExternalContentItem,
     Feedback,
+    GovukChangelogEntry,
     GovukRole,
     GovukSkill,
     GovukTag,
@@ -432,6 +433,19 @@ class GovukRoleViewSet(SnippetViewSet):
     menu_order = 216
     list_display = ["title", "slug"]
     search_fields = ["title", "slug", "body"]
+
+
+class GovukChangelogEntryViewSet(SnippetViewSet):
+    model = GovukChangelogEntry
+    icon = "history"
+    add_to_admin_menu = True
+    menu_label = "Changelog"
+    menu_name = "govuk-changelog"
+    menu_order = 217
+    list_display = ["date", "role", "skill", "change_type", "live"]
+    list_filter = ["live", "date"]
+    search_fields = ["note", "change_type"]
+    ordering = ["-date"]
 
 
 class FeedbackIndexView(SnippetIndexView):
@@ -1166,5 +1180,6 @@ _register_snippet_if_needed(ExternalContentItemViewSet)
 if settings.FEATURE_FLAGS.get("SKILLS"):
     _register_snippet_if_needed(GovukSkillViewSet)
     _register_snippet_if_needed(GovukRoleViewSet)
+    _register_snippet_if_needed(GovukChangelogEntryViewSet)
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)

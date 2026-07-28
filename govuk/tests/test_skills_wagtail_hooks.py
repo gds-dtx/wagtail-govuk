@@ -33,9 +33,10 @@ class SkillsWagtailHooksTests(SimpleTestCase):
                 call(hooks_module.ExternalContentItemViewSet),
                 call(hooks_module.GovukSkillViewSet),
                 call(hooks_module.GovukRoleViewSet),
+                call(hooks_module.GovukChangelogEntryViewSet),
             ]
         )
-        self.assertEqual(mock_register_snippet.call_count, 4)
+        self.assertEqual(mock_register_snippet.call_count, 5)
 
         _reload_hooks()
 
@@ -59,6 +60,10 @@ class SkillsWagtailHooksTests(SimpleTestCase):
         )
         self.assertNotIn(
             call(hooks_module.GovukRoleViewSet),
+            mock_register_snippet.mock_calls,
+        )
+        self.assertNotIn(
+            call(hooks_module.GovukChangelogEntryViewSet),
             mock_register_snippet.mock_calls,
         )
 

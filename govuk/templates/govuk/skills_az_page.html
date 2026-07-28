@@ -68,6 +68,20 @@
                                     {% endfor %}
                                 </tbody>
                             </table>
+                            {% if skill_section.roles %}
+                                <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Roles that require this skill</h3>
+                                <ul class="govuk-list">
+                                    {% for entry in skill_section.roles %}
+                                        <li>
+                                            {% if entry.url %}
+                                                <a class="govuk-link" href="{{ entry.url }}">{{ entry.role.title }}</a>
+                                            {% else %}
+                                                {{ entry.role.title }}
+                                            {% endif %}
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% endif %}
                         </div>
                     </div>
                 {% endfor %}
