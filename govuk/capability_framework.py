@@ -15,13 +15,12 @@ exported back out in the same shape.
 import re
 from datetime import date
 
-from django.utils.html import escape
+from django.utils.html import escape, strip_tags
 
 MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-_TAG = re.compile(r"<[^>]+>")
-_LIST_ITEM = re.compile(r"<li[^>]*>(.*?)</li>", re.S)
-_PARAGRAPH = re.compile(r"<p[^>]*>(.*?)</p>", re.S)
-_BLOCK = re.compile(r"<(p|ul|ol|h[1-6])[^>]*>.*?</\1>", re.S)
+_LIST_ITEM = re.compile(r"<li[^<>]*>(.*?)</li>", re.S)
+_PARAGRAPH = re.compile(r"<p[^<>]*>(.*?)</p>", re.S)
+_BLOCK = re.compile(r"<(p|ul|ol|h[1-6])[^<>]*>.*?</\1>", re.S)
 
 NOT_IN_USE = "NOT IN USE"
 # The published exports use this sentence, without bullets, where a skill
@@ -94,11 +93,11 @@ def rich_html_to_text(html) -> str:
         block = match.group(0)
         if block.startswith("<ul") or block.startswith("<ol"):
             for item in _LIST_ITEM.finditer(block):
-                text = _unescape(_TAG.sub("", item.group(1)))
+                text = _unescape(strip_tags(item.group(1)))
                 if text:
                     lines.append(f"- {text}")
         else:
-            text = _unescape(_TAG.sub("", block))
+            text = _unescape(strip_tags(block))
             if text:
                 # Consecutive paragraphs are separated by a blank line, but a
                 # paragraph directly following bullets is not, and bullets
@@ -109,7 +108,7 @@ def rich_html_to_text(html) -> str:
 
     if not lines:
         # Content saved without block tags, for example a bare fragment.
-        text = _unescape(_TAG.sub("", html))
+        text = _unescape(strip_tags(html))
         return text
     return "\n".join(lines)
 
@@ -151,12 +150,12 @@ def changelog_html_to_note(html: str) -> str:
     lines: list[str] = []
     for match in _PARAGRAPH.finditer(html):
         paragraph = re.sub(
-            r'<a[^>]*href="([^"]*)"[^>]*>(.*?)</a>',
+            r'<a[^<>]*href="([^"]*)"[^<>]*>(.*?)</a>',
             lambda m: f"[{m.group(2)}]({m.group(1)})",
             match.group(1),
             flags=re.S,
         )
-        text = _unescape(_TAG.sub("", paragraph))
+        text = _unescape(strip_tags(paragraph))
         if text:
             lines.append(text)
     return "\n".join(lines)
