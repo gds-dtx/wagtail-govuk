@@ -14,24 +14,99 @@ exported back out in the same shape.
 
 import re
 from datetime import date
+from html.parser import HTMLParser
 
-from django.utils.html import escape, strip_tags
+from django.utils.html import escape
 
 MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-_LIST_ITEM = re.compile(r"<li[^<>]*>(.*?)</li>", re.S)
-_PARAGRAPH = re.compile(r"<p[^<>]*>(.*?)</p>", re.S)
-_BLOCK = re.compile(r"<(p|ul|ol|h[1-6])[^<>]*>.*?</\1>", re.S)
 
 NOT_IN_USE = "NOT IN USE"
 # The published exports use this sentence, without bullets, where a skill
 # level has no description yet.
 LEVEL_NOT_DEFINED = "This skill level is currently not defined."
 
+_BLOCK_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6"}
 
-def _unescape(text: str) -> str:
-    from html import unescape
 
-    return unescape(text).strip()
+class _RichTextLineParser(HTMLParser):
+    """Turn rich text HTML into the framework's plain text line convention.
+
+    Paragraphs and headings become lines, list items become ``- `` bullets.
+    Parsing rather than pattern matching keeps this linear in the size of the
+    input.
+    """
+
+    def __init__(self, *, preserve_links: bool = False):
+        super().__init__(convert_charrefs=True)
+        self.preserve_links = preserve_links
+        self.lines: list[str] = []
+        self._buffer: list[str] = []
+        self._capturing: str | None = None
+        self._link_url: str | None = None
+        self._saw_block = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "li":
+            self._flush()
+            self._capturing = "item"
+            self._saw_block = True
+        elif tag in _BLOCK_TAGS:
+            self._flush()
+            self._capturing = "block"
+            self._saw_block = True
+        elif tag == "a" and self.preserve_links and self._capturing:
+            self._link_url = dict(attrs).get("href") or ""
+            self._buffer.append("[")
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self.preserve_links and self._link_url is not None:
+            self._buffer.append(f"]({self._link_url})")
+            self._link_url = None
+        elif tag == "li" and self._capturing == "item":
+            self._flush()
+        elif tag in _BLOCK_TAGS and self._capturing == "block":
+            self._flush()
+
+    def handle_data(self, data):
+        if self._capturing:
+            self._buffer.append(data)
+
+    def _flush(self):
+        text = " ".join("".join(self._buffer).split())
+        if text:
+            if self._capturing == "item":
+                self.lines.append(f"- {text}")
+            else:
+                # Consecutive paragraphs are separated by a blank line, but a
+                # paragraph directly following bullets is not.
+                if self.lines and not self.lines[-1].startswith("- "):
+                    self.lines.append("")
+                self.lines.append(text)
+        self._buffer = []
+        self._capturing = None
+
+    def close(self):
+        super().close()
+        self._flush()
+
+    @property
+    def found_blocks(self) -> bool:
+        return self._saw_block
+
+
+class _PlainTextParser(HTMLParser):
+    """Collect the text of a fragment that has no block-level markup."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+
+    def handle_data(self, data):
+        self._parts.append(data)
+
+    @property
+    def text(self) -> str:
+        return " ".join("".join(self._parts).split())
 
 
 def parse_points(text: str) -> list[str]:
@@ -86,31 +161,18 @@ def rich_html_to_text(html) -> str:
     """
     if not html:
         return ""
-    html = str(html)
 
-    lines: list[str] = []
-    for match in _BLOCK.finditer(html):
-        block = match.group(0)
-        if block.startswith("<ul") or block.startswith("<ol"):
-            for item in _LIST_ITEM.finditer(block):
-                text = _unescape(strip_tags(item.group(1)))
-                if text:
-                    lines.append(f"- {text}")
-        else:
-            text = _unescape(strip_tags(block))
-            if text:
-                # Consecutive paragraphs are separated by a blank line, but a
-                # paragraph directly following bullets is not, and bullets
-                # follow their introducing line directly.
-                if lines and not lines[-1].startswith("- "):
-                    lines.append("")
-                lines.append(text)
+    parser = _RichTextLineParser()
+    parser.feed(str(html))
+    parser.close()
 
-    if not lines:
+    if not parser.found_blocks:
         # Content saved without block tags, for example a bare fragment.
-        text = _unescape(strip_tags(html))
-        return text
-    return "\n".join(lines)
+        plain = _PlainTextParser()
+        plain.feed(str(html))
+        plain.close()
+        return plain.text
+    return "\n".join(parser.lines)
 
 
 def points_to_text(points: list[str], *, prefix: str = "You can:") -> str:
@@ -147,18 +209,12 @@ def changelog_html_to_note(html: str) -> str:
     """Convert changelog rich text back into Markdown-style note text."""
     if not html:
         return ""
-    lines: list[str] = []
-    for match in _PARAGRAPH.finditer(html):
-        paragraph = re.sub(
-            r'<a[^<>]*href="([^"]*)"[^<>]*>(.*?)</a>',
-            lambda m: f"[{m.group(2)}]({m.group(1)})",
-            match.group(1),
-            flags=re.S,
-        )
-        text = _unescape(strip_tags(paragraph))
-        if text:
-            lines.append(text)
-    return "\n".join(lines)
+
+    parser = _RichTextLineParser(preserve_links=True)
+    parser.feed(str(html))
+    parser.close()
+    # Change notes are a list of statements, one per line.
+    return "\n".join(line for line in parser.lines if line)
 
 
 def parse_iso_date(value: str) -> date | None:
