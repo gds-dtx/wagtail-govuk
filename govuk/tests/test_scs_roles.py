@@ -78,7 +78,10 @@ class SeniorCivilServiceRoleTests(TestCase):
         self.assertEqual(self.cto.get_levels_with_skills(), [])
 
     def test_scs_grades_render_as_labels(self):
-        self.assertEqual(self.cto.get_scs_grade_labels(), ["SCS 1", "SCS 2"])
+        self.assertEqual(
+            self.cto.get_scs_grade_labels(),
+            ["SCS 1 (Senior Civil Service 1)", "SCS 2 (Senior Civil Service 2)"],
+        )
 
     def test_scs_skills_count_towards_related_roles(self):
         other = GovukRole.objects.create(

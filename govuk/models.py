@@ -70,10 +70,22 @@ SKILL_LEVEL_ORDINALS = {
 }
 THIS_SITE_SOURCE_FILTER = "__this_site__"
 RELATED_ROLES_COUNT = 5
-SCS_GRADE_CHOICES = (
-    ("scs1", "SCS 1"),
-    ("scs2", "SCS 2"),
-    ("scs3", "SCS 3"),
+JOB_GRADE_CHOICES = (
+    ("ao", "AO (Administrative Officer)"),
+    ("eo", "EO (Executive Officer)"),
+    ("heo", "HEO (Higher Executive Officer)"),
+    ("seo", "SEO (Senior Executive Officer)"),
+    ("g7", "G7 (Grade 7)"),
+    ("g6", "G6 (Grade 6)"),
+    ("scs1", "SCS 1 (Senior Civil Service 1)"),
+    ("scs2", "SCS 2 (Senior Civil Service 2)"),
+    ("scs3", "SCS 3 (Senior Civil Service 3)"),
+)
+JOB_GRADE_LABELS = dict(JOB_GRADE_CHOICES)
+# Ascending seniority, used to order grades however they were authored.
+JOB_GRADE_ORDER = {value: index for index, (value, _) in enumerate(JOB_GRADE_CHOICES)}
+SCS_GRADE_CHOICES = tuple(
+    (value, label) for value, label in JOB_GRADE_CHOICES if value.startswith("scs")
 )
 SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES = [
     "h2",
@@ -1227,6 +1239,22 @@ class GovukRole(models.Model):
                             ),
                         ),
                         (
+                            "grades",
+                            blocks.ListBlock(
+                                blocks.ChoiceBlock(
+                                    required=False,
+                                    choices=JOB_GRADE_CHOICES,
+                                ),
+                                required=False,
+                                label="Indicative Civil Service job grades",
+                                help_text=(
+                                    "Grades this role level is most often "
+                                    "performed at. Leave empty to hide the "
+                                    "sentence, as management-track levels do."
+                                ),
+                            ),
+                        ),
+                        (
                             "skills",
                             blocks.ListBlock(
                                 blocks.StructBlock(
@@ -1357,12 +1385,7 @@ class GovukRole(models.Model):
         return skills
 
     def get_scs_grade_labels(self) -> list[str]:
-        labels = dict(SCS_GRADE_CHOICES)
-        return [
-            labels[block.value]
-            for block in self.scs_grades
-            if getattr(block, "value", None) in labels
-        ]
+        return self._grade_labels(self.scs_grades)
 
     def get_skill_ids(self) -> set[int]:
         """Distinct ids of skills required at any level of this role."""
@@ -1498,11 +1521,26 @@ class GovukRole(models.Model):
                 {
                     "title": role_level_title,
                     "description": role_level_description,
+                    "grades": self._grade_labels(level_value.get("grades")),
                     "skills": skill_rows,
                 }
             )
 
         return role_levels
+
+    @staticmethod
+    def _grade_labels(raw_grades) -> list[str]:
+        """Labels for a level's indicative grades, ordered by seniority."""
+        values = {
+            str(getattr(raw_grade, "value", raw_grade) or "").strip()
+            for raw_grade in (raw_grades or [])
+        }
+        return [
+            JOB_GRADE_LABELS[value]
+            for value in sorted(
+                values & JOB_GRADE_LABELS.keys(), key=JOB_GRADE_ORDER.get
+            )
+        ]
 
     def __str__(self) -> str:
         return self.title or self.slug

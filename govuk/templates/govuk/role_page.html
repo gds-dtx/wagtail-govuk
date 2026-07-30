@@ -28,7 +28,7 @@
                                     {% if role_section.role.body %}<div class="govuk-body">{{ role_section.role.body|richtext }}</div>{% endif %}
                                     {% if role_section.scs_grades %}
                                         <p class="govuk-body">
-                                            This role is most often performed at the
+                                            This role is often performed at the
                                             <a class="govuk-link" href="/job-grades">Civil Service job grade</a> of:
                                         </p>
                                         <ul class="govuk-list govuk-list--bullet">
@@ -73,6 +73,15 @@
                                     {% for role_level in role_section.levels %}
                                         {% if role_level.title %}<h3 class="govuk-heading-m">{{ forloop.counter }}. {{ role_level.title }}</h3>{% endif %}
                                         {% if role_level.description %}<div class="govuk-body">{{ role_level.description|richtext }}</div>{% endif %}
+                                        {% if role_level.grades %}
+                                            <p class="govuk-body">
+                                                This role level is most often performed at the
+                                                <a class="govuk-link" href="/job-grades">Civil Service job grade</a> of:
+                                            </p>
+                                            <ul class="govuk-list govuk-list--bullet">
+                                                {% for grade in role_level.grades %}<li>{{ grade }}</li>{% endfor %}
+                                            </ul>
+                                        {% endif %}
                                         {% if role_level.skills %}
                                             <table class="govuk-table">
                                                 <thead class="govuk-table__head">
