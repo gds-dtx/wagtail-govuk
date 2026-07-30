@@ -17,7 +17,14 @@ from wagtail.fields import StreamField
 from wagtail.models import Page, PageViewRestriction, Site
 from wagtail.rich_text import RichText
 
-from govuk.models import GovukRole, GovukSkill, GovukTag
+from govuk.models import (
+    JOB_GRADE_CHOICES,
+    SCS_GRADE_CHOICES,
+    GovukChangelogEntry,
+    GovukRole,
+    GovukSkill,
+    GovukTag,
+)
 
 PAGE_EXPORT_FORMAT = "govuk-page-import-export/v1"
 BASE_PAGE_LOCAL_FIELD_NAMES = {field.name for field in Page._meta.local_fields}
@@ -38,6 +45,8 @@ SKILL_POINT_FIELD_NAMES = (
     "expert_points",
 )
 SKILL_LEVEL_CHOICES = {"awareness", "working", "practitioner", "expert"}
+JOB_GRADE_KEYS = {value for value, _ in JOB_GRADE_CHOICES}
+SCS_GRADE_KEYS = {value for value, _ in SCS_GRADE_CHOICES}
 
 
 @dataclass
@@ -91,6 +100,11 @@ def build_page_export_payload(
                 ),
             )
         ]
+        # Entries attached to no role or skill are framework-wide and belong
+        # to the home page rather than to any one exported snippet.
+        payload["changelog"] = _serialise_changelog(
+            GovukChangelogEntry.objects.filter(role__isnull=True, skill__isnull=True)
+        )
     return payload
 
 
@@ -146,6 +160,7 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
     if settings.FEATURE_FLAGS.get("SKILLS"):
         _import_skills(raw_skills, result=result)
         _import_roles(raw_roles, result=result)
+        _import_site_wide_changelog(payload.get("changelog"), result=result)
 
     site_root = site.root_page.specific
     for node in raw_pages:
@@ -342,6 +357,7 @@ def _serialise_skill(skill: GovukSkill) -> dict:
             "practitioner_points",
         ),
         "expert_points": _serialise_stream_field(skill, "expert_points"),
+        "changelog": _serialise_changelog(skill.changelog_entries.all()),
     }
 
 
@@ -349,9 +365,45 @@ def _serialise_role(role: GovukRole) -> dict:
     return {
         "slug": role.slug,
         "title": role.title,
+        "family": role.family,
         "body": _serialise_value(role.body),
         "levels": _serialise_role_levels(role),
+        "is_senior_civil_service": role.is_senior_civil_service,
+        "scs_grades": _serialise_choice_stream(role.scs_grades, "grade"),
+        "scs_skills": _serialise_scs_skills(role),
+        "changelog": _serialise_changelog(role.changelog_entries.all()),
     }
+
+
+def _serialise_choice_stream(stream_value, block_type: str) -> list[str]:
+    """Choice keys from a StreamField of single-choice blocks."""
+    return [
+        str(block.value).strip()
+        for block in stream_value
+        if block.block_type == block_type and str(block.value or "").strip()
+    ]
+
+
+def _serialise_scs_skills(role: GovukRole) -> list[str]:
+    """Slugs of the skills a Senior Civil Service role requires."""
+    return [
+        block.value.slug
+        for block in role.scs_skills
+        if block.block_type == "skill" and block.value is not None
+    ]
+
+
+def _serialise_changelog(entries) -> list[dict]:
+    """Changelog entries belonging to one role, skill, or the framework."""
+    return [
+        {
+            "date": _serialise_value(entry.date),
+            "change_type": entry.change_type,
+            "note": _serialise_value(entry.note),
+            "live": entry.live,
+        }
+        for entry in entries.order_by("-date", "pk")
+    ]
 
 
 def _serialise_stream_field(instance, field_name: str):
@@ -384,6 +436,11 @@ def _serialise_role_levels(role: GovukRole) -> list[dict]:
             {
                 "title": str(level_value.get("title") or "").strip(),
                 "description": _serialise_value(level_value.get("description")),
+                "grades": [
+                    str(getattr(raw_grade, "value", raw_grade) or "").strip()
+                    for raw_grade in (level_value.get("grades") or [])
+                    if str(getattr(raw_grade, "value", raw_grade) or "").strip()
+                ],
                 "skills": skill_requirements_payload,
             }
         )
@@ -506,6 +563,8 @@ def _import_skill_node(*, node, result: PageImportResult):
         result.errors.append(f"Skipped skill '{slug}': {exc}")
         return
 
+    _import_changelog(node.get("changelog"), subject=skill, field_name="skill", result=result)
+
     if action == "create":
         result.created += 1
     else:
@@ -567,9 +626,21 @@ def _import_role_node(*, node, result: PageImportResult):
     default_title = slug.replace("-", " ").strip().title() or slug
     role.slug = slug
     role.title = str(node.get("title") or role.title or default_title).strip() or default_title
+    role.family = str(node.get("family") or "").strip()
     role.body = str(node.get("body") or "")
     role.levels = _deserialise_role_levels(
         node.get("levels"),
+        role_slug=slug,
+        result=result,
+    )
+    role.is_senior_civil_service = _coerce_bool(node.get("is_senior_civil_service"))
+    role.scs_grades = _deserialise_choice_stream(
+        node.get("scs_grades"),
+        block_type="grade",
+        valid_keys=SCS_GRADE_KEYS,
+    )
+    role.scs_skills = _deserialise_scs_skills(
+        node.get("scs_skills"),
         role_slug=slug,
         result=result,
     )
@@ -582,10 +653,115 @@ def _import_role_node(*, node, result: PageImportResult):
         result.errors.append(f"Skipped role '{slug}': {exc}")
         return
 
+    _import_changelog(node.get("changelog"), subject=role, field_name="role", result=result)
+
     if action == "create":
         result.created += 1
     else:
         result.updated += 1
+
+
+def _deserialise_choice_stream(raw_values, *, block_type: str, valid_keys: set) -> list[dict]:
+    """Stream blocks for choice keys, dropping anything not in the vocabulary."""
+    if not isinstance(raw_values, list):
+        return []
+
+    blocks_payload: list[dict] = []
+    seen: set[str] = set()
+    for raw_value in raw_values:
+        key = str(
+            raw_value.get("value") if isinstance(raw_value, dict) else raw_value or ""
+        ).strip()
+        if key in valid_keys and key not in seen:
+            seen.add(key)
+            blocks_payload.append({"type": block_type, "value": key})
+    return blocks_payload
+
+
+def _deserialise_scs_skills(raw_skills, *, role_slug: str, result: PageImportResult) -> list[dict]:
+    if not isinstance(raw_skills, list):
+        return []
+
+    blocks_payload: list[dict] = []
+    for raw_skill in raw_skills:
+        raw_value = raw_skill.get("value") if isinstance(raw_skill, dict) else raw_skill
+        skill_slug = _normalised_slug(raw_value)
+        skill = (
+            GovukSkill.objects.filter(slug=skill_slug).only("pk").first()
+            if skill_slug
+            else None
+        )
+        if skill is None:
+            result.errors.append(
+                f"Role '{role_slug}' skipped Senior Civil Service skill "
+                f"for missing skill '{raw_value}'."
+            )
+            continue
+        blocks_payload.append({"type": "skill", "value": skill.pk})
+    return blocks_payload
+
+
+def _import_changelog(raw_entries, *, subject, field_name: str, result: PageImportResult):
+    """Replace the changelog entries attached to one role or skill."""
+    _replace_changelog(
+        raw_entries,
+        owner={field_name: subject},
+        label=str(subject),
+        result=result,
+    )
+
+
+def _import_site_wide_changelog(raw_entries, *, result: PageImportResult):
+    """Replace the framework-wide entries, which belong to no role or skill."""
+    _replace_changelog(
+        raw_entries,
+        owner={"role": None, "skill": None},
+        label="the framework",
+        result=result,
+    )
+
+
+def _replace_changelog(raw_entries, *, owner: dict, label: str, result: PageImportResult):
+    """Swap a set of changelog entries for the imported ones.
+
+    Entries carry no stable identifier of their own, so the imported set
+    replaces whatever is there rather than trying to match entry by entry.
+    """
+    if not isinstance(raw_entries, list):
+        return
+
+    filters = {}
+    for name, value in owner.items():
+        if value is None:
+            filters[f"{name}__isnull"] = True
+        else:
+            filters[name] = value
+    GovukChangelogEntry.objects.filter(**filters).delete()
+
+    for raw_entry in raw_entries:
+        if not isinstance(raw_entry, dict):
+            continue
+
+        entry_date = parse_date(str(raw_entry.get("date") or "").strip()[:10])
+        note = str(raw_entry.get("note") or "").strip()
+        if entry_date is None or not note:
+            result.errors.append(
+                f"Skipped a changelog entry for {label} with no date or note."
+            )
+            continue
+
+        entry = GovukChangelogEntry(
+            date=entry_date,
+            change_type=str(raw_entry.get("change_type") or "").strip(),
+            note=note,
+            live=_coerce_bool(raw_entry.get("live", True)),
+            **owner,
+        )
+        try:
+            entry.full_clean()
+            entry.save()
+        except (ValidationError, ValueError) as exc:
+            result.errors.append(f"Skipped a changelog entry for {label}: {exc}")
 
 
 def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportResult) -> list[dict]:
@@ -640,12 +816,21 @@ def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportRe
                 }
             )
 
+        grade_keys = [
+            key
+            for key in (
+                str(raw_grade or "").strip() for raw_grade in (raw_level.get("grades") or [])
+            )
+            if key in JOB_GRADE_KEYS
+        ]
+
         levels_payload.append(
             {
                 "type": "level",
                 "value": {
                     "title": str(raw_level.get("title") or "").strip(),
                     "description": raw_level.get("description") or "",
+                    "grades": grade_keys,
                     "skills": skill_requirements_payload,
                 },
             }
