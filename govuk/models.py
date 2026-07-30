@@ -2122,6 +2122,44 @@ def role_page_urls_by_role_id(*, exclude_page_id: int | None = None) -> dict[int
     return urls
 
 
+def role_navigation_groups(*, current_page_id: int | None = None) -> list[dict]:
+    """Live roles grouped by family, for the role page side navigation.
+
+    Mirrors the DDaT Capability Framework, which lists every role grouped
+    under its family heading on each role page.
+    """
+    urls_by_role_id: dict[int, str] = {}
+    page_ids_by_role_id: dict[int, int] = {}
+    for page in RolePage.objects.live():
+        page_url = page.url
+        if not page_url:
+            continue
+        for role_id in page.get_selected_role_ids():
+            urls_by_role_id.setdefault(role_id, page_url)
+            page_ids_by_role_id.setdefault(role_id, page.pk)
+
+    groups: dict[str, list[dict]] = {}
+    for role in GovukRole.objects.filter(pk__in=urls_by_role_id):
+        family = (role.family or "").strip()
+        if not family:
+            continue
+        groups.setdefault(family, []).append(
+            {
+                "title": role.title,
+                "url": urls_by_role_id[role.pk],
+                "is_current": page_ids_by_role_id.get(role.pk) == current_page_id,
+            }
+        )
+
+    return [
+        {
+            "title": f"{family} roles",
+            "items": sorted(items, key=lambda item: (item["title"] or "").lower()),
+        }
+        for family, items in sorted(groups.items())
+    ]
+
+
 class RolePage(Page):
     parent_page_types = [
         "govuk.ContentPage",
@@ -2291,6 +2329,55 @@ class RolePage(Page):
             for word in (title or "").split()
         )
 
+    @staticmethod
+    def _contents_entries(section: dict) -> list[dict]:
+        """In-page contents links, in the order the sections are rendered."""
+        anchors = section["anchors"]
+        display_role_name = section["display_role_name"]
+        entries: list[dict] = []
+
+        if section["role"].body:
+            entries.append(
+                {
+                    "anchor": anchors["overview"],
+                    "text": f"What a {display_role_name} does",
+                    "children": [],
+                }
+            )
+        if section["scs_skills"]:
+            entries.append(
+                {
+                    "anchor": anchors["skills"],
+                    "text": f"Skills for {display_role_name}",
+                    "children": [],
+                }
+            )
+        if section["levels"]:
+            entries.append(
+                {
+                    "anchor": anchors["levels"],
+                    "text": f"{section['role'].title} role levels",
+                    "children": [
+                        {
+                            "anchor": level["anchor"],
+                            "text": f"{level['number']}. {level['title']}",
+                            "children": [],
+                        }
+                        for level in section["levels"]
+                        if level["anchor"]
+                    ],
+                }
+            )
+        if section["related_roles"]:
+            entries.append(
+                {
+                    "anchor": anchors["related_roles"],
+                    "text": f"Roles that share {display_role_name} skills",
+                    "children": [],
+                }
+            )
+        return entries
+
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
         role_sections = self.get_role_sections()
@@ -2299,17 +2386,39 @@ class RolePage(Page):
         skills_page = SkillsAZPage.objects.live().first()
         context["skills_index_url"] = skills_page.url if skills_page else ""
 
+        # A page normally renders one role, so its anchors can match the
+        # framework's. Extra roles are suffixed to keep every id unique.
+        needs_unique_anchors = len(role_sections) > 1
+
         for section in role_sections:
-            section["display_role_name"] = self._display_role_name(
-                section["role"].title
-            )
+            role = section["role"]
+            display_role_name = self._display_role_name(role.title)
+            section["display_role_name"] = display_role_name
+            suffix = f"-{role.slug}" if needs_unique_anchors else ""
+            section["anchors"] = {
+                "overview": f"what-a-{slugify(display_role_name)}-does{suffix}",
+                "skills": f"skills{suffix}",
+                "levels": f"role-levels{suffix}",
+                "related_roles": f"related-roles{suffix}",
+                "updates": f"update-history{suffix}",
+            }
+            for number, level in enumerate(section["levels"], start=1):
+                level["number"] = number
+                level["anchor"] = (
+                    f"{slugify(level['title'])}{suffix}" if level["title"] else ""
+                )
             section["related_roles"] = [
                 {**entry, "url": role_page_urls.get(entry["role"].pk, "")}
-                for entry in section["role"].get_related_roles()
+                for entry in role.get_related_roles()
             ]
-            section["changelog"] = section["role"].get_changelog()
+            section["changelog"] = role.get_changelog()
+            section["contents"] = self._contents_entries(section)
 
         context["role_sections"] = role_sections
+        context["role_navigation"] = role_navigation_groups(current_page_id=self.pk)
+        # The framework shows no breadcrumbs on a role page; the side
+        # navigation does that job.
+        context["breadcrumbs"] = []
         return context
 
 
