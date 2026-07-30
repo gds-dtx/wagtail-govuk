@@ -1,200 +1,266 @@
 {% extends "wagtailcore/page.html" %}
 {% load wagtailcore_tags %}
+{% comment %}
+    The heading sits beside the side navigation rather than in the site hero,
+    which is how the DDaT Capability Framework lays a role page out.
+{% endcomment %}
+{% block page_hero %}{% endblock %}
 {% block content %}
     <div class="govuk-width-container govuk-!-margin-bottom-6">
-        {% if self.body or role_sections or self.author or self.show_last_updated_date %}
-            <div class="govuk-!-margin-bottom-3">
-                <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
-                     {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
-                    {% if self.enable_free_text_heading_navigation %}
-                        <div class="govuk-grid-column-one-third" data-auto-heading-side-column>
-                            <nav class="free-text-heading-nav"
-                                 aria-label="Page contents"
-                                 data-auto-heading-nav>
-                                <h2 class="govuk-heading-s free-text-heading-nav__title">On this page</h2>
-                            </nav>
-                        </div>
-                    {% endif %}
-                    <div class="{% if self.enable_free_text_heading_navigation %}govuk-grid-column-two-thirds{% else %}govuk-grid-column-full{% endif %}"
-                         {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
-                        <div class="govuk-body rich-text-content"
-                             {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
-                            {% if self.show_page_content_metadata %}
-                                {% include "includes/page_content_metadata.html" with page=self %}
-                            {% endif %}
-                            {% if self.body %}{{ self.body|richtext }}{% endif %}
-                            {% for role_section in role_sections %}
-                                <section>
-                                    {% if role_section.role.body %}<div class="govuk-body">{{ role_section.role.body|richtext }}</div>{% endif %}
-                                    {% if role_section.scs_grades %}
-                                        <p class="govuk-body">
-                                            This role is often performed at the
-                                            <a class="govuk-link" href="/job-grades">Civil Service job grade</a> of:
-                                        </p>
-                                        <ul class="govuk-list govuk-list--bullet">
-                                            {% for grade in role_section.scs_grades %}<li>{{ grade }}</li>{% endfor %}
-                                        </ul>
-                                    {% endif %}
-                                    {% if role_section.scs_skills %}
-                                        <h2 class="govuk-heading-l" id="skills">Skills for {{ role_section.display_role_name }}</h2>
-                                        <table class="govuk-table">
-                                            <thead class="govuk-table__head">
-                                                <tr class="govuk-table__row">
-                                                    <th scope="col" class="govuk-table__header">Skill</th>
-                                                    <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Description, including examples of leadership</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="govuk-table__body">
-                                                {% for skill_row in role_section.scs_skills %}
-                                                    <tr class="govuk-table__row">
-                                                        <th scope="row" class="govuk-table__header">
-                                                            <p class="govuk-!-margin-bottom-1 govuk-!-font-weight-bold">
-                                                                {% if skills_index_url %}
-                                                                    <a href="{{ skills_index_url }}#{{ skill_row.skill.slug }}" class="govuk-link skill-name">{{ skill_row.skill.title }}</a>
-                                                                {% else %}
-                                                                    {{ skill_row.skill.title }}
-                                                                {% endif %}
-                                                            </p>
-                                                        </th>
-                                                        <td class="govuk-table__cell">
-                                                            {% if skill_row.skill.body %}{{ skill_row.skill.body|richtext }}{% endif %}
-                                                            {% if skill_row.leadership_points %}
-                                                                <p class="govuk-body govuk-!-margin-bottom-1">Examples of leadership using this skill:</p>
-                                                                <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
-                                                                    {% for point in skill_row.leadership_points %}<li>{{ point }}</li>{% endfor %}
-                                                                </ul>
-                                                            {% endif %}
-                                                        </td>
-                                                    </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    {% endif %}
-                                    {% for role_level in role_section.levels %}
-                                        {% if role_level.title %}<h3 class="govuk-heading-m">{{ forloop.counter }}. {{ role_level.title }}</h3>{% endif %}
-                                        {% if role_level.description %}<div class="govuk-body">{{ role_level.description|richtext }}</div>{% endif %}
-                                        {% if role_level.grades %}
-                                            <p class="govuk-body">
-                                                This role level is most often performed at the
-                                                <a class="govuk-link" href="/job-grades">Civil Service job grade</a> of:
-                                            </p>
-                                            <ul class="govuk-list govuk-list--bullet">
-                                                {% for grade in role_level.grades %}<li>{{ grade }}</li>{% endfor %}
-                                            </ul>
-                                        {% endif %}
-                                        {% if role_level.skills %}
-                                            <table class="govuk-table">
-                                                <thead class="govuk-table__head">
-                                                    <tr class="govuk-table__row">
-                                                        <th scope="col" class="govuk-table__header">Skill</th>
-                                                        <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Description</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody class="govuk-table__body">
-                                                    {% for skill_row in role_level.skills %}
-                                                        <tr class="govuk-table__row">
-                                                            <th scope="row" class="govuk-table__header">
-                                                                <p class="govuk-!-margin-bottom-1 govuk-!-font-weight-bold">{{ skill_row.skill.title }}</p>
-                                                                <p class="govuk-body-s">Level: {{ skill_row.required_level_label }}</p>
-                                                                <span class="govuk-visually-hidden">{{ skill_row.required_level_label }} is the
-                                                                    {% if skill_row.required_level == 'awareness' %}
-                                                                        first
-                                                                    {% elif skill_row.required_level == 'working' %}
-                                                                        second
-                                                                    {% elif skill_row.required_level == 'practitioner' %}
-                                                                        third
-                                                                    {% else %}
-                                                                        fourth
-                                                                    {% endif %}
-                                                                of four ascending skill levels</span>
-                                                                <div class="progress-bar__container">
-                                                                    <div class="progress-bar__grey" aria-hidden="true"></div>
-                                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
-                                                                    <div class="progress-bar__{% if skill_row.required_level == 'working' or skill_row.required_level == 'practitioner' or skill_row.required_level == 'expert' %}grey{% else %}white{% endif %}"
-                                                                         aria-hidden="true"></div>
-                                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
-                                                                    <div class="progress-bar__{% if skill_row.required_level == 'practitioner' or skill_row.required_level == 'expert' %}grey{% else %}white{% endif %}"
-                                                                         aria-hidden="true"></div>
-                                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
-                                                                    <div class="progress-bar__{% if skill_row.required_level == 'expert' %}grey{% else %}white{% endif %}"
-                                                                         aria-hidden="true"></div>
-                                                                </div>
-                                                            </th>
-                                                            <td class="govuk-table__cell">
-                                                                {% if skill_row.points %}
-                                                                    <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
-                                                                        {% for point in skill_row.points %}<li>{{ point }}</li>{% endfor %}
-                                                                    </ul>
-                                                                {% endif %}
-                                                            </td>
-                                                        </tr>
-                                                    {% endfor %}
-                                                </tbody>
-                                            </table>
-                                        {% endif %}
+        <div class="govuk-grid-row">
+            {% if role_navigation %}
+                <div class="govuk-grid-column-one-quarter">
+                    <div class="role-nav">
+                        <nav class="role-nav__group" aria-label="Home">
+                            <ul class="role-nav__list">
+                                <li class="role-nav__item">
+                                    <a href="/">Home</a>
+                                </li>
+                            </ul>
+                        </nav>
+                        {% for group in role_navigation %}
+                            <nav class="role-nav__group" aria-label="{{ group.title }}">
+                                <p class="role-nav__title">{{ group.title }}</p>
+                                <ul class="role-nav__list">
+                                    {% for item in group.items %}
+                                        <li class="role-nav__item{% if item.is_current %} role-nav__item--active{% endif %}">
+                                            <a href="{{ item.url }}"
+                                               {% if item.is_current %}aria-current="page"{% endif %}>{{ item.title }}</a>
+                                        </li>
                                     {% endfor %}
-                                    {% if role_section.related_roles %}
-                                        <h2 class="govuk-heading-l" id="related-roles">Roles that share {{ role_section.display_role_name }} skills</h2>
-                                        <table class="govuk-table">
-                                            <thead class="govuk-table__head">
-                                                <tr class="govuk-table__row">
-                                                    <th scope="col" class="govuk-table__header">Role</th>
-                                                    <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Shared skills</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="govuk-table__body">
-                                                {% for related in role_section.related_roles %}
-                                                    <tr class="govuk-table__row">
-                                                        <th scope="row" class="govuk-table__header">
-                                                            {% if related.url %}
-                                                                <a href="{{ related.url }}" class="govuk-link">{{ related.role.title }}</a>
-                                                            {% else %}
-                                                                {{ related.role.title }}
-                                                            {% endif %}
-                                                        </th>
-                                                        <td class="govuk-table__cell">
-                                                            {% for skill in related.shared_skills %}
-                                                                <p class="govuk-body govuk-!-margin-bottom-1">
-                                                                    {% if skills_index_url %}
-                                                                        <a href="{{ skills_index_url }}#{{ skill.slug }}" class="govuk-link">{{ skill.title }}</a>
-                                                                    {% else %}
-                                                                        {{ skill.title }}
-                                                                    {% endif %}
-                                                                </p>
-                                                            {% endfor %}
-                                                        </td>
-                                                    </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    {% endif %}
-                                    {% if role_section.changelog.entries %}
-                                        <h2 class="govuk-heading-l" id="updates">Updates</h2>
-                                        <p class="govuk-body">
-                                            <strong>Published</strong> {{ role_section.changelog.published_date|date:"j F Y" }}
-                                            <br>
-                                            <strong>Last updated</strong> {{ role_section.changelog.last_updated_date|date:"j F Y" }}
-                                        </p>
-                                        <dl class="govuk-summary-list">
-                                            {% for entry in role_section.changelog.entries %}
-                                                <div class="govuk-summary-list__row">
-                                                    <dt class="govuk-summary-list__key">
-                                                        {{ entry.date|date:"j F Y" }}
-                                                        {% if entry.change_type %}<br><span class="govuk-body-s">{{ entry.change_type }}</span>{% endif %}
-                                                    </dt>
-                                                    <dd class="govuk-summary-list__value">{{ entry.note|richtext }}</dd>
-                                                </div>
-                                            {% endfor %}
-                                        </dl>
-                                    {% endif %}
-                                </section>
-                            {% empty %}
-                                {% if not self.body %}<p class="govuk-body">No roles selected.</p>{% endif %}
-                            {% endfor %}
-                        </div>
+                                </ul>
+                            </nav>
+                        {% endfor %}
                     </div>
                 </div>
+            {% endif %}
+            <div class="{% if role_navigation %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-full{% endif %}">
+                <h1 class="govuk-heading-xl">{{ self.hero_title|default:self.title }}</h1>
+                {% if self.hero_intro %}
+                    <div class="govuk-body-l rich-text-content">{{ self.hero_intro|richtext }}</div>
+                {% elif self.search_description %}
+                    <p class="govuk-body-l">{{ self.search_description }}</p>
+                {% endif %}
+                {% if self.body or role_sections or self.author or self.show_last_updated_date %}
+                    <div class="govuk-!-margin-bottom-3">
+                        <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
+                             {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
+                            {% if self.enable_free_text_heading_navigation %}
+                                <div class="govuk-grid-column-one-third" data-auto-heading-side-column>
+                                    <nav class="free-text-heading-nav"
+                                         aria-label="Page contents"
+                                         data-auto-heading-nav>
+                                        <h2 class="govuk-heading-s free-text-heading-nav__title">On this page</h2>
+                                    </nav>
+                                </div>
+                            {% endif %}
+                            <div class="{% if self.enable_free_text_heading_navigation %}govuk-grid-column-two-thirds{% else %}govuk-grid-column-full{% endif %}"
+                                 {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
+                                <div class="govuk-body rich-text-content"
+                                     {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
+                                    {% if self.show_page_content_metadata %}
+                                        {% include "includes/page_content_metadata.html" with page=self %}
+                                    {% endif %}
+                                    {% if self.body %}{{ self.body|richtext }}{% endif %}
+                                    {% for role_section in role_sections %}
+                                        <section>
+                                            {% if role_section.changelog.last_updated_date %}
+                                                <p class="govuk-body-s">
+                                                    Last updated {{ role_section.changelog.last_updated_date|date:"j F Y" }} —
+                                                    <a href="#{{ role_section.anchors.updates }}" class="govuk-link">See all updates</a>
+                                                </p>
+                                            {% endif %}
+                                            {% if role_section.contents %}
+                                                <p class="govuk-body govuk-body-s contents-list-links">Contents</p>
+                                                <ul class="govuk-list govuk-body-s contents-list-links">
+                                                    {% for entry in role_section.contents %}
+                                                        <li>
+                                                            — <a href="#{{ entry.anchor }}" class="contents-list-links govuk-link">{{ entry.text }}</a>
+                                                            {% if entry.children %}
+                                                                <ul class="govuk-list govuk-body-s contents-list-links indented-list">
+                                                                    {% for child in entry.children %}
+                                                                        <li>
+                                                                            — <a href="#{{ child.anchor }}" class="contents-list-links govuk-link">{{ child.text }}</a>
+                                                                        </li>
+                                                                    {% endfor %}
+                                                                </ul>
+                                                            {% endif %}
+                                                        </li>
+                                                    {% endfor %}
+                                                </ul>
+                                            {% endif %}
+                                            {% if role_section.role.body %}
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.overview }}">What a {{ role_section.display_role_name }} does</h2>
+                                                <div class="govuk-body">{{ role_section.role.body|richtext }}</div>
+                                            {% endif %}
+                                            {% if role_section.scs_grades %}
+                                                <p class="govuk-body">
+                                                    This role is often performed at the
+                                                    <a class="govuk-link" href="/job-grades">Civil Service job grade</a> of:
+                                                </p>
+                                                <ul class="govuk-list govuk-list--bullet">
+                                                    {% for grade in role_section.scs_grades %}<li>{{ grade }}</li>{% endfor %}
+                                                </ul>
+                                            {% endif %}
+                                            {% if role_section.scs_skills %}
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.skills }}">Skills for {{ role_section.display_role_name }}</h2>
+                                                <table class="govuk-table">
+                                                    <thead class="govuk-table__head">
+                                                        <tr class="govuk-table__row">
+                                                            <th scope="col" class="govuk-table__header">Skill</th>
+                                                            <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Description, including examples of leadership</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="govuk-table__body">
+                                                        {% for skill_row in role_section.scs_skills %}
+                                                            <tr class="govuk-table__row">
+                                                                <th scope="row" class="govuk-table__header">
+                                                                    <p class="govuk-!-margin-bottom-1 govuk-!-font-weight-bold">
+                                                                        {% if skills_index_url %}
+                                                                            <a href="{{ skills_index_url }}#{{ skill_row.skill.slug }}" class="govuk-link skill-name">{{ skill_row.skill.title }}</a>
+                                                                        {% else %}
+                                                                            {{ skill_row.skill.title }}
+                                                                        {% endif %}
+                                                                    </p>
+                                                                </th>
+                                                                <td class="govuk-table__cell">
+                                                                    {% if skill_row.skill.body %}{{ skill_row.skill.body|richtext }}{% endif %}
+                                                                    {% if skill_row.leadership_points %}
+                                                                        <p class="govuk-body govuk-!-margin-bottom-1">Examples of leadership using this skill:</p>
+                                                                        <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
+                                                                            {% for point in skill_row.leadership_points %}<li>{{ point }}</li>{% endfor %}
+                                                                        </ul>
+                                                                    {% endif %}
+                                                                </td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            {% endif %}
+                                            {% if role_section.levels %}
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.levels }}">{{ role_section.role.title }} role levels</h2>
+                                            {% endif %}
+                                            {% for role_level in role_section.levels %}
+                                                {% if role_level.title %}
+                                                    <h3 class="govuk-heading-m role-level-header" id="{{ role_level.anchor }}">{{ role_level.number }}. {{ role_level.title }}</h3>
+                                                {% endif %}
+                                                {% if role_level.description %}<div class="govuk-body">{{ role_level.description|richtext }}</div>{% endif %}
+                                                {% if role_level.grades %}
+                                                    <p class="govuk-body">
+                                                        This role level is most often performed at the
+                                                        <a class="govuk-link" href="/job-grades">Civil Service job grade</a> of:
+                                                    </p>
+                                                    <ul class="govuk-list govuk-list--bullet">
+                                                        {% for grade in role_level.grades %}<li>{{ grade }}</li>{% endfor %}
+                                                    </ul>
+                                                {% endif %}
+                                                {% if role_level.skills %}
+                                                    <table class="govuk-table">
+                                                        <thead class="govuk-table__head">
+                                                            <tr class="govuk-table__row">
+                                                                <th scope="col" class="govuk-table__header">Skill</th>
+                                                                <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Description</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody class="govuk-table__body">
+                                                            {% for skill_row in role_level.skills %}
+                                                                <tr class="govuk-table__row">
+                                                                    <th scope="row" class="govuk-table__header">
+                                                                        <p class="govuk-!-margin-bottom-1 govuk-!-font-weight-bold">{{ skill_row.skill.title }}</p>
+                                                                        <p class="govuk-body-s">Level: {{ skill_row.required_level_label }}</p>
+                                                                        <span class="govuk-visually-hidden">{{ skill_row.required_level_label }} is the
+                                                                            {% if skill_row.required_level == 'awareness' %}
+                                                                                first
+                                                                            {% elif skill_row.required_level == 'working' %}
+                                                                                second
+                                                                            {% elif skill_row.required_level == 'practitioner' %}
+                                                                                third
+                                                                            {% else %}
+                                                                                fourth
+                                                                            {% endif %}
+                                                                        of four ascending skill levels</span>
+                                                                        <div class="progress-bar__container">
+                                                                            <div class="progress-bar__grey" aria-hidden="true"></div>
+                                                                            <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                                            <div class="progress-bar__{% if skill_row.required_level == 'working' or skill_row.required_level == 'practitioner' or skill_row.required_level == 'expert' %}grey{% else %}white{% endif %}"
+                                                                                 aria-hidden="true"></div>
+                                                                            <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                                            <div class="progress-bar__{% if skill_row.required_level == 'practitioner' or skill_row.required_level == 'expert' %}grey{% else %}white{% endif %}"
+                                                                                 aria-hidden="true"></div>
+                                                                            <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                                            <div class="progress-bar__{% if skill_row.required_level == 'expert' %}grey{% else %}white{% endif %}"
+                                                                                 aria-hidden="true"></div>
+                                                                        </div>
+                                                                    </th>
+                                                                    <td class="govuk-table__cell">
+                                                                        {% if skill_row.points %}
+                                                                            <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
+                                                                                {% for point in skill_row.points %}<li>{{ point }}</li>{% endfor %}
+                                                                            </ul>
+                                                                        {% endif %}
+                                                                    </td>
+                                                                </tr>
+                                                            {% endfor %}
+                                                        </tbody>
+                                                    </table>
+                                                {% endif %}
+                                            {% endfor %}
+                                            {% if role_section.related_roles %}
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.related_roles }}">Roles that share {{ role_section.display_role_name }} skills</h2>
+                                                <table class="govuk-table">
+                                                    <thead class="govuk-table__head">
+                                                        <tr class="govuk-table__row">
+                                                            <th scope="col" class="govuk-table__header">Role</th>
+                                                            <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Shared skills</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody class="govuk-table__body">
+                                                        {% for related in role_section.related_roles %}
+                                                            <tr class="govuk-table__row">
+                                                                <th scope="row" class="govuk-table__header">
+                                                                    {% if related.url %}
+                                                                        <a href="{{ related.url }}" class="govuk-link">{{ related.role.title }}</a>
+                                                                    {% else %}
+                                                                        {{ related.role.title }}
+                                                                    {% endif %}
+                                                                </th>
+                                                                <td class="govuk-table__cell">
+                                                                    {% for skill in related.shared_skills %}
+                                                                        <p class="govuk-body govuk-!-margin-bottom-1">
+                                                                            {% if skills_index_url %}
+                                                                                <a href="{{ skills_index_url }}#{{ skill.slug }}" class="govuk-link">{{ skill.title }}</a>
+                                                                            {% else %}
+                                                                                {{ skill.title }}
+                                                                            {% endif %}
+                                                                        </p>
+                                                                    {% endfor %}
+                                                                </td>
+                                                            </tr>
+                                                        {% endfor %}
+                                                    </tbody>
+                                                </table>
+                                            {% endif %}
+                                            {% if role_section.changelog.entries %}
+                                                <h2 class="govuk-heading-m" id="{{ role_section.anchors.updates }}">Updates</h2>
+                                                <p class="govuk-body-s publish-dates">Published {{ role_section.changelog.published_date|date:"j F Y" }}</p>
+                                                <p class="govuk-body-s">Last updated {{ role_section.changelog.last_updated_date|date:"j F Y" }}</p>
+                                                <div class="changelog-content">
+                                                    {% for entry in role_section.changelog.entries %}
+                                                        <p class="govuk-body-s govuk-!-font-weight-bold">{{ entry.date|date:"j F Y" }}</p>
+                                                        <div class="govuk-body-s">{{ entry.note|richtext }}</div>
+                                                    {% endfor %}
+                                                </div>
+                                            {% endif %}
+                                        </section>
+                                    {% empty %}
+                                        {% if not self.body %}<p class="govuk-body">No roles selected.</p>{% endif %}
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
             </div>
-        {% endif %}
+        </div>
     </div>
 {% endblock %}

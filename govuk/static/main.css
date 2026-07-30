@@ -346,3 +346,113 @@ main > :nth-last-child(1 of .section-cards-container) {
         flex: 1 0 auto;
     }
 }
+
+/* Role page side navigation.
+   The DDaT Capability Framework borrows the MoJ Frontend side navigation for
+   this, but every colour in it is stock GOV.UK, so it is cheaper to keep the
+   twenty lines here than to take on another design system. */
+.role-nav {
+    display: none;
+    font-family: "GDS Transport", arial, sans-serif;
+    font-weight: 400;
+    font-size: 0.875rem;
+    line-height: 1.1428571429;
+}
+
+.role-nav__title {
+    font-size: 1rem;
+    line-height: 1.25;
+    color: #505a5f;
+    font-weight: 400;
+    margin: 0;
+    padding: 10px 10px 10px 14px;
+}
+
+.role-nav__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.role-nav__item {
+    display: flex;
+}
+
+.role-nav__item a,
+.role-nav__item a:link,
+.role-nav__item a:visited {
+    background-color: inherit;
+    color: var(--govuk-link-colour, #1d70b8);
+    display: block;
+    text-decoration: none;
+    border-left: 4px solid transparent;
+    padding: 10px;
+}
+
+.role-nav__item a:hover {
+    color: var(--govuk-link-hover-colour, #003078);
+}
+
+.role-nav__item a:focus {
+    color: #0b0c0c;
+    background-color: #fd0;
+    border-color: #0b0c0c;
+    border-left-color: #fd0;
+    position: relative;
+}
+
+.role-nav__item--active a:link,
+.role-nav__item--active a:visited {
+    border-color: var(--govuk-link-colour, #1d70b8);
+    color: var(--govuk-link-colour, #1d70b8);
+    font-weight: 700;
+}
+
+.role-nav__item--active a:hover {
+    color: var(--govuk-link-hover-colour, #003078);
+    border-color: var(--govuk-link-hover-colour, #003078);
+}
+
+.role-nav__item--active a:focus {
+    color: #0b0c0c;
+    background-color: #fd0;
+    border-color: #0b0c0c;
+}
+
+/* Role page contents list and changelog. */
+.contents-list-links {
+    text-decoration-line: none;
+    margin-left: 5px;
+    margin-bottom: 8px;
+}
+
+.contents-list-links > li {
+    margin-bottom: 10px;
+}
+
+.contents-list-links.indented-list {
+    margin-left: 15px;
+}
+
+.role-level-header {
+    font-size: 1.2rem;
+}
+
+.publish-dates {
+    margin-bottom: 4px;
+}
+
+.changelog-content {
+    max-width: 38em;
+}
+
+@media (min-width: 40.0625em) {
+    .role-nav {
+        display: block;
+        float: left;
+    }
+
+    .role-level-header {
+        font-size: 1.7rem;
+    }
+}

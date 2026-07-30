@@ -204,22 +204,24 @@
         <main class="govuk-main-wrapper {% if self.enable_combined_service_navigation_and_hero_styling %}govuk-!-padding-0{% endif %}"
               id="main-content"
               role="main">
-            {% if self.hero_title or self.title or self.search_description or self.hero_intro %}
-                <div class="{% if self.enable_hero_styling or self.enable_combined_service_navigation_and_hero_styling %}masthead {% if self.enable_combined_service_navigation_and_hero_styling %}masthead--combined{% endif %}{% endif %}">
-                    <div class="hero">
-                        <div class="hero__content">
-                            {% if self.hero_title or self.title %}
-                                <h1 class="hero__title">{{ self.hero_title | default:self.title }}</h1>
-                            {% endif %}
-                            {% if self.hero_intro %}
-                                <div class="hero__description rich-text-content">{{ self.hero_intro|richtext }}</div>
-                            {% elif self.search_description %}
-                                <p class="hero__description rich-text-content">{{ self.search_description }}</p>
-                            {% endif %}
+            {% block page_hero %}
+                {% if self.hero_title or self.title or self.search_description or self.hero_intro %}
+                    <div class="{% if self.enable_hero_styling or self.enable_combined_service_navigation_and_hero_styling %}masthead {% if self.enable_combined_service_navigation_and_hero_styling %}masthead--combined{% endif %}{% endif %}">
+                        <div class="hero">
+                            <div class="hero__content">
+                                {% if self.hero_title or self.title %}
+                                    <h1 class="hero__title govuk-heading-xl">{{ self.hero_title | default:self.title }}</h1>
+                                {% endif %}
+                                {% if self.hero_intro %}
+                                    <div class="hero__description rich-text-content">{{ self.hero_intro|richtext }}</div>
+                                {% elif self.search_description %}
+                                    <p class="hero__description rich-text-content">{{ self.search_description }}</p>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
-                </div>
-            {% endif %}
+                {% endif %}
+            {% endblock %}
             {% if self.enable_combined_service_navigation_and_hero_styling and phase_banner_settings and phase_banner_settings.enabled %}
                 {% include "includes/phase_banner.html" with phase_banner_settings=phase_banner_settings %}
             {% endif %}
