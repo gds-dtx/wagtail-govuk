@@ -348,6 +348,68 @@ class PhaseBannerSettings(BaseSiteSetting):
     ]
 
 
+@register_setting(icon="tick")
+class CookieBannerSettings(BaseSiteSetting):
+    """The GOV.UK cookie banner asking consent for analytics cookies.
+
+    Consent is stored in a first-party cookie read by the banner itself, so
+    the banner works without a round trip to the server and can be cached.
+    """
+
+    enabled = models.BooleanField(
+        default=False,
+        verbose_name="Show cookie banner across the site",
+    )
+    service_name = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "Name used in the banner heading, for example Government Digital "
+            "and Data Profession Capability Framework. Defaults to the site name."
+        ),
+    )
+    analytics_text = models.CharField(
+        max_length=500,
+        default=(
+            "We'd like to use analytics cookies so we can understand how you "
+            "use the service and make improvements."
+        ),
+        help_text="First paragraph, explaining what analytics cookies are for.",
+    )
+    essential_text = models.CharField(
+        max_length=500,
+        default=(
+            "We also use essential cookies to remember if you've accepted "
+            "analytics cookies."
+        ),
+        help_text="Second paragraph, explaining the essential cookies.",
+    )
+    cookies_page_url = models.CharField(
+        max_length=500,
+        default="/cookies",
+        help_text=(
+            "Page describing the cookies used, where people can change their "
+            "choice later."
+        ),
+    )
+
+    panels = [
+        FieldPanel("enabled"),
+        FieldPanel("service_name"),
+        FieldPanel("analytics_text"),
+        FieldPanel("essential_text"),
+        FieldPanel("cookies_page_url"),
+    ]
+
+    class Meta:
+        verbose_name = "Cookie banner"
+
+    def heading_for_site(self) -> str:
+        name = (self.service_name or "").strip() or (self.site.site_name or "").strip()
+        return f"Cookies on {name}" if name else "Cookies on this service"
+
+
 @register_setting(icon="link")
 class FooterSettings(BaseSiteSetting):
     footer_links = StreamField(

@@ -4,7 +4,12 @@ from django.conf import settings
 from django.http import Http404
 from wagtail.models import Page, Site
 
-from govuk.models import CustomiseSettings, FooterSettings, PhaseBannerSettings
+from govuk.models import (
+    CookieBannerSettings,
+    CustomiseSettings,
+    FooterSettings,
+    PhaseBannerSettings,
+)
 
 
 def navigation_and_breadcrumbs(request):
@@ -34,6 +39,7 @@ def navigation_and_breadcrumbs(request):
             "phase_banner_settings": None,
             "footer_settings": None,
             "customise_settings": None,
+            "cookie_banner_settings": None,
         }
 
     site_root = site.root_page.specific
@@ -84,4 +90,5 @@ def navigation_and_breadcrumbs(request):
         "phase_banner_settings": PhaseBannerSettings.for_site(site),
         "footer_settings": FooterSettings.for_site(site),
         "customise_settings": customise_settings,
+        "cookie_banner_settings": CookieBannerSettings.for_site(site),
     }

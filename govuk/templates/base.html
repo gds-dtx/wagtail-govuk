@@ -47,6 +47,9 @@
         <script nonce="{{ csp_nonce }}">
     document.body.className += ' js-enabled' + ('noModule' in HTMLScriptElement.prototype ? ' govuk-frontend-supported' : '');
         </script>
+        {% if cookie_banner_settings and cookie_banner_settings.enabled %}
+            {% include "includes/cookie_banner.html" with cookie_banner_settings=cookie_banner_settings %}
+        {% endif %}
         <a href="#main-content"
            class="govuk-skip-link"
            data-module="govuk-skip-link">Skip to main content</a>
@@ -328,6 +331,9 @@
     initAll()
         </script>
         <script type="module" src="{% static 'main.js' %}"></script>
+        {% if cookie_banner_settings and cookie_banner_settings.enabled %}
+            <script type="module" src="{% static 'govuk/js/cookie-banner.js' %}"></script>
+        {% endif %}
         {% block extra_body %}{% endblock %}
     </body>
 </html>
