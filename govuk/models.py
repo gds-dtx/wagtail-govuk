@@ -321,12 +321,24 @@ class PhaseBannerSettings(BaseSiteSetting):
         default="This is a new service - ",
         help_text="Phase banners are used to show users your service is still being worked on.",
     )
+    feedback_link_text = models.CharField(
+        max_length=100,
+        default="your feedback",
+        help_text="Wording of the feedback link, shown between the two sentences.",
+    )
+    phase_text_after = models.CharField(
+        max_length=500,
+        default="will help us to improve it.",
+        help_text="Wording shown after the feedback link.",
+    )
 
     panels = [
         FieldPanel("enabled"),
         FieldPanel("phase_label"),
         FieldPanel("feedback_url"),
         FieldPanel("phase_text"),
+        FieldPanel("feedback_link_text"),
+        FieldPanel("phase_text_after"),
     ]
 
 
@@ -363,6 +375,26 @@ class CustomiseSettings(BaseSiteSetting):
         default=False,
         help_text="Include the site name in the header search label and placeholder.",
     )
+    show_service_name_in_navigation = models.BooleanField(
+        default=False,
+        help_text=(
+            "Show the site name and search in the service navigation bar rather "
+            "than in the GOV.UK header, as GOV.UK services usually do."
+        ),
+    )
+    hide_sign_in_link = models.BooleanField(
+        default=False,
+        help_text="Hide the sign in link, for sites where visitors never sign in.",
+    )
+    search_placeholder = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            "Wording shown in the header search box, for example "
+            "Search for roles or skills. Defaults to Search."
+        ),
+    )
     hero_background_color = models.CharField(
         max_length=7,
         blank=True,
@@ -386,6 +418,9 @@ class CustomiseSettings(BaseSiteSetting):
     panels = [
         FieldPanel("header_logo"),
         FieldPanel("show_site_name_in_search_box"),
+        FieldPanel("show_service_name_in_navigation"),
+        FieldPanel("hide_sign_in_link"),
+        FieldPanel("search_placeholder"),
         FieldPanel("hero_background_color"),
         FieldPanel("hero_text_color"),
         FieldPanel("extra_css"),
