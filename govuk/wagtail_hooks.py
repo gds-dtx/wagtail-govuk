@@ -286,7 +286,7 @@ def register_govuk_button_rich_text_features(features):
             },
             js=[
                 "wagtailadmin/js/page-chooser-modal.js",
-                "govuk/js/draftail-govuk-button.js",
+                "js/draftail-govuk-button.js",
             ],
         ),
     )
@@ -314,7 +314,7 @@ def register_govuk_button_rich_text_features(features):
                 "description": "Raw HTML block",
                 "icon": "code",
             },
-            js=["govuk/js/draftail-raw-html.js"],
+            js=["js/draftail-raw-html.js"],
         ),
     )
     features.register_converter_rule(

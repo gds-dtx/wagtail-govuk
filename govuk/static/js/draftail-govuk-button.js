@@ -12,11 +12,13 @@
     return;
   }
 
+  // `label` is shown in the options dropdown; `tooltip` is the short form used in the
+  // in-editor entity tooltip (avoids nested parens like "(Secondary (grey))").
   var BUTTON_STYLES = [
-    { value: "default", label: "Default" },
-    { value: "start", label: "Start" },
-    { value: "secondary", label: "Secondary" },
-    { value: "warning", label: "Warning" },
+    { value: "default", label: "Default (green)", tooltip: "Default" },
+    { value: "start", label: "Start", tooltip: "Start" },
+    { value: "secondary", label: "Secondary (grey)", tooltip: "Secondary" },
+    { value: "warning", label: "Warning (red)", tooltip: "Warning" },
   ];
   var VALID_STYLES = BUTTON_STYLES.map(function (choice) {
     return choice.value;
@@ -38,6 +40,8 @@
   // standard Wagtail link chooser opens. Kept as plain DOM so it does not depend
   // on Wagtail's internal modal components.
   function showOptionsDialog(initial, onConfirm, onCancel) {
+    // Wagtail exposes theme tokens as --w-color-* custom properties that flip with the
+    // admin's light/dark theme, so the dialog stays legible in either mode.
     var overlay = document.createElement("div");
     overlay.className = "govuk-button-options-overlay";
     overlay.style.cssText =
@@ -49,21 +53,38 @@
     dialog.setAttribute("aria-modal", "true");
     dialog.setAttribute("aria-label", "Button options");
     dialog.style.cssText =
-      "background:#fff;border-radius:4px;padding:2rem;width:360px;max-width:90vw;" +
+      "background:var(--w-color-surface-menus);" +
+      "color:var(--w-color-text-context);" +
+      "border-radius:4px;padding:2rem;width:360px;max-width:90vw;" +
       "box-shadow:0 2px 8px rgba(0,0,0,0.3);font-family:inherit;";
 
     var heading = document.createElement("h2");
     heading.textContent = "Button options";
-    heading.style.cssText = "margin:0 0 1rem;font-size:1.2rem;";
+    heading.style.cssText =
+      "margin:0 0 1rem;font-size:1.2rem;color:var(--w-color-text-context);";
 
     var styleLabel = document.createElement("label");
     styleLabel.textContent = "Style";
-    styleLabel.style.cssText = "display:block;font-weight:bold;margin-bottom:0.25rem;";
+    styleLabel.style.cssText =
+      "display:block;font-weight:bold;margin-bottom:0.25rem;" +
+      "color:var(--w-color-text-label);";
     styleLabel.setAttribute("for", "govuk-button-style-select");
 
     var styleSelect = document.createElement("select");
     styleSelect.id = "govuk-button-style-select";
-    styleSelect.style.cssText = "width:100%;margin-bottom:1rem;padding:0.4rem;";
+    // `appearance:none` drops the native arrow (which is nearly invisible on the dark
+    // theme); the two linear-gradients redraw a chevron tinted with a theme token, the
+    // same technique Wagtail uses for its own selects so it stays legible in either mode.
+    styleSelect.style.cssText =
+      "width:100%;margin-bottom:1rem;padding:0.4rem 2rem 0.4rem 0.4rem;" +
+      "appearance:none;-webkit-appearance:none;-moz-appearance:none;" +
+      "background-color:var(--w-color-surface-field);" +
+      "background-image:linear-gradient(45deg,transparent 50%,var(--w-color-text-label) 50%)," +
+      "linear-gradient(135deg,var(--w-color-text-label) 50%,transparent 50%);" +
+      "background-position:calc(100% - 1.15rem) center,calc(100% - 0.85rem) center;" +
+      "background-size:0.3rem 0.3rem,0.3rem 0.3rem;background-repeat:no-repeat;" +
+      "color:var(--w-color-text-context);" +
+      "border:1px solid var(--w-color-border-field-default);border-radius:4px;";
     BUTTON_STYLES.forEach(function (choice) {
       var option = document.createElement("option");
       option.value = choice.value;
@@ -76,7 +97,8 @@
 
     var newTabWrapper = document.createElement("label");
     newTabWrapper.style.cssText =
-      "display:flex;align-items:center;gap:0.5rem;margin-bottom:1.5rem;";
+      "display:flex;align-items:center;gap:0.5rem;margin-bottom:1.5rem;" +
+      "color:var(--w-color-text-label);";
     var newTabCheckbox = document.createElement("input");
     newTabCheckbox.type = "checkbox";
     newTabCheckbox.id = "govuk-button-new-tab";
@@ -89,6 +111,7 @@
     var actions = document.createElement("div");
     actions.style.cssText = "display:flex;gap:0.75rem;justify-content:flex-end;";
 
+    // Reuse Wagtail's own button classes so the actions match the admin exactly.
     var cancelButton = document.createElement("button");
     cancelButton.type = "button";
     cancelButton.className = "button button-secondary";
@@ -189,11 +212,11 @@
   // Captured because the arrow callback above cannot use `super`.
   var super_componentDidMount = LinkModalWorkflowSource.prototype.componentDidMount;
 
-  function styleLabel(style) {
+  function styleTooltip(style) {
     var match = BUTTON_STYLES.filter(function (choice) {
       return choice.value === style;
     })[0];
-    return match ? match.label : "Default";
+    return match ? match.tooltip : "Default";
   }
 
   function buttonDecorator(props) {
@@ -201,7 +224,7 @@
     var data = entity.getData() || {};
     var label = "Button link";
     if (data.style && data.style !== "default") {
-      label += " (" + styleLabel(data.style) + ")";
+      label += " (" + styleTooltip(data.style) + ")";
     }
     return window.React.createElement(
       window.draftail.TooltipEntity,
