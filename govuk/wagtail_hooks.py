@@ -62,14 +62,24 @@ from govuk.page_import_export import (
 )
 
 GOVUK_BUTTON_FEATURE = "govuk-button"
-GOVUK_START_BUTTON_FEATURE = "govuk-start-button"
 GOVUK_BUTTON_ENTITY_TYPE = "GOVUK_BUTTON_LINK"
-GOVUK_START_BUTTON_ENTITY_TYPE = "GOVUK_START_BUTTON_LINK"
 GOVUK_BUTTON_LINKTYPE = "govuk-button"
-GOVUK_START_BUTTON_LINKTYPE = "govuk-start-button"
 GOVUK_BUTTON_STYLE_ATTR = "data-govuk-button-style"
+GOVUK_BUTTON_NEW_TAB_ATTR = "data-govuk-button-new-tab"
 GOVUK_BUTTON_STYLE_DEFAULT = "default"
 GOVUK_BUTTON_STYLE_START = "start"
+GOVUK_BUTTON_STYLE_SECONDARY = "secondary"
+GOVUK_BUTTON_STYLE_WARNING = "warning"
+# Maps a stored style to the GOV.UK Design System modifier class. "default" has no
+# modifier, so it is intentionally absent.
+GOVUK_BUTTON_STYLE_MODIFIERS = {
+    GOVUK_BUTTON_STYLE_START: "govuk-button--start",
+    GOVUK_BUTTON_STYLE_SECONDARY: "govuk-button--secondary",
+    GOVUK_BUTTON_STYLE_WARNING: "govuk-button--warning",
+}
+GOVUK_BUTTON_STYLES = frozenset(
+    {GOVUK_BUTTON_STYLE_DEFAULT, *GOVUK_BUTTON_STYLE_MODIFIERS}
+)
 RAW_HTML_FEATURE = "raw-html"
 RAW_HTML_ENTITY_TYPE = "RAW_HTML"
 RAW_HTML_EMBEDTYPE = "raw_html"
@@ -99,23 +109,45 @@ def _decode_raw_html(encoded_html: str | None) -> str:
         return ""
 
 
-def _get_govuk_button_attributes(*, is_start: bool) -> dict[str, str]:
-    classes = "govuk-button govuk-button--start" if is_start else "govuk-button"
-    style = GOVUK_BUTTON_STYLE_START if is_start else GOVUK_BUTTON_STYLE_DEFAULT
-    return {
+def _normalise_button_style(style: str | None) -> str:
+    """Coerce a stored/incoming style to a known value, defaulting to "default"."""
+    return style if style in GOVUK_BUTTON_STYLES else GOVUK_BUTTON_STYLE_DEFAULT
+
+
+def _coerce_bool_attr(value) -> bool:
+    """Interpret a stored data-* attribute (a string) or bool as a boolean flag."""
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "1", "yes"}
+
+
+def _get_govuk_button_attributes(*, style: str, new_tab: bool) -> dict[str, str]:
+    style = _normalise_button_style(style)
+    modifier = GOVUK_BUTTON_STYLE_MODIFIERS.get(style)
+    classes = f"govuk-button {modifier}" if modifier else "govuk-button"
+    attrs = {
         "class": classes,
         "role": "button",
         "draggable": "false",
         "data-module": "govuk-button",
         GOVUK_BUTTON_STYLE_ATTR: style,
     }
+    if new_tab:
+        attrs[GOVUK_BUTTON_NEW_TAB_ATTR] = "true"
+    return attrs
 
 
-def _build_govuk_button_opening_tag(*, href: str | None, is_start: bool) -> str:
-    attrs = _get_govuk_button_attributes(is_start=is_start)
+def _build_govuk_button_opening_tag(
+    *, href: str | None, style: str, new_tab: bool
+) -> str:
+    attrs = _get_govuk_button_attributes(style=style, new_tab=new_tab)
     ordered_attrs: list[str] = []
     if href:
         ordered_attrs.append(f'href="{escape(href)}"')
+    if new_tab:
+        # rel guards against reverse-tabnabbing when opening in a new browsing context.
+        ordered_attrs.append('target="_blank"')
+        ordered_attrs.append('rel="noreferrer noopener"')
     ordered_attrs.extend(
         [
             f'class="{escape(attrs["class"])}"',
@@ -125,40 +157,47 @@ def _build_govuk_button_opening_tag(*, href: str | None, is_start: bool) -> str:
             f'{GOVUK_BUTTON_STYLE_ATTR}="{escape(attrs[GOVUK_BUTTON_STYLE_ATTR])}"',
         ]
     )
+    if new_tab:
+        ordered_attrs.append(f'{GOVUK_BUTTON_NEW_TAB_ATTR}="true"')
     return "<a " + " ".join(ordered_attrs) + ">"
 
 
-def _govuk_button_entity(props: dict, *, is_start: bool):
+def govuk_button_entity(props: dict):
+    """Serialise a button entity from the editor to a stored `<a linktype=...>`.
+
+    Style and open-in-new-tab are carried on data-* attributes so a single entity
+    type covers every variant. Non-default flags are only written when set, keeping
+    the stored markup minimal.
+    """
     id_ = props.get("id")
-    link_props = {}
-    link_props["linktype"] = (
-        GOVUK_START_BUTTON_LINKTYPE if is_start else GOVUK_BUTTON_LINKTYPE
-    )
+    link_props = {"linktype": GOVUK_BUTTON_LINKTYPE}
     if id_ is not None:
         link_props["id"] = id_
     else:
         link_props["url"] = check_url(props.get("url") or "") or "#"
+
+    style = _normalise_button_style(props.get("style"))
+    if style != GOVUK_BUTTON_STYLE_DEFAULT:
+        link_props[GOVUK_BUTTON_STYLE_ATTR] = style
+    if _coerce_bool_attr(props.get("newTab")):
+        link_props[GOVUK_BUTTON_NEW_TAB_ATTR] = "true"
+
     return DOM.create_element("a", link_props, props["children"])
-
-
-def govuk_button_entity(props: dict):
-    return _govuk_button_entity(props, is_start=False)
-
-
-def govuk_start_button_entity(props: dict):
-    return _govuk_button_entity(props, is_start=True)
 
 
 class GovukButtonLinkElementHandler(PageLinkElementHandler):
     def get_attribute_data(self, attrs):
-        if "id" in attrs:
-            return super().get_attribute_data(attrs)
-        return {"url": attrs.get("url", "")}
+        data = super().get_attribute_data(attrs) if "id" in attrs else {}
+        if "id" not in attrs:
+            data["url"] = attrs.get("url", "")
+        # Round-trip the variant back into the editor so re-editing preserves it.
+        data["style"] = _normalise_button_style(attrs.get(GOVUK_BUTTON_STYLE_ATTR))
+        data["newTab"] = _coerce_bool_attr(attrs.get(GOVUK_BUTTON_NEW_TAB_ATTR))
+        return data
 
 
 class GovukButtonLinkHandler(PageLinkHandler):
     identifier = GOVUK_BUTTON_LINKTYPE
-    is_start = False
 
     @classmethod
     def expand_db_attributes_many(cls, attrs_list: list[dict]) -> list[str]:
@@ -169,7 +208,8 @@ class GovukButtonLinkHandler(PageLinkHandler):
                     if page
                     else (check_url(attrs.get("url") or "") or "#")
                 ),
-                is_start=cls.is_start,
+                style=_normalise_button_style(attrs.get(GOVUK_BUTTON_STYLE_ATTR)),
+                new_tab=_coerce_bool_attr(attrs.get(GOVUK_BUTTON_NEW_TAB_ATTR)),
             )
             for attrs, page in zip(attrs_list, cls.get_many(attrs_list))
         ]
@@ -178,11 +218,6 @@ class GovukButtonLinkHandler(PageLinkHandler):
     def extract_references(cls, attrs):
         if attrs.get("id"):
             yield from super().extract_references(attrs)
-
-
-class GovukStartButtonLinkHandler(GovukButtonLinkHandler):
-    identifier = GOVUK_START_BUTTON_LINKTYPE
-    is_start = True
 
 
 class RawHtmlElementHandler(AtomicBlockEntityElementHandler):
@@ -215,12 +250,10 @@ def raw_html_entity(props: dict):
 @hooks.register("register_rich_text_features")
 def register_govuk_button_rich_text_features(features):
     features.register_link_type(GovukButtonLinkHandler)
-    features.register_link_type(GovukStartButtonLinkHandler)
     features.register_embed_type(RawHtmlEmbedHandler)
 
     for feature_name in (
         GOVUK_BUTTON_FEATURE,
-        GOVUK_START_BUTTON_FEATURE,
         RAW_HTML_FEATURE,
         INSET_TEXT_FEATURE,
     ):
@@ -234,13 +267,6 @@ def register_govuk_button_rich_text_features(features):
         "phoneLinkChooser": reverse_lazy("wagtailadmin_choose_page_phone_link"),
         "anchorLinkChooser": reverse_lazy("wagtailadmin_choose_page_anchor_link"),
     }
-    common_editor_plugin_args = {
-        "attributes": ["url", "id", "parentId"],
-        "allowlist": {
-            "href": "^(http:|https:|mailto:|tel:|#|undefined$)",
-        },
-        "chooserUrls": link_chooser_urls,
-    }
 
     features.register_editor_plugin(
         "draftail",
@@ -250,7 +276,13 @@ def register_govuk_button_rich_text_features(features):
                 "type": GOVUK_BUTTON_ENTITY_TYPE,
                 "label": "Btn",
                 "description": "Button link",
-                **common_editor_plugin_args,
+                # style and newTab are collected by the options modal and must be
+                # listed here or Draftail drops them when saving the entity.
+                "attributes": ["url", "id", "parentId", "style", "newTab"],
+                "allowlist": {
+                    "href": "^(http:|https:|mailto:|tel:|#|undefined$)",
+                },
+                "chooserUrls": link_chooser_urls,
             },
             js=[
                 "wagtailadmin/js/page-chooser-modal.js",
@@ -269,39 +301,6 @@ def register_govuk_button_rich_text_features(features):
             },
             "to_database_format": {
                 "entity_decorators": {GOVUK_BUTTON_ENTITY_TYPE: govuk_button_entity}
-            },
-        },
-    )
-
-    features.register_editor_plugin(
-        "draftail",
-        GOVUK_START_BUTTON_FEATURE,
-        draftail_features.EntityFeature(
-            {
-                "type": GOVUK_START_BUTTON_ENTITY_TYPE,
-                "description": "Start button link",
-                "icon": "login",
-                **common_editor_plugin_args,
-            },
-            js=[
-                "wagtailadmin/js/page-chooser-modal.js",
-                "govuk/js/draftail-govuk-button.js",
-            ],
-        ),
-    )
-    features.register_converter_rule(
-        "contentstate",
-        GOVUK_START_BUTTON_FEATURE,
-        {
-            "from_database_format": {
-                f'a[linktype="{GOVUK_START_BUTTON_LINKTYPE}"]': GovukButtonLinkElementHandler(
-                    GOVUK_START_BUTTON_ENTITY_TYPE
-                ),
-            },
-            "to_database_format": {
-                "entity_decorators": {
-                    GOVUK_START_BUTTON_ENTITY_TYPE: govuk_start_button_entity
-                }
             },
         },
     )
