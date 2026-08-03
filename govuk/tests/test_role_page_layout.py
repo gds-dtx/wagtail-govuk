@@ -229,6 +229,18 @@ class RolePageLayoutTests(TestCase):
             ["Architecture roles", "Data roles"],
         )
 
+    def test_further_resources_does_not_cost_a_query_per_page(self):
+        """It runs on every page the navigation appears on."""
+        for index in range(6):
+            page = self.root_page.add_child(
+                instance=ContentPage(title=f"Page {index}", slug=f"page-{index}")
+            )
+            page.save_revision().publish()
+
+        # A fixed cost: the site, its root page and one query for the children.
+        with self.assertNumQueries(3):
+            further_resources_group()
+
     def test_draft_and_role_pages_stay_out_of_further_resources(self):
         draft = self.root_page.add_child(
             instance=ContentPage(title="Not ready", slug="not-ready", live=False)

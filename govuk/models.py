@@ -15,6 +15,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 )
 from django import forms
 from django.conf import settings
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.paginator import Paginator
 from django.core.validators import RegexValidator
@@ -2159,10 +2160,14 @@ def further_resources_group(*, current_page_id: int | None = None) -> dict | Non
     if site is None:
         return None
 
+    # Comparing content types rather than reading each page's specific record
+    # keeps this to one query, and it runs on every page that has the
+    # navigation.
+    role_page_type = ContentType.objects.get_for_model(RolePage)
+
     items = []
-    for child in site.root_page.get_children().live().order_by("path"):
-        page = child.specific
-        if isinstance(page, RolePage) or not page.url:
+    for page in site.root_page.get_children().live().order_by("path"):
+        if page.content_type_id == role_page_type.pk or not page.url:
             continue
         items.append(
             {
