@@ -1,8 +1,13 @@
 {% extends "wagtailcore/page.html" %}
 {% load wagtailcore_tags %}
+{% comment %}
+    With the role navigation alongside, the heading sits beside it in the
+    content column rather than in the site hero above, matching the role pages.
+{% endcomment %}
+{% block page_hero %}{% if not role_navigation %}{{ block.super }}{% endif %}{% endblock %}
 {% block content %}
     <div class="govuk-width-container govuk-!-margin-bottom-6">
-        {% if self.body or self.author or self.show_last_updated_date %}
+        {% if self.body or self.author or self.show_last_updated_date or role_navigation %}
             <div class="govuk-!-margin-bottom-3">
                 <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
                      {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
@@ -15,14 +20,43 @@
                             </nav>
                         </div>
                     {% endif %}
-                    <div class="{% if self.enable_free_text_heading_navigation %}govuk-grid-column-two-thirds{% else %}govuk-grid-column-full{% endif %}"
+                    {% if role_navigation %}
+                        <div class="govuk-grid-column-one-quarter">
+                            {% include "includes/role_navigation.html" %}
+                        </div>
+                    {% endif %}
+                    <div class="{% if self.enable_free_text_heading_navigation %}govuk-grid-column-two-thirds{% elif role_navigation %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-full{% endif %}"
                          {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
+                        {% if role_navigation %}
+                            <h1 class="govuk-heading-xl">{{ self.hero_title|default:self.title }}</h1>
+                            {% if self.hero_intro %}
+                                <div class="govuk-body-l rich-text-content">{{ self.hero_intro|richtext }}</div>
+                            {% endif %}
+                        {% endif %}
                         <div class="govuk-body rich-text-content"
                              {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
                             {% if self.show_page_content_metadata %}
                                 {% include "includes/page_content_metadata.html" with page=self %}
                             {% endif %}
+                            {% if framework_changelog.last_updated_date %}
+                                <hr class="govuk-section-break govuk-section-break--l govuk-section-break--visible">
+                                <p class="govuk-body-s">
+                                    Last updated {{ framework_changelog.last_updated_date|date:"j F Y" }} —
+                                    <a href="#update-history" class="govuk-link">See all updates</a>
+                                </p>
+                            {% endif %}
                             {% if self.body %}{{ self.body | richtext }}{% endif %}
+                            {% if framework_changelog.entries %}
+                                <h2 class="govuk-heading-m" id="update-history">Updates</h2>
+                                <p class="govuk-body-s publish-dates">Published {{ framework_changelog.published_date|date:"j F Y" }}</p>
+                                <p class="govuk-body-s">Last updated {{ framework_changelog.last_updated_date|date:"j F Y" }}</p>
+                                <div class="changelog-content">
+                                    {% for entry in framework_changelog.entries %}
+                                        <p class="govuk-body-s govuk-!-font-weight-bold">{{ entry.date|date:"j F Y" }}</p>
+                                        <div class="govuk-body-s">{{ entry.note|richtext }}</div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
                         </div>
                     </div>
                 </div>

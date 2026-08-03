@@ -15,6 +15,7 @@ from govuk.capability_framework import (
     split_leadership_examples,
     text_to_rich_html,
 )
+from govuk.capability_framework_home import WELCOME_HTML
 from govuk.models import (
     ContentPage,
     GovukChangelogEntry,
@@ -299,7 +300,12 @@ class Command(BaseCommand):
         return ContentPage.objects.get(pk=new_home.pk)
 
     def write_home_page_content(self, home: Page):
-        """List every role, grouped by family, so the site is navigable."""
+        """Lay down the welcome page.
+
+        On a wide screen the roles are reached through the side navigation, so
+        the body carries the welcome prose and the role lists are shown only on
+        narrow screens, which is how the live service arranges it.
+        """
         if not isinstance(home, ContentPage):
             return
 
@@ -312,25 +318,61 @@ class Command(BaseCommand):
         for role in GovukRole.objects.order_by("title"):
             families.setdefault(role.family or "Other roles", []).append(role)
 
-        parts = [f"<p>{escape(SITE_INTRO)}</p>"]
-        for family in sorted(families):
-            heading = family if family.lower().endswith("roles") else f"{family} roles"
-            parts.append(f"<h2>{escape(heading)}</h2><ul>")
+        headings = [
+            family if family.lower().endswith("roles") else f"{family} roles"
+            for family in sorted(families)
+        ]
+        skills_page = SkillsAZPage.objects.live().first()
+        if skills_page:
+            headings.append("Further resources")
+
+        parts = [self.home_contents_list(headings)]
+
+        skills_url = skills_page.url if skills_page else "/"
+        parts.append(WELCOME_HTML.format(skills_url=skills_url))
+
+        parts.append('<div class="mobile-homepage mobile-homepage-roles">')
+        for family, heading in zip(sorted(families), headings):
+            parts.append(f'<h2 class="govuk-heading-l" id="{slugify(heading)}">{escape(heading)}</h2>')
+            parts.append('<ul class="govuk-list">')
             for role in families[family]:
                 page = role_pages.get(role.pk)
                 label = escape(role.title)
                 parts.append(
-                    f'<li><a href="{page.url}">{label}</a></li>' if page else f"<li>{label}</li>"
+                    f'<li><a href="{page.url}" class="govuk-link">{label}</a></li>'
+                    if page
+                    else f"<li>{label}</li>"
                 )
             parts.append("</ul>")
-
-        skills_page = SkillsAZPage.objects.live().first()
         if skills_page:
             parts.append(
-                f'<h2>Further resources</h2><ul>'
-                f'<li><a href="{skills_page.url}">Skills A to Z</a></li></ul>'
+                '<h2 class="govuk-heading-l" id="further-resources">Further resources</h2>'
+                '<ul class="govuk-list">'
+                f'<li><a href="{skills_page.url}" class="govuk-link">Skills A to Z</a></li>'
+                "</ul>"
             )
+        parts.append("</div>")
 
+        home.hero_intro = f"<p>{escape(SITE_INTRO)}</p>"
         home.body = "".join(parts)
+        home.show_role_navigation = True
+        home.show_framework_updates = True
+        home.save()
         home.save_revision().publish()
-        self.stdout.write(f"Home page: {len(families)} role families listed")
+        self.stdout.write(f"Home page: welcome content and {len(families)} role families")
+
+    @staticmethod
+    def home_contents_list(headings: list[str]) -> str:
+        """The contents list the live service shows on narrow screens only."""
+        links = ["How to use this framework", *headings]
+        items = "".join(
+            f'<li>— <a href="#{slugify(link)}" class="contents-list-links govuk-link">'
+            f"{escape(link)}</a></li>"
+            for link in [*links, "Skills in this framework", "Job grades in this framework", "Support"]
+        )
+        return (
+            '<div class="mobile-homepage">'
+            '<p class="govuk-body-s contents-list-links" id="contents">Contents</p>'
+            f'<ul class="govuk-list govuk-body-s contents-list-links">{items}</ul>'
+            "</div>"
+        )

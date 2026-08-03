@@ -1662,6 +1662,16 @@ class GovukChangelogEntry(models.Model):
         return f"{subject} - {self.date}"
 
 
+def site_wide_changelog() -> dict:
+    """Changelog entries about the framework rather than one role or skill."""
+    entries = list(
+        GovukChangelogEntry.objects.filter(
+            role__isnull=True, skill__isnull=True, live=True
+        )
+    )
+    return {"entries": entries, **_changelog_dates(entries)}
+
+
 def _changelog_dates(entries) -> dict[str, object]:
     """First and last publication dates for a set of changelog entries."""
     dates = sorted(entry.date for entry in entries if entry.date)
@@ -2061,6 +2071,19 @@ class ContentPage(Page):
         verbose_name="Enable sidebar heading navigation",
         help_text="Show free text in a two-thirds and one-third layout with an automatic clickable heading list.",
     )
+    show_role_navigation = models.BooleanField(
+        default=False,
+        verbose_name="Show role navigation",
+        help_text="Show the list of roles grouped by family alongside the page, as the role pages do.",
+    )
+    show_framework_updates = models.BooleanField(
+        default=False,
+        verbose_name="Show framework updates",
+        help_text=(
+            "Show the changelog entries that are not tied to a single role or "
+            "skill, with a last updated date above the page content."
+        ),
+    )
     tags = ClusterTaggableManager(through="govuk.ContentPageTag", blank=True)
 
     content_panels = Page.content_panels + [
@@ -2076,8 +2099,18 @@ class ContentPage(Page):
         FieldPanel("show_last_updated_date"),
         FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_free_text_heading_navigation"),
+        FieldPanel("show_role_navigation"),
+        FieldPanel("show_framework_updates"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
+
+    def get_context(self, request, *args, **kwargs):
+        context = super().get_context(request, *args, **kwargs)
+        if self.show_role_navigation:
+            context["role_navigation"] = role_navigation_groups(current_page_id=self.pk)
+        if self.show_framework_updates:
+            context["framework_changelog"] = site_wide_changelog()
+        return context
 
 
 def role_page_urls_by_role_id(*, exclude_page_id: int | None = None) -> dict[int, str]:

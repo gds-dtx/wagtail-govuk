@@ -241,6 +241,33 @@ class ImportCapabilityFrameworkTests(TestCase):
             self.assertIn(RolePage.objects.get(slug=slug).url, home.body)
         self.assertIn("Skills A to Z", home.body)
 
+    def test_home_page_carries_the_welcome_content(self):
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        self.assertIn("Learn about the digital, data", home.hero_intro)
+        for heading in (
+            "How to use this framework",
+            "Skills in this framework",
+            "Job grades in this framework",
+            "Support",
+        ):
+            self.assertIn(heading, home.body)
+        self.assertIn(SkillsAZPage.objects.first().url, home.body)
+        self.assertTrue(home.show_role_navigation)
+        self.assertTrue(home.show_framework_updates)
+
+    def test_home_page_role_lists_are_for_narrow_screens_only(self):
+        """Wide screens reach the roles through the side navigation instead."""
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        role_list_start = home.body.index("Data roles</h2>")
+        mobile_start = home.body.index('<div class="mobile-homepage mobile-homepage-roles">')
+
+        self.assertLess(mobile_start, role_list_start)
+        self.assertIn('href="#data-roles"', home.body)
+
     def test_home_page_is_reachable_and_links_resolve(self):
         self._import()
 

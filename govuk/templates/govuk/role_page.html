@@ -10,28 +10,7 @@
         <div class="govuk-grid-row">
             {% if role_navigation %}
                 <div class="govuk-grid-column-one-quarter">
-                    <div class="role-nav">
-                        <nav class="role-nav__group" aria-label="Home">
-                            <ul class="role-nav__list">
-                                <li class="role-nav__item">
-                                    <a href="/">Home</a>
-                                </li>
-                            </ul>
-                        </nav>
-                        {% for group in role_navigation %}
-                            <nav class="role-nav__group" aria-label="{{ group.title }}">
-                                <p class="role-nav__title">{{ group.title }}</p>
-                                <ul class="role-nav__list">
-                                    {% for item in group.items %}
-                                        <li class="role-nav__item{% if item.is_current %} role-nav__item--active{% endif %}">
-                                            <a href="{{ item.url }}"
-                                               {% if item.is_current %}aria-current="page"{% endif %}>{{ item.title }}</a>
-                                        </li>
-                                    {% endfor %}
-                                </ul>
-                            </nav>
-                        {% endfor %}
-                    </div>
+                    {% include "includes/role_navigation.html" %}
                 </div>
             {% endif %}
             <div class="{% if role_navigation %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-full{% endif %}">

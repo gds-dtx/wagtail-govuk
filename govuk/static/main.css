@@ -456,6 +456,75 @@ main > :nth-last-child(1 of .section-cards-container) {
     border-color: #0b0c0c;
 }
 
+/* Welcome page role lists, which stand in for the side navigation on a narrow
+   screen and are hidden once the navigation appears. */
+.mobile-homepage {
+    font-size: 1rem;
+    margin: 20px 0 15px 0;
+}
+
+.mobile-homepage h2 {
+    margin-top: 20px;
+}
+
+.mobile-homepage-roles li {
+    font-size: 1rem;
+    margin: 0 0 12px 0;
+}
+
+.mobile-homepage-roles a:link {
+    text-decoration: underline;
+}
+
+/* Skill level definitions on the welcome page: four bars, filled up to the
+   level being described. Hidden from assistive technology, which is given the
+   wording instead. */
+.skill-definitions__container > .progress-bar__container {
+    width: 100%;
+    height: 11px;
+}
+
+.progress-bar__container {
+    display: table;
+    table-layout: fixed;
+    width: 100%;
+    height: 10px;
+    border-spacing: 10px;
+    margin-top: -9px;
+    margin-bottom: 10px;
+}
+
+.progress-bar__grey,
+.progress-bar__white {
+    display: table-cell;
+    border: 1.5px solid #4f4f4f;
+}
+
+.progress-bar__grey {
+    background-color: #4f4f4f;
+}
+
+.progress-bar__white {
+    background-color: #efefef;
+}
+
+.progress-bar__divider {
+    display: table-cell;
+    width: 5%;
+    background-color: #fff;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
 /* Role page contents list and changelog. */
 .contents-list-links {
     text-decoration-line: none;
@@ -489,6 +558,10 @@ main > :nth-last-child(1 of .section-cards-container) {
     .role-nav {
         display: block;
         float: left;
+    }
+
+    .mobile-homepage {
+        display: none;
     }
 
     .role-level-header {
