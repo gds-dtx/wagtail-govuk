@@ -2110,6 +2110,11 @@ class ContentPage(Page):
             context["role_navigation"] = role_navigation_groups(current_page_id=self.pk)
         if self.show_framework_updates:
             context["framework_changelog"] = site_wide_changelog()
+        # Only one side column fits, so the role navigation wins where an
+        # editor has asked for both.
+        context["heading_navigation"] = (
+            self.enable_free_text_heading_navigation and not self.show_role_navigation
+        )
         return context
 
 

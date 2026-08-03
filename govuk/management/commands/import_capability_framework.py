@@ -318,22 +318,25 @@ class Command(BaseCommand):
         for role in GovukRole.objects.order_by("title"):
             families.setdefault(role.family or "Other roles", []).append(role)
 
-        headings = [
-            family if family.lower().endswith("roles") else f"{family} roles"
+        family_headings = {
+            family: family if family.lower().endswith("roles") else f"{family} roles"
             for family in sorted(families)
-        ]
+        }
         skills_page = SkillsAZPage.objects.live().first()
-        if skills_page:
-            headings.append("Further resources")
 
-        parts = [self.home_contents_list(headings)]
+        role_sections = list(family_headings.values())
+        if skills_page:
+            role_sections.append("Further resources")
+        parts = [self.home_contents_list(role_sections)]
 
         skills_url = skills_page.url if skills_page else "/"
         parts.append(WELCOME_HTML.format(skills_url=skills_url))
 
         parts.append('<div class="mobile-homepage mobile-homepage-roles">')
-        for family, heading in zip(sorted(families), headings):
-            parts.append(f'<h2 class="govuk-heading-l" id="{slugify(heading)}">{escape(heading)}</h2>')
+        for family, heading in family_headings.items():
+            parts.append(
+                f'<h2 class="govuk-heading-l" id="{slugify(heading)}">{escape(heading)}</h2>'
+            )
             parts.append('<ul class="govuk-list">')
             for role in families[family]:
                 page = role_pages.get(role.pk)
@@ -362,13 +365,23 @@ class Command(BaseCommand):
         self.stdout.write(f"Home page: welcome content and {len(families)} role families")
 
     @staticmethod
-    def home_contents_list(headings: list[str]) -> str:
-        """The contents list the live service shows on narrow screens only."""
-        links = ["How to use this framework", *headings]
+    def home_contents_list(role_sections: list[str]) -> str:
+        """The contents list the live service shows on narrow screens only.
+
+        The role sections sit between the two halves of the welcome prose, as
+        they do on the live service, even though they come further down the page.
+        """
+        links = [
+            "How to use this framework",
+            *role_sections,
+            "Skills in this framework",
+            "Job grades in this framework",
+            "Support",
+        ]
         items = "".join(
             f'<li>— <a href="#{slugify(link)}" class="contents-list-links govuk-link">'
             f"{escape(link)}</a></li>"
-            for link in [*links, "Skills in this framework", "Job grades in this framework", "Support"]
+            for link in links
         )
         return (
             '<div class="mobile-homepage">'

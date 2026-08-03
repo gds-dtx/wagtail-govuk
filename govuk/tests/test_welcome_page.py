@@ -56,6 +56,29 @@ class ContentPageRoleNavigationTests(TestCase):
         self.assertContains(response, "govuk-grid-column-one-quarter")
         self.assertContains(response, "govuk-grid-column-three-quarters")
 
+    def test_the_heading_navigation_is_untouched_on_its_own(self):
+        self.page.enable_free_text_heading_navigation = True
+        self.page.save()
+
+        response = self.client.get(self.page.url)
+
+        self.assertContains(response, "free-text-heading-nav")
+        self.assertContains(response, "data-auto-heading-source")
+        self.assertContains(response, "govuk-grid-column-two-thirds")
+        self.assertNotContains(response, "role-nav__list")
+
+    def test_only_one_side_column_is_ever_drawn(self):
+        """Two side columns would not fit, so the role navigation wins."""
+        self.page.show_role_navigation = True
+        self.page.enable_free_text_heading_navigation = True
+        self.page.save()
+
+        response = self.client.get(self.page.url)
+
+        self.assertContains(response, "role-nav__list")
+        self.assertNotContains(response, "free-text-heading-nav")
+        self.assertNotContains(response, "govuk-grid-column-one-third")
+
     def test_the_heading_moves_beside_the_navigation(self):
         """With the navigation alongside, the hero would leave it stranded."""
         self.assertContains(self.client.get(self.page.url), "hero__title")

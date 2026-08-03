@@ -1,4 +1,5 @@
 import csv
+import re
 import tempfile
 from datetime import date
 from io import StringIO
@@ -267,6 +268,18 @@ class ImportCapabilityFrameworkTests(TestCase):
 
         self.assertLess(mobile_start, role_list_start)
         self.assertIn('href="#data-roles"', home.body)
+
+    def test_every_contents_link_on_the_home_page_has_somewhere_to_go(self):
+        """The live service's contents list points at anchors that do not exist."""
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        anchors = re.findall(r'href="#([^"]+)"', home.body)
+        ids = set(re.findall(r'id="([^"]+)"', home.body))
+
+        for expected in ("how-to-use-this-framework", "data-roles", "support"):
+            self.assertIn(expected, anchors)
+        self.assertEqual([a for a in anchors if a not in ids], [])
 
     def test_home_page_is_reachable_and_links_resolve(self):
         self._import()

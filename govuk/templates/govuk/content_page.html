@@ -7,11 +7,11 @@
 {% block page_hero %}{% if not role_navigation %}{{ block.super }}{% endif %}{% endblock %}
 {% block content %}
     <div class="govuk-width-container govuk-!-margin-bottom-6">
-        {% if self.body or self.author or self.show_last_updated_date or role_navigation %}
+        {% if self.body or self.author or self.show_last_updated_date or role_navigation or framework_changelog.entries %}
             <div class="govuk-!-margin-bottom-3">
-                <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
-                     {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
-                    {% if self.enable_free_text_heading_navigation %}
+                <div class="govuk-grid-row{% if heading_navigation %} free-text-with-headings-layout{% endif %}"
+                     {% if heading_navigation %}data-auto-heading-layout{% endif %}>
+                    {% if heading_navigation %}
                         <div class="govuk-grid-column-one-third" data-auto-heading-side-column>
                             <nav class="free-text-heading-nav"
                                  aria-label="Page contents"
@@ -25,16 +25,18 @@
                             {% include "includes/role_navigation.html" %}
                         </div>
                     {% endif %}
-                    <div class="{% if self.enable_free_text_heading_navigation %}govuk-grid-column-two-thirds{% elif role_navigation %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-full{% endif %}"
-                         {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
+                    <div class="{% if heading_navigation %}govuk-grid-column-two-thirds{% elif role_navigation %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-full{% endif %}"
+                         {% if heading_navigation %}data-auto-heading-main-column{% endif %}>
                         {% if role_navigation %}
                             <h1 class="govuk-heading-xl">{{ self.hero_title|default:self.title }}</h1>
                             {% if self.hero_intro %}
                                 <div class="govuk-body-l rich-text-content">{{ self.hero_intro|richtext }}</div>
+                            {% elif self.search_description %}
+                                <p class="govuk-body-l">{{ self.search_description }}</p>
                             {% endif %}
                         {% endif %}
                         <div class="govuk-body rich-text-content"
-                             {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
+                             {% if heading_navigation %}data-auto-heading-source{% endif %}>
                             {% if self.show_page_content_metadata %}
                                 {% include "includes/page_content_metadata.html" with page=self %}
                             {% endif %}
