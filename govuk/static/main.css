@@ -347,6 +347,41 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
+/* Search sitting in the service navigation bar rather than the GOV.UK header.
+   The header version is on a blue background and uses the inverse button; here
+   the background is light, so the input and button need ordinary GOV.UK ink. */
+.govuk-service-navigation .app-site-search__form {
+    border: 2px solid #0b0c0c;
+    background-color: #fff;
+}
+
+.govuk-service-navigation .app-site-search__input {
+    background-color: #fff;
+    color: #0b0c0c;
+}
+
+.govuk-service-navigation .app-site-search__button,
+.govuk-service-navigation .app-site-search__button:link,
+.govuk-service-navigation .app-site-search__button:visited {
+    background-color: #fff;
+    color: #0b0c0c;
+    border-left: 0;
+}
+
+.govuk-service-navigation .app-site-search__button:hover {
+    background-color: #f3f2f1;
+}
+
+.govuk-service-navigation .app-site-search__button:focus {
+    background-color: #fd0;
+}
+
+@media (min-width: 48.0625em) {
+    .govuk-service-navigation .app-site-search {
+        min-width: 20rem;
+    }
+}
+
 /* Role page side navigation.
    The DDaT Capability Framework borrows the MoJ Frontend side navigation for
    this, but every colour in it is stock GOV.UK, so it is cheaper to keep the
@@ -422,6 +457,8 @@ main > :nth-last-child(1 of .section-cards-container) {
 /* Role page contents list and changelog. */
 .contents-list-links {
     text-decoration-line: none;
+    list-style: none;
+    padding-left: 0;
     margin-left: 5px;
     margin-bottom: 8px;
 }
