@@ -347,7 +347,6 @@ main > :nth-last-child(1 of .section-cards-container) {
         flex: 1 0 auto;
     }
 }
-
 /* Search sitting in the service navigation bar rather than the GOV.UK header.
    The header version is on a blue background and uses the inverse button; here
    the background is light, so the input and button need ordinary GOV.UK ink. */
