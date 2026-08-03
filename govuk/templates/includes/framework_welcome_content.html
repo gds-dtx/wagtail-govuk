@@ -1,16 +1,13 @@
-"""The Capability Framework welcome page.
+{% comment %}
+    The Capability Framework welcome page.
 
-Role and skill pages come from the public CSV exports, but the welcome page
-is editorial prose that no export carries. Keeping it here lets
-``import_capability_framework`` lay it down reproducibly, rather than someone
-retyping it into the admin, and gives a later Strapi export one place to
-replace.
-
-Markup and wording follow the live service. ``{skills_url}`` is filled in
-with the imported Skills A to Z page.
-"""
-
-WELCOME_HTML = """\
+    Role and skill pages come from the public CSV exports, but this is
+    editorial prose that no export carries. It lives here rather than in a
+    page body because the body is a rich text field: an editor opening the
+    welcome page in the admin and saving it would strip the table, the
+    progress bars and every anchor. Markup and wording follow the live
+    service.
+{% endcomment %}
 <h2 class="govuk-heading-l" id="how-to-use-this-framework">How to use this framework</h2>
 <p class="govuk-body">Anyone can use this framework to:</p>
 <ul class="govuk-list govuk-list--bullet">
@@ -33,7 +30,7 @@ WELCOME_HTML = """\
 <h2 class="govuk-heading-l" id="skills-in-this-framework">Skills in this framework</h2>
 <p class="govuk-body">Each role level (such as junior business analyst or senior business analyst) in this framework includes a list of required skills. Each skill is assigned one of 4 skill levels, reflecting the required proficiency: awareness, working, practitioner or expert.</p>
 <p class="govuk-body">As you progress from one role level to the next, the proficiency required for each skill will typically increase (other than in instances where leadership positions no longer require day-to-day use of the skill).</p>
-<p class="govuk-body">You can see the full list of skills and their definitions in the <a href="{skills_url}" class="govuk-link">Skills A to Z</a>.</p>
+<p class="govuk-body">You can see the full list of skills and their definitions in the <a href="{{ skills_url }}" class="govuk-link">Skills A to Z</a>.</p>
 <table class="govuk-table homepage">
 <caption class="govuk-table__caption govuk-table__caption--m sr-only">Skill level definitions</caption>
 <thead class="govuk-table__head">
@@ -142,4 +139,4 @@ WELCOME_HTML = """\
 <hr class="govuk-section-break govuk-section-break--xl govuk-section-break--visible">
 <div class="govuk-inset-text">
 <p class="govuk-body">The name of this guidance changed on 1 December 2023. Previously its name was ‘Digital, Data and Technology (DDaT) Profession Capability Framework’. This change reflected the <a href="https://www.gov.uk/government/news/digital-skills-rebrand-to-attract-top-tech-talent-to-civil-service" class="govuk-link">launch of the Government Digital and Data brand</a>.</p></div>
-"""
+

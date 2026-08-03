@@ -4,10 +4,13 @@ from django.test import TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.models import (
+    ContentPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
     RolePage,
+    SkillsAZPage,
+    further_resources_group,
     role_navigation_groups,
 )
 
@@ -182,6 +185,57 @@ class RolePageLayoutTests(TestCase):
         self.assertContains(response, 'aria-label="Data roles"')
         self.assertContains(response, "role-nav__item--active")
         self.assertContains(response, 'aria-current="page"')
+
+    def test_the_navigation_closes_with_the_pages_about_the_framework(self):
+        """The live service lists these after the role families, on every page."""
+        skills = self.root_page.add_child(
+            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+        )
+        skills.save_revision().publish()
+
+        groups = role_navigation_groups(current_page_id=self.data_analyst_page.pk)
+
+        self.assertEqual(groups[-1]["title"], "Further resources")
+        self.assertEqual(
+            groups[-1]["items"],
+            [{"title": "Skills A to Z", "url": skills.url, "is_current": False}],
+        )
+
+    def test_further_resources_keeps_the_order_the_editors_chose(self):
+        for title, slug in (("Roadmap", "roadmap"), ("Job grades", "job-grades")):
+            page = self.root_page.add_child(
+                instance=ContentPage(title=title, slug=slug)
+            )
+            page.save_revision().publish()
+
+        group = further_resources_group()
+
+        self.assertEqual([item["title"] for item in group["items"]], ["Roadmap", "Job grades"])
+
+    def test_further_resources_marks_the_page_being_looked_at(self):
+        page = self.root_page.add_child(
+            instance=ContentPage(title="Roadmap", slug="roadmap")
+        )
+        page.save_revision().publish()
+
+        group = further_resources_group(current_page_id=page.pk)
+
+        self.assertTrue(group["items"][0]["is_current"])
+
+    def test_further_resources_is_left_out_when_there_is_nothing_in_it(self):
+        self.assertIsNone(further_resources_group())
+        self.assertEqual(
+            [group["title"] for group in role_navigation_groups()],
+            ["Architecture roles", "Data roles"],
+        )
+
+    def test_draft_and_role_pages_stay_out_of_further_resources(self):
+        draft = self.root_page.add_child(
+            instance=ContentPage(title="Not ready", slug="not-ready", live=False)
+        )
+        draft.save()
+
+        self.assertIsNone(further_resources_group())
 
     def test_roles_without_a_family_are_left_out_of_the_navigation(self):
         unfamilied = GovukRole.objects.create(title="Unfamilied role")

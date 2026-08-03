@@ -15,7 +15,6 @@ from govuk.capability_framework import (
     split_leadership_examples,
     text_to_rich_html,
 )
-from govuk.capability_framework_home import WELCOME_HTML
 from govuk.models import (
     ContentPage,
     GovukChangelogEntry,
@@ -300,92 +299,20 @@ class Command(BaseCommand):
         return ContentPage.objects.get(pk=new_home.pk)
 
     def write_home_page_content(self, home: Page):
-        """Lay down the welcome page.
+        """Switch the welcome page on.
 
-        On a wide screen the roles are reached through the side navigation, so
-        the body carries the welcome prose and the role lists are shown only on
-        narrow screens, which is how the live service arranges it.
+        The prose lives in a template and the role lists are built from the
+        imported roles when the page is rendered, so nothing here can be lost
+        to a stray edit in the admin.
         """
         if not isinstance(home, ContentPage):
             return
 
-        role_pages = {}
-        for page in RolePage.objects.live():
-            for role_id in page.get_selected_role_ids():
-                role_pages.setdefault(role_id, page)
-
-        families: dict[str, list] = {}
-        for role in GovukRole.objects.order_by("title"):
-            families.setdefault(role.family or "Other roles", []).append(role)
-
-        family_headings = {
-            family: family if family.lower().endswith("roles") else f"{family} roles"
-            for family in sorted(families)
-        }
-        skills_page = SkillsAZPage.objects.live().first()
-
-        role_sections = list(family_headings.values())
-        if skills_page:
-            role_sections.append("Further resources")
-        parts = [self.home_contents_list(role_sections)]
-
-        skills_url = skills_page.url if skills_page else "/"
-        parts.append(WELCOME_HTML.format(skills_url=skills_url))
-
-        parts.append('<div class="mobile-homepage mobile-homepage-roles">')
-        for family, heading in family_headings.items():
-            parts.append(
-                f'<h2 class="govuk-heading-l" id="{slugify(heading)}">{escape(heading)}</h2>'
-            )
-            parts.append('<ul class="govuk-list">')
-            for role in families[family]:
-                page = role_pages.get(role.pk)
-                label = escape(role.title)
-                parts.append(
-                    f'<li><a href="{page.url}" class="govuk-link">{label}</a></li>'
-                    if page
-                    else f"<li>{label}</li>"
-                )
-            parts.append("</ul>")
-        if skills_page:
-            parts.append(
-                '<h2 class="govuk-heading-l" id="further-resources">Further resources</h2>'
-                '<ul class="govuk-list">'
-                f'<li><a href="{skills_page.url}" class="govuk-link">Skills A to Z</a></li>'
-                "</ul>"
-            )
-        parts.append("</div>")
-
         home.hero_intro = f"<p>{escape(SITE_INTRO)}</p>"
-        home.body = "".join(parts)
+        home.body = ""
         home.show_role_navigation = True
         home.show_framework_updates = True
+        home.show_framework_welcome = True
         home.save()
         home.save_revision().publish()
-        self.stdout.write(f"Home page: welcome content and {len(families)} role families")
-
-    @staticmethod
-    def home_contents_list(role_sections: list[str]) -> str:
-        """The contents list the live service shows on narrow screens only.
-
-        The role sections sit between the two halves of the welcome prose, as
-        they do on the live service, even though they come further down the page.
-        """
-        links = [
-            "How to use this framework",
-            *role_sections,
-            "Skills in this framework",
-            "Job grades in this framework",
-            "Support",
-        ]
-        items = "".join(
-            f'<li>— <a href="#{slugify(link)}" class="contents-list-links govuk-link">'
-            f"{escape(link)}</a></li>"
-            for link in links
-        )
-        return (
-            '<div class="mobile-homepage">'
-            '<p class="govuk-body-s contents-list-links" id="contents">Contents</p>'
-            f'<ul class="govuk-list govuk-body-s contents-list-links">{items}</ul>'
-            "</div>"
-        )
+        self.stdout.write("Home page: welcome content switched on")

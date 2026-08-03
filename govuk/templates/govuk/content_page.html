@@ -7,7 +7,7 @@
 {% block page_hero %}{% if not role_navigation %}{{ block.super }}{% endif %}{% endblock %}
 {% block content %}
     <div class="govuk-width-container govuk-!-margin-bottom-6">
-        {% if self.body or self.author or self.show_last_updated_date or role_navigation or framework_changelog.entries %}
+        {% if self.body or self.author or self.show_last_updated_date or role_navigation or framework_changelog.entries or self.show_framework_welcome %}
             <div class="govuk-!-margin-bottom-3">
                 <div class="govuk-grid-row{% if heading_navigation %} free-text-with-headings-layout{% endif %}"
                      {% if heading_navigation %}data-auto-heading-layout{% endif %}>
@@ -46,6 +46,9 @@
                                     Last updated {{ framework_changelog.last_updated_date|date:"j F Y" }} —
                                     <a href="#update-history" class="govuk-link">See all updates</a>
                                 </p>
+                            {% endif %}
+                            {% if self.show_framework_welcome %}
+                                {% include "includes/framework_welcome.html" %}
                             {% endif %}
                             {% if self.body %}{{ self.body | richtext }}{% endif %}
                             {% if framework_changelog.entries %}

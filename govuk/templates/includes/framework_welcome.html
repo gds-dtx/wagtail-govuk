@@ -1,0 +1,29 @@
+{% comment %}
+    The welcome page's contents list and role lists, both of which stand in for
+    the side navigation on a narrow screen and are hidden once it appears. They
+    are built from the same groups the navigation uses, so a role can only ever
+    be in one place or the other by mistake.
+{% endcomment %}
+<div class="mobile-homepage">
+    <p class="govuk-body-s contents-list-links" id="contents">Contents</p>
+    <ul class="govuk-list govuk-body-s contents-list-links">
+        <li>— <a href="#how-to-use-this-framework" class="contents-list-links govuk-link">How to use this framework</a></li>
+        {% for group in framework_sections %}
+            <li>— <a href="#{{ group.title|slugify }}" class="contents-list-links govuk-link">{{ group.title }}</a></li>
+        {% endfor %}
+        <li>— <a href="#skills-in-this-framework" class="contents-list-links govuk-link">Skills in this framework</a></li>
+        <li>— <a href="#job-grades-in-this-framework" class="contents-list-links govuk-link">Job grades in this framework</a></li>
+        <li>— <a href="#support" class="contents-list-links govuk-link">Support</a></li>
+    </ul>
+</div>
+{% include "includes/framework_welcome_content.html" %}
+<div class="mobile-homepage mobile-homepage-roles">
+    {% for group in framework_sections %}
+        <h2 class="govuk-heading-l" id="{{ group.title|slugify }}">{{ group.title }}</h2>
+        <ul class="govuk-list">
+            {% for item in group.items %}
+                <li><a href="{{ item.url }}" class="govuk-link">{{ item.title }}</a></li>
+            {% endfor %}
+        </ul>
+    {% endfor %}
+</div>

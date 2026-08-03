@@ -1,13 +1,17 @@
+import re
 from datetime import date
 
 from django.test import TestCase
+from django.utils.text import slugify
 from wagtail.models import Site
 
+from govuk.page_import_export import _serialise_page_fields
 from govuk.models import (
     ContentPage,
     GovukChangelogEntry,
     GovukRole,
     RolePage,
+    SkillsAZPage,
     site_wide_changelog,
 )
 
@@ -142,3 +146,136 @@ class FrameworkUpdatesTests(TestCase):
         self.assertContains(response, "The framework was published.")
         # Entries about a single role stay on that role's page.
         self.assertNotContains(response, "Data analyst skills changed.")
+
+
+class FrameworkWelcomeContentTests(TestCase):
+    """The welcome prose lives in a template, not in the page body.
+
+    A rich text field would lose the skill level table, the progress bars and
+    every anchor the moment somebody opened the page in the admin and saved it,
+    so the page holds a switch and nothing else.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+        for title, family in (
+            ("Data analyst", "Data"),
+            ("Business architect", "Architecture"),
+        ):
+            role = GovukRole.objects.create(title=title, family=family)
+            page = self.root_page.add_child(
+                instance=RolePage(
+                    title=title,
+                    slug=slugify(title),
+                    selected_roles=[{"type": "role", "value": role.pk}],
+                )
+            )
+            page.save_revision().publish()
+
+        self.skills_page = self.root_page.add_child(
+            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+        )
+        self.skills_page.save_revision().publish()
+
+        self.page = ContentPage(title="Welcome", slug="welcome")
+        self.root_page.add_child(instance=self.page)
+        self.page.save_revision().publish()
+
+    def _welcome(self) -> str:
+        self.page.show_framework_welcome = True
+        self.page.save()
+        return self.client.get(self.page.url).content.decode()
+
+    def test_the_welcome_content_is_off_unless_asked_for(self):
+        page = self.client.get(self.page.url).content.decode()
+
+        self.assertNotIn("How to use this framework", page)
+        self.assertNotIn("progress-bar__container", page)
+
+    def test_the_welcome_prose_renders_without_anything_in_the_body(self):
+        page = self._welcome()
+
+        self.assertEqual(self.page.body, "")
+        for heading in (
+            "How to use this framework",
+            "Skills in this framework",
+            "Job grades in this framework",
+            "Support",
+        ):
+            self.assertIn(heading, page)
+
+    def test_the_skill_level_table_and_its_bars_survive(self):
+        """These are exactly what a rich text field would have thrown away."""
+        page = self._welcome()
+
+        self.assertIn('<table class="govuk-table homepage">', page)
+        self.assertEqual(page.count("progress-bar__container"), 4)
+        self.assertIn("skill's tools", page)
+
+    def test_the_skills_link_points_at_the_imported_skills_page(self):
+        page = self._welcome()
+
+        self.assertIn(f'href="{self.skills_page.url}"', page)
+        self.assertNotIn("ddat-capability-framework.service.gov.uk", page)
+
+    def test_the_contents_list_has_an_entry_for_every_section(self):
+        page = self._welcome()
+
+        contents = page[page.index('id="contents"') : page.index("mobile-homepage-roles")]
+        self.assertEqual(
+            re.findall(r'href="#([^"]+)"', contents),
+            [
+                "how-to-use-this-framework",
+                "architecture-roles",
+                "data-roles",
+                "further-resources",
+                "skills-in-this-framework",
+                "job-grades-in-this-framework",
+                "support",
+            ],
+        )
+
+    def test_every_contents_link_lands_somewhere(self):
+        page = self._welcome()
+
+        ids = set(re.findall(r'id="([^"]+)"', page))
+        anchors = re.findall(r'href="#([^"]+)"', page)
+
+        self.assertEqual([a for a in anchors if a not in ids], [])
+
+    def test_no_anchor_is_claimed_twice(self):
+        """The live service gives three different headings the same id."""
+        page = self._welcome()
+
+        ids = re.findall(r'id="([^"]+)"', page)
+
+        self.assertEqual(sorted(ids), sorted(set(ids)))
+
+    def test_the_role_lists_repeat_the_side_navigation_for_narrow_screens(self):
+        page = self._welcome()
+
+        lists = page[page.index("mobile-homepage-roles") :]
+        self.assertIn('<h2 class="govuk-heading-l" id="data-roles">Data roles</h2>', lists)
+        self.assertIn("Business architect", lists)
+        self.assertIn("Skills A to Z", lists)
+
+    def test_the_welcome_content_does_not_drag_the_side_navigation_in_with_it(self):
+        """The two are separate switches, even though the page uses both."""
+        page = self._welcome()
+
+        self.assertNotIn("role-nav__list", page)
+        self.assertIn("mobile-homepage-roles", page)
+
+    def test_the_switches_survive_an_export_and_import(self):
+        self.page.show_framework_welcome = True
+        self.page.show_role_navigation = True
+        self.page.show_framework_updates = True
+        self.page.save()
+
+        fields = _serialise_page_fields(self.page)
+
+        self.assertTrue(fields["show_framework_welcome"])
+        self.assertTrue(fields["show_role_navigation"])
+        self.assertTrue(fields["show_framework_updates"])

@@ -2084,6 +2084,14 @@ class ContentPage(Page):
             "skill, with a last updated date above the page content."
         ),
     )
+    show_framework_welcome = models.BooleanField(
+        default=False,
+        verbose_name="Show framework welcome content",
+        help_text=(
+            "Show the framework's welcome text, with a contents list and the "
+            "roles grouped by family for narrow screens."
+        ),
+    )
     tags = ClusterTaggableManager(through="govuk.ContentPageTag", blank=True)
 
     content_panels = Page.content_panels + [
@@ -2101,13 +2109,20 @@ class ContentPage(Page):
         FieldPanel("enable_free_text_heading_navigation"),
         FieldPanel("show_role_navigation"),
         FieldPanel("show_framework_updates"),
+        FieldPanel("show_framework_welcome"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
 
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
-        if self.show_role_navigation:
-            context["role_navigation"] = role_navigation_groups(current_page_id=self.pk)
+        if self.show_role_navigation or self.show_framework_welcome:
+            groups = role_navigation_groups(current_page_id=self.pk)
+            if self.show_role_navigation:
+                context["role_navigation"] = groups
+            if self.show_framework_welcome:
+                context["framework_sections"] = groups
+                skills_page = SkillsAZPage.objects.live().first()
+                context["skills_url"] = skills_page.url if skills_page else "/"
         if self.show_framework_updates:
             context["framework_changelog"] = site_wide_changelog()
         # Only one side column fits, so the role navigation wins where an
@@ -2133,11 +2148,39 @@ def role_page_urls_by_role_id(*, exclude_page_id: int | None = None) -> dict[int
     return urls
 
 
+def further_resources_group(*, current_page_id: int | None = None) -> dict | None:
+    """The pages about the framework itself, for the side navigation.
+
+    The live service closes its navigation with these: the skills index and
+    the handful of pages that are about the framework rather than one role.
+    Anything the editors add beside the roles turns up here on its own.
+    """
+    site = Site.objects.filter(is_default_site=True).first()
+    if site is None:
+        return None
+
+    items = []
+    for child in site.root_page.get_children().live().order_by("path"):
+        page = child.specific
+        if isinstance(page, RolePage) or not page.url:
+            continue
+        items.append(
+            {
+                "title": page.title,
+                "url": page.url,
+                "is_current": page.pk == current_page_id,
+            }
+        )
+
+    return {"title": "Further resources", "items": items} if items else None
+
+
 def role_navigation_groups(*, current_page_id: int | None = None) -> list[dict]:
-    """Live roles grouped by family, for the role page side navigation.
+    """The side navigation: live roles grouped by family, then the rest.
 
     Mirrors the DDaT Capability Framework, which lists every role grouped
-    under its family heading on each role page.
+    under its family heading on each role page, and closes with the pages
+    about the framework itself.
     """
     urls_by_role_id: dict[int, str] = {}
     page_ids_by_role_id: dict[int, int] = {}
@@ -2162,13 +2205,18 @@ def role_navigation_groups(*, current_page_id: int | None = None) -> list[dict]:
             }
         )
 
-    return [
+    navigation = [
         {
             "title": f"{family} roles",
             "items": sorted(items, key=lambda item: (item["title"] or "").lower()),
         }
         for family, items in sorted(groups.items())
     ]
+
+    resources = further_resources_group(current_page_id=current_page_id)
+    if resources:
+        navigation.append(resources)
+    return navigation
 
 
 class RolePage(Page):
