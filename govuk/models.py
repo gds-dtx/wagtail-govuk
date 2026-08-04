@@ -29,7 +29,7 @@ from modelcluster.fields import ParentalKey
 from modelcluster.models import ClusterableModel
 from taggit.models import TagBase, TaggedItemBase
 from wagtail import blocks
-from wagtail.admin.panels import FieldPanel, InlinePanel
+from wagtail.admin.panels import FieldPanel, InlinePanel, MultiFieldPanel
 from wagtail.blocks import StructValue
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
 from wagtail.fields import RichTextField, StreamField
@@ -371,20 +371,41 @@ class CustomiseSettings(BaseSiteSetting):
         default="govuk",
         help_text="Select the header logo to display.",
     )
+    service_name_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+        ],
+        default="header",
+        help_text="Where the service name appears.",
+    )
+    sign_in_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+            ("hidden", "Hidden"),
+        ],
+        default="navigation",
+        help_text=(
+            "Where the sign in and sign out links appear. Choose Hidden for "
+            "sites where visitors never sign in."
+        ),
+    )
+    search_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+            ("hidden", "Hidden"),
+        ],
+        default="header",
+        help_text="Where the search box appears.",
+    )
     show_site_name_in_search_box = models.BooleanField(
         default=False,
         help_text="Include the site name in the header search label and placeholder.",
-    )
-    show_service_name_in_navigation = models.BooleanField(
-        default=False,
-        help_text=(
-            "Show the site name and search in the service navigation bar rather "
-            "than in the GOV.UK header, as GOV.UK services usually do."
-        ),
-    )
-    hide_sign_in_link = models.BooleanField(
-        default=False,
-        help_text="Hide the sign in link, for sites where visitors never sign in.",
     )
     search_placeholder = models.CharField(
         max_length=100,
@@ -417,10 +438,16 @@ class CustomiseSettings(BaseSiteSetting):
 
     panels = [
         FieldPanel("header_logo"),
-        FieldPanel("show_site_name_in_search_box"),
-        FieldPanel("show_service_name_in_navigation"),
-        FieldPanel("hide_sign_in_link"),
-        FieldPanel("search_placeholder"),
+        FieldPanel("service_name_location"),
+        FieldPanel("sign_in_location"),
+        MultiFieldPanel(
+            [
+                FieldPanel("search_location"),
+                FieldPanel("show_site_name_in_search_box"),
+                FieldPanel("search_placeholder"),
+            ],
+            heading="Search box",
+        ),
         FieldPanel("hero_background_color"),
         FieldPanel("hero_text_color"),
         FieldPanel("extra_css"),

@@ -323,6 +323,20 @@ main > :nth-last-child(1 of .section-cards-container) {
     scroll-margin-top: 20px;
 }
 
+/* Sign in / out link sitting in the GOV.UK header rather than the service
+   navigation. The header is dark blue, so the link keeps the white header ink
+   rather than the navigation's dark ink. */
+.app-header__sign-in {
+    margin-top: 12px;
+    margin-bottom: 12px;
+}
+
+.app-header__sign-in .govuk-service-navigation__link,
+.app-header__sign-in .govuk-service-navigation__link:link,
+.app-header__sign-in .govuk-service-navigation__link:visited {
+    color: #fff;
+}
+
 @media (min-width: 48.0625em) {
     .govuk-header__container {
         display: flex;
@@ -333,6 +347,16 @@ main > :nth-last-child(1 of .section-cards-container) {
         margin-top: 0;
         margin-bottom: 0;
         margin-left: auto;
+    }
+    .app-header__sign-in {
+        margin-top: 0;
+        margin-bottom: 0;
+        margin-left: auto;
+    }
+    /* When the search is present it already pushes right, so the sign in link
+       only needs a gap after it rather than its own auto margin. */
+    .app-site-search + .app-header__sign-in {
+        margin-left: 15px;
     }
 }
 
@@ -373,6 +397,27 @@ main > :nth-last-child(1 of .section-cards-container) {
 
 .govuk-service-navigation .app-site-search__button:focus {
     background-color: #fd0;
+}
+
+/* Below 40.0625em the nav container is a flex column aligned to the start, so
+   the search would otherwise shrink to its content width. Stretch it to fill
+   the width, matching the header search's full-width behaviour on narrow
+   screens. Above this width the row-mode rule below overrides align-self. */
+.govuk-service-navigation .app-site-search {
+    align-self: stretch;
+}
+
+/* Once the nav container is a flex row (40.0625em up) it aligns children to
+   the top, and the search still carries the header's own top/bottom margin.
+   The row height is set by the taller nav links, so centre the search and drop
+   that margin. Below this width the container is a column, where the margin
+   gives useful spacing between stacked items. */
+@media (min-width: 40.0625em) {
+    .govuk-service-navigation .app-site-search {
+        align-self: center;
+        margin-top: 0;
+        margin-bottom: 0;
+    }
 }
 
 @media (min-width: 48.0625em) {
