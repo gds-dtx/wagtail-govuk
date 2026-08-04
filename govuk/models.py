@@ -519,20 +519,41 @@ class CustomiseSettings(BaseSiteSetting):
         default="govuk",
         help_text="Select the header logo to display.",
     )
+    service_name_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+        ],
+        default="header",
+        help_text="Where the service name appears.",
+    )
+    sign_in_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+            ("hidden", "Hidden"),
+        ],
+        default="navigation",
+        help_text=(
+            "Where the sign in and sign out links appear. Choose Hidden for "
+            "sites where visitors never sign in."
+        ),
+    )
+    search_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+            ("hidden", "Hidden"),
+        ],
+        default="header",
+        help_text="Where the search box appears.",
+    )
     show_site_name_in_search_box = models.BooleanField(
         default=False,
         help_text="Include the site name in the header search label and placeholder.",
-    )
-    show_service_name_in_navigation = models.BooleanField(
-        default=False,
-        help_text=(
-            "Show the site name and search in the service navigation bar rather "
-            "than in the GOV.UK header, as GOV.UK services usually do."
-        ),
-    )
-    hide_sign_in_link = models.BooleanField(
-        default=False,
-        help_text="Hide the sign in link, for sites where visitors never sign in.",
     )
     search_placeholder = models.CharField(
         max_length=100,

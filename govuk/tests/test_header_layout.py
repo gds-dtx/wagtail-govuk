@@ -15,12 +15,13 @@ SETTINGS_MODULE = os.getenv("DJANGO_SETTINGS_MODULE") or settings.SETTINGS_MODUL
 
 
 class HeaderLayoutTests(TestCase):
-    """The site name and search can sit in the service navigation bar.
+    """The service name, search and sign in link each have their own location.
 
     GOV.UK services usually carry the service name and search on a light bar
     below the black-and-blue GOV.UK header, which is what the DDaT Capability
-    Framework does. Existing sites keep the name and search in the header, so
-    the behaviour is opt in.
+    Framework does. Each element is placed independently (header bar, service
+    navigation, or hidden), with the defaults keeping the historical layout:
+    name and search in the header, sign in link in the service navigation.
     """
 
     def setUp(self):
@@ -46,8 +47,8 @@ class HeaderLayoutTests(TestCase):
         # The search is rendered once, inside the header.
         self.assertContains(response, 'class="app-site-search"', count=1)
 
-    def test_the_site_name_and_search_move_to_the_navigation_when_asked(self):
-        self.settings.show_service_name_in_navigation = True
+    def test_the_service_name_moves_to_the_navigation_when_asked(self):
+        self.settings.service_name_location = "navigation"
         self.settings.save()
 
         response = self._get()
@@ -55,7 +56,6 @@ class HeaderLayoutTests(TestCase):
         self.assertNotContains(response, "govuk-header__product-name")
         self.assertContains(response, "govuk-service-navigation__service-name")
         self.assertContains(response, "Capability Framework")
-        self.assertContains(response, 'class="app-site-search"', count=1)
 
     def test_the_govuk_logo_links_to_govuk(self):
         """The Design System's header logo leaves the service for GOV.UK."""
@@ -79,7 +79,41 @@ class HeaderLayoutTests(TestCase):
         self.settings.hide_sign_in_link = True
         self.settings.save()
 
-        self.assertNotContains(self._get(), "Sign in")
+        response = self._get()
+
+        self.assertContains(response, "govuk-header__product-name")
+        # Still rendered exactly once, now inside the navigation.
+        self.assertContains(response, 'class="app-site-search"', count=1)
+
+    def test_the_search_can_be_hidden(self):
+        self.settings.search_location = "hidden"
+        self.settings.save()
+
+        self.assertNotContains(self._get(), 'class="app-site-search"')
+
+    def test_the_sign_in_link_sits_in_the_navigation_by_default(self):
+        response = self._get()
+
+        self.assertContains(response, "Sign in")
+        self.assertNotContains(response, "app-header__sign-in")
+
+    def test_the_sign_in_link_can_move_to_the_header(self):
+        self.settings.sign_in_location = "header"
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertContains(response, "app-header__sign-in")
+        self.assertContains(response, "Sign in")
+
+    def test_the_sign_in_link_can_be_hidden(self):
+        self.settings.sign_in_location = "hidden"
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertNotContains(response, "Sign in")
+        self.assertNotContains(response, "app-header__sign-in")
 
     def test_the_search_placeholder_can_be_set(self):
         self.assertContains(self._get(), 'placeholder="Search"')
