@@ -43,8 +43,15 @@ SKILL_POINT_FIELD_NAMES = (
     "working_points",
     "practitioner_points",
     "expert_points",
+    "leadership_points",
 )
 SKILL_LEVEL_CHOICES = {"awareness", "working", "practitioner", "expert"}
+# A page's snippet chooser holds a primary key, which means nothing in another
+# database. Carry these as slugs so the reference survives the move, the way
+# role levels and Senior Civil Service skills already do.
+PAGE_SNIPPET_SLUG_STREAM_FIELDS = {
+    ("govuk.RolePage", "selected_roles"): ("role", GovukRole),
+}
 JOB_GRADE_KEYS = {value for value, _ in JOB_GRADE_CHOICES}
 SCS_GRADE_KEYS = {value for value, _ in SCS_GRADE_CHOICES}
 
@@ -56,6 +63,7 @@ class PageImportResult:
     updated: int = 0
     skipped: int = 0
     errors: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 def build_page_export_payload(
@@ -73,6 +81,7 @@ def build_page_export_payload(
             "id": site.id,
             "hostname": site.hostname,
             "port": site.port,
+            "site_name": site.site_name,
             "is_default_site": site.is_default_site,
         },
         "pages": [_serialise_page_tree(page) for page in selected_roots],
@@ -155,6 +164,8 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
             result.errors.append("Payload must contain at least one entry in 'tags' or 'pages'.")
         return result
 
+    _import_site_name(payload.get("site"), site=site)
+
     tag_lookup = _import_tags_from_payload(raw_tags=raw_tags, raw_pages=raw_pages)
 
     if settings.FEATURE_FLAGS.get("SKILLS"):
@@ -162,7 +173,13 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
         _import_roles(raw_roles, result=result)
         _import_site_wide_changelog(payload.get("changelog"), result=result)
 
-    site_root = site.root_page.specific
+    site_root = _replace_placeholder_home_page(
+        raw_pages,
+        site=site,
+        site_root=site.root_page.specific,
+        user=user,
+        result=result,
+    )
     for node in raw_pages:
         _import_page_node(
             node=node,
@@ -177,6 +194,98 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
 def dump_payload_as_json(payload: dict) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _import_site_name(raw_site, *, site: Site):
+    """Carry the site name over.
+
+    The name is content: it is the product name in the header and the suffix
+    on every page title. The hostname and port belong to the environment being
+    imported into, so they are left alone.
+    """
+    if not isinstance(raw_site, dict):
+        return
+
+    site_name = str(raw_site.get("site_name") or "").strip()[:255]
+    if site_name and site_name != site.site_name:
+        site.site_name = site_name
+        site.save(update_fields=["site_name"])
+
+
+def _replace_placeholder_home_page(raw_pages: list, *, site: Site, site_root: Page, user, result: PageImportResult) -> Page:
+    """Swap a new instance's placeholder home page for the one being imported.
+
+    A fresh instance ships an empty home page of whatever type the starter site
+    uses, and Wagtail cannot change a page's type in place. The page therefore
+    has to be rebuilt and the site repointed at it. Without this the import has
+    nowhere to put its own home page, so it nests the whole site a level down
+    and every URL gains a /home/ prefix.
+
+    Only an empty placeholder is replaced. A home page that already has children
+    belongs to someone, and is left alone for _find_or_create_page to deal with.
+    """
+    if not raw_pages or not isinstance(raw_pages[0], dict):
+        return site_root
+
+    node = raw_pages[0]
+    raw_settings = node.get("settings")
+    if not isinstance(raw_settings, dict):
+        raw_settings = {}
+
+    slug = _normalised_slug(raw_settings.get("slug"))
+    model_class = _resolve_model_class(str(node.get("model") or "").strip())
+    if (
+        model_class is None
+        or not slug
+        or slug != site_root.slug
+        or site_root.specific_class is model_class
+        # Page.objects, not site_root.get_children(): called on a specific page
+        # that narrows to the same subclass, and would miss children of any
+        # other type.
+        or Page.objects.child_of(site_root).exists()
+    ):
+        return site_root
+
+    tree_root = site_root.get_parent()
+    if tree_root is None:
+        return site_root
+
+    placeholder_label = site_root._meta.label
+    title = str(raw_settings.get("title") or "").strip() or slug.replace("-", " ").title()
+
+    try:
+        with transaction.atomic():
+            # Build the replacement alongside the placeholder, which still owns
+            # the slug, then take the slug over once the placeholder is gone.
+            replacement = model_class(
+                title=title,
+                draft_title=title,
+                slug=f"{slug}-import",
+            )
+            tree_root.add_child(instance=replacement)
+            replacement.save_revision().publish()
+
+            # Repoint the site before the delete: a page that is still a site
+            # root cannot be removed, and the delete cascades to descendants.
+            site.root_page = replacement
+            site.save(update_fields=["root_page"])
+
+            site_root.refresh_from_db()
+            site_root.delete()
+
+            replacement.refresh_from_db()
+            replacement.slug = slug
+            replacement.save()
+            replacement.save_revision().publish()
+    except (ValidationError, ValueError) as exc:
+        result.errors.append(f"Could not replace the placeholder home page: {exc}")
+        return site_root
+
+    result.notes.append(
+        f"Replaced the empty placeholder home page ({placeholder_label}) with "
+        f"{model_class._meta.label} so the site imports at the top level."
+    )
+    return replacement.specific
 
 
 def _import_tags_from_payload(*, raw_tags: list, raw_pages: list) -> dict[str, dict[str, int]]:
@@ -346,19 +455,16 @@ def _serialise_page_tree(page: Page) -> dict:
 
 
 def _serialise_skill(skill: GovukSkill) -> dict:
-    return {
+    payload = {
         "slug": skill.slug,
         "title": skill.title,
         "body": _serialise_value(skill.body),
-        "awareness_points": _serialise_stream_field(skill, "awareness_points"),
-        "working_points": _serialise_stream_field(skill, "working_points"),
-        "practitioner_points": _serialise_stream_field(
-            skill,
-            "practitioner_points",
-        ),
-        "expert_points": _serialise_stream_field(skill, "expert_points"),
-        "changelog": _serialise_changelog(skill.changelog_entries.all()),
+        "is_senior_civil_service": skill.is_senior_civil_service,
     }
+    for field_name in SKILL_POINT_FIELD_NAMES:
+        payload[field_name] = _serialise_stream_field(skill, field_name)
+    payload["changelog"] = _serialise_changelog(skill.changelog_entries.all())
+    return payload
 
 
 def _serialise_role(role: GovukRole) -> dict:
@@ -463,12 +569,50 @@ def _serialise_page_fields(page: Page) -> dict:
             continue
 
         raw_value = field.value_from_object(page)
-        if isinstance(field, StreamField):
-            serialisable = field.get_prep_value(raw_value)
-        else:
-            serialisable = field.get_prep_value(raw_value)
+        serialisable = field.get_prep_value(raw_value)
+
+        snippet_stream = PAGE_SNIPPET_SLUG_STREAM_FIELDS.get(
+            (page._meta.label, field.name)
+        )
+        if snippet_stream is not None:
+            block_type, snippet_model = snippet_stream
+            serialisable = _serialise_snippet_chooser_stream(
+                serialisable,
+                block_type=block_type,
+                snippet_model=snippet_model,
+            )
+
         values[field.name] = _serialise_value(serialisable)
     return values
+
+
+def _serialise_snippet_chooser_stream(raw_blocks, *, block_type: str, snippet_model) -> list:
+    """Swap the primary keys in a page's chooser stream for slugs."""
+    if not isinstance(raw_blocks, list):
+        return raw_blocks
+
+    chosen_keys = [
+        block.get("value")
+        for block in raw_blocks
+        if isinstance(block, dict) and block.get("type") == block_type
+    ]
+    slugs_by_key = dict(
+        snippet_model.objects.filter(
+            pk__in=[key for key in chosen_keys if isinstance(key, int)]
+        ).values_list("pk", "slug")
+    )
+
+    blocks_payload: list = []
+    for block in raw_blocks:
+        if not isinstance(block, dict) or block.get("type") != block_type:
+            blocks_payload.append(block)
+            continue
+
+        slug = slugs_by_key.get(block.get("value"))
+        if not slug:
+            continue
+        blocks_payload.append({**block, "value": slug})
+    return blocks_payload
 
 
 def _serialise_tags(page: Page) -> list[dict[str, str]]:
@@ -552,6 +696,7 @@ def _import_skill_node(*, node, result: PageImportResult):
     skill.slug = slug
     skill.title = str(node.get("title") or skill.title or default_title).strip() or default_title
     skill.body = str(node.get("body") or "")
+    skill.is_senior_civil_service = _coerce_bool(node.get("is_senior_civil_service"))
     for field_name in SKILL_POINT_FIELD_NAMES:
         setattr(skill, field_name, _deserialise_skill_points(node.get(field_name)))
 
@@ -882,7 +1027,12 @@ def _import_page_node(
                 user=user,
             )
             _apply_page_settings(page, raw_settings)
-            _apply_page_fields(page, node.get("fields"), tag_lookup=tag_lookup)
+            _apply_page_fields(
+                page,
+                node.get("fields"),
+                tag_lookup=tag_lookup,
+                result=result,
+            )
             page.full_clean()
             page.save()
             _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
@@ -917,6 +1067,17 @@ def _find_or_create_page(*, slug: str, model_class, parent_page: Page, site_root
         site_root=site_root,
         preferred_parent=parent_page,
     )
+    if (
+        existing_page is None
+        and slug == site_root.slug
+        and site_root.specific_class is model_class
+    ):
+        # A payload that starts at the home page is the whole site. Update the
+        # home page in place; the search above cannot find it because it looks
+        # below the root, so without this every import nests another copy of
+        # the site one level deeper.
+        existing_page = site_root
+
     if existing_page is None:
         if not parent_page.permissions_for_user(user).can_add_subpage():
             raise PermissionError(
@@ -937,7 +1098,7 @@ def _find_or_create_page(*, slug: str, model_class, parent_page: Page, site_root
         raise PermissionError(f"You do not have permission to edit '{slug}'.")
 
     current_parent = specific_existing.get_parent()
-    if current_parent.pk != parent_page.pk:
+    if specific_existing.pk != site_root.pk and current_parent.pk != parent_page.pk:
         if not specific_existing.permissions_for_user(user).can_move():
             raise PermissionError(f"You do not have permission to move '{slug}'.")
         if parent_page.is_descendant_of(specific_existing):
@@ -985,7 +1146,13 @@ def _apply_page_settings(page: Page, settings_data: dict):
     page.draft_title = page.draft_title or page.title
 
 
-def _apply_page_fields(page: Page, fields_data, *, tag_lookup: dict[str, dict[str, int]] | None = None):
+def _apply_page_fields(
+    page: Page,
+    fields_data,
+    *,
+    tag_lookup: dict[str, dict[str, int]] | None = None,
+    result: PageImportResult | None = None,
+):
     if not isinstance(fields_data, dict):
         return
 
@@ -1009,8 +1176,69 @@ def _apply_page_fields(page: Page, fields_data, *, tag_lookup: dict[str, dict[st
         ):
             raw_value = _normalise_section_row_card_tags(raw_value, tag_lookup=tag_lookup)
 
+        snippet_stream = PAGE_SNIPPET_SLUG_STREAM_FIELDS.get(
+            (page._meta.label, field_name)
+        )
+        if snippet_stream is not None:
+            block_type, snippet_model = snippet_stream
+            raw_value = _deserialise_snippet_chooser_stream(
+                raw_value,
+                block_type=block_type,
+                snippet_model=snippet_model,
+                page_slug=page.slug,
+                result=result,
+            )
+
         python_value = _deserialise_model_field_value(model_field, raw_value)
         setattr(page, field_name, python_value)
+
+
+def _deserialise_snippet_chooser_stream(
+    raw_blocks,
+    *,
+    block_type: str,
+    snippet_model,
+    page_slug: str,
+    result: PageImportResult | None = None,
+) -> list:
+    """Resolve the slugs in a page's chooser stream to local primary keys.
+
+    A reference that matches no slug is dropped and reported. It is not worth
+    falling back to a primary key carried in an older payload: keys are not
+    the same between databases, so that silently points the page at whichever
+    snippet happens to hold the number.
+    """
+    if not isinstance(raw_blocks, list):
+        return raw_blocks
+
+    chosen_slugs = [
+        _normalised_slug(block.get("value"))
+        for block in raw_blocks
+        if isinstance(block, dict) and block.get("type") == block_type
+    ]
+    keys_by_slug = dict(
+        snippet_model.objects.filter(
+            slug__in=[slug for slug in chosen_slugs if slug]
+        ).values_list("slug", "pk")
+    )
+
+    blocks_payload: list = []
+    for block in raw_blocks:
+        if not isinstance(block, dict) or block.get("type") != block_type:
+            blocks_payload.append(block)
+            continue
+
+        raw_reference = block.get("value")
+        chosen_key = keys_by_slug.get(_normalised_slug(raw_reference))
+        if chosen_key is None:
+            if result is not None:
+                result.errors.append(
+                    f"Page '{page_slug}' dropped {block_type} '{raw_reference}' "
+                    f"because no {snippet_model._meta.verbose_name} has that slug."
+                )
+            continue
+        blocks_payload.append({**block, "value": chosen_key})
+    return blocks_payload
 
 
 def _apply_tags(page: Page, tags_data, *, tag_lookup: dict[str, dict[str, int]] | None = None):

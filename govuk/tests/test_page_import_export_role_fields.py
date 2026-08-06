@@ -1,8 +1,15 @@
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from wagtail.models import Site
+from wagtail.models import Page, Site
 
-from govuk.models import GovukChangelogEntry, GovukRole, GovukSkill
+from govuk.models import (
+    ContentPage,
+    GovukChangelogEntry,
+    GovukRole,
+    GovukSkill,
+    RolePage,
+    SectionPage,
+)
 from govuk.page_import_export import (
     build_page_export_payload,
     import_pages_from_payload,
@@ -100,6 +107,250 @@ class RoleExportImportFieldTests(TestCase):
             exported["chief-technology-officer"]["scs_skills"],
             ["capability-building"],
         )
+
+    def test_export_carries_every_skill_field(self):
+        payload = self._export()
+        exported = {row["slug"]: row for row in payload["skills"]}
+
+        self.assertTrue(exported["capability-building"]["is_senior_civil_service"])
+        self.assertEqual(
+            [
+                point["value"]
+                for point in exported["capability-building"]["leadership_points"]
+            ],
+            ["prioritising needs"],
+        )
+        self.assertFalse(exported["data-modelling"]["is_senior_civil_service"])
+
+    def test_import_restores_a_wiped_senior_civil_service_skill(self):
+        payload = self._export()
+
+        self.leadership_skill.is_senior_civil_service = False
+        self.leadership_skill.leadership_points = []
+        self.leadership_skill.save()
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+        self.assertEqual(result.errors, [])
+
+        skill = GovukSkill.objects.get(slug="capability-building")
+        self.assertTrue(skill.is_senior_civil_service)
+        self.assertEqual(skill.get_leadership_points(), ["prioritising needs"])
+
+    def test_export_carries_the_site_name(self):
+        self.site.site_name = "Capability Framework"
+        self.site.save(update_fields=["site_name"])
+
+        self.assertEqual(self._export()["site"]["site_name"], "Capability Framework")
+
+    def test_import_restores_the_site_name_but_leaves_the_hostname_alone(self):
+        self.site.site_name = "Capability Framework"
+        self.site.save(update_fields=["site_name"])
+        payload = self._export()
+
+        self.site.site_name = ""
+        self.site.hostname = "somewhere-else.example.com"
+        self.site.save(update_fields=["site_name", "hostname"])
+
+        import_pages_from_payload(payload=payload, site=self.site, user=self.user)
+
+        self.site.refresh_from_db()
+        self.assertEqual(self.site.site_name, "Capability Framework")
+        self.assertEqual(self.site.hostname, "somewhere-else.example.com")
+
+    def test_export_carries_a_role_pages_role_as_a_slug(self):
+        page = self._add_role_page()
+
+        payload = build_page_export_payload(
+            site=self.site,
+            pages=[page],
+            skills=list(GovukSkill.objects.all()),
+            roles=list(GovukRole.objects.all()),
+        )
+
+        self.assertEqual(
+            [
+                block["value"]
+                for block in payload["pages"][0]["fields"]["selected_roles"]
+            ],
+            ["data-analyst"],
+        )
+
+    def test_a_role_page_follows_its_role_when_the_primary_keys_differ(self):
+        """The database being imported into numbers its rows its own way."""
+        page = self._add_role_page()
+        payload = build_page_export_payload(
+            site=self.site,
+            pages=[page],
+            skills=list(GovukSkill.objects.all()),
+            roles=list(GovukRole.objects.all()),
+        )
+
+        renumbered_pk = self.role.pk + 1000
+        self.role.delete()
+        GovukRole.objects.create(pk=renumbered_pk, title="Data analyst", family="Data")
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+        self.assertEqual(result.errors, [])
+
+        imported_page = RolePage.objects.get(slug="data-analyst")
+        self.assertEqual(
+            [role.pk for role in imported_page.get_selected_roles()], [renumbered_pk]
+        )
+
+    def test_a_role_page_reports_a_role_that_is_not_in_the_destination(self):
+        page = self._add_role_page()
+        payload = build_page_export_payload(
+            site=self.site,
+            pages=[page],
+            skills=list(GovukSkill.objects.all()),
+            roles=list(GovukRole.objects.all()),
+        )
+        payload["roles"] = []
+        self.role.delete()
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+
+        self.assertEqual(
+            result.errors,
+            [
+                "Page 'data-analyst' dropped role 'data-analyst' because no "
+                "Role has that slug."
+            ],
+        )
+        imported_page = RolePage.objects.get(slug="data-analyst")
+        self.assertEqual(imported_page.get_selected_roles(), [])
+
+    def test_a_payload_carrying_primary_keys_is_refused_rather_than_guessed_at(self):
+        """Keys from another database point at whichever role holds the number."""
+        page = self._add_role_page()
+        payload = build_page_export_payload(
+            site=self.site,
+            pages=[page],
+            skills=list(GovukSkill.objects.all()),
+            roles=list(GovukRole.objects.all()),
+        )
+        # An export taken before roles were carried as slugs.
+        payload["pages"][0]["fields"]["selected_roles"] = [
+            {"type": "role", "value": self.scs_role.pk}
+        ]
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("dropped role", result.errors[0])
+        imported_page = RolePage.objects.get(slug="data-analyst")
+        self.assertEqual(imported_page.get_selected_roles(), [])
+
+    def test_importing_a_whole_site_twice_does_not_nest_a_second_copy(self):
+        """Re-importing is how dev content gets refreshed."""
+        self._add_role_page()
+        home = self.site.root_page.specific
+        payload = build_page_export_payload(
+            site=self.site,
+            pages=[home],
+            skills=list(GovukSkill.objects.all()),
+            roles=list(GovukRole.objects.all()),
+        )
+
+        for _ in range(2):
+            result = import_pages_from_payload(
+                payload=payload, site=self.site, user=self.user
+            )
+            self.assertEqual(result.errors, [])
+
+        self.site.refresh_from_db()
+        self.assertEqual(self.site.root_page.pk, home.pk)
+        self.assertEqual(
+            [child.slug for child in home.get_children()], ["data-analyst"]
+        )
+
+    def _framework_payload(self, *, children: list | None = None) -> dict:
+        """A payload rooted at a ContentPage home, as the framework's export is."""
+        payload = build_page_export_payload(
+            site=self.site,
+            pages=[],
+            skills=list(GovukSkill.objects.all()),
+            roles=list(GovukRole.objects.all()),
+        )
+        payload["pages"] = [
+            {
+                "model": "govuk.ContentPage",
+                "settings": {"title": "Capability Framework", "slug": "home"},
+                "fields": {"body": "<p>The framework.</p>"},
+                "tags": [],
+                "privacy": [],
+                "children": children or [],
+            }
+        ]
+        return payload
+
+    def test_a_placeholder_home_page_is_replaced_rather_than_nested_under(self):
+        """A new instance ships an empty home page of the wrong type."""
+        placeholder = self.site.root_page.specific
+        self.assertIsInstance(placeholder, SectionPage)
+
+        payload = self._framework_payload(
+            children=[
+                {
+                    "model": "govuk.RolePage",
+                    "settings": {"title": "Data analyst", "slug": "data-analyst"},
+                    "fields": {
+                        "selected_roles": [{"type": "role", "value": "data-analyst"}]
+                    },
+                    "tags": [],
+                    "privacy": [],
+                    "children": [],
+                }
+            ]
+        )
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+        self.assertEqual(result.errors, [])
+        self.assertEqual(len(result.notes), 1)
+
+        self.site.refresh_from_db()
+        new_root = self.site.root_page.specific
+        self.assertIsInstance(new_root, ContentPage)
+        self.assertEqual(new_root.slug, "home")
+        self.assertEqual(new_root.depth, 2)
+        # The framework sits at the top level, not under /home/.
+        self.assertEqual([child.slug for child in new_root.get_children()], ["data-analyst"])
+        self.assertEqual(RolePage.objects.get(slug="data-analyst").url, "/data-analyst/")
+        self.assertFalse(Page.objects.filter(pk=placeholder.pk).exists())
+
+    def test_a_home_page_with_children_is_left_alone(self):
+        """Only an empty placeholder is safe to throw away."""
+        placeholder = self.site.root_page.specific
+        self._add_role_page()
+
+        result = import_pages_from_payload(
+            payload=self._framework_payload(), site=self.site, user=self.user
+        )
+
+        self.site.refresh_from_db()
+        self.assertEqual(self.site.root_page.pk, placeholder.pk)
+        self.assertEqual(result.notes, [])
+
+    def _add_role_page(self) -> RolePage:
+        page = self.site.root_page.add_child(
+            instance=RolePage(
+                title="Data analyst",
+                slug="data-analyst",
+                selected_roles=[{"type": "role", "value": self.role.pk}],
+            )
+        )
+        page.save_revision().publish()
+        return page.specific
 
     def test_export_carries_changelog_entries(self):
         payload = self._export()
