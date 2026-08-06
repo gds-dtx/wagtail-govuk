@@ -1,0 +1,102 @@
+[
+  {
+    "type": "section",
+    "value": {
+      "heading": "How to use this framework",
+      "level": "h2",
+      "anchor": "",
+      "body": "<p>Anyone can use this framework to:</p><ul><li>learn what the different digital and data roles do in government</li><li>understand what skills are needed at each role level</li></ul><p>Professionals in Government Digital and Data can use this framework to:</p><ul><li>identify skills that they can develop</li><li>assess their current skill levels in preparation for performance and development conversations</li><li>learn about the typical responsibilities and skills of their colleagues</li></ul><p>Line managers and team leaders in government can use this framework to:</p><ul><li>identify skill gaps in their teams and opportunities for development</li><li>inform development goals and conversations</li><li>forecast their organisation workforce needs, to make sure they have the right skills to achieve objectives</li></ul><p>Hiring managers in government can use this framework to:</p><ul><li>create effective and consistent job adverts</li><li>assess the suitability of a candidate during interview</li></ul>"
+    }
+  },
+  {
+    "type": "section",
+    "value": {
+      "heading": "Skills in this framework",
+      "level": "h2",
+      "anchor": "",
+      "body": "<p>Each role level (such as junior business analyst or senior business analyst) in this framework includes a list of required skills. Each skill is assigned one of 4 skill levels, reflecting the required proficiency: awareness, working, practitioner or expert.</p><p>As you progress from one role level to the next, the proficiency required for each skill will typically increase (other than in instances where leadership positions no longer require day-to-day use of the skill).</p><p>You can see the full list of skills and their definitions in the <a href=\"__SKILLS_AZ_URL__\">Skills A to Z</a>.</p>"
+    }
+  },
+  {
+    "type": "skill_level_definitions",
+    "value": {
+      "caption": "Skill level definitions",
+      "level_column_heading": "Skill level definitions",
+      "meaning_column_heading": "What the level means",
+      "levels": [
+        {
+          "name": "Awareness",
+          "filled_segments": 1,
+          "description": "<p>You can:</p><ul><li>describe the fundamentals of the skill</li><li>demonstrate basic knowledge of some of the skill's tools and techniques</li></ul>"
+        },
+        {
+          "name": "Working",
+          "filled_segments": 2,
+          "description": "<p>You can:</p><ul><li>apply the skill with some support</li><li>adopt the most appropriate tools and techniques</li></ul>"
+        },
+        {
+          "name": "Practitioner",
+          "filled_segments": 3,
+          "description": "<p>You can:</p><ul><li>apply the skill without support</li><li>determine and use the most appropriate tools and techniques</li><li>share knowledge and experience of the skill</li></ul>"
+        },
+        {
+          "name": "Expert",
+          "filled_segments": 4,
+          "description": "<p>You can:</p><ul><li>lead and guide a team or organisation in the skill's best practice</li><li>teach the skill's advanced tools and techniques</li></ul>"
+        }
+      ]
+    }
+  },
+  {
+    "type": "section",
+    "value": {
+      "heading": "Skills for chief digital and data roles",
+      "level": "h3",
+      "anchor": "",
+      "body": "<p>Chief digital and data roles (such as chief technology officer or chief data officer) do not have role levels and so their skills do not have levels. Instead, each skill lists digital and data requirements together with examples of leadership needed to be effective in a Senior Civil Service role.</p>"
+    }
+  },
+  {
+    "type": "section",
+    "value": {
+      "heading": "Job grades in this framework",
+      "level": "h2",
+      "anchor": "",
+      "body": "<p>Most levels of a role include one or two Civil Service job grades. These are the most common grades that the role level is performed at, based on government workforce data.</p><p>The grade displayed is not mandatory for jobs at that role level across government. You can learn more about <a href=\"/job-grades\">Civil Service job grades in this framework</a>.</p>"
+    }
+  },
+  {
+    "type": "section_break",
+    "value": null
+  },
+  {
+    "type": "section",
+    "value": {
+      "heading": "Support",
+      "level": "h2",
+      "anchor": "",
+      "body": "<p>The Government Digital and Data Profession Capability Framework is maintained by the <a href=\"https://www.gov.uk/government/organisations/government-digital-service\">Government Digital Service</a>.</p><p>If you have a question or need support with using the framework, email the Capability Framework team at <a href=\"mailto:digitaldatacapabilityframework@dsit.gov.uk\">digitaldatacapabilityframework@dsit.gov.uk</a>.</p><p>You can also:</p><ul><li>find out how to <a href=\"/propose-a-change\">propose a change to the framework</a></li><li>see what the team is working on and planning to do next on our <a href=\"/roadmap\">roadmap</a></li></ul><p>If you have a question about the wider Government Digital and Data profession, you can:</p><ul><li>email <a href=\"mailto:gdd-profession-capability-team@dsit.gov.uk\">gdd-profession-capability-team@dsit.gov.uk</a></li><li>post in the <a href=\"https://ukgovernmentdigital.slack.com/archives/C838RAB0R\">Government Digital and Data profession Slack channel</a></li></ul>"
+    }
+  },
+  {
+    "type": "section_break",
+    "value": null
+  },
+  {
+    "type": "section",
+    "value": {
+      "heading": "Capability assessments for Government Digital and Data professionals",
+      "level": "h3",
+      "anchor": "capability-assessments",
+      "body": "<p>Capability assessments for pay allowances are managed separately by each organisation. For support with your assessment, you will need to contact the internal team who manage the process for your organisation.</p><p>If you are implementing or managing the Government Digital and Data Pay Framework in your organisation, you can contact the Digital Pay and Reward team at GDS for support:</p><ul><li>email <a href=\"mailto:digital.pay@dsit.gov.uk\">digital.pay@dsit.gov.uk</a></li><li>message on the <a href=\"https://ukgovernmentdigital.slack.com/archives/C09LLNYRT7Z\">Pay Forum Slack channel</a></li></ul>"
+    }
+  },
+  {
+    "type": "section_break",
+    "value": null
+  },
+  {
+    "type": "inset_text",
+    "value": "<p>The name of this guidance changed on 1 December 2023. Previously its name was ‘Digital, Data and Technology (DDaT) Profession Capability Framework’. This change reflected the <a href=\"https://www.gov.uk/government/news/digital-skills-rebrand-to-attract-top-tech-talent-to-civil-service\">launch of the Government Digital and Data brand</a>.</p>"
+  }
+]

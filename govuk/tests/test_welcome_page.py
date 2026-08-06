@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.utils.text import slugify
 from wagtail.models import Site
 
+from govuk.capability_framework import framework_welcome_seed
 from govuk.page_import_export import _serialise_page_fields
 from govuk.models import (
     ContentPage,
@@ -149,11 +150,11 @@ class FrameworkUpdatesTests(TestCase):
 
 
 class FrameworkWelcomeContentTests(TestCase):
-    """The welcome prose lives in a template, not in the page body.
+    """The welcome prose lives in the CMS, in the page's own blocks.
 
     A rich text field would lose the skill level table, the progress bars and
     every anchor the moment somebody opened the page in the admin and saved it,
-    so the page holds a switch and nothing else.
+    so each block keeps its markup in a template and the editor keeps the words.
     """
 
     def setUp(self):
@@ -185,6 +186,9 @@ class FrameworkWelcomeContentTests(TestCase):
 
     def _welcome(self) -> str:
         self.page.show_framework_welcome = True
+        self.page.framework_welcome_body = framework_welcome_seed(
+            skills_url=self.skills_page.url
+        )
         self.page.save()
         return self.client.get(self.page.url).content.decode()
 
@@ -205,6 +209,71 @@ class FrameworkWelcomeContentTests(TestCase):
             "Support",
         ):
             self.assertIn(heading, page)
+
+    def test_the_prose_comes_from_the_page_rather_than_a_template(self):
+        """The content team has to be able to reword this without a deploy."""
+        self._welcome()
+
+        self.page.framework_welcome_body = [
+            (
+                "section",
+                {
+                    "heading": "How the team changed this",
+                    "level": "h2",
+                    "anchor": "",
+                    "body": "<p>Edited in the admin.</p>",
+                },
+            )
+        ]
+        self.page.save()
+        page = self.client.get(self.page.url).content.decode()
+
+        self.assertIn("How the team changed this", page)
+        self.assertIn("Edited in the admin.", page)
+        self.assertNotIn("How to use this framework", page)
+
+    def test_the_contents_list_follows_the_headings_the_editor_wrote(self):
+        self._welcome()
+
+        self.page.framework_welcome_body = [
+            (
+                "section",
+                {
+                    "heading": "Opening",
+                    "level": "h2",
+                    "anchor": "",
+                    "body": "<p>First.</p>",
+                },
+            ),
+            (
+                "section",
+                {
+                    "heading": "A note",
+                    "level": "h3",
+                    "anchor": "",
+                    "body": "<p>Not a main section.</p>",
+                },
+            ),
+            (
+                "section",
+                {
+                    "heading": "Closing",
+                    "level": "h2",
+                    "anchor": "the-end",
+                    "body": "<p>Last.</p>",
+                },
+            ),
+        ]
+        self.page.save()
+        page = self.client.get(self.page.url).content.decode()
+
+        contents = page[page.index('id="contents"') : page.index("mobile-homepage-roles")]
+        self.assertEqual(
+            re.findall(r'href="#([^"]+)"', contents),
+            ["opening", "architecture-roles", "data-roles", "further-resources", "the-end"],
+        )
+        # The sub-section still renders, it just stays out of the contents list.
+        self.assertIn('id="a-note"', page)
 
     def test_the_skill_level_table_and_its_bars_survive(self):
         """These are exactly what a rich text field would have thrown away."""
@@ -279,3 +348,24 @@ class FrameworkWelcomeContentTests(TestCase):
         self.assertTrue(fields["show_framework_welcome"])
         self.assertTrue(fields["show_role_navigation"])
         self.assertTrue(fields["show_framework_updates"])
+
+    def test_the_welcome_content_survives_an_export(self):
+        """A site transfer has to carry the prose, now that it is page content."""
+        self._welcome()
+
+        blocks = _serialise_page_fields(self.page)["framework_welcome_body"]
+
+        headings = [
+            block["value"]["heading"]
+            for block in blocks
+            if block["type"] == "section"
+        ]
+        self.assertIn("How to use this framework", headings)
+
+        table = next(
+            block for block in blocks if block["type"] == "skill_level_definitions"
+        )
+        self.assertEqual(
+            [level["name"] for level in table["value"]["levels"]],
+            ["Awareness", "Working", "Practitioner", "Expert"],
+        )

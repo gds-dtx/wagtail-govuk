@@ -30,6 +30,18 @@ function setHyperlinkClasses() {
 }
 
 function setListClasses() {
+  // Paragraphs. GOV.UK Frontend styles the govuk-body class rather than the
+  // element, so rich text paragraphs need it adding. Anything that already
+  // asks for a size, such as govuk-body-s, is left as the author set it.
+  document.querySelectorAll(".rich-text-content p").forEach((el) => {
+    const sized = Array.from(el.classList).some((name) =>
+      name.startsWith("govuk-body"),
+    );
+    if (!sized) {
+      el.classList.add("govuk-body");
+    }
+  });
+
   // Unordered lists
   document.querySelectorAll(".rich-text-content ul").forEach((el) => {
     el.classList.add("govuk-list", "govuk-list--bullet");

@@ -1,22 +1,23 @@
+{% load wagtailcore_tags %}
 {% comment %}
     The welcome page's contents list and role lists, both of which stand in for
-    the side navigation on a narrow screen and are hidden once it appears. They
-    are built from the same groups the navigation uses, so a role can only ever
-    be in one place or the other by mistake.
+    the side navigation on a narrow screen and are hidden once it appears. The
+    contents list is built from the page's own section headings and the same
+    groups the navigation uses, so a role can only ever be in one place or the
+    other by mistake.
+
+    The prose itself lives in the page's framework welcome content, so the
+    content team can change it without a code change.
 {% endcomment %}
 <div class="mobile-homepage">
     <p class="govuk-body-s contents-list-links" id="contents">Contents</p>
     <ul class="govuk-list govuk-body-s contents-list-links">
-        <li>— <a href="#how-to-use-this-framework" class="contents-list-links govuk-link">How to use this framework</a></li>
-        {% for group in framework_sections %}
-            <li>— <a href="#{{ group.title|slugify }}" class="contents-list-links govuk-link">{{ group.title }}</a></li>
+        {% for entry in framework_contents %}
+            <li>— <a href="#{{ entry.anchor }}" class="contents-list-links govuk-link">{{ entry.title }}</a></li>
         {% endfor %}
-        <li>— <a href="#skills-in-this-framework" class="contents-list-links govuk-link">Skills in this framework</a></li>
-        <li>— <a href="#job-grades-in-this-framework" class="contents-list-links govuk-link">Job grades in this framework</a></li>
-        <li>— <a href="#support" class="contents-list-links govuk-link">Support</a></li>
     </ul>
 </div>
-{% include "includes/framework_welcome_content.html" %}
+{% include_block self.framework_welcome_body %}
 <div class="mobile-homepage mobile-homepage-roles">
     {% for group in framework_sections %}
         <h2 class="govuk-heading-l" id="{{ group.title|slugify }}">{{ group.title }}</h2>

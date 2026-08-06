@@ -262,13 +262,72 @@ class ImportCapabilityFrameworkTests(TestCase):
         self.assertIn(SkillsAZPage.objects.first().url, page)
 
     def test_the_welcome_page_keeps_nothing_fragile_in_the_database(self):
-        """A rich text field would lose the table and the anchors on a save."""
+        """The rich text body would lose the table, so the blocks hold it instead."""
         self._import()
 
         home = Site.objects.get(is_default_site=True).root_page.specific
 
         self.assertEqual(home.body, "")
         self.assertIn("progress-bar__container", self.client.get("/").content.decode())
+
+    def test_the_welcome_content_lands_in_the_cms_for_editors(self):
+        """Content changes should not need a developer after the import."""
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        headings = [
+            block.value["heading"]
+            for block in home.framework_welcome_body
+            if block.block_type == "section"
+        ]
+        self.assertIn("How to use this framework", headings)
+
+        home.framework_welcome_body = [
+            (
+                "section",
+                {
+                    "heading": "Reworded by the content team",
+                    "level": "h2",
+                    "anchor": "",
+                    "body": "<p>No deploy needed.</p>",
+                },
+            )
+        ]
+        home.save()
+        home.save_revision().publish()
+
+        page = self.client.get("/").content.decode()
+        self.assertIn("Reworded by the content team", page)
+        self.assertNotIn("How to use this framework", page)
+
+    def test_a_second_import_leaves_edited_welcome_content_alone(self):
+        """The CMS owns the words once they are in it."""
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        home.framework_welcome_body = [
+            (
+                "section",
+                {
+                    "heading": "Kept",
+                    "level": "h2",
+                    "anchor": "",
+                    "body": "<p>Written by an editor.</p>",
+                },
+            )
+        ]
+        home.save()
+        home.save_revision().publish()
+
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        headings = [
+            block.value["heading"]
+            for block in home.framework_welcome_body
+            if block.block_type == "section"
+        ]
+        self.assertEqual(headings, ["Kept"])
 
     def test_home_page_role_lists_are_for_narrow_screens_only(self):
         """Wide screens reach the roles through the side navigation instead."""

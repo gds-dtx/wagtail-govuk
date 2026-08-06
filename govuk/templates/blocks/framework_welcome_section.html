@@ -1,0 +1,3 @@
+{% load wagtailcore_tags %}
+<{{ value.level }} class="govuk-heading-{% if value.level == "h2" %}l{% else %}m{% endif %}" id="{{ value.anchor_id }}">{{ value.heading }}</{{ value.level }}>
+{{ value.body|richtext }}

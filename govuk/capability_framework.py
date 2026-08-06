@@ -12,13 +12,30 @@ rich text fields, so content can be imported from the published exports and
 exported back out in the same shape.
 """
 
+import json
 import re
 from datetime import date
 from html.parser import HTMLParser
+from pathlib import Path
 
 from django.utils.html import escape
 
 MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+
+WELCOME_SEED_PATH = Path(__file__).resolve().parent / "data" / "framework_welcome.json"
+SKILLS_AZ_URL_TOKEN = "__SKILLS_AZ_URL__"
+
+
+def framework_welcome_seed(*, skills_url: str = "/") -> list[dict]:
+    """The welcome page's opening content, for a site that has none yet.
+
+    The words ship as data rather than as a template so that the content team
+    owns them from the first import onwards: this is a starting point written
+    into the CMS, not something the page reads at render time. An import into a
+    site that already has welcome content leaves that content alone.
+    """
+    raw = WELCOME_SEED_PATH.read_text(encoding="utf-8")
+    return json.loads(raw.replace(SKILLS_AZ_URL_TOKEN, skills_url))
 
 NOT_IN_USE = "NOT IN USE"
 # The published exports use this sentence, without bullets, where a skill

@@ -10,6 +10,7 @@ from wagtail.models import Page, Site
 from govuk.capability_framework import (
     NOT_IN_USE,
     changelog_note_to_html,
+    framework_welcome_seed,
     parse_iso_date,
     parse_points,
     split_leadership_examples,
@@ -299,11 +300,12 @@ class Command(BaseCommand):
         return ContentPage.objects.get(pk=new_home.pk)
 
     def write_home_page_content(self, home: Page):
-        """Switch the welcome page on.
+        """Switch the welcome page on and seed its content.
 
-        The prose lives in a template and the role lists are built from the
-        imported roles when the page is rendered, so nothing here can be lost
-        to a stray edit in the admin.
+        The role lists are built from the imported roles when the page is
+        rendered, but the prose is written into the page so the content team can
+        edit it. Existing welcome content is left alone: after the first import
+        the CMS is the source of truth, not this command.
         """
         if not isinstance(home, ContentPage):
             return
@@ -313,6 +315,16 @@ class Command(BaseCommand):
         home.show_role_navigation = True
         home.show_framework_updates = True
         home.show_framework_welcome = True
+
+        if home.framework_welcome_body:
+            self.stdout.write("Home page: kept the existing welcome content")
+        else:
+            skills_page = SkillsAZPage.objects.live().first()
+            home.framework_welcome_body = framework_welcome_seed(
+                skills_url=skills_page.url if skills_page else "/",
+            )
+            self.stdout.write("Home page: seeded the welcome content")
+
         home.save()
         home.save_revision().publish()
         self.stdout.write("Home page: welcome content switched on")
