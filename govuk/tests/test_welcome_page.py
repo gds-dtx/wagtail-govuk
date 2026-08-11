@@ -5,7 +5,6 @@ from django.test import TestCase
 from django.utils.text import slugify
 from wagtail.models import Site
 
-from govuk.capability_framework import framework_welcome_seed
 from govuk.page_import_export import _serialise_page_fields
 from govuk.models import (
     ContentPage,
@@ -186,11 +185,89 @@ class FrameworkWelcomeContentTests(TestCase):
 
     def _welcome(self) -> str:
         self.page.show_framework_welcome = True
-        self.page.framework_welcome_body = framework_welcome_seed(
-            skills_url=self.skills_page.url
-        )
+        self.page.framework_welcome_body = self._welcome_fixture()
         self.page.save()
         return self.client.get(self.page.url).content.decode()
+
+    def _welcome_fixture(self) -> list:
+        """Representative welcome blocks, so the rendering and export tests have
+        content to exercise. The real prose lives in the CMS, not in the app.
+
+        Built in the raw ``{"type", "value"}`` stream shape rather than as
+        ``(type, value)`` tuples so that the nested skill-level list serialises
+        the same way editor-authored content does when it is exported.
+        """
+        return [
+            {
+                "type": "section",
+                "value": {
+                    "heading": "How to use this framework",
+                    "level": "h2",
+                    "anchor": "",
+                    "body": "<p>Anyone can use this framework.</p>",
+                },
+            },
+            {
+                "type": "section",
+                "value": {
+                    "heading": "Skills in this framework",
+                    "level": "h2",
+                    "anchor": "",
+                    "body": (
+                        "<p>See the "
+                        f'<a href="{self.skills_page.url}">Skills A to Z</a>.</p>'
+                    ),
+                },
+            },
+            {
+                "type": "skill_level_definitions",
+                "value": {
+                    "caption": "Skill level definitions",
+                    "level_column_heading": "Skill level definitions",
+                    "meaning_column_heading": "What the level means",
+                    "levels": [
+                        {
+                            "name": "Awareness",
+                            "filled_segments": 1,
+                            "description": "<p>Demonstrate knowledge of the skill's tools.</p>",
+                        },
+                        {
+                            "name": "Working",
+                            "filled_segments": 2,
+                            "description": "<p>Apply the skill with some support.</p>",
+                        },
+                        {
+                            "name": "Practitioner",
+                            "filled_segments": 3,
+                            "description": "<p>Apply the skill without support.</p>",
+                        },
+                        {
+                            "name": "Expert",
+                            "filled_segments": 4,
+                            "description": "<p>Recognised as an expert in the skill.</p>",
+                        },
+                    ],
+                },
+            },
+            {
+                "type": "section",
+                "value": {
+                    "heading": "Job grades in this framework",
+                    "level": "h2",
+                    "anchor": "",
+                    "body": "<p>Roles map to Civil Service job grades.</p>",
+                },
+            },
+            {
+                "type": "section",
+                "value": {
+                    "heading": "Support",
+                    "level": "h2",
+                    "anchor": "",
+                    "body": "<p>Contact us for support.</p>",
+                },
+            },
+        ]
 
     def test_the_welcome_content_is_off_unless_asked_for(self):
         page = self.client.get(self.page.url).content.decode()

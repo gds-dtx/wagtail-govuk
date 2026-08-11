@@ -10,7 +10,6 @@ from wagtail.models import Page, Site
 from govuk.capability_framework import (
     NOT_IN_USE,
     changelog_note_to_html,
-    framework_welcome_seed,
     parse_iso_date,
     parse_points,
     split_leadership_examples,
@@ -300,12 +299,13 @@ class Command(BaseCommand):
         return ContentPage.objects.get(pk=new_home.pk)
 
     def write_home_page_content(self, home: Page):
-        """Switch the welcome page on and seed its content.
+        """Set the framework home page up.
 
-        The role lists are built from the imported roles when the page is
-        rendered, but the prose is written into the page so the content team can
-        edit it. Existing welcome content is left alone: after the first import
-        the CMS is the source of truth, not this command.
+        The role lists and update history are built from the imported content
+        when the page is rendered. The welcome prose is deliberately not written
+        here: it is page content that the content team owns in the CMS, and it
+        travels between instances through the admin page import, not this
+        command.
         """
         if not isinstance(home, ContentPage):
             return
@@ -314,17 +314,6 @@ class Command(BaseCommand):
         home.body = ""
         home.show_role_navigation = True
         home.show_framework_updates = True
-        home.show_framework_welcome = True
-
-        if home.framework_welcome_body:
-            self.stdout.write("Home page: kept the existing welcome content")
-        else:
-            skills_page = SkillsAZPage.objects.live().first()
-            home.framework_welcome_body = framework_welcome_seed(
-                skills_url=skills_page.url if skills_page else "/",
-            )
-            self.stdout.write("Home page: seeded the welcome content")
-
         home.save()
         home.save_revision().publish()
-        self.stdout.write("Home page: welcome content switched on")
+        self.stdout.write("Home page: role navigation and updates switched on")

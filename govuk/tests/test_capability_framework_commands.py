@@ -1,5 +1,4 @@
 import csv
-import re
 import tempfile
 from datetime import date
 from io import StringIO
@@ -242,115 +241,50 @@ class ImportCapabilityFrameworkTests(TestCase):
             self.assertIn(RolePage.objects.get(slug=slug).url, page)
         self.assertIn("Skills A to Z", page)
 
-    def test_home_page_carries_the_welcome_content(self):
+    def test_home_page_is_configured_but_seeds_no_welcome_prose(self):
+        """The importer sets the framework home page up, but the welcome prose is
+        CMS content: it belongs to the content team, not this command."""
         self._import()
 
         home = Site.objects.get(is_default_site=True).root_page.specific
         self.assertIn("Learn about the digital, data", home.hero_intro)
         self.assertTrue(home.show_role_navigation)
         self.assertTrue(home.show_framework_updates)
+        # The welcome content is never written by the importer.
+        self.assertFalse(home.show_framework_welcome)
+        self.assertEqual(len(home.framework_welcome_body), 0)
+
+    def test_a_second_import_leaves_editor_welcome_content_alone(self):
+        """Because the importer never writes the welcome prose, an editor's own
+        content survives a re-import untouched."""
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        home.show_framework_welcome = True
+        home.framework_welcome_body = [
+            (
+                "section",
+                {
+                    "heading": "Written by an editor",
+                    "level": "h2",
+                    "anchor": "",
+                    "body": "<p>Kept.</p>",
+                },
+            )
+        ]
+        home.save()
+        home.save_revision().publish()
+
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        headings = [
+            block.value["heading"]
+            for block in home.framework_welcome_body
+            if block.block_type == "section"
+        ]
+        self.assertEqual(headings, ["Written by an editor"])
         self.assertTrue(home.show_framework_welcome)
-
-        page = self.client.get("/").content.decode()
-        for heading in (
-            "How to use this framework",
-            "Skills in this framework",
-            "Job grades in this framework",
-            "Support",
-        ):
-            self.assertIn(heading, page)
-        self.assertIn(SkillsAZPage.objects.first().url, page)
-
-    def test_the_welcome_page_keeps_nothing_fragile_in_the_database(self):
-        """The rich text body would lose the table, so the blocks hold it instead."""
-        self._import()
-
-        home = Site.objects.get(is_default_site=True).root_page.specific
-
-        self.assertEqual(home.body, "")
-        self.assertIn("progress-bar__container", self.client.get("/").content.decode())
-
-    def test_the_welcome_content_lands_in_the_cms_for_editors(self):
-        """Content changes should not need a developer after the import."""
-        self._import()
-
-        home = Site.objects.get(is_default_site=True).root_page.specific
-        headings = [
-            block.value["heading"]
-            for block in home.framework_welcome_body
-            if block.block_type == "section"
-        ]
-        self.assertIn("How to use this framework", headings)
-
-        home.framework_welcome_body = [
-            (
-                "section",
-                {
-                    "heading": "Reworded by the content team",
-                    "level": "h2",
-                    "anchor": "",
-                    "body": "<p>No deploy needed.</p>",
-                },
-            )
-        ]
-        home.save()
-        home.save_revision().publish()
-
-        page = self.client.get("/").content.decode()
-        self.assertIn("Reworded by the content team", page)
-        self.assertNotIn("How to use this framework", page)
-
-    def test_a_second_import_leaves_edited_welcome_content_alone(self):
-        """The CMS owns the words once they are in it."""
-        self._import()
-
-        home = Site.objects.get(is_default_site=True).root_page.specific
-        home.framework_welcome_body = [
-            (
-                "section",
-                {
-                    "heading": "Kept",
-                    "level": "h2",
-                    "anchor": "",
-                    "body": "<p>Written by an editor.</p>",
-                },
-            )
-        ]
-        home.save()
-        home.save_revision().publish()
-
-        self._import()
-
-        home = Site.objects.get(is_default_site=True).root_page.specific
-        headings = [
-            block.value["heading"]
-            for block in home.framework_welcome_body
-            if block.block_type == "section"
-        ]
-        self.assertEqual(headings, ["Kept"])
-
-    def test_home_page_role_lists_are_for_narrow_screens_only(self):
-        """Wide screens reach the roles through the side navigation instead."""
-        self._import()
-
-        page = self.client.get("/").content.decode()
-        role_list_start = page.index("Data roles</h2>")
-        mobile_start = page.index('<div class="mobile-homepage mobile-homepage-roles">')
-
-        self.assertLess(mobile_start, role_list_start)
-        self.assertIn('href="#data-roles"', page)
-
-    def test_every_contents_link_on_the_home_page_has_somewhere_to_go(self):
-        """The live service's contents list points at anchors that do not exist."""
-        self._import()
-
-        page = self.client.get("/").content.decode()
-        anchors = re.findall(r'href="#([^"]+)"', page)
-        ids = set(re.findall(r'id="([^"]+)"', page))
-
-        for expected in ("how-to-use-this-framework", "data-roles", "support"):
-            self.assertIn(expected, anchors)
-        self.assertEqual([a for a in anchors if a not in ids], [])
 
     def test_home_page_is_reachable_and_links_resolve(self):
         self._import()
