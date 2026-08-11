@@ -286,6 +286,23 @@ class ImportCapabilityFrameworkTests(TestCase):
         self.assertEqual(headings, ["Written by an editor"])
         self.assertTrue(home.show_framework_welcome)
 
+    def test_a_second_import_leaves_editor_home_page_config_alone(self):
+        """Once configured, the CMS owns the home page: a re-import must not
+        revert the editor's intro wording or navigation toggles."""
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        home.hero_intro = "<p>Edited by the content team.</p>"
+        home.show_framework_updates = False
+        home.save()
+        home.save_revision().publish()
+
+        self._import()
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        self.assertEqual(home.hero_intro, "<p>Edited by the content team.</p>")
+        self.assertFalse(home.show_framework_updates)
+
     def test_home_page_is_reachable_and_links_resolve(self):
         self._import()
 

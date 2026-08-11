@@ -13,7 +13,7 @@ exported back out in the same shape.
 """
 
 import re
-from datetime import date
+from datetime import date, datetime
 from html.parser import HTMLParser
 
 from django.utils.html import escape
@@ -240,7 +240,17 @@ def split_leadership_examples(text: str) -> tuple[str, list[str]]:
 
 
 def parse_iso_date(value: str) -> date | None:
+    text = (value or "").strip()
+    if not text:
+        return None
     try:
-        return date.fromisoformat((value or "").strip())
+        return date.fromisoformat(text)
+    except ValueError:
+        pass
+    # The source column is named "Timestamp": some exports carry a full
+    # timestamp ("2026-05-29T09:00:00", a trailing "Z", or a space separator).
+    # Take the date part rather than silently dropping the changelog row.
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
     except ValueError:
         return None

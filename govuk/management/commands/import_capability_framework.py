@@ -299,15 +299,24 @@ class Command(BaseCommand):
         return ContentPage.objects.get(pk=new_home.pk)
 
     def write_home_page_content(self, home: Page):
-        """Set the framework home page up.
+        """Set the framework home page up on first import only.
 
         The role lists and update history are built from the imported content
         when the page is rendered. The welcome prose is deliberately not written
         here: it is page content that the content team owns in the CMS, and it
         travels between instances through the admin page import, not this
         command.
+
+        Once the page has been configured the CMS is the source of truth, so a
+        re-import must not revert an editor's intro wording or navigation
+        toggles. These fields are therefore written only when the page has not
+        yet been set up (its intro is still blank).
         """
         if not isinstance(home, ContentPage):
+            return
+
+        if home.hero_intro:
+            self.stdout.write("Home page: already configured, left for the CMS")
             return
 
         home.hero_intro = f"<p>{escape(SITE_INTRO)}</p>"

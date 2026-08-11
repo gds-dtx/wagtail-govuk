@@ -112,6 +112,12 @@ class ParseIsoDateTests(SimpleTestCase):
         self.assertEqual(parse_iso_date("2026-05-29"), date(2026, 5, 29))
         self.assertEqual(parse_iso_date("  2020-01-07 "), date(2020, 1, 7))
 
+    def test_parses_timestamps_by_taking_the_date(self):
+        # The source column is a "Timestamp"; a future export may carry a time.
+        self.assertEqual(parse_iso_date("2026-05-29T09:00:00"), date(2026, 5, 29))
+        self.assertEqual(parse_iso_date("2026-05-29 09:00:00"), date(2026, 5, 29))
+        self.assertEqual(parse_iso_date("2026-05-29T09:00:00Z"), date(2026, 5, 29))
+
     def test_returns_none_for_invalid_dates(self):
         self.assertIsNone(parse_iso_date(""))
         self.assertIsNone(parse_iso_date("29/05/2026"))
