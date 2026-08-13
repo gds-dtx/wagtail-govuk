@@ -3,7 +3,7 @@ from .base import *
 
 # Development settings - these are used in development and test environments
 
-DEBUG = os.getenv("DEBUG", "True") == "True"
+DEBUG = os.getenv("DEBUG", "False") == "True"
 SECRET_KEY = os.getenv("SECRET_KEY")
 
 DATABASES = {
@@ -21,7 +21,15 @@ MEDIA_ROOT = "/app/data/media"
 
 BASE_URL = os.getenv("BASE_URL").strip().rstrip("/")
 
-ALLOWED_HOSTS = [os.getenv("DOMAIN"), "*"]
+# Host allow-list, no wildcard (Django rejects unexpected Host headers when
+# DEBUG is off). Set ALLOWED_HOSTS to a comma-separated list per environment;
+# it must include every host the app is reached on, including the load
+# balancer health-check host. Falls back to DOMAIN when the var is unset.
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("ALLOWED_HOSTS", os.getenv("DOMAIN") or "").split(",")
+    if host.strip()
+]
 CSRF_TRUSTED_ORIGINS = [BASE_URL]
 CSRF_ALLOWED_ORIGINS = [BASE_URL]
 CORS_ORIGINS_WHITELIST = [BASE_URL]

@@ -177,6 +177,59 @@ class DevSettingsTests(SimpleTestCase):
                 sys.modules[module_name] = original_module
 
 
+class DevSecuritySettingsTests(SimpleTestCase):
+    """dev.py is the deployed settings module, so it must be secure by default."""
+
+    def _import_dev(self, env):
+        module_name = "govuk.settings.dev"
+        original_module = sys.modules.pop(module_name, None)
+        try:
+            with patch.dict(os.environ, env, clear=True):
+                return importlib.import_module(module_name)
+        finally:
+            sys.modules.pop(module_name, None)
+            if original_module is not None:
+                sys.modules[module_name] = original_module
+
+    _BASE_ENV = {"BASE_URL": "https://service.example.gov.uk/"}
+
+    def test_debug_defaults_to_false_when_unset(self):
+        dev = self._import_dev(self._BASE_ENV)
+
+        self.assertFalse(dev.DEBUG)
+
+    def test_debug_can_be_switched_on_explicitly(self):
+        dev = self._import_dev({**self._BASE_ENV, "DEBUG": "True"})
+
+        self.assertTrue(dev.DEBUG)
+
+    def test_allowed_hosts_never_contains_a_wildcard(self):
+        dev = self._import_dev(
+            {**self._BASE_ENV, "ALLOWED_HOSTS": "service.example.gov.uk"}
+        )
+
+        self.assertNotIn("*", dev.ALLOWED_HOSTS)
+
+    def test_allowed_hosts_reads_a_comma_separated_list(self):
+        dev = self._import_dev(
+            {
+                **self._BASE_ENV,
+                "ALLOWED_HOSTS": "service.example.gov.uk, health.internal",
+            }
+        )
+
+        self.assertEqual(
+            dev.ALLOWED_HOSTS, ["service.example.gov.uk", "health.internal"]
+        )
+
+    def test_allowed_hosts_falls_back_to_domain_when_unset(self):
+        dev = self._import_dev(
+            {**self._BASE_ENV, "DOMAIN": "service.example.gov.uk"}
+        )
+
+        self.assertEqual(dev.ALLOWED_HOSTS, ["service.example.gov.uk"])
+
+
 class SyncDefaultSiteFromEnvTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(pk=1)
