@@ -1,7 +1,7 @@
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import GovukSkill, SkillsAZPage
+from govuk.models import GovukRole, GovukSkill, RolePage, SkillsAZPage
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -73,6 +73,30 @@ class SkillsAZPageTests(TestCase):
         beta_index = response_text.find("Beta skill")
         charlie_index = response_text.find("Charlie skill")
         self.assertTrue(alpha_index < beta_index < charlie_index)
+
+    def test_the_skills_index_carries_the_frameworks_side_navigation(self):
+        """It sits alongside the roles, so it is navigated the same way."""
+        role = GovukRole.objects.create(title="Data analyst", family="Data")
+        role_page = self.root_page.add_child(
+            instance=RolePage(
+                title="Data analyst",
+                slug="data-analyst",
+                selected_roles=[{"type": "role", "value": role.pk}],
+            )
+        )
+        role_page.save_revision().publish()
+
+        response = self.client.get(self.skills_page.url)
+
+        self.assertContains(response, 'aria-label="Data roles"')
+        self.assertContains(response, "role-nav__item--active")
+        # The heading moves beside the navigation rather than staying in the
+        # site hero above it.
+        self.assertNotContains(response, "hero__title")
+        self.assertContains(
+            response, '<h1 class="govuk-heading-xl">Skills A-Z</h1>', html=True
+        )
+        self.assertContains(response, "govuk-breadcrumbs--mobile-only")
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_skills_az_page_is_not_creatable_when_skills_feature_is_disabled(self):

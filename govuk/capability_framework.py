@@ -19,6 +19,7 @@ from html.parser import HTMLParser
 from django.utils.html import escape
 
 MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+EMPTY_MARKDOWN_LINK = re.compile(r"\[\s*\]\([^)]*\)")
 
 NOT_IN_USE = "NOT IN USE"
 # The published exports use this sentence, without bullets, where a skill
@@ -186,23 +187,77 @@ def points_to_text(points: list[str], *, prefix: str = "You can:") -> str:
     return f"{prefix}\n{bullets}" if prefix else bullets
 
 
+def _changelog_line_to_html(line: str) -> str:
+    """Escape a change note line and turn its Markdown links into anchors."""
+    # Links with no text render as a stray "[](/skills)" in the published
+    # exports, so drop them rather than carrying the literal through.
+    line = EMPTY_MARKDOWN_LINK.sub("", line).strip()
+    return MARKDOWN_LINK.sub(
+        lambda match: f'<a href="{match.group(2)}">{match.group(1)}</a>',
+        escape(line),
+    )
+
+
 def changelog_note_to_html(text: str) -> str:
     """Convert a change note into rich text HTML.
 
     Notes use Markdown-style links and newline-separated statements, for
     example ``[Data engineer](/role/data-engineer) has updated skills.``
+    Lines opening with ``- `` are the export's bullets and become a list.
     """
-    paragraphs = []
+    html_parts: list[str] = []
+    bullets: list[str] = []
+
+    def flush_bullets():
+        nonlocal bullets
+        if bullets:
+            items = "".join(f"<li>{bullet}</li>" for bullet in bullets)
+            html_parts.append(f"<ul>{items}</ul>")
+            bullets = []
+
     for line in (text or "").splitlines():
         line = line.strip()
         if not line:
             continue
-        linked = MARKDOWN_LINK.sub(
-            lambda match: f'<a href="{match.group(2)}">{match.group(1)}</a>',
-            escape(line),
+        if line.startswith("- "):
+            bullet = _changelog_line_to_html(line[2:])
+            if bullet:
+                bullets.append(bullet)
+            continue
+        flush_bullets()
+        paragraph = _changelog_line_to_html(line)
+        if paragraph:
+            html_parts.append(f"<p>{paragraph}</p>")
+    flush_bullets()
+    return "".join(html_parts)
+
+
+_BULLET_PARAGRAPH = re.compile(r"<p>\s*-\s*((?:(?!</p>).)*?)\s*</p>", re.DOTALL)
+_BULLET_RUN = re.compile(r"(?:<p>\s*-\s*(?:(?!</p>).)*?</p>\s*)+", re.DOTALL)
+
+
+def repair_changelog_html(html: str) -> str:
+    """Repair change notes stored before the import understood the exports.
+
+    Bullets arrived as hyphen paragraphs and links with no text arrived as a
+    literal ``[](/skills)``. Rewriting the stored HTML in place keeps any
+    formatting an editor has since added, which converting back to note text
+    and re-rendering would drop.
+    """
+    if not html:
+        return ""
+
+    def to_list(match: re.Match) -> str:
+        items = "".join(
+            f"<li>{bullet.group(1)}</li>"
+            for bullet in _BULLET_PARAGRAPH.finditer(match.group(0))
         )
-        paragraphs.append(f"<p>{linked}</p>")
-    return "".join(paragraphs)
+        return f"<ul>{items}</ul>" if items else match.group(0)
+
+    repaired = _BULLET_RUN.sub(to_list, str(html))
+    repaired = EMPTY_MARKDOWN_LINK.sub("", repaired)
+    # Removing a trailing empty link can leave a paragraph holding nothing.
+    return re.sub(r"<p>\s*</p>", "", repaired)
 
 
 def changelog_html_to_note(html: str) -> str:

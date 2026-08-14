@@ -1,104 +1,126 @@
 {% extends "wagtailcore/page.html" %}
 {% load wagtailcore_tags %}
+{% comment %}
+    With the side navigation alongside, the heading sits beside it in the
+    content column rather than in the site hero, matching the role pages.
+{% endcomment %}
+{% block page_hero %}{% if not role_navigation %}{{ block.super }}{% endif %}{% endblock %}
 {% block content %}
     <div class="govuk-width-container govuk-!-margin-bottom-6">
-        {% if self.body or self.author or self.show_last_updated_date %}
-            <div class="govuk-!-margin-bottom-4">
-                {% if self.show_page_content_metadata %}
-                    {% include "includes/page_content_metadata.html" with page=self %}
+        <div class="govuk-grid-row">
+            {% if role_navigation %}
+                <div class="govuk-grid-column-one-quarter">
+                    {% include "includes/role_navigation.html" %}
+                </div>
+            {% endif %}
+            <div class="{% if role_navigation %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-full{% endif %}">
+                {% if role_navigation %}
+                    <h1 class="govuk-heading-xl">{{ self.hero_title|default:self.title }}</h1>
+                    {% if self.hero_intro %}
+                        <div class="govuk-body-l rich-text-content">{{ self.hero_intro|richtext }}</div>
+                    {% elif self.search_description %}
+                        <p class="govuk-body-l">{{ self.search_description }}</p>
+                    {% endif %}
                 {% endif %}
-                {% if self.body %}
-                    <div class="govuk-body rich-text-content">{{ self.body|richtext }}</div>
-                {% endif %}
-            </div>
-        {% endif %}
-        {% if skill_sections %}
-            <div class="govuk-accordion" data-module="govuk-accordion" id="skills-accordion">
-                {% for skill_section in skill_sections %}
-                    <div class="govuk-accordion__section">
-                        <div class="govuk-accordion__section-header">
-                            <h2 class="govuk-accordion__section-heading">
-                                <span class="govuk-accordion__section-button"
-                                      id="skills-accordion-heading-{{ forloop.counter }}">
-                                    <span id="{{ skill_section.skill.slug }}">{{ skill_section.skill.title }}</span>
-                                </span>
-                                {% if skill_section.is_scs %}
-                                    <div class="govuk-accordion__section-summary govuk-body">Senior Civil Service</div>
-                                {% endif %}
-                            </h2>
-                        </div>
-                        <div id="skills-accordion-content-{{ forloop.counter }}"
-                             class="govuk-accordion__section-content">
-                            {% if skill_section.skill.body %}
-                                <div class="govuk-body">{{ skill_section.skill.body|richtext }}</div>
-                            {% endif %}
-                            {% if skill_section.leadership_points %}
-                                <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Examples of leadership using this skill</h3>
-                                <ul class="govuk-list govuk-list--bullet">
-                                    {% for point in skill_section.leadership_points %}<li>{{ point }}</li>{% endfor %}
-                                </ul>
-                            {% endif %}
-                            {% if skill_section.level_rows %}
-                            <table class="govuk-table">
-                                <thead class="govuk-table__head">
-                                    <tr class="govuk-table__row">
-                                        <th scope="col" class="govuk-table__header">Skill level</th>
-                                        <th scope="col" class="govuk-table__header">Description</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="govuk-table__body">
-                                    {% for level_row in skill_section.level_rows %}
-                                        <tr class="govuk-table__row">
-                                            <td class="govuk-table__cell">
-                                                <p class="govuk-body govuk-!-font-size-19">{{ level_row.label }}</p>
-                                                <span class="govuk-visually-hidden">{{ level_row.label }} is the {{ level_row.ordinal }} of four ascending skill levels</span>
-                                                <div class="progress-bar__container" aria-hidden="true">
-                                                    <div class="progress-bar__grey" aria-hidden="true"></div>
-                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
-                                                    <div class="progress-bar__{% if level_row.key == 'working' or level_row.key == 'practitioner' or level_row.key == 'expert' %}grey{% else %}white{% endif %}"
-                                                         aria-hidden="true"></div>
-                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
-                                                    <div class="progress-bar__{% if level_row.key == 'practitioner' or level_row.key == 'expert' %}grey{% else %}white{% endif %}"
-                                                         aria-hidden="true"></div>
-                                                    <div class="progress-bar__divider" aria-hidden="true"></div>
-                                                    <div class="progress-bar__{% if level_row.key == 'expert' %}grey{% else %}white{% endif %}"
-                                                         aria-hidden="true"></div>
-                                                </div>
-                                            </td>
-                                            <td class="govuk-table__cell govuk-!-width-two-thirds">
-                                                {% if level_row.points %}
-                                                    <ul class="govuk-list govuk-list--bullet">
-                                                        {% for point in level_row.points %}<li class="govuk-body">{{ point }}</li>{% endfor %}
-                                                    </ul>
-                                                {% else %}
-                                                    <p class="govuk-body govuk-!-margin-bottom-0">No description provided.</p>
-                                                {% endif %}
-                                            </td>
-                                        </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                            {% endif %}
-                            {% if skill_section.roles %}
-                                <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Roles that require this skill</h3>
-                                <ul class="govuk-list">
-                                    {% for entry in skill_section.roles %}
-                                        <li>
-                                            {% if entry.url %}
-                                                <a class="govuk-link" href="{{ entry.url }}">{{ entry.role.title }}</a>
-                                            {% else %}
-                                                {{ entry.role.title }}
-                                            {% endif %}
-                                        </li>
-                                    {% endfor %}
-                                </ul>
-                            {% endif %}
-                        </div>
+                {% if self.body or self.author or self.show_last_updated_date %}
+                    <div class="govuk-!-margin-bottom-4">
+                        {% if self.show_page_content_metadata %}
+                            {% include "includes/page_content_metadata.html" with page=self %}
+                        {% endif %}
+                        {% if self.body %}
+                            <div class="govuk-body rich-text-content">{{ self.body|richtext }}</div>
+                        {% endif %}
                     </div>
-                {% endfor %}
+                {% endif %}
+                {% if skill_sections %}
+                    <div class="govuk-accordion" data-module="govuk-accordion" id="skills-accordion">
+                        {% for skill_section in skill_sections %}
+                            <div class="govuk-accordion__section">
+                                <div class="govuk-accordion__section-header">
+                                    <h2 class="govuk-accordion__section-heading">
+                                        <span class="govuk-accordion__section-button"
+                                              id="skills-accordion-heading-{{ forloop.counter }}">
+                                            <span id="{{ skill_section.skill.slug }}">{{ skill_section.skill.title }}</span>
+                                        </span>
+                                        {% if skill_section.is_scs %}
+                                            <div class="govuk-accordion__section-summary govuk-body">Senior Civil Service</div>
+                                        {% endif %}
+                                    </h2>
+                                </div>
+                                <div id="skills-accordion-content-{{ forloop.counter }}"
+                                     class="govuk-accordion__section-content">
+                                    {% if skill_section.skill.body %}
+                                        <div class="govuk-body">{{ skill_section.skill.body|richtext }}</div>
+                                    {% endif %}
+                                    {% if skill_section.leadership_points %}
+                                        <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Examples of leadership using this skill</h3>
+                                        <ul class="govuk-list govuk-list--bullet">
+                                            {% for point in skill_section.leadership_points %}<li>{{ point }}</li>{% endfor %}
+                                        </ul>
+                                    {% endif %}
+                                    {% if skill_section.level_rows %}
+                                        <table class="govuk-table">
+                                            <thead class="govuk-table__head">
+                                                <tr class="govuk-table__row">
+                                                    <th scope="col" class="govuk-table__header">Skill level</th>
+                                                    <th scope="col" class="govuk-table__header">Description</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="govuk-table__body">
+                                                {% for level_row in skill_section.level_rows %}
+                                                    <tr class="govuk-table__row">
+                                                        <td class="govuk-table__cell">
+                                                            <p class="govuk-body govuk-!-font-size-19">{{ level_row.label }}</p>
+                                                            <span class="govuk-visually-hidden">{{ level_row.label }} is the {{ level_row.ordinal }} of four ascending skill levels</span>
+                                                            <div class="progress-bar__container" aria-hidden="true">
+                                                                <div class="progress-bar__grey" aria-hidden="true"></div>
+                                                                <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                                <div class="progress-bar__{% if level_row.key == 'working' or level_row.key == 'practitioner' or level_row.key == 'expert' %}grey{% else %}white{% endif %}"
+                                                                     aria-hidden="true"></div>
+                                                                <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                                <div class="progress-bar__{% if level_row.key == 'practitioner' or level_row.key == 'expert' %}grey{% else %}white{% endif %}"
+                                                                     aria-hidden="true"></div>
+                                                                <div class="progress-bar__divider" aria-hidden="true"></div>
+                                                                <div class="progress-bar__{% if level_row.key == 'expert' %}grey{% else %}white{% endif %}"
+                                                                     aria-hidden="true"></div>
+                                                            </div>
+                                                        </td>
+                                                        <td class="govuk-table__cell govuk-!-width-two-thirds">
+                                                            {% if level_row.points %}
+                                                                <ul class="govuk-list govuk-list--bullet">
+                                                                    {% for point in level_row.points %}<li class="govuk-body">{{ point }}</li>{% endfor %}
+                                                                </ul>
+                                                            {% else %}
+                                                                <p class="govuk-body govuk-!-margin-bottom-0">No description provided.</p>
+                                                            {% endif %}
+                                                        </td>
+                                                    </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    {% endif %}
+                                    {% if skill_section.roles %}
+                                        <h3 class="govuk-heading-s govuk-!-margin-bottom-2">Roles that require this skill</h3>
+                                        <ul class="govuk-list">
+                                            {% for entry in skill_section.roles %}
+                                                <li>
+                                                    {% if entry.url %}
+                                                        <a class="govuk-link" href="{{ entry.url }}">{{ entry.role.title }}</a>
+                                                    {% else %}
+                                                        {{ entry.role.title }}
+                                                    {% endif %}
+                                                </li>
+                                            {% endfor %}
+                                        </ul>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="govuk-body">No skills found.</p>
+                {% endif %}
             </div>
-        {% else %}
-            <p class="govuk-body">No skills found.</p>
-        {% endif %}
+        </div>
     </div>
 {% endblock %}

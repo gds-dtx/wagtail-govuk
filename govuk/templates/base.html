@@ -54,7 +54,12 @@
             <div class="govuk-header">
                 <div class="govuk-header__container govuk-width-container">
                     <div class="govuk-header__logo">
-                        <a href="/" class="govuk-header__homepage-link">
+                        {% comment %}
+                            The GOV.UK logo links to GOV.UK, as the Design
+                            System's header requires. The service's own home
+                            page is reached from the service name below.
+                        {% endcomment %}
+                        <a href="https://www.gov.uk" class="govuk-header__homepage-link">
                             {% if customise_settings and customise_settings.header_logo == "uk-government" %}
                                 <svg focusable="false"
                                      role="img"
@@ -151,7 +156,8 @@
             {% endif %}
             {% if breadcrumbs and not self.enable_combined_service_navigation_and_hero_styling %}
                 <div class="govuk-width-container">
-                    <nav class="govuk-breadcrumbs" aria-label="Breadcrumb">
+                    <nav class="govuk-breadcrumbs{% if breadcrumbs_mobile_only %} govuk-breadcrumbs--mobile-only{% endif %}"
+                         aria-label="Breadcrumb">
                         <ol class="govuk-breadcrumbs__list">
                             {% for item in breadcrumbs %}
                                 <li class="govuk-breadcrumbs__list-item">
@@ -207,6 +213,22 @@
             {% endif %}
             {% block content %}
             {% endblock %}
+            {% comment %}
+                Hidden until main.js reveals it, so it is never offered where it
+                could not work.
+            {% endcomment %}
+            <button type="button" id="back-to-top" class="govuk-link">
+                <svg role="presentation"
+                     focusable="false"
+                     class="back-to-top__icon"
+                     xmlns="http://www.w3.org/2000/svg"
+                     width="13"
+                     height="17"
+                     viewBox="0 0 13 17">
+                <path fill="currentColor" d="M6.5 0L0 6.5 1.4 8l4-4v12.7h2V4l4.3 4L13 6.4z" />
+                </svg>
+                Back to top
+            </button>
         </main>
         <footer class="govuk-template__footer">
             <div class="govuk-footer">

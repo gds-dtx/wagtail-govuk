@@ -118,6 +118,7 @@
                                             {% endif %}
                                             {% if role_section.levels %}
                                                 <h2 class="govuk-heading-l" id="{{ role_section.anchors.levels }}">{{ role_section.role.title }} role levels</h2>
+                                                {% for paragraph in role_section.levels_intro %}<p class="govuk-body">{{ paragraph }}</p>{% endfor %}
                                             {% endif %}
                                             {% for role_level in role_section.levels %}
                                                 {% if role_level.title %}
@@ -145,7 +146,13 @@
                                                             {% for skill_row in role_level.skills %}
                                                                 <tr class="govuk-table__row">
                                                                     <th scope="row" class="govuk-table__header">
-                                                                        <p class="govuk-!-margin-bottom-1 govuk-!-font-weight-bold">{{ skill_row.skill.title }}</p>
+                                                                        <p class="govuk-!-margin-bottom-1 govuk-!-font-weight-bold">
+                                                                            {% if skills_index_url %}
+                                                                                <a href="{{ skills_index_url }}#{{ skill_row.skill.slug }}" class="govuk-link skill-name">{{ skill_row.skill.title }}</a>
+                                                                            {% else %}
+                                                                                {{ skill_row.skill.title }}
+                                                                            {% endif %}
+                                                                        </p>
                                                                         <p class="govuk-body-s">Level: {{ skill_row.required_level_label }}</p>
                                                                         <span class="govuk-visually-hidden">{{ skill_row.required_level_label }} is the
                                                                             {% if skill_row.required_level == 'awareness' %}

@@ -2541,6 +2541,47 @@ class RolePage(Page):
             for word in (title or "").split()
         )
 
+    @classmethod
+    def _role_levels_intro(cls, section: dict) -> list[str]:
+        """The two sentences the framework prints under the role levels heading.
+
+        For example "There are 4 business architect role levels, from trainee
+        business architect to lead business architect."
+        """
+        levels = section["levels"]
+        if not levels:
+            return []
+
+        display_role_name = section["display_role_name"]
+        titles = [
+            cls._display_role_name(level["title"])
+            for level in levels
+            if level["title"]
+        ]
+
+        if len(levels) == 1:
+            opening = f"There is one {display_role_name} role level."
+            described = (
+                "The typical responsibilities and skills for this role level "
+                "are described below."
+            )
+        else:
+            opening = f"There are {len(levels)} {display_role_name} role levels"
+            if len(titles) > 1:
+                opening += f", from {titles[0]} to {titles[-1]}"
+            opening += "."
+            described = (
+                "The typical responsibilities and skills for each role level "
+                "are described in the sections below."
+            )
+
+        return [
+            opening,
+            f"{described} You can use this to identify the skills you need to "
+            "progress in your career, or simply to learn more about each role "
+            "in the Government Digital and Data profession.",
+        ]
+
     @staticmethod
     def _contents_entries(section: dict) -> list[dict]:
         """In-page contents links, in the order the sections are rendered."""
@@ -2624,14 +2665,49 @@ class RolePage(Page):
                 for entry in role.get_related_roles()
             ]
             section["changelog"] = role.get_changelog()
+            section["levels_intro"] = self._role_levels_intro(section)
             section["contents"] = self._contents_entries(section)
 
         context["role_sections"] = role_sections
         context["role_navigation"] = role_navigation_groups(current_page_id=self.pk)
-        # The framework shows no breadcrumbs on a role page; the side
-        # navigation does that job.
-        context["breadcrumbs"] = []
+        # The side navigation is the way around the framework, but it is hidden
+        # on a narrow screen, so a breadcrumb stands in for it there.
+        context["breadcrumbs"] = self._role_breadcrumbs(request, role_sections)
+        context["breadcrumbs_mobile_only"] = True
         return context
+
+    def _role_breadcrumbs(self, request, role_sections: list[dict]) -> list[dict]:
+        """Home, the role's family, then the role itself.
+
+        The family entry points at its heading on the home page, which is where
+        the role lists appear once the side navigation is hidden.
+        """
+        site = Site.find_for_request(request)
+        home_url = site.root_page.get_url(request) if site else None
+        if not home_url:
+            return []
+
+        trail = [{"title": "Home", "url": home_url, "is_current": False}]
+
+        families = []
+        for section in role_sections:
+            family = (section["role"].family or "").strip()
+            if family and family not in families:
+                families.append(family)
+        # A page holding roles from more than one family has no single place in
+        # the navigation to point back to.
+        if len(families) == 1:
+            group_title = f"{families[0]} roles"
+            trail.append(
+                {
+                    "title": group_title,
+                    "url": f"{home_url}#{slugify(group_title)}",
+                    "is_current": False,
+                }
+            )
+
+        trail.append({"title": self.title, "url": None, "is_current": True})
+        return trail
 
 
 class SkillsAZPage(Page):
@@ -2746,6 +2822,11 @@ class SkillsAZPage(Page):
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
         context["skill_sections"] = self.get_skill_sections()
+        # The skills index sits alongside the roles in the framework, so it
+        # carries the same side navigation, and the same narrow-screen
+        # breadcrumb standing in for it.
+        context["role_navigation"] = role_navigation_groups(current_page_id=self.pk)
+        context["breadcrumbs_mobile_only"] = True
         return context
 
 

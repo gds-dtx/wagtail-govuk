@@ -10,6 +10,7 @@ from govuk.capability_framework import (
     parse_iso_date,
     parse_points,
     points_to_text,
+    repair_changelog_html,
     rich_html_to_text,
     text_to_rich_html,
 )
@@ -102,9 +103,58 @@ class ChangelogConversionTests(SimpleTestCase):
     def test_html_is_escaped(self):
         self.assertIn("&lt;b&gt;", changelog_note_to_html("<b>bold</b>"))
 
+    def test_hyphen_lines_become_a_bulleted_list(self):
+        self.assertEqual(
+            changelog_note_to_html("These roles changed:\n- Data analyst\n- Data engineer"),
+            "<p>These roles changed:</p><ul><li>Data analyst</li><li>Data engineer</li></ul>",
+        )
+
+    def test_links_with_no_text_are_dropped(self):
+        """The exports carry a stray "[](/skills)" where a link lost its text."""
+        self.assertEqual(
+            changelog_note_to_html("The skills [](/skills) were updated."),
+            "<p>The skills  were updated.</p>",
+        )
+        self.assertEqual(changelog_note_to_html("[](/skills)"), "")
+
     def test_empty_values(self):
         self.assertEqual(changelog_note_to_html(""), "")
         self.assertEqual(changelog_html_to_note(""), "")
+
+
+class ChangelogRepairTests(SimpleTestCase):
+    """Notes stored before the import understood the exports' conventions."""
+
+    def test_a_run_of_hyphen_paragraphs_becomes_one_list(self):
+        self.assertEqual(
+            repair_changelog_html(
+                "<p>These roles changed:</p><p>- Data analyst</p><p>- Data engineer</p>"
+            ),
+            "<p>These roles changed:</p><ul><li>Data analyst</li><li>Data engineer</li></ul>",
+        )
+
+    def test_separate_runs_stay_separate_lists(self):
+        self.assertEqual(
+            repair_changelog_html("<p>- one</p><p>Then:</p><p>- two</p>"),
+            "<ul><li>one</li></ul><p>Then:</p><ul><li>two</li></ul>",
+        )
+
+    def test_links_with_no_text_are_removed(self):
+        self.assertEqual(
+            repair_changelog_html("<p>The skills [](/skills) were updated.</p>"),
+            "<p>The skills  were updated.</p>",
+        )
+
+    def test_a_paragraph_left_empty_by_the_repair_is_dropped(self):
+        self.assertEqual(repair_changelog_html("<p>Real change.</p><p>[](/skills)</p>"), "<p>Real change.</p>")
+
+    def test_a_note_that_needs_no_repair_is_left_alone(self):
+        note = '<p><a href="/role/x">Role</a> changed.</p><ul><li>alpha</li></ul>'
+        self.assertEqual(repair_changelog_html(note), note)
+
+    def test_empty_values(self):
+        self.assertEqual(repair_changelog_html(""), "")
+        self.assertEqual(repair_changelog_html(None), "")
 
 
 class ParseIsoDateTests(SimpleTestCase):

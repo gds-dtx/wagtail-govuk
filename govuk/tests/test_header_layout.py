@@ -47,6 +47,22 @@ class HeaderLayoutTests(TestCase):
         self.assertContains(response, "Capability Framework")
         self.assertContains(response, 'class="app-site-search"', count=1)
 
+    def test_the_govuk_logo_links_to_govuk(self):
+        """The Design System's header logo leaves the service for GOV.UK."""
+        response = self._get()
+
+        self.assertContains(
+            response,
+            '<a href="https://www.gov.uk" class="govuk-header__homepage-link">',
+        )
+
+    def test_every_page_carries_a_back_to_top_button(self):
+        """main.js reveals it once the page has been scrolled."""
+        response = self._get()
+
+        self.assertContains(response, 'id="back-to-top"')
+        self.assertContains(response, "Back to top")
+
     def test_the_sign_in_link_shows_unless_it_is_hidden(self):
         self.assertContains(self._get(), "Sign in")
 

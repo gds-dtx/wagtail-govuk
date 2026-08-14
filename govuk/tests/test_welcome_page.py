@@ -147,6 +147,22 @@ class FrameworkUpdatesTests(TestCase):
         # Entries about a single role stay on that role's page.
         self.assertNotContains(response, "Data analyst skills changed.")
 
+    def test_the_history_offers_a_toggle_and_reads_without_javascript(self):
+        """main.js collapses the history; without it the history is all there."""
+        self.page.show_framework_updates = True
+        self.page.save()
+
+        response = self.client.get(self.page.url)
+
+        self.assertContains(response, 'id="toggle-link"')
+        self.assertContains(response, 'aria-controls="collapsible-div"')
+        self.assertContains(response, "show all updates")
+        # The panel is served open, and the toggle hidden, so a reader without
+        # JavaScript is not left with a control that does nothing.
+        self.assertContains(response, 'id="collapsible-div"')
+        self.assertNotContains(response, 'id="collapsible-div" hidden')
+        self.assertContains(response, "The framework was published.")
+
 
 class FrameworkWelcomeContentTests(TestCase):
     """The welcome prose lives in the CMS, in the page's own blocks.

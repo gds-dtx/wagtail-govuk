@@ -17,6 +17,7 @@ from govuk.capability_framework import (
 )
 from govuk.models import (
     ContentPage,
+    CustomiseSettings,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
@@ -326,3 +327,19 @@ class Command(BaseCommand):
         home.save()
         home.save_revision().publish()
         self.stdout.write("Home page: role navigation and updates switched on")
+        self.write_site_settings()
+
+    def write_site_settings(self):
+        """Put the site name and search where a GOV.UK service puts them.
+
+        Written alongside the home page on first import only, so an editor's
+        later choice is not reverted by a re-run.
+        """
+        site = Site.objects.filter(is_default_site=True).first()
+        if site is None:
+            return
+
+        customise = CustomiseSettings.for_site(site)
+        customise.show_service_name_in_navigation = True
+        customise.save()
+        self.stdout.write("Site settings: service name moved to the navigation")

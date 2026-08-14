@@ -141,6 +141,51 @@ class RolePageLayoutTests(TestCase):
             html=True,
         )
 
+    def test_the_role_levels_heading_is_followed_by_the_frameworks_intro(self):
+        response = self.client.get(self.data_analyst_page.url)
+
+        self.assertContains(
+            response,
+            "There are 2 data analyst role levels, from associate data analyst "
+            "to senior data analyst.",
+        )
+        self.assertContains(
+            response,
+            "The typical responsibilities and skills for each role level are "
+            "described in the sections below.",
+        )
+
+    def test_the_intro_reads_as_one_where_there_is_a_single_role_level(self):
+        response = self.client.get(self.business_architect_page.url)
+
+        self.assertContains(response, "There is one business architect role level.")
+        self.assertContains(
+            response,
+            "The typical responsibilities and skills for this role level are "
+            "described below.",
+        )
+
+    def test_a_role_levels_skills_link_to_their_definitions(self):
+        skills = self.root_page.add_child(
+            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+        )
+        skills.save_revision().publish()
+
+        response = self.client.get(self.data_analyst_page.url)
+
+        self.assertContains(
+            response,
+            f'<a href="{skills.url}#data-visualisation" class="govuk-link skill-name">'
+            "Data visualisation</a>",
+            html=True,
+        )
+
+    def test_a_skill_name_stays_plain_text_without_a_skills_page_to_link_to(self):
+        response = self.client.get(self.data_analyst_page.url)
+
+        self.assertNotContains(response, "skill-name")
+        self.assertContains(response, "Data visualisation")
+
     def test_the_title_uses_the_standard_heading_rather_than_the_site_hero(self):
         response = self.client.get(self.data_analyst_page.url)
 
@@ -263,10 +308,46 @@ class RolePageLayoutTests(TestCase):
 
         self.assertNotIn("Unfamilied role", titles)
 
-    def test_a_role_page_shows_no_breadcrumbs(self):
+    def test_a_role_page_carries_a_breadcrumb_for_narrow_screens(self):
+        """It stands in for the side navigation, which a narrow screen hides."""
         response = self.client.get(self.data_analyst_page.url)
 
-        self.assertNotContains(response, "govuk-breadcrumbs")
+        self.assertContains(response, "govuk-breadcrumbs--mobile-only")
+        self.assertContains(
+            response,
+            '<a class="govuk-breadcrumbs__link" href="/">Home</a>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<a class="govuk-breadcrumbs__link" href="/#data-roles">Data roles</a>',
+            html=True,
+        )
+        self.assertContains(
+            response, '<span aria-current="page">Data analyst</span>', html=True
+        )
+
+    def test_the_breadcrumb_leaves_out_a_family_it_cannot_point_at(self):
+        """A page of roles from several families has no one place to go back to."""
+        page = self.root_page.add_child(
+            instance=RolePage(
+                title="Every role",
+                slug="every-role",
+                selected_roles=[
+                    {"type": "role", "value": self.data_analyst.pk},
+                    {"type": "role", "value": self.business_architect.pk},
+                ],
+            )
+        )
+        page.save_revision().publish()
+
+        response = self.client.get(page.specific.url)
+
+        self.assertContains(response, "govuk-breadcrumbs")
+        self.assertNotContains(response, ">Data roles</a>")
+        self.assertContains(
+            response, '<span aria-current="page">Every role</span>', html=True
+        )
 
     def test_anchors_stay_unique_when_a_page_renders_several_roles(self):
         page = self.root_page.add_child(

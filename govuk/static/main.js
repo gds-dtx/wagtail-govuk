@@ -6,6 +6,9 @@ document.addEventListener("DOMContentLoaded", function () {
   setListClasses();
   setAutoHeadingNavigation();
   addStartButtonSVG();
+  setBackToTop();
+  setChangelogToggle();
+  openLinkedAccordionSection();
 });
 
 function setHyperlinkClasses() {
@@ -69,6 +72,122 @@ function addStartButtonSVG() {
       button.appendChild(svg);
     }
   });
+}
+
+function setBackToTop() {
+  // The button is hidden in CSS and only ever revealed here, so a visitor
+  // without JavaScript is not offered a control that cannot work.
+  const button = document.getElementById("back-to-top");
+  if (!button) {
+    return;
+  }
+
+  const footer = document.querySelector(".govuk-template__footer");
+
+  function update() {
+    const scrolled = window.pageYOffset || document.documentElement.scrollTop;
+    button.classList.toggle(
+      "back-to-top--visible",
+      scrolled > window.innerHeight,
+    );
+
+    // Lift the button clear of the footer rather than letting it sit on top.
+    let bottom = 30;
+    if (footer) {
+      const overlap = window.innerHeight - footer.getBoundingClientRect().top;
+      if (overlap > 0) {
+        bottom = overlap + 30;
+      }
+    }
+    button.style.bottom = bottom + "px";
+  }
+
+  button.addEventListener("click", function () {
+    window.scrollTo(0, 0);
+    // Send keyboard focus back to the top of the page as well as the view.
+    const skipLink = document.querySelector(".govuk-skip-link");
+    if (skipLink) {
+      skipLink.focus();
+    }
+  });
+
+  window.addEventListener("scroll", update, { passive: true });
+  window.addEventListener("resize", update, { passive: true });
+  update();
+}
+
+function setChangelogToggle() {
+  // The update history is long, so it is collapsed once JavaScript can offer a
+  // way to open it again. Without JavaScript it stays open and the toggle stays
+  // hidden.
+  const toggle = document.getElementById("toggle-link");
+  const panel = document.getElementById("collapsible-div");
+  if (!toggle || !panel) {
+    return;
+  }
+
+  function setExpanded(expanded) {
+    panel.hidden = !expanded;
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    toggle.textContent = expanded ? "- hide all updates" : "+ show all updates";
+  }
+
+  toggle.hidden = false;
+  setExpanded(false);
+
+  toggle.addEventListener("click", function (event) {
+    event.preventDefault();
+    setExpanded(panel.hidden);
+  });
+
+  // "See all updates" at the top of the page opens the history as well as
+  // jumping to it, so the anchor still works on its own.
+  const jumpLink = document.getElementById("jump-link");
+  if (jumpLink) {
+    jumpLink.addEventListener("click", function () {
+      setExpanded(true);
+    });
+  }
+}
+
+function openLinkedAccordionSection() {
+  // Skill names on a role page deep link into the Skills A to Z, which is an
+  // accordion, so the section being linked to has to be opened.
+  const accordion = document.querySelector(".govuk-accordion");
+  if (!accordion) {
+    return;
+  }
+
+  function openFromHash() {
+    const hash = window.location.hash;
+    if (hash.length < 2) {
+      return;
+    }
+
+    let target = null;
+    try {
+      target = document.getElementById(decodeURIComponent(hash.slice(1)));
+    } catch (error) {
+      return;
+    }
+    if (!target) {
+      return;
+    }
+
+    const section = target.closest(".govuk-accordion__section");
+    if (!section) {
+      return;
+    }
+
+    const button = section.querySelector(".govuk-accordion__section-button");
+    if (button && button.getAttribute("aria-expanded") === "false") {
+      button.click();
+    }
+    target.scrollIntoView();
+  }
+
+  openFromHash();
+  window.addEventListener("hashchange", openFromHash);
 }
 
 function setAutoHeadingNavigation() {

@@ -480,14 +480,21 @@ main > :nth-last-child(1 of .section-cards-container) {
    level being described. Hidden from assistive technology, which is given the
    wording instead. */
 .skill-definitions__container > .progress-bar__container {
-    width: 100%;
+    width: 50%;
     height: 11px;
 }
 
+.skill-definitions__container > .progress-bar__container > .progress-bar__divider {
+    width: 5%;
+}
+
+/* The bar is an indicator, not a measure, so it takes a share of the column
+   rather than filling it. The percentages step up as the column narrows,
+   which is how the framework sizes them. */
 .progress-bar__container {
     display: table;
     table-layout: fixed;
-    width: 100%;
+    width: 50%;
     height: 10px;
     border-spacing: 10px;
     margin-top: -9px;
@@ -552,6 +559,80 @@ main > :nth-last-child(1 of .section-cards-container) {
 
 .changelog-content {
     max-width: 38em;
+}
+
+/* "Back to top", revealed by main.js once the page has been scrolled. It stays
+   hidden without JavaScript, where the browser's own controls do the job. */
+#back-to-top {
+    display: none;
+    position: fixed;
+    bottom: 30px;
+    left: 15px;
+    z-index: 99;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background-color: #fff;
+    color: var(--govuk-link-colour, #1d70b8);
+    font-family: "GDS Transport", arial, sans-serif;
+    font-size: 1.125rem;
+    line-height: 1.25;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+#back-to-top:hover {
+    color: var(--govuk-link-hover-colour, #003078);
+    text-decoration-thickness: 3px;
+}
+
+#back-to-top:focus {
+    background-color: #fd0;
+    box-shadow: 0 -2px #fd0, 0 4px #0b0c0c;
+    color: #0b0c0c;
+    outline: 3px solid transparent;
+    text-decoration: none;
+}
+
+#back-to-top.back-to-top--visible {
+    display: block;
+}
+
+#back-to-top.back-to-top--docked {
+    position: absolute;
+    bottom: 20px;
+}
+
+.back-to-top__icon {
+    float: left;
+    width: 0.8em;
+    height: 0.968em;
+    margin-right: 0.3em;
+}
+
+/* The breadcrumb stands in for the side navigation once that is hidden, so it
+   only shows at the widths where the navigation does not. */
+@media (min-width: 40.0625em) {
+    .govuk-breadcrumbs--mobile-only {
+        display: none;
+    }
+}
+
+@media (max-width: 68.75em) {
+    .progress-bar__container {
+        width: 80%;
+    }
+
+    .skill-definitions__container > .progress-bar__container {
+        width: 60%;
+    }
+}
+
+@media (max-width: 48em) {
+    .progress-bar__container,
+    .skill-definitions__container > .progress-bar__container {
+        width: 100%;
+    }
 }
 
 @media (min-width: 40.0625em) {
