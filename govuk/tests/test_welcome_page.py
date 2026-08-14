@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import date
 
@@ -367,6 +368,61 @@ class FrameworkWelcomeContentTests(TestCase):
         )
         # The sub-section still renders, it just stays out of the contents list.
         self.assertIn('id="a-note"', page)
+
+    def test_a_heading_level_cannot_carry_anything_but_the_tag(self):
+        """A page import writes stream data without validating the blocks.
+
+        The heading level reaches the template as an editor typed it, so the
+        template picks the tag rather than interpolating the stored value.
+        """
+        self._welcome()
+
+        field = ContentPage._meta.get_field("framework_welcome_body")
+        self.page.framework_welcome_body = field.to_python(
+            json.dumps(
+                [
+                    {
+                        "type": "section",
+                        "value": {
+                            "heading": "Innocent heading",
+                            "level": "h2 onmouseover=alert(document.domain) x",
+                            "anchor": "",
+                            "body": "<p>Prose.</p>",
+                        },
+                    }
+                ]
+            )
+        )
+        self.page.save()
+        page = self.client.get(self.page.url).content.decode()
+
+        self.assertNotIn("onmouseover", page)
+        self.assertIn(
+            '<h2 class="govuk-heading-l" id="innocent-heading">Innocent heading</h2>',
+            page,
+        )
+
+    def test_a_sub_section_still_renders_as_the_smaller_heading(self):
+        self._welcome()
+
+        self.page.framework_welcome_body = [
+            (
+                "section",
+                {
+                    "heading": "A note",
+                    "level": "h3",
+                    "anchor": "",
+                    "body": "<p>Not a main section.</p>",
+                },
+            )
+        ]
+        self.page.save()
+        page = self.client.get(self.page.url).content.decode()
+
+        self.assertIn(
+            '<h3 class="govuk-heading-m" id="a-note">A note</h3>',
+            page,
+        )
 
     def test_the_skill_level_table_and_its_bars_survive(self):
         """These are exactly what a rich text field would have thrown away."""

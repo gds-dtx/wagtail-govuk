@@ -2372,6 +2372,35 @@ def role_navigation_groups(*, current_page_id: int | None = None) -> list[dict]:
     return navigation
 
 
+def framework_breadcrumbs(request, page, *, family: str = "") -> list[dict]:
+    """Home, an optional role family, then the page itself.
+
+    Stands in for the side navigation on a narrow screen, which hides it, so
+    every page carrying that navigation carries the same trail. The family
+    entry points at its heading on the home page, which is where the role
+    lists appear once the navigation is hidden.
+    """
+    site = Site.find_for_request(request)
+    home_url = site.root_page.get_url(request) if site else None
+    if not home_url:
+        return []
+
+    trail = [{"title": "Home", "url": home_url, "is_current": False}]
+
+    if family:
+        group_title = f"{family} roles"
+        trail.append(
+            {
+                "title": group_title,
+                "url": f"{home_url}#{slugify(group_title)}",
+                "is_current": False,
+            }
+        )
+
+    trail.append({"title": page.title, "url": None, "is_current": True})
+    return trail
+
+
 class RolePage(Page):
     parent_page_types = [
         "govuk.ContentPage",
@@ -2677,37 +2706,18 @@ class RolePage(Page):
         return context
 
     def _role_breadcrumbs(self, request, role_sections: list[dict]) -> list[dict]:
-        """Home, the role's family, then the role itself.
-
-        The family entry points at its heading on the home page, which is where
-        the role lists appear once the side navigation is hidden.
-        """
-        site = Site.find_for_request(request)
-        home_url = site.root_page.get_url(request) if site else None
-        if not home_url:
-            return []
-
-        trail = [{"title": "Home", "url": home_url, "is_current": False}]
-
+        """Home, the role's family, then the role itself."""
         families = []
         for section in role_sections:
             family = (section["role"].family or "").strip()
             if family and family not in families:
                 families.append(family)
+
         # A page holding roles from more than one family has no single place in
         # the navigation to point back to.
-        if len(families) == 1:
-            group_title = f"{families[0]} roles"
-            trail.append(
-                {
-                    "title": group_title,
-                    "url": f"{home_url}#{slugify(group_title)}",
-                    "is_current": False,
-                }
-            )
-
-        trail.append({"title": self.title, "url": None, "is_current": True})
-        return trail
+        return framework_breadcrumbs(
+            request, self, family=families[0] if len(families) == 1 else ""
+        )
 
 
 class SkillsAZPage(Page):
@@ -2826,6 +2836,7 @@ class SkillsAZPage(Page):
         # carries the same side navigation, and the same narrow-screen
         # breadcrumb standing in for it.
         context["role_navigation"] = role_navigation_groups(current_page_id=self.pk)
+        context["breadcrumbs"] = framework_breadcrumbs(request, self)
         context["breadcrumbs_mobile_only"] = True
         return context
 

@@ -98,6 +98,21 @@ class SkillsAZPageTests(TestCase):
         )
         self.assertContains(response, "govuk-breadcrumbs--mobile-only")
 
+    def test_the_skills_index_breadcrumb_reads_the_way_a_roles_does(self):
+        """Both stand in for the same navigation, so both start at Home."""
+        response = self.client.get(self.skills_page.url)
+
+        self.assertContains(
+            response,
+            '<a class="govuk-breadcrumbs__link" href="/">Home</a>',
+            html=True,
+        )
+        self.assertContains(
+            response, '<span aria-current="page">Skills A-Z</span>', html=True
+        )
+        # Not the site name, which is long enough to wrap on a narrow screen.
+        self.assertNotContains(response, "Capability Framework</a>")
+
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_skills_az_page_is_not_creatable_when_skills_feature_is_disabled(self):
         self.assertFalse(SkillsAZPage.can_create_at(self.root_page))
