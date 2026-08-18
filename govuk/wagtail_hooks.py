@@ -61,6 +61,7 @@ from govuk.page_import_export import (
     dump_payload_as_json,
     import_pages_from_payload,
 )
+from govuk.utils import row_id_from_text
 
 GOVUK_BUTTON_FEATURE = "govuk-button"
 GOVUK_START_BUTTON_FEATURE = "govuk-start-button"
@@ -558,9 +559,10 @@ def _selected_site_for_request(request) -> Site | None:
         or request.POST.get("site_id")
         or ""
     ).strip()
-    if raw_site_id.isdigit():
+    requested_site_id = row_id_from_text(raw_site_id)
+    if requested_site_id is not None:
         selected_site = next(
-            (site for site in sites if site.pk == int(raw_site_id)),
+            (site for site in sites if site.pk == requested_site_id),
             None,
         )
         if selected_site is not None:
@@ -577,9 +579,9 @@ def _import_export_admin_url(site_id: int) -> str:
 def _normalised_selected_ids(raw_ids: list[str]) -> list[int]:
     selected_ids: list[int] = []
     for raw_id in raw_ids:
-        raw_value = (raw_id or "").strip()
-        if raw_value.isdigit():
-            selected_ids.append(int(raw_value))
+        selected_id = row_id_from_text(raw_id)
+        if selected_id is not None:
+            selected_ids.append(selected_id)
     return selected_ids
 
 

@@ -496,6 +496,27 @@ class SearchBackendSourceFilterTests(TestCase):
     def test_a_source_numbered_in_another_script_is_still_a_number(self):
         self.assertEqual(search_backend._normalised_source_filter("٣"), "3")
 
+    def test_a_source_of_more_digits_than_int_reads_matches_nothing(self):
+        """Reading the digits is not enough on its own to reach ``int``.
+
+        Python refuses a run of more than 4,300 digits, so a source of 4,301 of
+        them is decimal all the way down and was still a 500 -- on PostgreSQL
+        as much as on SQLite, since it is ``int`` that objects, not the engine.
+        """
+        results = self._search("1" * 4301)
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+        self.assertEqual(results.selected_source_id, "")
+
+    def test_a_source_larger_than_a_row_id_goes_the_same_way(self):
+        largest = 2**63 - 1
+        self.assertEqual(
+            search_backend._normalised_source_filter(str(largest)), str(largest)
+        )
+        self.assertEqual(search_backend._normalised_source_filter(str(largest + 1)), "")
+
 
 class SearchBackendNulQueryTests(TestCase):
     """A NUL in the query is dropped rather than handed to the database.
@@ -542,3 +563,4 @@ class SearchBackendNulQueryTests(TestCase):
         self.assertEqual(search_backend._clean_query("data\x00 "), "data")
         self.assertEqual(search_backend._clean_query("\x00"), "")
         self.assertEqual(search_backend._clean_query(None), "")
+

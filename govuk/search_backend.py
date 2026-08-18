@@ -16,7 +16,7 @@ from django.utils import timezone
 from wagtail.models import Page, Site
 
 from govuk.models import ContentPage, ExternalContentItem, SectionPage
-from govuk.utils import normalised_text
+from govuk.utils import normalised_text, row_id_from_text
 
 DEFAULT_PAGE_SIZE = 15
 SEARCH_CONFIG = "english"
@@ -888,16 +888,11 @@ class SearchBackend:
             return ""
         if source_value == THIS_SITE_SOURCE_FILTER:
             return THIS_SITE_SOURCE_FILTER
-        # Not ``isdigit``: that counts "²" and "₂" as digits and ``int`` then
-        # refuses them, so a source of "²" in the query string was a 500 rather
-        # than the no-such-source-so-show-everything every other unreadable
-        # value gets. ``isdecimal`` is the set ``int`` can actually read, and it
-        # still admits digits written in other scripts.
-        if not source_value.isdecimal():
-            return ""
-
-        parsed_source_id = int(source_value)
-        if parsed_source_id <= 0:
+        # Not ``isdigit`` then ``int``: "²" is isdigit-True and ``int`` refuses
+        # it, so a source of "²" in the query string was a 500 rather than the
+        # no-such-source-so-show-everything every other unreadable value gets.
+        parsed_source_id = row_id_from_text(source_value)
+        if parsed_source_id is None or parsed_source_id <= 0:
             return ""
         return str(parsed_source_id)
 

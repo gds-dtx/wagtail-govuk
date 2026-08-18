@@ -307,6 +307,32 @@ class ExternalContentApiTests(ApiMetaAssertionsMixin, TestCase):
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(response.json()["items"], [])
 
+    def test_a_filter_of_more_digits_than_int_reads_matches_nothing(self):
+        """Reading the digits is not enough on its own to reach ``int``.
+
+        Python refuses a run of more than 4,300 digits, so a filter of 4,301
+        of them is decimal all the way down and was still a 500 -- on
+        PostgreSQL as much as on SQLite, since ``int`` objects before either
+        engine is asked anything.
+        """
+        for url in ("/api/externalcontent/items/", "/api/externalcontent/sources/"):
+            for parameter in ("tag", "source"):
+                with self.subTest(url=url, parameter=parameter):
+                    response = self.client.get(url, {parameter: "1" * 4301})
+
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.json()["items"], [])
+
+    def test_a_filter_larger_than_a_row_id_matches_nothing(self):
+        """SQLite raises rather than matching nothing past the largest id."""
+        for url in ("/api/externalcontent/items/", "/api/externalcontent/sources/"):
+            for parameter in ("tag", "source"):
+                with self.subTest(url=url, parameter=parameter):
+                    response = self.client.get(url, {parameter: str(2**63)})
+
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.json()["items"], [])
+
     def test_a_nul_in_a_filter_is_dropped_rather_than_sent_to_the_database(self):
         """PostgreSQL refuses a string literal carrying a NUL outright.
 

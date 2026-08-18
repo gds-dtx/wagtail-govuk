@@ -19,7 +19,7 @@ from wagtail.images.api.v2.views import ImagesAPIViewSet
 
 from govuk.authentication import InternalAccessJWTAuthentication
 from govuk.models import ContentDiscoverySource, ExternalContentItem, GovukTag
-from govuk.utils import normalised_text
+from govuk.utils import normalised_text, row_id_from_text
 
 DEFAULT_API_REPOSITORY_URL = "https://github.com/govuk-digital-backbone/wagtail-govuk"
 
@@ -274,16 +274,6 @@ def _filter_parameter(request, name: str) -> str:
     return (request.query_params.get(name) or "").replace("\x00", "").strip()
 
 
-def _names_a_row_by_id(value: str) -> bool:
-    """Whether a filter names what it wants by id rather than by slug or name.
-
-    ``isdecimal`` rather than ``isdigit``: that counts "²" and "₂" as digits
-    and ``int`` then refuses them, so "?source=²" was a 500 rather than a
-    filter matching nothing. It still admits an id written in another script.
-    """
-    return value.isdecimal()
-
-
 class ExternalContentSourcesAPIView(AuthenticatedAPIViewSetMixin, generics.ListAPIView):
     permission_classes = [AllowAny]
     serializer_class = ExternalContentSourceSerializer
@@ -295,10 +285,9 @@ class ExternalContentSourcesAPIView(AuthenticatedAPIViewSetMixin, generics.ListA
         raw_tag_filter = _filter_parameter(self.request, "tag").lower()
         if raw_tag_filter:
             queryset = queryset.filter(external_content_items__hidden=False)
-            if _names_a_row_by_id(raw_tag_filter):
-                queryset = queryset.filter(
-                    external_content_items__tags__id=int(raw_tag_filter)
-                )
+            tag_id = row_id_from_text(raw_tag_filter)
+            if tag_id is not None:
+                queryset = queryset.filter(external_content_items__tags__id=tag_id)
             else:
                 queryset = queryset.filter(
                     external_content_items__tags__slug__iexact=raw_tag_filter
@@ -306,8 +295,9 @@ class ExternalContentSourcesAPIView(AuthenticatedAPIViewSetMixin, generics.ListA
 
         raw_source_filter = _filter_parameter(self.request, "source")
         if raw_source_filter:
-            if _names_a_row_by_id(raw_source_filter):
-                queryset = queryset.filter(id=int(raw_source_filter))
+            source_id = row_id_from_text(raw_source_filter)
+            if source_id is not None:
+                queryset = queryset.filter(id=source_id)
             else:
                 queryset = queryset.filter(
                     Q(name__iexact=raw_source_filter) | Q(url__iexact=raw_source_filter)
@@ -336,15 +326,17 @@ class ExternalContentItemsAPIView(AuthenticatedAPIViewSetMixin, generics.ListAPI
 
         raw_tag_filter = _filter_parameter(self.request, "tag").lower()
         if raw_tag_filter:
-            if _names_a_row_by_id(raw_tag_filter):
-                queryset = queryset.filter(tags__id=int(raw_tag_filter))
+            tag_id = row_id_from_text(raw_tag_filter)
+            if tag_id is not None:
+                queryset = queryset.filter(tags__id=tag_id)
             else:
                 queryset = queryset.filter(tags__slug__iexact=raw_tag_filter)
 
         raw_source_filter = _filter_parameter(self.request, "source")
         if raw_source_filter:
-            if _names_a_row_by_id(raw_source_filter):
-                queryset = queryset.filter(source_id=int(raw_source_filter))
+            source_id = row_id_from_text(raw_source_filter)
+            if source_id is not None:
+                queryset = queryset.filter(source_id=source_id)
             else:
                 queryset = queryset.filter(
                     Q(source__name__iexact=raw_source_filter)

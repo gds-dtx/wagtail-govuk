@@ -25,6 +25,7 @@ from govuk.models import (
     GovukSkill,
     GovukTag,
 )
+from govuk.utils import row_id_from_text
 
 PAGE_EXPORT_FORMAT = "govuk-page-import-export/v1"
 BASE_PAGE_LOCAL_FIELD_NAMES = {field.name for field in Page._meta.local_fields}
@@ -932,16 +933,18 @@ def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportRe
                 continue
 
             raw_skill_value = raw_skill_requirement.get("skill")
+            skill_named_by_id = row_id_from_text(raw_skill_value) is not None
             skill_slug = _normalised_slug(
                 raw_skill_requirement.get("skill_slug")
-                or ("" if str(raw_skill_value or "").isdigit() else raw_skill_value)
+                or ("" if skill_named_by_id else raw_skill_value)
             )
-            skill_id = raw_skill_requirement.get("skill_id") or raw_skill_value
+            raw_skill_id = raw_skill_requirement.get("skill_id") or raw_skill_value
+            skill_id = row_id_from_text(raw_skill_id)
             skill = None
             if skill_slug:
                 skill = GovukSkill.objects.filter(slug=skill_slug).only("pk").first()
-            if skill is None and str(skill_id or "").isdigit():
-                skill = GovukSkill.objects.filter(pk=int(skill_id)).only("pk", "slug").first()
+            if skill is None and skill_id is not None:
+                skill = GovukSkill.objects.filter(pk=skill_id).only("pk", "slug").first()
                 if skill is not None and not skill_slug:
                     skill_slug = skill.slug
 
@@ -949,7 +952,7 @@ def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportRe
                 result.errors.append(
                     (
                         f"Role '{role_slug}' skipped skill requirement "
-                        f"for missing skill '{skill_slug or skill_id}'."
+                        f"for missing skill '{skill_slug or raw_skill_id}'."
                     )
                 )
                 continue
@@ -1368,8 +1371,8 @@ def _resolve_tag_id(raw_tag_value, *, tag_lookup: dict[str, dict[str, int]] | No
         raw_text = raw_tag_value.strip()
         if not raw_text:
             return None
-        if raw_text.isdigit():
-            numeric_id = int(raw_text)
+        numeric_id = row_id_from_text(raw_text)
+        if numeric_id is not None:
             if GovukTag.objects.filter(pk=numeric_id).exists():
                 return numeric_id
         return _resolve_tag_id_from_slug_and_name(
@@ -1383,8 +1386,8 @@ def _resolve_tag_id(raw_tag_value, *, tag_lookup: dict[str, dict[str, int]] | No
         raw_tag_id = raw_tag_value.get("id") or raw_tag_value.get("pk") or raw_tag_value.get(
             "value_id"
         )
-        if str(raw_tag_id or "").isdigit():
-            numeric_id = int(raw_tag_id)
+        numeric_id = row_id_from_text(raw_tag_id)
+        if numeric_id is not None:
             if GovukTag.objects.filter(pk=numeric_id).exists():
                 return numeric_id
 
@@ -1566,8 +1569,9 @@ def _skill_slug_from_value(raw_skill_value) -> str:
     if isinstance(raw_skill_value, dict):
         raw_skill_value = raw_skill_value.get("slug") or raw_skill_value.get("skill_slug")
 
-    if str(raw_skill_value or "").isdigit():
-        matching_skill = GovukSkill.objects.filter(pk=int(raw_skill_value)).only("slug").first()
+    skill_id = row_id_from_text(raw_skill_value)
+    if skill_id is not None:
+        matching_skill = GovukSkill.objects.filter(pk=skill_id).only("slug").first()
         if matching_skill is not None:
             return _normalised_slug(matching_skill.slug)
 
