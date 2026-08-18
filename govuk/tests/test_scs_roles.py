@@ -295,6 +295,32 @@ class SeniorCivilServiceRoleTests(TestCase):
                 self.assertContains(response, f'id="{anchor}"')
                 self.assertContains(response, f'href="#{anchor}"')
 
+    def test_a_senior_role_given_levels_does_not_repeat_the_role_levels_id(self):
+        """"role-levels" heads a senior role's skills only because the
+        framework gives senior roles no levels. Nothing in the model says so,
+        and a page carrying both would otherwise print the id twice and send
+        both contents links to whichever came first.
+        """
+        self.cto.levels = [
+            {
+                "type": "level",
+                "value": {
+                    "title": "Lead chief technology officer",
+                    "description": "",
+                    "grades": ["scs1"],
+                    "skills": [
+                        {"skill": self.delegated_skill.pk, "level": "working"}
+                    ],
+                },
+            }
+        ]
+        self.cto.save()
+
+        content = self.client.get(self.cto_page.url).content.decode()
+
+        self.assertEqual(content.count('id="role-levels"'), 1)
+        self.assertEqual(content.count('id="skills"'), 1)
+
     def test_roles_that_could_lead_to_this_one_are_listed_in_the_order_given(self):
         data_engineer = GovukRole.objects.create(title="Data engineer", family="Data")
         solution_architect = GovukRole.objects.create(

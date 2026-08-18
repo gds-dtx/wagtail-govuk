@@ -831,8 +831,24 @@ def _import_role_references(
     if role is None:
         return
 
+    raw_references = node.get("roles_that_could_lead_here")
+    # An export written before the field existed says nothing about a role's
+    # progression, and saying nothing is not the same as asking for it to be
+    # emptied: importing one of the known-good files kept for staging and
+    # production would otherwise clear the curated path off every senior role,
+    # with nothing in the report to show it had gone. An explicit empty list
+    # still empties it.
+    if raw_references is None:
+        return
+    if not isinstance(raw_references, list):
+        result.errors.append(
+            f"Role '{slug}' kept its existing progression roles because "
+            "'roles_that_could_lead_here' is not an array."
+        )
+        return
+
     references = _deserialise_role_references(
-        node.get("roles_that_could_lead_here"),
+        raw_references,
         role_slug=slug,
         roles_by_slug=roles_by_slug,
         result=result,
@@ -959,15 +975,12 @@ def _deserialise_scs_skills(raw_skills, *, role_slug: str, result: PageImportRes
 
 
 def _deserialise_role_references(
-    raw_roles,
+    raw_roles: list,
     *,
     role_slug: str,
     roles_by_slug: dict[str, GovukRole],
     result: PageImportResult,
 ) -> list[dict]:
-    if not isinstance(raw_roles, list):
-        return []
-
     blocks_payload: list[dict] = []
     for raw_role in raw_roles:
         raw_value = raw_role.get("value") if isinstance(raw_role, dict) else raw_role

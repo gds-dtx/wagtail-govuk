@@ -221,6 +221,76 @@ class RoleExportImportFieldTests(TestCase):
         self.assertEqual(result.errors, [])
         self.assertEqual(saved, [])
 
+    def test_a_file_written_before_the_field_existed_leaves_the_mapping_alone(self):
+        """The known-good exports kept for staging and production were written
+        without this field. Reading their silence as "empty it" would clear the
+        curated path off every senior role, and report nothing."""
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": self.role.pk}
+        ]
+        self.scs_role.save()
+        payload = self._export()
+        for row in payload["roles"]:
+            row.pop("roles_that_could_lead_here", None)
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+        self.assertEqual(result.errors, [])
+
+        scs_role = GovukRole.objects.get(slug="chief-technology-officer")
+        self.assertEqual(
+            [role.slug for role in scs_role.get_roles_that_could_lead_here()],
+            ["data-analyst"],
+        )
+
+    def test_an_empty_list_still_empties_the_mapping(self):
+        """Said outright rather than left out, which is what an export of a
+        role an editor has cleared carries."""
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": self.role.pk}
+        ]
+        self.scs_role.save()
+        payload = self._export()
+        for row in payload["roles"]:
+            if row["slug"] == "chief-technology-officer":
+                row["roles_that_could_lead_here"] = []
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+        self.assertEqual(result.errors, [])
+
+        scs_role = GovukRole.objects.get(slug="chief-technology-officer")
+        self.assertEqual(scs_role.get_roles_that_could_lead_here(), [])
+
+    def test_a_mapping_that_is_not_an_array_is_reported_rather_than_obeyed(self):
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": self.role.pk}
+        ]
+        self.scs_role.save()
+        payload = self._export()
+        for row in payload["roles"]:
+            if row["slug"] == "chief-technology-officer":
+                row["roles_that_could_lead_here"] = "data-analyst"
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+
+        self.assertEqual(
+            result.errors,
+            [
+                "Role 'chief-technology-officer' kept its existing progression "
+                "roles because 'roles_that_could_lead_here' is not an array."
+            ],
+        )
+        scs_role = GovukRole.objects.get(slug="chief-technology-officer")
+        self.assertEqual(
+            [role.slug for role in scs_role.get_roles_that_could_lead_here()],
+            ["data-analyst"],
+        )
+
     def test_a_progression_role_missing_from_the_destination_is_reported(self):
         self.scs_role.roles_that_could_lead_here = [
             {"type": "role", "value": self.role.pk}

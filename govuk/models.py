@@ -2992,11 +2992,17 @@ class RolePage(Page):
     def _lead_role_name(cls, title: str) -> str:
         """A role title as the framework writes it in the sentence below the
         heading, where only the opening word is lowered so that the capitals
-        inside "Development operations (DevOps) engineer" survive."""
+        inside "Development operations (DevOps) engineer" survive.
+
+        An acronym opening the title is left as it is, the same exception the
+        heading above makes: "an IT service manager", not "an it service
+        manager" a line under "What an IT service manager does".
+        """
         words = (title or "").split()
         if not words:
             return ""
-        return " ".join([words[0].lower(), *words[1:]])
+        first = words[0] if words[0].isupper() else words[0].lower()
+        return " ".join([first, *words[1:]])
 
     @classmethod
     def _role_article(cls, name: str) -> str:
@@ -3085,7 +3091,7 @@ class RolePage(Page):
 
     @staticmethod
     def _section_anchors(
-        *, is_scs: bool, display_role_name: str, suffix: str
+        *, is_scs: bool, has_levels: bool, display_role_name: str, suffix: str
     ) -> dict[str, str]:
         """The framework's own ids, so a link written against the live service
         still lands on the section it named.
@@ -3096,12 +3102,19 @@ class RolePage(Page):
         differently from the rest of the framework: its skills heading carries
         "role-levels", the shared-skills heading "roles-that-shares", and
         "related-roles" means the roles leading into the job rather than the
-        ones beside it. Nothing else claims "role-levels" there, senior roles
-        having no levels.
+        ones beside it.
+
+        That first one is only free because senior roles have no levels, which
+        is how the framework is written rather than anything the model holds:
+        one tick of the senior box on a role with levels and both sections
+        would answer to "role-levels", leaving the page with a repeated id and
+        two contents links onto the same heading. Where a senior role does have
+        levels its skills take the ordinary "skills" instead.
         """
         return {
             "overview": f"what-a-{slugify(display_role_name)}-does{suffix}",
-            "skills": ("role-levels" if is_scs else "skills") + suffix,
+            "skills": ("role-levels" if is_scs and not has_levels else "skills")
+            + suffix,
             "levels": f"role-levels{suffix}",
             "related_roles": ("roles-that-shares" if is_scs else "related-roles")
             + suffix,
@@ -3214,6 +3227,7 @@ class RolePage(Page):
             suffix = f"-{role.slug}" if needs_unique_anchors else ""
             section["anchors"] = self._section_anchors(
                 is_scs=section["is_scs"],
+                has_levels=bool(section["levels"]),
                 display_role_name=display_role_name,
                 suffix=suffix,
             )

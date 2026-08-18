@@ -1,7 +1,17 @@
+import os
+
+from django.conf import settings
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.models import ContentPage, CustomiseSettings, PhaseBannerSettings
+
+# Whichever module the run was given, rather than the one the author happens to
+# export: named outright the footer assertions below pass only on the machine
+# they were written on, and `manage.py test` defaults to another. Read the same
+# way the context processor reads it, and read now, because `override_settings`
+# swaps in a holder whose `SETTINGS_MODULE` is None.
+SETTINGS_MODULE = os.getenv("DJANGO_SETTINGS_MODULE") or settings.SETTINGS_MODULE
 
 
 class HeaderLayoutTests(TestCase):
@@ -136,7 +146,7 @@ class FooterDebugLineTests(TestCase):
         response = self.client.get(self.page.url)
 
         self.assertContains(response, "govuk-footer__meta-custom")
-        self.assertContains(response, "Settings: govuk.settings.localnoauth")
+        self.assertContains(response, f"Settings: {SETTINGS_MODULE}")
 
     @override_settings(DEBUG=False)
     def test_they_stay_out_of_the_page_source_otherwise(self):
@@ -144,4 +154,4 @@ class FooterDebugLineTests(TestCase):
         response = self.client.get(self.page.url)
 
         self.assertNotContains(response, "govuk-footer__meta-custom")
-        self.assertNotContains(response, "govuk.settings.localnoauth")
+        self.assertNotContains(response, f"Settings: {SETTINGS_MODULE}")

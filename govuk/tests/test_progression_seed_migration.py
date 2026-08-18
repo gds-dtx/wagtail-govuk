@@ -8,7 +8,11 @@ migration immediately before it.
 from importlib import import_module
 
 from django.apps import apps
+from django.contrib.contenttypes.models import ContentType
+from django.db import connection
+from django.db.migrations.loader import MigrationLoader
 from django.test import TestCase
+from wagtail.models import ReferenceIndex
 
 from govuk.models import GovukRole
 
@@ -91,4 +95,62 @@ class ProgressionSeedMigrationTests(TestCase):
         self.assertEqual(
             self._seeded("chief-technology-officer"),
             ["software-developer", "technical-architect"],
+        )
+
+
+class ProgressionSeedReferenceIndexTests(TestCase):
+    """What Wagtail is told about the roles the seeded blocks point at.
+
+    Run against the historical model this time, which is the one a deployment
+    hands the migration and the only one that shows the gap: saving through it
+    updates no reference index, so the admin would offer to delete a role four
+    senior roles name while reporting no usage of it anywhere.
+    """
+
+    def setUp(self):
+        for slug in ("chief-technology-officer", "software-developer"):
+            GovukRole.objects.create(
+                title=slug.replace("-", " ").capitalize(),
+                slug=slug,
+                is_senior_civil_service=slug == "chief-technology-officer",
+            )
+
+    def _references(self):
+        return ReferenceIndex.objects.filter(
+            content_type=ContentType.objects.get_for_model(GovukRole),
+            to_content_type=ContentType.objects.get_for_model(GovukRole),
+        )
+
+    def _historical_apps(self):
+        """The models as they stood at 0060, which is what 0061 is given."""
+        loader = MigrationLoader(connection)
+        state = loader.project_state(
+            ("govuk", "0060_govukrole_roles_that_could_lead_here")
+        )
+        return state.apps
+
+    def test_the_seeded_blocks_are_written_to_the_reference_index(self):
+        seed(self._historical_apps(), None)
+
+        self.assertEqual(
+            [reference.to_object_id for reference in self._references()],
+            [str(GovukRole.objects.get(slug="software-developer").pk)],
+        )
+
+    def test_it_records_no_more_than_saving_the_role_by_hand_would(self):
+        seed(self._historical_apps(), None)
+        seeded = {
+            (reference.to_object_id, reference.content_path)
+            for reference in self._references()
+        }
+
+        senior = GovukRole.objects.get(slug="chief-technology-officer")
+        senior.save()
+
+        self.assertEqual(
+            {
+                (reference.to_object_id, reference.content_path)
+                for reference in self._references()
+            },
+            seeded,
         )

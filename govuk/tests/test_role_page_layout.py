@@ -432,7 +432,14 @@ class RoleLeadParagraphTests(TestCase):
         )
 
     def test_a_role_beginning_with_a_vowel_takes_an(self):
-        self.assertIn("what an it service manager in government does", self._lead_for("IT service manager"))
+        self.assertIn("what an IT service manager in government does", self._lead_for("IT service manager"))
+
+    def test_an_acronym_opening_a_title_is_not_lowered_with_the_first_word(self):
+        """It sits a line under "What an IT service manager does", where the
+        heading keeps the capitals, so lowering them here reads as a typo."""
+        content = self._lead_for("IT service manager")
+
+        self.assertNotIn("what an it service manager", content)
 
     def test_a_u_sounded_as_you_takes_a_rather_than_an(self):
         """"A user researcher", which is how the framework writes it."""
