@@ -851,9 +851,34 @@ class SearchBackend:
             score += INTERNAL_RESULT_BOOST
         # Someone typing a role or skill name in full means that one, not the
         # longer title that happens to quote it.
-        if query and item.title.strip().lower() == query.strip().lower():
+        if self._named_exactly_as_searched(item, query):
             score += EXACT_TITLE_BOOST
         return score
+
+    def _named_exactly_as_searched(self, item: SearchResultItem, query: str) -> bool:
+        return bool(query) and item.title.strip().lower() == query.strip().lower()
+
+    def _sort_key(self, item: SearchResultItem, query: str) -> tuple[bool, float, str]:
+        """Ours by that name first, then the score, then the title.
+
+        A boost alone cannot keep the promise, whatever it is set to. The longer
+        title that quotes the query is usually a skill, and a skill scores on its
+        description and its level points as well as its name, so three fields of
+        a near match outrun one field of an exact one: searching "Business
+        architect" put the skill "Business architecture" above the role of that
+        name by 0.45, and did the same to three other roles. The score is
+        unbounded in the number of words searched for, so no constant is safe.
+
+        Ours only. An external item named exactly what was typed keeps its boost
+        and takes its chances on the score, rather than jumping the site's own
+        pages, which is what INTERNAL_RESULT_BOOST is for.
+        """
+        named_exactly = self._named_exactly_as_searched(item, query)
+        return (
+            item.is_external or not named_exactly,
+            -item.score,
+            item.title.lower(),
+        )
 
     def _clean_text(self, value: Any) -> str:
         if not value:
@@ -996,7 +1021,7 @@ class SearchBackend:
         for item in results:
             item.score = self._ranking_score(item, query)
 
-        for item in sorted(results, key=lambda item: (-item.score, item.title.lower())):
+        for item in sorted(results, key=lambda item: self._sort_key(item, query)):
             key = (item.title.lower(), item.url)
             if key in seen:
                 continue

@@ -455,6 +455,82 @@ class SearchBackendSkillTests(TestCase):
             titles.index("Enterprise architecture (business analyst)"),
         )
 
+    def test_a_role_beats_a_skill_whose_name_and_wording_both_quote_it(self):
+        """The case a boost alone could not carry.
+
+        Four of the framework's roles are named as a skill is, one word apart:
+        the skill "Business architecture" quotes "Business architect" in its
+        name, its description and its level points, and three fields of a near
+        match outscored the role's one exact one.
+        """
+        self._add_skills_index()
+        role_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Business architect", slug="business-architect", body=""
+            )
+        )
+        role_page.save_revision().publish()
+        # Aged, as the framework's own role pages are: published a year ago and
+        # edited when the wording changes, so no recency boost stands in for the
+        # ranking under test.
+        published_at = timezone.now() - timedelta(days=400)
+        Page.objects.filter(pk=role_page.pk).update(
+            first_published_at=published_at,
+            last_published_at=published_at,
+            latest_revision_created_at=published_at,
+        )
+        GovukSkill.objects.create(
+            title="Business architecture",
+            body="<p>What a business architect does for an organisation.</p>",
+            working_points=[
+                {"type": "point", "value": "work alongside a business architect"},
+            ],
+        )
+
+        page = search_backend.search(
+            "Business architect", filters={"site": self.site}, page=1
+        )
+        titles = [item.title for item in page.object_list]
+
+        self.assertIn("Business architecture", titles)
+        self.assertEqual(titles[0], "Business architect")
+
+    def test_being_named_exactly_does_not_lift_an_external_result_over_ours(self):
+        """The site's own pages still come first: the promise is about content
+        this service holds, not about every feed it reads."""
+        self._add_skills_index()
+        settings = ContentDiscoverySettings.for_site(self.site)
+        source = ContentDiscoverySource.objects.create(
+            settings=settings,
+            sort_order=0,
+            name="Named source",
+            url="https://example.gov.uk/named-feed.xml",
+        )
+        ExternalContentItem.objects.create(
+            source=source,
+            url="https://example.gov.uk/feed-item-one",
+            title="Delivery manager",
+            summary="An article from elsewhere.",
+            updated_at=timezone.now() - timedelta(days=500),
+            hidden=False,
+        )
+        internal_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Delivery manager guidance",
+                slug="delivery-manager-guidance",
+                body="",
+            )
+        )
+        internal_page.save_revision().publish()
+
+        page = search_backend.search(
+            "Delivery manager", filters={"site": self.site}, page=1
+        )
+        titles = [item.title for item in page.object_list]
+
+        self.assertIn("Delivery manager", titles)
+        self.assertEqual(titles[0], "Delivery manager guidance")
+
     def test_a_skill_is_dated_by_its_own_changelog(self):
         self._add_skills_index()
         skill = GovukSkill.objects.create(title="Prototyping", body="<p>x</p>")
