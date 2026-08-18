@@ -5,8 +5,12 @@ an edit made in dev would be retyped in staging and again in production, and
 the three would be free to drift.
 """
 
+import json
+
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
+from django.urls import reverse
 from wagtail.models import Site
 
 from govuk.models import CapabilityFrameworkWordingSettings, ContentPage
@@ -200,6 +204,124 @@ class FrameworkWordingExportImportTests(TestCase):
             {name: getattr(reloaded, name) for name in FRAMEWORK_WORDING_FIELD_NAMES},
             payload["wording"],
         )
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class WordingOnlyExportViewTests(TestCase):
+    """Exporting the wording without carrying a page along with it.
+
+    Everything else on the export form is a page, a skill or a role, and the
+    wording is none of those: it is a site setting, so there is nothing to tick
+    for it. Ticking nothing is what asks for it on its own, which is what
+    applying a wording change in another environment needs.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.admin_user = get_user_model().objects.create_superuser(
+            username="wording-exporter",
+            email="wording-exporter@example.gov.uk",
+            password="unused-password",
+        )
+        self.client.force_login(self.admin_user)
+        self.export_url = reverse("govuk_pages_export")
+        self.import_url = reverse("govuk_pages_import")
+        self.page = self.site.root_page.specific.add_child(
+            instance=ContentPage(title="Somewhere", slug="somewhere", body="")
+        )
+        self.page.save_revision().publish()
+        self.wording = CapabilityFrameworkWordingSettings.for_site(self.site)
+
+    def test_selecting_nothing_exports_the_wording_by_itself(self):
+        self.wording.updates_heading = "Changes"
+        self.wording.save()
+
+        response = self.client.post(self.export_url, data={"site_id": self.site.pk})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        payload = json.loads(response.content)
+        self.assertEqual(payload["wording"]["updates_heading"], "Changes")
+        self.assertEqual(payload["pages"], [])
+        self.assertEqual(payload["skills"], [])
+        self.assertEqual(payload["roles"], [])
+
+    def test_the_file_is_named_for_what_is_in_it(self):
+        """A downloads folder a fortnight later holds several of these."""
+        wording_only = self.client.post(self.export_url, data={"site_id": self.site.pk})
+        with_a_page = self.client.post(
+            self.export_url,
+            data={"site_id": self.site.pk, "page_ids": [self.page.pk]},
+        )
+
+        self.assertIn(
+            f'filename="wording-export-site-{self.site.pk}-',
+            wording_only["Content-Disposition"],
+        )
+        self.assertIn(
+            f'filename="pages-export-site-{self.site.pk}-',
+            with_a_page["Content-Disposition"],
+        )
+
+    def test_the_exported_file_applies_on_the_way_back_in(self):
+        """The journey the export exists for, both halves through the admin."""
+        self.wording.related_roles_heading = "Roles sharing skills with {role}"
+        self.wording.save()
+        exported = self.client.post(self.export_url, data={"site_id": self.site.pk})
+
+        self.wording.related_roles_heading = "Roles that share {role} skills"
+        self.wording.save()
+
+        response = self.client.post(
+            self.import_url,
+            data={
+                "site_id": self.site.pk,
+                "json_file": SimpleUploadedFile(
+                    "wording.json", exported.content, content_type="application/json"
+                ),
+            },
+            follow=True,
+        )
+
+        self.assertContains(response, "Import complete.")
+        self.assertEqual(
+            CapabilityFrameworkWordingSettings.for_site(self.site).related_roles_heading,
+            "Roles sharing skills with {role}",
+        )
+
+    def test_a_selection_that_matches_nothing_is_still_reported(self):
+        """Ticking a page that has since been deleted is a mistake to hear
+        about, not an export of the wording under another name."""
+        response = self.client.post(
+            self.export_url,
+            data={"site_id": self.site.pk, "page_ids": [self.page.pk + 5000]},
+            follow=True,
+        )
+
+        self.assertContains(
+            response, "No matching pages, skills or roles were found for export."
+        )
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+class WordingOnlyExportWithTheFrameworkOffTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.admin_user = get_user_model().objects.create_superuser(
+            username="wording-exporter-off",
+            email="wording-exporter-off@example.gov.uk",
+            password="unused-password",
+        )
+        self.client.force_login(self.admin_user)
+
+    def test_selecting_nothing_is_still_a_mistake_where_there_is_no_wording(self):
+        response = self.client.post(
+            reverse("govuk_pages_export"),
+            data={"site_id": self.site.pk},
+            follow=True,
+        )
+
+        self.assertContains(response, "Select at least one page to export.")
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
