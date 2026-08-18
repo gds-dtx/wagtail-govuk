@@ -57,10 +57,12 @@ JOB_GRADE_KEYS = {value for value, _ in JOB_GRADE_CHOICES}
 SCS_GRADE_KEYS = {value for value, _ in SCS_GRADE_CHOICES}
 # Read off the model rather than listed here, so that wording added to the form
 # travels with the next export instead of waiting for someone to notice it.
+# Text of either length: a longer piece of wording would reach for a TextField,
+# which is not a CharField, and would otherwise be left behind in silence.
 FRAMEWORK_WORDING_FIELD_NAMES = tuple(
     field.name
     for field in CapabilityFrameworkWordingSettings._meta.concrete_fields
-    if isinstance(field, django_models.CharField)
+    if isinstance(field, (django_models.CharField, django_models.TextField))
 )
 
 

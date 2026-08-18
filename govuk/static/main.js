@@ -35,16 +35,29 @@ function setHyperlinkClasses() {
 function setListClasses() {
   // Paragraphs. GOV.UK Frontend styles the govuk-body class rather than the
   // element, so rich text paragraphs need it adding. Anything that already
-  // asks for a size, such as govuk-body-s, is left as the author set it —
-  // including when the size is asked for on the wrapper, as the changelog
-  // does, because govuk-body would otherwise override it from inside.
+  // asks for a size, such as govuk-body-s, is left as the author set it.
   document.querySelectorAll(".rich-text-content p").forEach((el) => {
-    const sized =
-      Array.from(el.classList).some((name) => name.startsWith("govuk-body")) ||
-      el.closest("[class*='govuk-body-']") !== null;
-    if (!sized) {
-      el.classList.add("govuk-body");
+    if (
+      Array.from(el.classList).some((name) => name.startsWith("govuk-body"))
+    ) {
+      return;
     }
+
+    // A wrapper can ask for the size instead, as the hero intro does with
+    // govuk-body-l. Adding govuk-body would override that size from the
+    // inside, and adding nothing leaves the paragraph on the browser's own
+    // 1em margins: the bundle styles the class rather than the element, so
+    // there is nothing else to give a paragraph GOV.UK's spacing, and the
+    // intro is pushed down by a margin the Design System does not put there.
+    // Repeating the wrapper's class carries the size and the spacing
+    // together.
+    const wrapper = el.closest("[class*='govuk-body-']");
+    const wrapperSize =
+      wrapper &&
+      Array.from(wrapper.classList).find((name) =>
+        name.startsWith("govuk-body-"),
+      );
+    el.classList.add(wrapperSize || "govuk-body");
   });
 
   // Unordered lists

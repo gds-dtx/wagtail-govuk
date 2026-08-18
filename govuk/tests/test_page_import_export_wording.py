@@ -50,6 +50,21 @@ class FrameworkWordingExportImportTests(TestCase):
     def _reloaded(self) -> CapabilityFrameworkWordingSettings:
         return CapabilityFrameworkWordingSettings.objects.get(pk=self.wording.pk)
 
+    def test_every_field_on_the_form_is_a_field_that_travels(self):
+        """The list is read off the model, so a field added to the form travels
+        without anyone remembering to add it here. That holds only while the
+        rule the list is read by covers what the form holds: a field of a type
+        the rule passes over would be edited in the admin and then quietly left
+        behind by every export."""
+        on_the_form = [
+            child.field_name
+            for panel in CapabilityFrameworkWordingSettings.panels
+            for child in getattr(panel, "children", [panel])
+            if hasattr(child, "field_name")
+        ]
+
+        self.assertEqual(sorted(on_the_form), sorted(FRAMEWORK_WORDING_FIELD_NAMES))
+
     def test_the_export_carries_every_wording_field(self):
         """A field the export leaves out is a field that reverts to its default
         on the other side, which reads as content lost in the transfer."""
