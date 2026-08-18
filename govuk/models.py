@@ -595,9 +595,13 @@ class EdDSAKeySettings(ClusterableModel, BaseSiteSetting):
         return primary_key_pair.sign_jwt(payload)
 
 
-@register_setting(icon="edit")
 class CapabilityFrameworkWordingSettings(BaseSiteSetting):
     """The words a role or skill page prints that no editor authored.
+
+    Registered as a setting in ``wagtail_hooks``, alongside the skills and roles
+    snippets and under the same feature flag: the only pages that read this
+    wording are the ones that flag governs, so a service without them has no use
+    for a form of 38 fields nothing on it prints.
 
     Headings, column headings, sentence lead-ins and the two empty states were
     written into the templates, which put them out of reach of the people who

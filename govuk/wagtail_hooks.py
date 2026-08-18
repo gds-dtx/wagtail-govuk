@@ -29,6 +29,7 @@ from wagtail.admin.rich_text.converters.html_to_contentstate import (
     PageLinkElementHandler,
 )
 from wagtail.admin.rich_text.editors.draftail import features as draftail_features
+from wagtail.contrib.settings.models import register_setting
 from wagtail.models import Page, Site
 from wagtail.rich_text import EmbedHandler
 from wagtail.rich_text.pages import PageLinkHandler
@@ -43,6 +44,7 @@ from govuk.content_discovery_import import (
     import_content_discovery_sources_from_csv,
 )
 from govuk.models import (
+    CapabilityFrameworkWordingSettings,
     ContentDiscoverySettings,
     ContentDiscoverySource,
     EdDSAKeyPair,
@@ -1197,5 +1199,6 @@ if settings.FEATURE_FLAGS.get("SKILLS"):
     _register_snippet_if_needed(GovukSkillViewSet)
     _register_snippet_if_needed(GovukRoleViewSet)
     _register_snippet_if_needed(GovukChangelogEntryViewSet)
+    register_setting(CapabilityFrameworkWordingSettings, icon="edit")
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)
