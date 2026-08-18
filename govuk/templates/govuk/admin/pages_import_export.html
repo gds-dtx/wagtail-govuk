@@ -22,7 +22,7 @@
         <h2 class="w-h3 w-mb-2">{% trans "Export" %}</h2>
         <p class="help w-mb-4">
             {% if skills_feature_enabled %}
-                {% trans "Select one or more pages, skills or roles. Child pages are exported with each selected page in a structured JSON format including page settings and privacy restrictions." %}
+                {% trans "Select one or more pages, skills or roles. Child pages are exported with each selected page in a structured JSON format including page settings and privacy restrictions. The capability framework wording is always included, being a site setting rather than a page." %}
             {% else %}
                 {% trans "Select one or more pages. Child pages are exported with each selected page in a structured JSON format including page settings and privacy restrictions." %}
             {% endif %}
@@ -96,7 +96,7 @@
         <h2 class="w-h3 w-mb-2">{% trans "Import" %}</h2>
         <p class="help w-mb-4">
             {% if skills_feature_enabled %}
-                {% trans "Upload a JSON file created by this export tool. Existing pages, skills and roles with the same slug are overridden." %}
+                {% trans "Upload a JSON file created by this export tool. Existing pages, skills and roles with the same slug are overridden, as is any capability framework wording the file carries." %}
             {% else %}
                 {% trans "Upload a JSON file created by this export tool. Existing pages with the same slug are overridden." %}
             {% endif %}

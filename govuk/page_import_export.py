@@ -20,6 +20,7 @@ from wagtail.rich_text import RichText
 from govuk.models import (
     JOB_GRADE_CHOICES,
     SCS_GRADE_CHOICES,
+    CapabilityFrameworkWordingSettings,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
@@ -54,6 +55,13 @@ PAGE_SNIPPET_SLUG_STREAM_FIELDS = {
 }
 JOB_GRADE_KEYS = {value for value, _ in JOB_GRADE_CHOICES}
 SCS_GRADE_KEYS = {value for value, _ in SCS_GRADE_CHOICES}
+# Read off the model rather than listed here, so that wording added to the form
+# travels with the next export instead of waiting for someone to notice it.
+FRAMEWORK_WORDING_FIELD_NAMES = tuple(
+    field.name
+    for field in CapabilityFrameworkWordingSettings._meta.concrete_fields
+    if isinstance(field, django_models.CharField)
+)
 
 
 @dataclass
@@ -114,7 +122,22 @@ def build_page_export_payload(
         payload["changelog"] = _serialise_changelog(
             GovukChangelogEntry.objects.filter(role__isnull=True, skill__isnull=True)
         )
+        payload["wording"] = _serialise_framework_wording(site)
     return payload
+
+
+def _serialise_framework_wording(site: Site) -> dict[str, str]:
+    """The wording a role or skill page prints but no editor typed.
+
+    It lives in a site setting rather than on any page, so nothing selected for
+    export carries it and an edit to it would stay in the environment it was
+    made in: retyped by hand in staging and again in production, with the two
+    free to drift. Carried whole, every field named, so that importing an
+    export reproduces the wording exactly rather than the parts that happen to
+    differ from the defaults.
+    """
+    wording = CapabilityFrameworkWordingSettings.for_site(site)
+    return {name: getattr(wording, name) for name in FRAMEWORK_WORDING_FIELD_NAMES}
 
 
 def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportResult:
@@ -142,10 +165,12 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
     raw_skills: list = []
     raw_roles: list = []
+    raw_wording = None
     skills_enabled = bool(settings.FEATURE_FLAGS.get("SKILLS"))
     if skills_enabled:
         raw_skills = payload.get("skills", []) or []
         raw_roles = payload.get("roles", []) or []
+        raw_wording = payload.get("wording")
         if not isinstance(raw_skills, list):
             result.skipped += 1
             result.errors.append("Payload 'skills' value must be an array when provided.")
@@ -157,11 +182,12 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
     else:
         _report_skills_feature_is_off(payload, result=result)
 
-    if not raw_pages and not raw_skills and not raw_roles and not raw_tags:
+    if not raw_pages and not raw_skills and not raw_roles and not raw_tags and not raw_wording:
         result.skipped += 1
         if skills_enabled:
             result.errors.append(
-                "Payload must contain at least one entry in 'tags', 'pages', 'skills' or 'roles'."
+                "Payload must contain at least one entry in 'tags', 'pages', 'skills', "
+                "'roles' or 'wording'."
             )
         else:
             result.errors.append("Payload must contain at least one entry in 'tags' or 'pages'.")
@@ -172,6 +198,7 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
     tag_lookup = _import_tags_from_payload(raw_tags=raw_tags, raw_pages=raw_pages)
 
     if skills_enabled:
+        _import_framework_wording(raw_wording, site=site, result=result)
         _import_skills(raw_skills, result=result)
         _import_roles(raw_roles, result=result)
         _import_site_wide_changelog(payload.get("changelog"), result=result)
@@ -212,7 +239,7 @@ def _report_skills_feature_is_off(payload: dict, *, result: PageImportResult):
     """
     carried = [
         name
-        for name in ("skills", "roles", "changelog")
+        for name in ("skills", "roles", "changelog", "wording")
         if payload.get(name)
     ]
     if not carried:
@@ -247,6 +274,61 @@ def _import_site_name(raw_site, *, site: Site):
     if site_name and site_name != site.site_name:
         site.site_name = site_name
         site.save(update_fields=["site_name"])
+
+
+def _import_framework_wording(raw_wording, *, site: Site, result: PageImportResult):
+    """Carry the editable wording over.
+
+    Only the fields the file names are set. An export written before the
+    wording left the templates says nothing about it, and saying nothing is not
+    the same as asking for the defaults back: a file kept for staging or
+    production would otherwise undo every wording edit made since, with nothing
+    in the report to show it had happened.
+
+    Each field is checked the way the form checks it, so a heading too long for
+    the column or blanked out is reported and the wording already in place is
+    kept, rather than one bad entry costing the other thirty-seven.
+    """
+    if not raw_wording:
+        return
+
+    result.processed += 1
+    if not isinstance(raw_wording, dict):
+        result.skipped += 1
+        result.errors.append("Payload 'wording' value must be an object when provided.")
+        return
+
+    wording = CapabilityFrameworkWordingSettings.for_site(site)
+    accepted: list[str] = []
+    for field_name in FRAMEWORK_WORDING_FIELD_NAMES:
+        if field_name not in raw_wording:
+            continue
+
+        raw_value = raw_wording[field_name]
+        if not isinstance(raw_value, str):
+            result.errors.append(
+                f"Wording '{field_name}' was left as it was because the file "
+                "gives it as something other than text."
+            )
+            continue
+
+        try:
+            value = wording._meta.get_field(field_name).clean(raw_value, wording)
+        except ValidationError as exc:
+            result.errors.append(
+                f"Wording '{field_name}' was left as it was: {' '.join(exc.messages)}"
+            )
+            continue
+
+        setattr(wording, field_name, value)
+        accepted.append(field_name)
+
+    if not accepted:
+        result.skipped += 1
+        return
+
+    wording.save(update_fields=accepted)
+    result.updated += 1
 
 
 def _replace_placeholder_home_page(raw_pages: list, *, site: Site, site_root: Page, user, result: PageImportResult) -> Page:

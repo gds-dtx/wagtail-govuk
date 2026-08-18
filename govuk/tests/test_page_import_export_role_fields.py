@@ -689,7 +689,7 @@ class ImportIntoASiteWithSkillsSwitchedOffTests(TestCase):
 
         self.assertEqual(len(result.errors), 1)
         self.assertIn("FEATURE_SKILLS", result.errors[0])
-        self.assertIn("skills, roles and changelog", result.errors[0])
+        self.assertIn("skills, roles, changelog and wording", result.errors[0])
 
     def test_the_pages_still_arrive(self):
         """Reporting the problem must not turn into refusing the import: the
@@ -711,7 +711,7 @@ class ImportIntoASiteWithSkillsSwitchedOffTests(TestCase):
     def test_a_file_carrying_no_framework_content_is_not_warned_about(self):
         """A site legitimately running without the framework imports its own
         pages all the time, and has nothing to be told."""
-        for key in ("skills", "roles", "changelog"):
+        for key in ("skills", "roles", "changelog", "wording"):
             self.payload.pop(key, None)
 
         result = self._import_with_skills_off()
