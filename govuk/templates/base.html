@@ -154,25 +154,30 @@
             {% if not self.enable_combined_service_navigation_and_hero_styling and phase_banner_settings and phase_banner_settings.enabled %}
                 {% include "includes/phase_banner.html" with phase_banner_settings=phase_banner_settings %}
             {% endif %}
-            {% if breadcrumbs and not self.enable_combined_service_navigation_and_hero_styling %}
-                <div class="govuk-width-container">
-                    <nav class="govuk-breadcrumbs{% if breadcrumbs_mobile_only %} govuk-breadcrumbs--mobile-only{% endif %}"
-                         aria-label="Breadcrumb">
-                        <ol class="govuk-breadcrumbs__list">
-                            {% for item in breadcrumbs %}
-                                <li class="govuk-breadcrumbs__list-item">
-                                    {% if item.is_current %}
-                                        <span aria-current="page">{{ item.title }}</span>
-                                    {% else %}
-                                        <a class="govuk-breadcrumbs__link" href="{{ item.url }}">{{ item.title }}</a>
-                                    {% endif %}
-                                </li>
-                            {% endfor %}
-                        </ol>
-                    </nav>
-                </div>
-            {% endif %}
         </header>
+        {% comment %}
+            The breadcrumb sits between the header and the main content rather
+            than inside the header, which is where the Design System puts it and
+            which keeps it out of the banner landmark.
+        {% endcomment %}
+        {% if breadcrumbs and not self.enable_combined_service_navigation_and_hero_styling %}
+            <div class="govuk-width-container">
+                <nav class="govuk-breadcrumbs{% if breadcrumbs_mobile_only %} app-breadcrumbs--mobile-only{% endif %}"
+                     aria-label="Breadcrumb">
+                    <ol class="govuk-breadcrumbs__list">
+                        {% for item in breadcrumbs %}
+                            {% if item.is_current %}
+                                <li class="govuk-breadcrumbs__list-item" aria-current="page">{{ item.title }}</li>
+                            {% else %}
+                                <li class="govuk-breadcrumbs__list-item">
+                                    <a class="govuk-breadcrumbs__link" href="{{ item.url }}">{{ item.title }}</a>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+                    </ol>
+                </nav>
+            </div>
+        {% endif %}
         <main class="govuk-main-wrapper {% if self.enable_combined_service_navigation_and_hero_styling %}govuk-!-padding-0{% endif %}"
               id="main-content"
               role="main">
@@ -280,10 +285,16 @@
                                     {% endfor %}
                                 {% endif %}
                             </ul>
-                            <div class="govuk-footer__meta-custom"
-                                 {% if not app_debug %}hidden{% endif %}>
-                                Debug: {{ app_debug|default:"unknown" }} | Version: {{ app_version|default:"unknown" }} | Settings: {{ django_settings_module|default:"unknown" }}
-                            </div>
+                            {% comment %}
+                                `hidden` kept this out of sight but not out of the page
+                                source, so a production page still told a reader which
+                                settings module and version it was running.
+                            {% endcomment %}
+                            {% if app_debug %}
+                                <div class="govuk-footer__meta-custom">
+                                    Debug: {{ app_debug|default:"unknown" }} | Version: {{ app_version|default:"unknown" }} | Settings: {{ django_settings_module|default:"unknown" }}
+                                </div>
+                            {% endif %}
                             <svg aria-hidden="true"
                                  focusable="false"
                                  class="govuk-footer__licence-logo"

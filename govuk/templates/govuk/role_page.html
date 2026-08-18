@@ -43,14 +43,17 @@
                                     {% if self.body %}{{ self.body|richtext }}{% endif %}
                                     {% for role_section in role_sections %}
                                         <section>
+                                            {% if role_section.lead %}
+                                                <p class="govuk-body-l">{{ role_section.lead }}</p>
+                                            {% endif %}
                                             {% if role_section.changelog.last_updated_date %}
                                                 <p class="govuk-body-s">
-                                                    Last updated {{ role_section.changelog.last_updated_date|date:"j F Y" }} —
-                                                    <a href="#{{ role_section.anchors.updates }}" class="govuk-link">See all updates</a>
+                                                    {{ framework_wording.last_updated_prefix }} {{ role_section.changelog.last_updated_date|date:"j F Y" }} —
+                                                    <a href="#{{ role_section.anchors.updates }}" class="govuk-link">{{ framework_wording.see_all_updates_link_text }}</a>
                                                 </p>
                                             {% endif %}
                                             {% if role_section.contents %}
-                                                <p class="govuk-body govuk-body-s contents-list-links">Contents</p>
+                                                <p class="govuk-body govuk-body-s contents-list-links">{{ framework_wording.contents_heading }}</p>
                                                 <ul class="govuk-list govuk-body-s contents-list-links">
                                                     {% for entry in role_section.contents %}
                                                         <li>
@@ -69,25 +72,56 @@
                                                 </ul>
                                             {% endif %}
                                             {% if role_section.role.body %}
-                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.overview }}">What a {{ role_section.display_role_name }} does</h2>
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.overview }}">{{ role_section.overview_heading }}</h2>
                                                 <div class="govuk-body">{{ role_section.role.body|richtext }}</div>
+                                            {% endif %}
+                                            {% if role_section.is_scs %}
+                                                <p class="govuk-body">
+                                                    {{ role_section.wording.scs_context_text }}
+                                                    {% if scs_context_url %}
+                                                        <a class="govuk-link" href="{{ scs_context_url }}">{{ framework_wording.scs_context_link_text }}</a>.
+                                                    {% else %}
+                                                        {{ framework_wording.scs_context_link_text }}.
+                                                    {% endif %}
+                                                </p>
                                             {% endif %}
                                             {% if role_section.scs_grades %}
                                                 <p class="govuk-body">
-                                                    This role is often performed at the
-                                                    <a class="govuk-link" href="/job-grades">Civil Service job grade</a> of:
+                                                    {{ framework_wording.role_grades_text }}
+                                                    {% if job_grades_url %}
+                                                        <a class="govuk-link" href="{{ job_grades_url }}">{{ framework_wording.job_grades_link_text }}</a> {{ framework_wording.grades_text_after }}
+                                                    {% else %}
+                                                        {{ framework_wording.job_grades_link_text }} {{ framework_wording.grades_text_after }}
+                                                    {% endif %}
                                                 </p>
                                                 <ul class="govuk-list govuk-list--bullet">
                                                     {% for grade in role_section.scs_grades %}<li>{{ grade }}</li>{% endfor %}
                                                 </ul>
                                             {% endif %}
                                             {% if role_section.scs_skills %}
-                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.skills }}">Skills for {{ role_section.display_role_name }}</h2>
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.skills }}">{{ role_section.wording.scs_skills_heading }}</h2>
+                                                {% comment %}
+                                                    The same two sentences introduce every Senior Civil Service
+                                                    role's skills, so the framework prints them rather than
+                                                    asking an editor to repeat them on every role.
+                                                {% endcomment %}
+                                                <p class="govuk-body">{{ role_section.wording.scs_skills_intro }}</p>
+                                                <ul class="govuk-list govuk-list--bullet">
+                                                    <li>{{ framework_wording.scs_skills_leadership_point }}</li>
+                                                    <li>
+                                                        {{ framework_wording.scs_skills_context_point_text }}
+                                                        {% if scs_context_url %}
+                                                            <a class="govuk-link" href="{{ scs_context_url }}">{{ framework_wording.scs_skills_context_point_link_text }}</a>
+                                                        {% else %}
+                                                            {{ framework_wording.scs_skills_context_point_link_text }}
+                                                        {% endif %}
+                                                    </li>
+                                                </ul>
                                                 <table class="govuk-table">
                                                     <thead class="govuk-table__head">
                                                         <tr class="govuk-table__row">
-                                                            <th scope="col" class="govuk-table__header">Skill</th>
-                                                            <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Description, including examples of leadership</th>
+                                                            <th scope="col" class="govuk-table__header">{{ framework_wording.scs_skills_table_skill_heading }}</th>
+                                                            <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">{{ framework_wording.scs_skills_table_description_heading }}</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody class="govuk-table__body">
@@ -105,7 +139,7 @@
                                                                 <td class="govuk-table__cell">
                                                                     {% if skill_row.skill.body %}{{ skill_row.skill.body|richtext }}{% endif %}
                                                                     {% if skill_row.leadership_points %}
-                                                                        <p class="govuk-body govuk-!-margin-bottom-1">Examples of leadership using this skill:</p>
+                                                                        <p class="govuk-body govuk-!-margin-bottom-1">{{ framework_wording.scs_leadership_examples_heading }}</p>
                                                                         <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
                                                                             {% for point in skill_row.leadership_points %}<li>{{ point }}</li>{% endfor %}
                                                                         </ul>
@@ -117,7 +151,7 @@
                                                 </table>
                                             {% endif %}
                                             {% if role_section.levels %}
-                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.levels }}">{{ role_section.role.title }} role levels</h2>
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.levels }}">{{ role_section.wording.role_levels_heading }}</h2>
                                                 {% for paragraph in role_section.levels_intro %}<p class="govuk-body">{{ paragraph }}</p>{% endfor %}
                                             {% endif %}
                                             {% for role_level in role_section.levels %}
@@ -127,8 +161,12 @@
                                                 {% if role_level.description %}<div class="govuk-body">{{ role_level.description|richtext }}</div>{% endif %}
                                                 {% if role_level.grades %}
                                                     <p class="govuk-body">
-                                                        This role level is most often performed at the
-                                                        <a class="govuk-link" href="/job-grades">Civil Service job grade</a> of:
+                                                        {{ framework_wording.level_grades_text }}
+                                                        {% if job_grades_url %}
+                                                            <a class="govuk-link" href="{{ job_grades_url }}">{{ framework_wording.job_grades_link_text }}</a> {{ framework_wording.grades_text_after }}
+                                                        {% else %}
+                                                            {{ framework_wording.job_grades_link_text }} {{ framework_wording.grades_text_after }}
+                                                        {% endif %}
                                                     </p>
                                                     <ul class="govuk-list govuk-list--bullet">
                                                         {% for grade in role_level.grades %}<li>{{ grade }}</li>{% endfor %}
@@ -138,8 +176,8 @@
                                                     <table class="govuk-table">
                                                         <thead class="govuk-table__head">
                                                             <tr class="govuk-table__row">
-                                                                <th scope="col" class="govuk-table__header">Skill</th>
-                                                                <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Description</th>
+                                                                <th scope="col" class="govuk-table__header">{{ framework_wording.level_skills_table_skill_heading }}</th>
+                                                                <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">{{ framework_wording.level_skills_table_description_heading }}</th>
                                                             </tr>
                                                         </thead>
                                                         <tbody class="govuk-table__body">
@@ -153,18 +191,8 @@
                                                                                 {{ skill_row.skill.title }}
                                                                             {% endif %}
                                                                         </p>
-                                                                        <p class="govuk-body-s">Level: {{ skill_row.required_level_label }}</p>
-                                                                        <span class="govuk-visually-hidden">{{ skill_row.required_level_label }} is the
-                                                                            {% if skill_row.required_level == 'awareness' %}
-                                                                                first
-                                                                            {% elif skill_row.required_level == 'working' %}
-                                                                                second
-                                                                            {% elif skill_row.required_level == 'practitioner' %}
-                                                                                third
-                                                                            {% else %}
-                                                                                fourth
-                                                                            {% endif %}
-                                                                        of four ascending skill levels</span>
+                                                                        <p class="govuk-body-s">{{ framework_wording.skill_level_prefix }} {{ skill_row.required_level_label }}</p>
+                                                                        <span class="govuk-visually-hidden">{{ skill_row.level_scale_text }}</span>
                                                                         <div class="progress-bar__container">
                                                                             <div class="progress-bar__grey" aria-hidden="true"></div>
                                                                             <div class="progress-bar__divider" aria-hidden="true"></div>
@@ -180,6 +208,12 @@
                                                                     </th>
                                                                     <td class="govuk-table__cell">
                                                                         {% if skill_row.points %}
+                                                                            {% comment %}
+                                                                                The points read as the ends of this sentence, which
+                                                                                the framework prints rather than storing it against
+                                                                                every skill at every level.
+                                                                            {% endcomment %}
+                                                                            <p class="govuk-body">{{ framework_wording.skill_points_intro }}</p>
                                                                             <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
                                                                                 {% for point in skill_row.points %}<li>{{ point }}</li>{% endfor %}
                                                                             </ul>
@@ -192,12 +226,12 @@
                                                 {% endif %}
                                             {% endfor %}
                                             {% if role_section.related_roles %}
-                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.related_roles }}">Roles that share {{ role_section.display_role_name }} skills</h2>
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.related_roles }}">{{ role_section.wording.related_roles_heading }}</h2>
                                                 <table class="govuk-table">
                                                     <thead class="govuk-table__head">
                                                         <tr class="govuk-table__row">
-                                                            <th scope="col" class="govuk-table__header">Role</th>
-                                                            <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">Shared skills</th>
+                                                            <th scope="col" class="govuk-table__header">{{ framework_wording.related_roles_table_role_heading }}</th>
+                                                            <th scope="col" class="govuk-table__header govuk-!-width-two-thirds">{{ framework_wording.related_roles_table_skills_heading }}</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody class="govuk-table__body">
@@ -226,10 +260,43 @@
                                                     </tbody>
                                                 </table>
                                             {% endif %}
+                                            {% comment %}
+                                                The curated career path, read forwards. It is authored on
+                                                the senior role as the roles that lead into it, so this
+                                                side of it comes from turning that mapping around.
+                                            {% endcomment %}
+                                            {% if role_section.progression_scs_roles %}
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.progression_scs_roles }}">{{ role_section.wording.progression_scs_roles_heading }}</h2>
+                                                <ul class="govuk-list">
+                                                    {% for entry in role_section.progression_scs_roles %}
+                                                        <li>
+                                                            {% if entry.url %}
+                                                                <a href="{{ entry.url }}" class="govuk-link">{{ entry.role.title }}</a>
+                                                            {% else %}
+                                                                {{ entry.role.title }}
+                                                            {% endif %}
+                                                        </li>
+                                                    {% endfor %}
+                                                </ul>
+                                            {% endif %}
+                                            {% if role_section.progression_roles %}
+                                                <h2 class="govuk-heading-l" id="{{ role_section.anchors.progression_roles }}">{{ role_section.wording.progression_roles_heading }}</h2>
+                                                <ul class="govuk-list">
+                                                    {% for entry in role_section.progression_roles %}
+                                                        <li>
+                                                            {% if entry.url %}
+                                                                <a href="{{ entry.url }}" class="govuk-link">{{ entry.role.title }}</a>
+                                                            {% else %}
+                                                                {{ entry.role.title }}
+                                                            {% endif %}
+                                                        </li>
+                                                    {% endfor %}
+                                                </ul>
+                                            {% endif %}
                                             {% if role_section.changelog.entries %}
-                                                <h2 class="govuk-heading-m" id="{{ role_section.anchors.updates }}">Updates</h2>
-                                                <p class="govuk-body-s publish-dates">Published {{ role_section.changelog.published_date|date:"j F Y" }}</p>
-                                                <p class="govuk-body-s">Last updated {{ role_section.changelog.last_updated_date|date:"j F Y" }}</p>
+                                                <h2 class="govuk-heading-m" id="{{ role_section.anchors.updates }}">{{ framework_wording.updates_heading }}</h2>
+                                                <p class="govuk-body-s publish-dates">{{ framework_wording.published_prefix }} {{ role_section.changelog.published_date|date:"j F Y" }}</p>
+                                                <p class="govuk-body-s">{{ framework_wording.last_updated_prefix }} {{ role_section.changelog.last_updated_date|date:"j F Y" }}</p>
                                                 <div class="changelog-content">
                                                     {% for entry in role_section.changelog.entries %}
                                                         <p class="govuk-body-s govuk-!-font-weight-bold">{{ entry.date|date:"j F Y" }}</p>
@@ -239,7 +306,7 @@
                                             {% endif %}
                                         </section>
                                     {% empty %}
-                                        {% if not self.body %}<p class="govuk-body">No roles selected.</p>{% endif %}
+                                        {% if not self.body %}<p class="govuk-body">{{ framework_wording.no_roles_message }}</p>{% endif %}
                                     {% endfor %}
                                 </div>
                             </div>

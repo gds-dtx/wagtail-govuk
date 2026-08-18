@@ -30,7 +30,7 @@ from modelcluster.fields import ParentalKey
 from modelcluster.models import ClusterableModel
 from taggit.models import TagBase, TaggedItemBase
 from wagtail import blocks
-from wagtail.admin.panels import FieldPanel, InlinePanel
+from wagtail.admin.panels import FieldPanel, InlinePanel, MultiFieldPanel
 from wagtail.blocks import StructValue
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
 from wagtail.fields import RichTextField, StreamField
@@ -593,6 +593,357 @@ class EdDSAKeySettings(ClusterableModel, BaseSiteSetting):
             payload.update(extra_claims)
 
         return primary_key_pair.sign_jwt(payload)
+
+
+@register_setting(icon="edit")
+class CapabilityFrameworkWordingSettings(BaseSiteSetting):
+    """The words a role or skill page prints that no editor authored.
+
+    Headings, column headings, sentence lead-ins and the two empty states were
+    written into the templates, which put them out of reach of the people who
+    own the framework's language: changing "Roles that share x skills" meant a
+    release. Every default here is the wording the templates already carried,
+    so an instance that has never opened this form reads exactly as before.
+
+    ``{role}`` stands for the role's name, lowercased for mid-sentence use the
+    way the framework writes it, and is filled in per role.
+    """
+
+    ROLE_PLACEHOLDER = "{role}"
+    LEVEL_PLACEHOLDER = "{level}"
+    ORDINAL_PLACEHOLDER = "{ordinal}"
+
+    contents_heading = models.CharField(
+        max_length=255,
+        default="Contents",
+        help_text="Heading over the in-page contents links.",
+    )
+    last_updated_prefix = models.CharField(
+        max_length=255,
+        default="Last updated",
+        help_text="Shown before the date the role was last changed.",
+    )
+    see_all_updates_link_text = models.CharField(
+        max_length=255,
+        default="See all updates",
+        help_text="Wording of the link down to the updates section.",
+    )
+
+    scs_context_text = models.CharField(
+        max_length=255,
+        default="A specific {role} job can vary depending on the",
+        help_text=(
+            "Senior Civil Service roles only. Shown before the link to the "
+            "context and challenges page. Use {role} for the role name."
+        ),
+    )
+    scs_context_link_text = models.CharField(
+        max_length=255,
+        default="context and challenges in your organisation",
+        help_text=(
+            "Wording of that link. A full stop follows it. Shown as plain "
+            "text where the page it points at is missing."
+        ),
+    )
+    scs_skills_heading = models.CharField(
+        max_length=255,
+        default="Skills for {role}",
+        help_text="Heading over a Senior Civil Service role's skills.",
+    )
+    scs_skills_intro = models.CharField(
+        max_length=255,
+        default="The {role} role will need to use digital and data skills to:",
+        help_text="Sentence introducing the two points below it.",
+    )
+    scs_skills_leadership_point = models.CharField(
+        max_length=255,
+        default="be an effective digital and data leader",
+        help_text="First of those points.",
+    )
+    scs_skills_context_point_text = models.CharField(
+        max_length=255,
+        default="operate in different contexts, depending",
+        help_text="Second point, up to the link.",
+    )
+    scs_skills_context_point_link_text = models.CharField(
+        max_length=255,
+        default="on the context and challenges in your organisation",
+        help_text="Rest of that point, linked to the context and challenges page.",
+    )
+    scs_skills_table_skill_heading = models.CharField(
+        max_length=255,
+        default="Skill",
+        help_text="First column of the Senior Civil Service skills table.",
+    )
+    scs_skills_table_description_heading = models.CharField(
+        max_length=255,
+        default="Description, including examples of leadership",
+        help_text="Second column of that table.",
+    )
+    scs_leadership_examples_heading = models.CharField(
+        max_length=255,
+        default="Examples of leadership using this skill:",
+        help_text="Shown in that table above a skill's leadership points.",
+    )
+
+    role_grades_text = models.CharField(
+        max_length=255,
+        default="This role is often performed at the",
+        help_text=(
+            "Shown before the link to the job grades page, above the grades a "
+            "Senior Civil Service role is done at."
+        ),
+    )
+    level_grades_text = models.CharField(
+        max_length=255,
+        default="This role level is most often performed at the",
+        help_text="The same sentence for a role level rather than a whole role.",
+    )
+    job_grades_link_text = models.CharField(
+        max_length=255,
+        default="Civil Service job grade",
+        help_text=(
+            "Wording of that link. Shown as plain text where the job grades "
+            "page is missing."
+        ),
+    )
+    grades_text_after = models.CharField(
+        max_length=255,
+        default="of:",
+        help_text="Wording after that link, ending the sentence.",
+    )
+
+    role_levels_heading = models.CharField(
+        max_length=255,
+        default="{role} role levels",
+        help_text=(
+            "Heading over a role's levels. Here {role} keeps the role title's "
+            "capitals, this being the start of a heading."
+        ),
+    )
+    level_skills_table_skill_heading = models.CharField(
+        max_length=255,
+        default="Skill",
+        help_text="First column of a role level's skills table.",
+    )
+    level_skills_table_description_heading = models.CharField(
+        max_length=255,
+        default="Description",
+        help_text="Second column of that table.",
+    )
+    skill_level_prefix = models.CharField(
+        max_length=255,
+        default="Level:",
+        help_text="Shown before the level a role level needs a skill at.",
+    )
+    skill_level_scale_text = models.CharField(
+        max_length=255,
+        default="{level} is the {ordinal} of four ascending skill levels",
+        help_text=(
+            "Read aloud in place of the progress bar, which is decorative. "
+            "Use {level} for the level and {ordinal} for first to fourth."
+        ),
+    )
+    skill_points_intro = models.CharField(
+        max_length=255,
+        default="You can:",
+        help_text="Sentence the points under a skill read on from.",
+    )
+
+    related_roles_heading = models.CharField(
+        max_length=255,
+        default="Roles that share {role} skills",
+        help_text="Heading over the roles sharing skills with this one.",
+    )
+    related_roles_table_role_heading = models.CharField(
+        max_length=255,
+        default="Role",
+        help_text="First column of that table.",
+    )
+    related_roles_table_skills_heading = models.CharField(
+        max_length=255,
+        default="Shared skills",
+        help_text="Second column of that table.",
+    )
+    progression_scs_roles_heading = models.CharField(
+        max_length=255,
+        default="Senior Civil Service roles that {role} could lead to",
+        help_text="Heading over the senior roles this role leads on to.",
+    )
+    progression_roles_heading = models.CharField(
+        max_length=255,
+        default="Roles that could lead to {role}",
+        help_text="Heading over the roles that lead into this one.",
+    )
+
+    updates_heading = models.CharField(
+        max_length=255,
+        default="Updates",
+        help_text="Heading over a role's change history.",
+    )
+    published_prefix = models.CharField(
+        max_length=255,
+        default="Published",
+        help_text="Shown before the date the role was first published.",
+    )
+    no_roles_message = models.CharField(
+        max_length=255,
+        default="No roles selected.",
+        help_text="Shown on a role page with no role chosen and nothing written.",
+    )
+
+    scs_skill_label = models.CharField(
+        max_length=255,
+        default="Senior Civil Service",
+        help_text="Shown beside a skill that only Senior Civil Service roles use.",
+    )
+    skill_leadership_examples_heading = models.CharField(
+        max_length=255,
+        default="Examples of leadership using this skill",
+        help_text="Heading over a skill's leadership points on the skills page.",
+    )
+    skill_levels_table_level_heading = models.CharField(
+        max_length=255,
+        default="Skill level",
+        help_text="First column of a skill's levels table.",
+    )
+    skill_levels_table_description_heading = models.CharField(
+        max_length=255,
+        default="Description",
+        help_text="Second column of that table.",
+    )
+    skill_level_no_description_message = models.CharField(
+        max_length=255,
+        default="No description provided.",
+        help_text="Shown where a skill level has had no points written for it.",
+    )
+    skill_roles_heading = models.CharField(
+        max_length=255,
+        default="Roles that require this skill",
+        help_text="Heading over the roles that need a skill.",
+    )
+    no_skills_message = models.CharField(
+        max_length=255,
+        default="No skills found.",
+        help_text="Shown on the skills page while no skills exist.",
+    )
+
+    panels = [
+        MultiFieldPanel(
+            [
+                FieldPanel("contents_heading"),
+                FieldPanel("last_updated_prefix"),
+                FieldPanel("see_all_updates_link_text"),
+            ],
+            heading="Above a role",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("scs_context_text"),
+                FieldPanel("scs_context_link_text"),
+                FieldPanel("scs_skills_heading"),
+                FieldPanel("scs_skills_intro"),
+                FieldPanel("scs_skills_leadership_point"),
+                FieldPanel("scs_skills_context_point_text"),
+                FieldPanel("scs_skills_context_point_link_text"),
+                FieldPanel("scs_skills_table_skill_heading"),
+                FieldPanel("scs_skills_table_description_heading"),
+                FieldPanel("scs_leadership_examples_heading"),
+            ],
+            heading="Senior Civil Service roles",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("role_grades_text"),
+                FieldPanel("level_grades_text"),
+                FieldPanel("job_grades_link_text"),
+                FieldPanel("grades_text_after"),
+            ],
+            heading="Job grades",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("role_levels_heading"),
+                FieldPanel("level_skills_table_skill_heading"),
+                FieldPanel("level_skills_table_description_heading"),
+                FieldPanel("skill_level_prefix"),
+                FieldPanel("skill_level_scale_text"),
+                FieldPanel("skill_points_intro"),
+            ],
+            heading="Role levels",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("related_roles_heading"),
+                FieldPanel("related_roles_table_role_heading"),
+                FieldPanel("related_roles_table_skills_heading"),
+                FieldPanel("progression_scs_roles_heading"),
+                FieldPanel("progression_roles_heading"),
+            ],
+            heading="Related roles and career paths",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("updates_heading"),
+                FieldPanel("published_prefix"),
+                FieldPanel("no_roles_message"),
+            ],
+            heading="Updates and empty states",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("scs_skill_label"),
+                FieldPanel("skill_leadership_examples_heading"),
+                FieldPanel("skill_levels_table_level_heading"),
+                FieldPanel("skill_levels_table_description_heading"),
+                FieldPanel("skill_level_no_description_message"),
+                FieldPanel("skill_roles_heading"),
+                FieldPanel("no_skills_message"),
+            ],
+            heading="Skills page",
+        ),
+    ]
+
+    class Meta:
+        verbose_name = "Capability framework wording"
+        verbose_name_plural = "Capability framework wording"
+
+    # Filled in per role, so a page holding several does not have to choose one.
+    ROLE_FIELDS = (
+        "scs_context_text",
+        "scs_skills_heading",
+        "scs_skills_intro",
+        "related_roles_heading",
+        "progression_scs_roles_heading",
+        "progression_roles_heading",
+    )
+
+    def for_role(self, *, display_role_name: str, role_title: str) -> dict[str, str]:
+        """This role's wording, with its name already in place.
+
+        The headings come back here rather than being substituted in the
+        template because the in-page contents links repeat them, and the two
+        have to say the same thing for the link to make sense.
+        """
+        wording = {
+            name: getattr(self, name).replace(
+                self.ROLE_PLACEHOLDER, display_role_name
+            )
+            for name in self.ROLE_FIELDS
+        }
+        # A heading opens with the role, so it keeps the capitals in a title
+        # like "Development operations (DevOps) engineer" rather than the
+        # lowercased form the mid-sentence wording uses.
+        wording["role_levels_heading"] = self.role_levels_heading.replace(
+            self.ROLE_PLACEHOLDER, role_title
+        )
+        return wording
+
+    def skill_level_scale(self, *, label: str, ordinal: str) -> str:
+        """What a screen reader is given in place of the progress bar."""
+        return self.skill_level_scale_text.replace(
+            self.LEVEL_PLACEHOLDER, label
+        ).replace(self.ORDINAL_PLACEHOLDER, ordinal)
 
 
 class EdDSAKeyPair(Orderable):
@@ -1356,6 +1707,16 @@ class GovukRole(models.Model):
         verbose_name="Senior Civil Service skills",
         help_text="Skills required by this role, with no proficiency level.",
     )
+    roles_that_could_lead_here = StreamField(
+        [("role", SnippetChooserBlock("govuk.GovukRole", required=False))],
+        blank=True,
+        use_json_field=True,
+        verbose_name="Roles that could lead to this role",
+        help_text=(
+            "Roles someone might do before this one. Curated rather than "
+            "derived from shared skills, and listed in the order given."
+        ),
+    )
 
     panels = [
         FieldPanel("slug"),
@@ -1366,6 +1727,7 @@ class GovukRole(models.Model):
         FieldPanel("is_senior_civil_service"),
         FieldPanel("scs_grades"),
         FieldPanel("scs_skills"),
+        FieldPanel("roles_that_could_lead_here"),
     ]
 
     class Meta:
@@ -1422,6 +1784,58 @@ class GovukRole(models.Model):
 
     def get_scs_grade_labels(self) -> list[str]:
         return self._grade_labels(self.scs_grades)
+
+    def get_roles_that_could_lead_here(self) -> list["GovukRole"]:
+        """The curated career path into this role, in the order given.
+
+        Unlike ``get_related_roles`` this is not inferred from shared skills:
+        the framework lists particular roles a person might come from, which
+        is a judgement the content team makes.
+        """
+        roles: list[GovukRole] = []
+        seen: set[int] = set()
+        for block in self.roles_that_could_lead_here:
+            role = getattr(block, "value", None)
+            role_pk = getattr(role, "pk", None)
+            if role is None or role_pk in seen or role_pk == self.pk:
+                continue
+            seen.add(role_pk)
+            roles.append(role)
+        return roles
+
+    @classmethod
+    def senior_roles_by_source_role_id(cls) -> dict[int, list["GovukRole"]]:
+        """Map each role id to the Senior Civil Service roles it could lead to.
+
+        The content team authors this the other way round, as the roles that
+        could lead to a senior one, so the only way to the framework's
+        "Senior Civil Service roles that X could lead to" is to turn the
+        mapping around. Built in one pass, as ``roles_by_skill_id`` is.
+
+        Read from the raw stream rather than the resolved snippets, the way
+        ``get_skill_ids`` reads levels, because every role page builds this and
+        resolving each senior role's chooser blocks costs a query apiece.
+
+        The framework's own ordering is not recoverable from the reverse
+        mapping, so the roles are listed by title.
+        """
+        index: dict[int, list[GovukRole]] = {}
+        for senior_role in cls.objects.filter(is_senior_civil_service=True):
+            seen: set[int] = set()
+            raw_blocks = (
+                getattr(senior_role.roles_that_could_lead_here, "raw_data", None) or []
+            )
+            for raw_block in raw_blocks:
+                if not isinstance(raw_block, dict) or raw_block.get("type") != "role":
+                    continue
+                source_id = RolePage._extract_role_id(raw_block.get("value"))
+                if not source_id or source_id in seen or source_id == senior_role.pk:
+                    continue
+                seen.add(source_id)
+                index.setdefault(source_id, []).append(senior_role)
+        for roles in index.values():
+            roles.sort(key=lambda role: (role.title or "").strip().lower())
+        return index
 
     def get_skill_ids(self) -> set[int]:
         """Distinct ids of skills required at any level of this role."""
@@ -2570,6 +2984,64 @@ class RolePage(Page):
             for word in (title or "").split()
         )
 
+    # A "u" sounded as "you" takes "a" rather than "an", which is how the
+    # framework writes "a user researcher".
+    _CONSONANT_SOUNDED_VOWELS = ("eu", "ubi", "uni", "use", "usu", "uti")
+
+    @classmethod
+    def _lead_role_name(cls, title: str) -> str:
+        """A role title as the framework writes it in the sentence below the
+        heading, where only the opening word is lowered so that the capitals
+        inside "Development operations (DevOps) engineer" survive."""
+        words = (title or "").split()
+        if not words:
+            return ""
+        return " ".join([words[0].lower(), *words[1:]])
+
+    @classmethod
+    def _role_article(cls, name: str) -> str:
+        """"a" or "an" for a role name, chosen by how the name is said rather
+        than how it is spelt: "a user researcher" but "an IT service manager".
+        """
+        lowered = (name or "").lstrip().lower()
+        if not lowered:
+            return "a"
+        vowel_sounded = lowered[0] in "aeiou" and not lowered.startswith(
+            cls._CONSONANT_SOUNDED_VOWELS
+        )
+        return "an" if vowel_sounded else "a"
+
+    @classmethod
+    def _overview_heading(cls, display_role_name: str) -> str:
+        """The heading over a role's description, and the contents entry that
+        points at it, which have to read the same."""
+        article = cls._role_article(display_role_name)
+        return f"What {article} {display_role_name} does"
+
+    @classmethod
+    def _role_lead(cls, section: dict) -> str:
+        """The one sentence the framework prints under a role's heading.
+
+        For example "Find out what a business architect in government does and
+        the skills you need to do the role at each level." Senior Civil Service
+        roles have no levels, so theirs stops at the role.
+        """
+        name = cls._lead_role_name(section["role"].title)
+        if not name:
+            return ""
+
+        article = cls._role_article(name)
+
+        if section["is_scs"]:
+            return (
+                f"Find out what {article} {name} in the Senior Civil Service "
+                "does and the skills you need to do the role."
+            )
+        return (
+            f"Find out what {article} {name} in government does and the skills "
+            "you need to do the role at each level."
+        )
+
     @classmethod
     def _role_levels_intro(cls, section: dict) -> list[str]:
         """The two sentences the framework prints under the role levels heading.
@@ -2612,17 +3084,51 @@ class RolePage(Page):
         ]
 
     @staticmethod
+    def _section_anchors(
+        *, is_scs: bool, display_role_name: str, suffix: str
+    ) -> dict[str, str]:
+        """The framework's own ids, so a link written against the live service
+        still lands on the section it named.
+
+        The overview keeps "what-a-" whatever article the heading takes:
+        "what-a-it-service-manager-does" under "What an IT service manager
+        does". A Senior Civil Service role's page reuses three of the others
+        differently from the rest of the framework: its skills heading carries
+        "role-levels", the shared-skills heading "roles-that-shares", and
+        "related-roles" means the roles leading into the job rather than the
+        ones beside it. Nothing else claims "role-levels" there, senior roles
+        having no levels.
+        """
+        return {
+            "overview": f"what-a-{slugify(display_role_name)}-does{suffix}",
+            "skills": ("role-levels" if is_scs else "skills") + suffix,
+            "levels": f"role-levels{suffix}",
+            "related_roles": ("roles-that-shares" if is_scs else "related-roles")
+            + suffix,
+            "progression_scs_roles": f"related-scs-roles{suffix}",
+            "progression_roles": (
+                "related-roles" if is_scs else "roles-that-could-lead-here"
+            )
+            + suffix,
+            "updates": f"update-history{suffix}",
+        }
+
+    @staticmethod
     def _contents_entries(section: dict) -> list[dict]:
-        """In-page contents links, in the order the sections are rendered."""
+        """In-page contents links, in the order the sections are rendered.
+
+        Each one repeats the heading it points at, so both read the wording
+        the section was given rather than each writing out its own.
+        """
         anchors = section["anchors"]
-        display_role_name = section["display_role_name"]
+        wording = section["wording"]
         entries: list[dict] = []
 
         if section["role"].body:
             entries.append(
                 {
                     "anchor": anchors["overview"],
-                    "text": f"What a {display_role_name} does",
+                    "text": section["overview_heading"],
                     "children": [],
                 }
             )
@@ -2630,7 +3136,7 @@ class RolePage(Page):
             entries.append(
                 {
                     "anchor": anchors["skills"],
-                    "text": f"Skills for {display_role_name}",
+                    "text": wording["scs_skills_heading"],
                     "children": [],
                 }
             )
@@ -2638,7 +3144,7 @@ class RolePage(Page):
             entries.append(
                 {
                     "anchor": anchors["levels"],
-                    "text": f"{section['role'].title} role levels",
+                    "text": wording["role_levels_heading"],
                     "children": [
                         {
                             "anchor": level["anchor"],
@@ -2654,7 +3160,23 @@ class RolePage(Page):
             entries.append(
                 {
                     "anchor": anchors["related_roles"],
-                    "text": f"Roles that share {display_role_name} skills",
+                    "text": wording["related_roles_heading"],
+                    "children": [],
+                }
+            )
+        if section["progression_scs_roles"]:
+            entries.append(
+                {
+                    "anchor": anchors["progression_scs_roles"],
+                    "text": wording["progression_scs_roles_heading"],
+                    "children": [],
+                }
+            )
+        if section["progression_roles"]:
+            entries.append(
+                {
+                    "anchor": anchors["progression_roles"],
+                    "text": wording["progression_roles_heading"],
                     "children": [],
                 }
             )
@@ -2665,8 +3187,17 @@ class RolePage(Page):
         role_sections = self.get_role_sections()
 
         role_page_urls = role_page_urls_by_role_id(exclude_page_id=self.pk)
-        skills_page = SkillsAZPage.objects.live().first()
+        # Built on the first section that has a use for it. A page holding only
+        # senior roles never asks, theirs being the side of the mapping the
+        # content team authors.
+        senior_roles_by_source: dict[int, list[GovukRole]] | None = None
+        site_root = self._site_root(request)
+        skills_page = self._first_live_in_site(SkillsAZPage.objects.all(), site_root)
         context["skills_index_url"] = skills_page.url if skills_page else ""
+        context["scs_context_url"] = self._scs_context_url(site_root)
+        context["job_grades_url"] = self._job_grades_url(site_root)
+        framework_wording = CapabilityFrameworkWordingSettings.for_request(request)
+        context["framework_wording"] = framework_wording
 
         # A page normally renders one role, so its anchors can match the
         # framework's. Extra roles are suffixed to keep every id unique.
@@ -2676,24 +3207,50 @@ class RolePage(Page):
             role = section["role"]
             display_role_name = self._display_role_name(role.title)
             section["display_role_name"] = display_role_name
+            section["overview_heading"] = self._overview_heading(display_role_name)
+            section["wording"] = framework_wording.for_role(
+                display_role_name=display_role_name, role_title=role.title
+            )
             suffix = f"-{role.slug}" if needs_unique_anchors else ""
-            section["anchors"] = {
-                "overview": f"what-a-{slugify(display_role_name)}-does{suffix}",
-                "skills": f"skills{suffix}",
-                "levels": f"role-levels{suffix}",
-                "related_roles": f"related-roles{suffix}",
-                "updates": f"update-history{suffix}",
-            }
+            section["anchors"] = self._section_anchors(
+                is_scs=section["is_scs"],
+                display_role_name=display_role_name,
+                suffix=suffix,
+            )
             for number, level in enumerate(section["levels"], start=1):
                 level["number"] = number
                 level["anchor"] = (
                     f"{slugify(level['title'])}{suffix}" if level["title"] else ""
                 )
+                for skill_row in level["skills"]:
+                    skill_row["level_scale_text"] = framework_wording.skill_level_scale(
+                        label=skill_row["required_level_label"],
+                        ordinal=SKILL_LEVEL_ORDINALS.get(
+                            skill_row["required_level"], ""
+                        ),
+                    )
             section["related_roles"] = [
                 {**entry, "url": role_page_urls.get(entry["role"].pk, "")}
                 for entry in role.get_related_roles()
             ]
+            section["progression_roles"] = [
+                {"role": entry, "url": role_page_urls.get(entry.pk, "")}
+                for entry in role.get_roles_that_could_lead_here()
+            ]
+            # Only on the way up. A senior role lists what leads into it, and
+            # the framework leaves it there rather than also pointing on to the
+            # senior roles above that one.
+            if section["is_scs"]:
+                section["progression_scs_roles"] = []
+            else:
+                if senior_roles_by_source is None:
+                    senior_roles_by_source = GovukRole.senior_roles_by_source_role_id()
+                section["progression_scs_roles"] = [
+                    {"role": entry, "url": role_page_urls.get(entry.pk, "")}
+                    for entry in senior_roles_by_source.get(role.pk, [])
+                ]
             section["changelog"] = role.get_changelog()
+            section["lead"] = self._role_lead(section)
             section["levels_intro"] = self._role_levels_intro(section)
             section["contents"] = self._contents_entries(section)
 
@@ -2704,6 +3261,59 @@ class RolePage(Page):
         context["breadcrumbs"] = self._role_breadcrumbs(request, role_sections)
         context["breadcrumbs_mobile_only"] = True
         return context
+
+    # The framework explains, on every Senior Civil Service role, that the job
+    # varies with the organisation, and links to the page that sets that out.
+    SCS_CONTEXT_SLUG = (
+        "context-and-challenges-for-senior-civil-service-roles-in-digital-and-data"
+    )
+    # Both the role and its levels name the grade the job is usually done at,
+    # and link to the page explaining what those grades are.
+    JOB_GRADES_SLUG = "job-grades"
+
+    @classmethod
+    def _scs_context_url(cls, site_root: Page | None) -> str:
+        return cls._page_url_by_slug(cls.SCS_CONTEXT_SLUG, site_root)
+
+    @classmethod
+    def _job_grades_url(cls, site_root: Page | None) -> str:
+        return cls._page_url_by_slug(cls.JOB_GRADES_SLUG, site_root)
+
+    @classmethod
+    def _page_url_by_slug(cls, slug: str, site_root: Page | None) -> str:
+        """Where that page sits on this site, or nothing if it has not got one.
+
+        Written out by hand the link is a 404 wherever the page is missing or
+        has been moved, so the template asks for a URL and falls back to plain
+        text without one. It also spares the reader a redirect: Wagtail gives
+        back the path with its trailing slash, which a hand-written one lacks.
+        """
+        page = cls._first_live_in_site(Page.objects.filter(slug=slug), site_root)
+        return page.url if page else ""
+
+    @staticmethod
+    def _site_root(request) -> Page | None:
+        """The root of the site this request is being served from.
+
+        One database can serve several sites, and a bare ``Page.objects``
+        lookup crosses between them, so without this a role page could send a
+        reader to another site's copy of a page, or to one this site does not
+        publish at all.
+        """
+        site = Site.find_for_request(request)
+        return site.root_page if site else None
+
+    @staticmethod
+    def _first_live_in_site(queryset, site_root: Page | None) -> Page | None:
+        """The first live page in ``queryset`` belonging to that site.
+
+        Falls back to searching every site when the root is unknown, which is
+        no worse than the lookup this replaced.
+        """
+        queryset = queryset.live()
+        if site_root is not None:
+            queryset = queryset.descendant_of(site_root, inclusive=False)
+        return queryset.first()
 
     def _role_breadcrumbs(self, request, role_sections: list[dict]) -> list[dict]:
         """Home, the role's family, then the role itself."""
@@ -2831,7 +3441,15 @@ class SkillsAZPage(Page):
 
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
-        context["skill_sections"] = self.get_skill_sections()
+        skill_sections = self.get_skill_sections()
+        framework_wording = CapabilityFrameworkWordingSettings.for_request(request)
+        for section in skill_sections:
+            for level_row in section["level_rows"]:
+                level_row["scale_text"] = framework_wording.skill_level_scale(
+                    label=level_row["label"], ordinal=level_row["ordinal"]
+                )
+        context["skill_sections"] = skill_sections
+        context["framework_wording"] = framework_wording
         # The skills index sits alongside the roles in the framework, so it
         # carries the same side navigation, and the same narrow-screen
         # breadcrumb standing in for it.

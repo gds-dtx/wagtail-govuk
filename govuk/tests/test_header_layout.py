@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.models import ContentPage, CustomiseSettings, PhaseBannerSettings
@@ -119,3 +119,29 @@ class PhaseBannerWordingTests(TestCase):
         )
         self.assertContains(response, "to help us improve the framework.")
         self.assertNotContains(response, "will help us to improve it.")
+
+
+class FooterDebugLineTests(TestCase):
+    """What the footer's debug line tells a reader of the page source."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.page = self.site.root_page.specific.add_child(
+            instance=ContentPage(title="A page", slug="a-page")
+        )
+        self.page.save_revision().publish()
+
+    @override_settings(DEBUG=True)
+    def test_the_settings_module_and_version_show_while_debugging(self):
+        response = self.client.get(self.page.url)
+
+        self.assertContains(response, "govuk-footer__meta-custom")
+        self.assertContains(response, "Settings: govuk.settings.localnoauth")
+
+    @override_settings(DEBUG=False)
+    def test_they_stay_out_of_the_page_source_otherwise(self):
+        """`hidden` kept the line out of sight but not out of the source."""
+        response = self.client.get(self.page.url)
+
+        self.assertNotContains(response, "govuk-footer__meta-custom")
+        self.assertNotContains(response, "govuk.settings.localnoauth")

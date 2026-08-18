@@ -142,7 +142,8 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
     raw_skills: list = []
     raw_roles: list = []
-    if settings.FEATURE_FLAGS.get("SKILLS"):
+    skills_enabled = bool(settings.FEATURE_FLAGS.get("SKILLS"))
+    if skills_enabled:
         raw_skills = payload.get("skills", []) or []
         raw_roles = payload.get("roles", []) or []
         if not isinstance(raw_skills, list):
@@ -153,10 +154,12 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
             result.skipped += 1
             result.errors.append("Payload 'roles' value must be an array when provided.")
             return result
+    else:
+        _report_skills_feature_is_off(payload, result=result)
 
     if not raw_pages and not raw_skills and not raw_roles and not raw_tags:
         result.skipped += 1
-        if settings.FEATURE_FLAGS.get("SKILLS"):
+        if skills_enabled:
             result.errors.append(
                 "Payload must contain at least one entry in 'tags', 'pages', 'skills' or 'roles'."
             )
@@ -168,7 +171,7 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
     tag_lookup = _import_tags_from_payload(raw_tags=raw_tags, raw_pages=raw_pages)
 
-    if settings.FEATURE_FLAGS.get("SKILLS"):
+    if skills_enabled:
         _import_skills(raw_skills, result=result)
         _import_roles(raw_roles, result=result)
         _import_site_wide_changelog(payload.get("changelog"), result=result)
@@ -194,6 +197,40 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
 def dump_payload_as_json(payload: dict) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def _report_skills_feature_is_off(payload: dict, *, result: PageImportResult):
+    """Say once that the capability framework is switched off on this instance.
+
+    Without this the import looks as though it half worked: the pages arrive,
+    every skill and role in the file is dropped in silence, and each role page
+    then reports its own reference as a missing slug. That reads as a corrupt
+    export rather than as an environment missing FEATURE_SKILLS, and the admin
+    banner shows only the first few messages, so the real cause never reaches
+    whoever ran the import. Naming the flag here is what makes the rest of the
+    run legible, so the per-page reports are dropped as its consequences.
+    """
+    carried = [
+        name
+        for name in ("skills", "roles", "changelog")
+        if payload.get(name)
+    ]
+    if not carried:
+        return
+
+    result.errors.append(
+        f"This site has the capability framework switched off, so the "
+        f"{_readable_list(carried)} in this file "
+        f"{'were' if len(carried) > 1 else 'was'} not imported and role pages "
+        "have lost the roles they listed. Set the FEATURE_SKILLS environment "
+        "variable on this instance and import the file again."
+    )
+
+
+def _readable_list(names: list[str]) -> str:
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} and {names[-1]}"
 
 
 def _import_site_name(raw_site, *, site: Site):
@@ -477,6 +514,7 @@ def _serialise_role(role: GovukRole) -> dict:
         "is_senior_civil_service": role.is_senior_civil_service,
         "scs_grades": _serialise_choice_stream(role.scs_grades, "grade"),
         "scs_skills": _serialise_scs_skills(role),
+        "roles_that_could_lead_here": _serialise_role_references(role),
         "changelog": _serialise_changelog(role.changelog_entries.all()),
     }
 
@@ -496,6 +534,15 @@ def _serialise_scs_skills(role: GovukRole) -> list[str]:
         block.value.slug
         for block in role.scs_skills
         if block.block_type == "skill" and block.value is not None
+    ]
+
+
+def _serialise_role_references(role: GovukRole) -> list[str]:
+    """Slugs of the roles that could lead to this one, in the order given."""
+    return [
+        block.value.slug
+        for block in role.roles_that_could_lead_here
+        if block.block_type == "role" and block.value is not None
     ]
 
 
@@ -743,22 +790,86 @@ def _deserialise_skill_points(raw_points) -> list[dict[str, str]]:
 
 
 def _import_roles(raw_roles: list, *, result: PageImportResult):
+    imported_slugs: set[str] = set()
     for node in raw_roles:
-        _import_role_node(node=node, result=result)
+        slug = _import_role_node(node=node, result=result)
+        if slug:
+            imported_slugs.add(slug)
+    if not imported_slugs:
+        return
+
+    # A role can name one that appears later in the payload, so the role to
+    # role references are resolved once every role in it exists. Only the roles
+    # the first pass saved take part: a role it rejected keeps the references
+    # it already had rather than gaining them from a payload judged invalid.
+    # One read serves the whole pass, which both names roles and looks them up.
+    roles_by_slug = {role.slug: role for role in GovukRole.objects.all()}
+    for node in raw_roles:
+        _import_role_references(
+            node=node,
+            imported_slugs=imported_slugs,
+            roles_by_slug=roles_by_slug,
+            result=result,
+        )
 
 
-def _import_role_node(*, node, result: PageImportResult):
+def _import_role_references(
+    *,
+    node,
+    imported_slugs: set[str],
+    roles_by_slug: dict[str, GovukRole],
+    result: PageImportResult,
+):
+    if not isinstance(node, dict):
+        return
+
+    slug = _normalised_slug(node.get("slug") or node.get("title"))
+    if not slug or slug not in imported_slugs:
+        return
+
+    role = roles_by_slug.get(slug)
+    if role is None:
+        return
+
+    references = _deserialise_role_references(
+        node.get("roles_that_could_lead_here"),
+        role_slug=slug,
+        roles_by_slug=roles_by_slug,
+        result=result,
+    )
+    # Most roles name no progression at all, and rewriting an unchanged field
+    # would cost a write apiece across the whole framework.
+    if not references and not role.roles_that_could_lead_here:
+        return
+
+    role.roles_that_could_lead_here = references
+    # Saved on its own so the counts stay with the pass that created or
+    # updated the role, and failing here is reported like any other bad entry
+    # rather than abandoning the rest of the import. A StreamField raises
+    # ValueError over a block it cannot store; save() does not validate, so
+    # there is no ValidationError to catch here.
+    try:
+        role.save(update_fields=["roles_that_could_lead_here"])
+    except ValueError as exc:
+        result.errors.append(
+            f"Role '{slug}' kept its existing progression roles: {exc}"
+        )
+
+
+def _import_role_node(*, node, result: PageImportResult) -> str:
+    """Import one role, returning the slug it saved under, or "" if it was
+    skipped, so that the reference pass leaves rejected roles alone."""
     result.processed += 1
     if not isinstance(node, dict):
         result.skipped += 1
         result.errors.append("Skipped role entry because it is not an object.")
-        return
+        return ""
 
     slug = _normalised_slug(node.get("slug") or node.get("title"))
     if not slug:
         result.skipped += 1
         result.errors.append("Skipped role entry because the slug is missing.")
-        return
+        return ""
 
     existing_role = GovukRole.objects.filter(slug=slug).first()
     if existing_role is None:
@@ -796,7 +907,7 @@ def _import_role_node(*, node, result: PageImportResult):
     except (ValidationError, ValueError) as exc:
         result.skipped += 1
         result.errors.append(f"Skipped role '{slug}': {exc}")
-        return
+        return ""
 
     _import_changelog(node.get("changelog"), subject=role, field_name="role", result=result)
 
@@ -804,6 +915,7 @@ def _import_role_node(*, node, result: PageImportResult):
         result.created += 1
     else:
         result.updated += 1
+    return slug
 
 
 def _deserialise_choice_stream(raw_values, *, block_type: str, valid_keys: set) -> list[dict]:
@@ -843,6 +955,39 @@ def _deserialise_scs_skills(raw_skills, *, role_slug: str, result: PageImportRes
             )
             continue
         blocks_payload.append({"type": "skill", "value": skill.pk})
+    return blocks_payload
+
+
+def _deserialise_role_references(
+    raw_roles,
+    *,
+    role_slug: str,
+    roles_by_slug: dict[str, GovukRole],
+    result: PageImportResult,
+) -> list[dict]:
+    if not isinstance(raw_roles, list):
+        return []
+
+    blocks_payload: list[dict] = []
+    for raw_role in raw_roles:
+        raw_value = raw_role.get("value") if isinstance(raw_role, dict) else raw_role
+        referenced_slug = _normalised_slug(raw_value)
+        if referenced_slug == role_slug:
+            continue
+        if not referenced_slug:
+            result.errors.append(
+                f"Role '{role_slug}' skipped a role that could lead to it "
+                "because the entry is blank."
+            )
+            continue
+        referenced = roles_by_slug.get(referenced_slug)
+        if referenced is None:
+            result.errors.append(
+                f"Role '{role_slug}' skipped a role that could lead to it "
+                f"for missing role '{raw_value}'."
+            )
+            continue
+        blocks_payload.append({"type": "role", "value": referenced.pk})
     return blocks_payload
 
 
@@ -1186,7 +1331,10 @@ def _apply_page_fields(
                 block_type=block_type,
                 snippet_model=snippet_model,
                 page_slug=page.slug,
-                result=result,
+                # With the framework switched off no snippet was imported, so
+                # every page would report the same cause again. It has been
+                # stated once already, naming the flag that explains it.
+                result=result if settings.FEATURE_FLAGS.get("SKILLS") else None,
             )
 
         python_value = _deserialise_model_field_value(model_field, raw_value)
