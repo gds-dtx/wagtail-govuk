@@ -794,6 +794,14 @@ def pages_import_view(request):
         site=selected_site,
         user=request.user,
     )
+    if not result.processed and result.errors:
+        # Nothing in the file was even a page, a skill or a role to look at.
+        # "Import complete" over a file that turned out not to be an export
+        # reads as success at the very moment someone is checking whether the
+        # content moved, with the reason it did not only in the line beneath.
+        messages.error(request, f"Nothing was imported. {result.errors[0]}")
+        return redirect(redirect_url)
+
     messages.success(
         request,
         (

@@ -538,3 +538,63 @@ class PageImportExportAdminViewTests(TestCase):
         ]
         self.assertIsInstance(raw_card_tag_value, int)
         self.assertEqual(GovukTag.objects.get(pk=raw_card_tag_value).slug, "new-tag")
+
+    def _import(self, payload):
+        upload = SimpleUploadedFile(
+            "pages.json",
+            json.dumps(payload).encode("utf-8"),
+            content_type="application/json",
+        )
+        return self.client.post(
+            self.import_url,
+            data={"site_id": self.site.pk, "json_file": upload},
+            follow=True,
+        )
+
+    def test_a_file_holding_nothing_to_import_is_not_reported_as_complete(self):
+        """A green "Import complete" over a file that was never an export.
+
+        Cutover is a sequence of exports and imports checked by reading the
+        banner, so a success message for a file that moved nothing is the one
+        message that must not appear. Every one of these left the site as it
+        was and still said the import had finished.
+        """
+        for label, payload in (
+            ("an empty object", {}),
+            ("nothing but a format", {"format": PAGE_EXPORT_FORMAT}),
+            ("an empty pages list", {"format": PAGE_EXPORT_FORMAT, "pages": []}),
+            ("pages that are not a list", {"pages": "not a list"}),
+            ("somebody else's file", {"users": [{"name": "someone"}]}),
+        ):
+            with self.subTest(label=label):
+                pages_before = Page.objects.count()
+                response = self._import(payload)
+                messages = [str(message) for message in response.context["messages"]]
+
+                self.assertEqual(Page.objects.count(), pages_before)
+                self.assertTrue(messages)
+                self.assertNotIn(
+                    "Import complete",
+                    " ".join(messages),
+                    msg=f"{label} was reported as a completed import",
+                )
+                self.assertIn("Nothing was imported.", messages[0])
+
+    def test_a_file_holding_one_page_is_still_reported_as_complete(self):
+        response = self._import(
+            {
+                "format": PAGE_EXPORT_FORMAT,
+                "pages": [
+                    {
+                        "model": "govuk.ContentPage",
+                        "settings": {"title": "Apply", "slug": "apply"},
+                        "fields": {"body": "<p>New body</p>"},
+                    }
+                ],
+            }
+        )
+        messages = [str(message) for message in response.context["messages"]]
+
+        self.assertIn("Import complete", " ".join(messages))
+        self.content_page.refresh_from_db()
+        self.assertEqual(self.content_page.body, "<p>New body</p>")
