@@ -77,7 +77,7 @@ class SearchBackend:
         self, query: str, filters: dict[str, Any] | None = None, page: int | str = 1
     ) -> PaginatorPage:
         filters = filters or {}
-        clean_query = (query or "").strip()
+        clean_query = self._clean_query(query)
         selected_tag_key = self._normalised_tag_filter(filters.get("tag"))
         selected_source_key = self._normalised_source_filter(filters.get("source"))
 
@@ -1077,6 +1077,16 @@ class SearchBackend:
             unique_results.append(item)
 
         return unique_results
+
+    def _clean_query(self, query: Any) -> str:
+        """The words searched for, without the one character text cannot hold.
+
+        PostgreSQL refuses a string carrying a NUL outright, so "?query=%00"
+        was a 500 on dev and production while SQLite searched for it, found
+        nothing and said so. Dropping it leaves the rest of the query to be
+        searched for, and a query of nothing else falls to the empty state.
+        """
+        return str(query or "").replace("\x00", "").strip()
 
     def _normalised_tag_filter(self, value: Any) -> str:
         return normalised_text(value).lower()
