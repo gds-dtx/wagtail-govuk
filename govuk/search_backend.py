@@ -29,6 +29,12 @@ from govuk.utils import normalised_text
 DEFAULT_PAGE_SIZE = 15
 SEARCH_CONFIG = "english"
 SEARCH_WEIGHTS = [0.1, 0.2, 0.4, 1.0]
+# What PostgreSQL scores a row that the query did not match. Asking for more
+# than one word makes ``ts_rank`` an AND of the words, and it floors that at
+# 1e-20 rather than returning the zero it means, so "rank above zero" keeps
+# every row in the table. SQLite matches on the text itself and has no such
+# floor, which is why local runs and CI never saw it.
+UNMATCHED_RANK = 1e-20
 PAGE_TAG_TEXT_WEIGHT = 0.75
 CARD_TAG_TEXT_WEIGHT = 1.0
 TAG_RESULT_WEIGHT = 1.2
@@ -537,7 +543,7 @@ class SearchBackend:
             queryset.annotate(
                 rank=SearchRank(search_vector, search_query, weights=SEARCH_WEIGHTS),
             )
-            .filter(rank__gt=0)
+            .filter(rank__gt=UNMATCHED_RANK)
             .order_by("-rank", "-first_published_at", "title")
         )
 
@@ -557,7 +563,7 @@ class SearchBackend:
             queryset.annotate(
                 card_rank=SearchRank(rows_vector, search_query, weights=SEARCH_WEIGHTS),
             )
-            .filter(card_rank__gt=0)
+            .filter(card_rank__gt=UNMATCHED_RANK)
             .order_by("-card_rank", "-first_published_at", "title")
         )
 
@@ -619,7 +625,7 @@ class SearchBackend:
             queryset.annotate(
                 hero_rank=SearchRank(hero_vector, search_query, weights=SEARCH_WEIGHTS),
             )
-            .filter(hero_rank__gt=0)
+            .filter(hero_rank__gt=UNMATCHED_RANK)
             .order_by("-hero_rank", "-first_published_at", "title")
         )
 
@@ -659,7 +665,7 @@ class SearchBackend:
                     search_vector, search_query, weights=SEARCH_WEIGHTS
                 ),
             )
-            .filter(external_rank__gt=0)
+            .filter(external_rank__gt=UNMATCHED_RANK)
             .order_by(
                 "-external_rank",
                 "-updated_at",
