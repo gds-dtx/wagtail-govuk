@@ -495,3 +495,50 @@ class SearchBackendSourceFilterTests(TestCase):
 
     def test_a_source_numbered_in_another_script_is_still_a_number(self):
         self.assertEqual(search_backend._normalised_source_filter("٣"), "3")
+
+
+class SearchBackendNulQueryTests(TestCase):
+    """A NUL in the query is dropped rather than handed to the database.
+
+    PostgreSQL refuses a string literal carrying one, so "/search/?query=%00"
+    answered 500 on dev and production. SQLite takes it, which is why the
+    suite and CI never saw it: these tests read the query the backend built
+    rather than waiting for an engine to object to it.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Accessibility specialist",
+                slug="accessibility-specialist",
+                body="",
+            )
+        )
+        self.page.save_revision().publish()
+
+    def _search(self, query: str):
+        return search_backend.search(
+            query,
+            filters={"site": self.site, "request": RequestFactory().get("/search/")},
+            page=1,
+        )
+
+    def test_a_query_of_nothing_but_a_nul_is_the_empty_state(self):
+        results = self._search("\x00")
+
+        self.assertEqual(list(results.object_list), [])
+        self.assertEqual(results.paginator.count, 0)
+
+    def test_a_nul_among_the_words_leaves_the_words(self):
+        results = self._search("accessibility\x00")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+
+    def test_the_query_the_backend_searches_for_holds_no_nul(self):
+        self.assertEqual(search_backend._clean_query("data\x00 "), "data")
+        self.assertEqual(search_backend._clean_query("\x00"), "")
+        self.assertEqual(search_backend._clean_query(None), "")
