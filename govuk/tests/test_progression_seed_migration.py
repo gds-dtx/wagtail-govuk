@@ -14,7 +14,7 @@ from django.db.migrations.loader import MigrationLoader
 from django.test import TestCase
 from wagtail.models import ReferenceIndex
 
-from govuk.models import GovukRole
+from govuk.models import GovukRole, GovukSkill
 
 # Imported by name because a module starting with a digit cannot be written in
 # an import statement.
@@ -136,6 +136,49 @@ class ProgressionSeedReferenceIndexTests(TestCase):
             [reference.to_object_id for reference in self._references()],
             [str(GovukRole.objects.get(slug="software-developer").pk)],
         )
+
+    def test_the_skills_a_role_already_uses_keep_their_references(self):
+        """The index is rewritten per object, so registering the roles above
+        rewrites everything else the role points at along with them. Read back
+        in part rather than in full and a senior role's skills would drop out
+        of the index, which is what protects them from being deleted.
+        """
+        skill = GovukSkill.objects.create(title="Delegated", slug="delegated")
+        senior = GovukRole.objects.get(slug="chief-technology-officer")
+        senior.scs_skills = [{"type": "skill", "value": skill.pk}]
+        senior.save()
+
+        seed(self._historical_apps(), None)
+
+        self.assertIn(
+            (ContentType.objects.get_for_model(GovukSkill).pk, str(skill.pk)),
+            {
+                (reference.to_content_type_id, reference.to_object_id)
+                for reference in ReferenceIndex.objects.filter(
+                    content_type=ContentType.objects.get_for_model(GovukRole)
+                )
+            },
+        )
+
+    def test_a_database_older_than_the_model_is_told_to_rebuild_the_index(self):
+        """Replayed from the beginning after a later migration adds a column,
+        the model cannot be read yet and the index has to wait. Saying nothing
+        would leave a site looking migrated with no usage recorded anywhere.
+
+        Stood in for here by the state one migration earlier, which is a roles
+        table a column short of the model exactly as that database would be.
+        """
+        older_apps = MigrationLoader(connection).project_state(
+            ("govuk", "0059_capability_framework_service_navigation")
+        ).apps
+        senior = GovukRole.objects.get(slug="chief-technology-officer")
+
+        with self.assertLogs(migration.logger, level="WARNING") as logs:
+            migration._register_references(older_apps, [senior.pk])
+
+        self.assertIn("rebuild_references_index", logs.output[0])
+        self.assertIn("roles_that_could_lead_here", logs.output[0])
+        self.assertFalse(self._references().exists())
 
     def test_it_records_no_more_than_saving_the_role_by_hand_would(self):
         seed(self._historical_apps(), None)

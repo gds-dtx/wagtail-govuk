@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 
 from django.test import TestCase
 from django.utils import timezone
@@ -9,6 +9,7 @@ from govuk.models import (
     ContentDiscoverySettings,
     ContentDiscoverySource,
     ExternalContentItem,
+    GovukChangelogEntry,
     GovukSkill,
     GovukTag,
     SectionPage,
@@ -452,4 +453,67 @@ class SearchBackendSkillTests(TestCase):
         self.assertLess(
             titles.index("Business analyst"),
             titles.index("Enterprise architecture (business analyst)"),
+        )
+
+    def test_a_skill_is_dated_by_its_own_changelog(self):
+        self._add_skills_index()
+        skill = GovukSkill.objects.create(title="Prototyping", body="<p>x</p>")
+        GovukChangelogEntry.objects.create(
+            skill=skill, date=date(2026, 3, 4), note="<p>Rewritten.</p>"
+        )
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+        result = self._result_for_title(page.object_list, "Prototyping")
+
+        self.assertEqual(result.last_updated.date(), date(2026, 3, 4))
+
+    def test_a_skill_nobody_has_dated_carries_no_date(self):
+        """Rather than the index page's, which is the day an editor last saved
+        a page the skill has nothing to do with."""
+        self._add_skills_index()
+        GovukSkill.objects.create(title="Prototyping", body="<p>x</p>")
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+
+        self.assertIsNone(
+            self._result_for_title(page.object_list, "Prototyping").last_updated
+        )
+
+    def test_publishing_the_index_does_not_lift_every_skill_up_the_results(self):
+        """Dated by the page, all 185 skills would count as changed the day it
+        was last saved and take the recency boost that goes with it, putting a
+        skill that mentions the word once above a page written about it.
+        """
+        self._add_skills_index()
+        older = self.root_page.add_child(
+            instance=ContentPage(
+                title="Guidance for delivery teams",
+                slug="guidance",
+                search_description="Advice on digital ways of working.",
+            )
+        )
+        older.save_revision().publish()
+        ContentPage.objects.filter(pk=older.pk).update(
+            first_published_at=timezone.now() - timedelta(days=400),
+            last_published_at=timezone.now() - timedelta(days=400),
+            latest_revision_created_at=timezone.now() - timedelta(days=400),
+        )
+        GovukSkill.objects.create(
+            title="Systems design",
+            body="<p>Designing whole systems.</p>",
+            working_points=[
+                {"type": "point", "value": "work with digital colleagues"}
+            ],
+        )
+
+        page = search_backend.search("digital", filters={"site": self.site}, page=1)
+        titles = [item.title for item in page.object_list]
+
+        self.assertLess(
+            titles.index("Guidance for delivery teams"),
+            titles.index("Systems design"),
         )

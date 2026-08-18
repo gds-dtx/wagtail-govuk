@@ -278,6 +278,16 @@ class SearchResultsLayoutTests(TestCase):
             response, "?query=paginated+result&amp;tag=paginated&amp;page=2"
         )
 
+    def test_a_filter_that_matched_nothing_is_not_carried_into_the_page_links(self):
+        """The search drops a tag it cannot offer, so a link still carrying it
+        would show a filtered address over unfiltered results."""
+        response = self.client.get(
+            reverse("search"), {"query": "paginated result", "tag": "no-such-tag"}
+        )
+
+        self.assertContains(response, "?query=paginated+result&amp;page=2")
+        self.assertNotContains(response, "tag=no-such-tag")
+
     def test_there_is_no_pagination_where_everything_fits_on_one_page(self):
         response = self.client.get(reverse("search"), {"query": "solitary"})
 

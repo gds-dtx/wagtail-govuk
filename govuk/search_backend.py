@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any
 
+from django.conf import settings
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.core.paginator import Page as PaginatorPage
 from django.core.paginator import Paginator
 from django.db import connections
-from django.db.models import Q, QuerySet, TextField
+from django.db.models import Max, Q, QuerySet, TextField
 from django.db.models.functions import Cast
 from django.utils.html import strip_tags
 from django.utils.text import slugify
@@ -355,7 +356,6 @@ class SearchBackend:
             site_root=self._site_root_page(filters),
             include_page=True,
         )
-        last_updated = self._page_last_updated(skills_page)
         tag_items = self._page_tag_items(skills_page)
         tag_labels = [tag["value"] for tag in tag_items]
         tag_keys = [tag["key"] for tag in tag_items]
@@ -386,11 +386,32 @@ class SearchBackend:
                     breadcrumbs=breadcrumbs,
                     tags=tag_labels,
                     tag_keys=tag_keys,
-                    last_updated=last_updated,
+                    last_updated=self._skill_last_updated(skill),
                 )
             )
 
         return results
+
+    def _skill_last_updated(self, skill: GovukSkill) -> datetime | None:
+        """When this skill itself last changed, by its published changelog.
+
+        Not the index page's revision date, which is what a skill would
+        otherwise inherit: every skill would then be dated the day the page was
+        last saved and take the recency boost that goes with it, so publishing
+        an edit to the index would lift all 185 of them above older pages that
+        match the search better.
+
+        A date rather than a time, the changelog holding only the day, so it
+        counts from the start of it.
+        """
+        changed_on = getattr(skill, "last_changelog_date", None)
+        if changed_on is None:
+            return None
+
+        start_of_day = datetime.combine(changed_on, time.min)
+        if settings.USE_TZ:
+            return timezone.make_aware(start_of_day, timezone.get_current_timezone())
+        return start_of_day
 
     def _build_hero_results(
         self, query: str, filters: dict[str, Any]
@@ -562,7 +583,18 @@ class SearchBackend:
         for annotation_name in annotations:
             matches |= Q(**{f"{annotation_name}__icontains": query})
 
-        return queryset.annotate(**annotations).filter(matches)
+        # Dated here rather than a changelog lookup per skill, which would be a
+        # query apiece across whatever the search matched.
+        return (
+            queryset.annotate(**annotations)
+            .filter(matches)
+            .annotate(
+                last_changelog_date=Max(
+                    "changelog_entries__date",
+                    filter=Q(changelog_entries__live=True),
+                )
+            )
+        )
 
     def _skill_points(self, skill: GovukSkill) -> list[str]:
         points: list[str] = []

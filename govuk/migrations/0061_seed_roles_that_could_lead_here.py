@@ -10,8 +10,11 @@ an editor has worked on, and re-running it changes nothing.
 """
 
 import json
+import logging
 
 from django.db import migrations
+
+logger = logging.getLogger(__name__)
 
 # Senior role slug -> the roles that could lead to it, in the published order.
 PROGRESSION_BY_SENIOR_ROLE = {
@@ -102,10 +105,21 @@ def _register_references(apps, seeded_ids):
         field.column
         for field in apps.get_model("govuk", "GovukRole")._meta.concrete_fields
     }
-    if any(
-        field.column not in historical_columns
+    missing = sorted(
+        field.column
         for field in GovukRole._meta.concrete_fields
-    ):
+        if field.column not in historical_columns
+    )
+    if missing:
+        # Said out loud, because the alternative is a database that looks
+        # migrated while the admin reports no usage of the roles seeded above.
+        logger.warning(
+            "0061 seeded the progression mapping but did not register it with "
+            "the reference index, the roles table here being older than the "
+            "model (no %s yet). Run `manage.py rebuild_references_index` once "
+            "the remaining migrations have run.",
+            ", ".join(missing),
+        )
         return
 
     for role in GovukRole.objects.filter(pk__in=seeded_ids):

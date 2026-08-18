@@ -101,7 +101,13 @@ def _page_numbers(results) -> list[dict]:
 
 def _pagination_query(query: str, tag: str, source: str) -> str:
     """The query string a page link carries, so that paging keeps the search
-    and any filters the reader has chosen."""
+    and any filters the reader has chosen.
+
+    The filters the search settled on rather than the ones asked for: a tag
+    that matches nothing is dropped before the results are built, and carrying
+    it on into the page links would show a filtered URL over unfiltered
+    results.
+    """
     return urlencode(
         {
             name: value
@@ -139,7 +145,9 @@ def search_view(request):
             "results": results,
             "page_numbers": _page_numbers(results),
             "pagination_query": _pagination_query(
-                query, selected_tag, selected_source
+                query,
+                (getattr(results, "selected_tag", None) or {}).get("key", ""),
+                getattr(results, "selected_source_id", ""),
             ),
             "available_tags": getattr(results, "available_tags", []),
             "available_sources": getattr(results, "available_sources", []),
