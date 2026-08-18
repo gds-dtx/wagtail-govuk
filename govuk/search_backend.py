@@ -15,7 +15,14 @@ from django.utils.text import slugify
 from django.utils import timezone
 from wagtail.models import Page, Site
 
-from govuk.models import ContentPage, ExternalContentItem, SectionPage
+from govuk.models import (
+    SKILL_LEVEL_CHOICES,
+    ContentPage,
+    ExternalContentItem,
+    GovukSkill,
+    SectionPage,
+    SkillsAZPage,
+)
 from govuk.utils import normalised_text
 
 DEFAULT_PAGE_SIZE = 15
@@ -26,8 +33,14 @@ CARD_TAG_TEXT_WEIGHT = 1.0
 TAG_RESULT_WEIGHT = 1.2
 EXTERNAL_SOURCE_TEXT_WEIGHT = 0.4
 EXTERNAL_TAG_TEXT_WEIGHT = 0.6
+SKILL_TITLE_WEIGHT = 3.0
+# A skill's name is what a reader recognises; its description and level points
+# are supporting evidence, so they weigh less than a page's own description.
+SKILL_BODY_WEIGHT = 0.75
+SKILL_POINT_TEXT_WEIGHT = 0.4
 THIS_SITE_SOURCE_FILTER = "__this_site__"
 INTERNAL_RESULT_BOOST = 4.0
+EXACT_TITLE_BOOST = 3.0
 RECENCY_BOOST_BUCKETS: tuple[tuple[int, float], ...] = (
     (7, 4.0),
     (30, 2.5),
@@ -78,6 +91,7 @@ class SearchBackend:
         hero_results = self._build_hero_results(clean_query, filters)
         card_results = self._build_card_results(clean_query, filters)
         tag_results = self._build_tag_results(clean_query, filters)
+        skill_results = self._build_skill_results(clean_query, filters)
         external_content_results = self._build_external_content_results(
             clean_query,
             filters,
@@ -87,7 +101,9 @@ class SearchBackend:
             + hero_results
             + card_results
             + tag_results
-            + external_content_results
+            + skill_results
+            + external_content_results,
+            clean_query,
         )
 
         available_tags = self._available_tags(combined_results)
@@ -319,6 +335,63 @@ class SearchBackend:
 
         return results
 
+    def _build_skill_results(
+        self, query: str, filters: dict[str, Any]
+    ) -> list[SearchResultItem]:
+        """Skills are snippets, so nothing finds them through the page tree.
+
+        The index page renders every skill as its own accordion section, so a
+        result links into that section rather than the top of a long page.
+        """
+        skills_page = self._apply_filters(SkillsAZPage.objects.all(), filters).first()
+        if skills_page is None:
+            return []
+
+        request = filters.get("request")
+        skills_url = self._page_url(skills_page, request)
+        breadcrumbs = self._page_breadcrumbs(
+            skills_page,
+            request=request,
+            site_root=self._site_root_page(filters),
+            include_page=True,
+        )
+        last_updated = self._page_last_updated(skills_page)
+        tag_items = self._page_tag_items(skills_page)
+        tag_labels = [tag["value"] for tag in tag_items]
+        tag_keys = [tag["key"] for tag in tag_items]
+
+        results: list[SearchResultItem] = []
+        for skill in self._search_skills(GovukSkill.objects.all(), query):
+            body = normalised_text(skill.body)
+            points = self._skill_points(skill)
+            score = self._text_relevance(
+                query,
+                (
+                    (skill.title, SKILL_TITLE_WEIGHT),
+                    (body, SKILL_BODY_WEIGHT),
+                    (" ".join(points), SKILL_POINT_TEXT_WEIGHT),
+                ),
+            )
+            # The database filter also matches the StreamField's JSON keys, so
+            # the score is what decides whether a skill really matched.
+            if score <= 0:
+                continue
+
+            results.append(
+                SearchResultItem(
+                    title=normalised_text(skill.title),
+                    search_description=body or (points[0] if points else ""),
+                    url=f"{skills_url}#{skill.slug}" if skill.slug else skills_url,
+                    score=score,
+                    breadcrumbs=breadcrumbs,
+                    tags=tag_labels,
+                    tag_keys=tag_keys,
+                    last_updated=last_updated,
+                )
+            )
+
+        return results
+
     def _build_hero_results(
         self, query: str, filters: dict[str, Any]
     ) -> list[SearchResultItem]:
@@ -466,6 +539,37 @@ class SearchBackend:
             .filter(card_rank__gt=0)
             .order_by("-card_rank", "-first_published_at", "title")
         )
+
+    def _search_skills(self, queryset: QuerySet, query: str) -> QuerySet:
+        """Narrow 185 skills to the plausible ones before scoring them.
+
+        The level points are StreamField JSON, which neither database can
+        search block by block, so they are matched as raw text. That also
+        matches the JSON's own keys, which is why the caller rescores.
+        """
+        point_fields = (
+            "awareness_points",
+            "working_points",
+            "practitioner_points",
+            "expert_points",
+            "leadership_points",
+        )
+        annotations = {
+            f"{field_name}_text": Cast(field_name, TextField())
+            for field_name in point_fields
+        }
+        matches = Q(title__icontains=query) | Q(body__icontains=query)
+        for annotation_name in annotations:
+            matches |= Q(**{f"{annotation_name}__icontains": query})
+
+        return queryset.annotate(**annotations).filter(matches)
+
+    def _skill_points(self, skill: GovukSkill) -> list[str]:
+        points: list[str] = []
+        for level_key, _ in SKILL_LEVEL_CHOICES:
+            points.extend(skill.points_for_level(level_key))
+        points.extend(skill.get_leadership_points())
+        return points
 
     def _search_hero_sqlite(self, queryset: QuerySet, query: str) -> QuerySet:
         return queryset.filter(
@@ -709,10 +813,14 @@ class SearchBackend:
                 return boost
         return 0.0
 
-    def _ranking_score(self, item: SearchResultItem) -> float:
+    def _ranking_score(self, item: SearchResultItem, query: str) -> float:
         score = float(item.score or 0.0) + self._recency_boost(item.last_updated)
         if not item.is_external:
             score += INTERNAL_RESULT_BOOST
+        # Someone typing a role or skill name in full means that one, not the
+        # longer title that happens to quote it.
+        if query and item.title.strip().lower() == query.strip().lower():
+            score += EXACT_TITLE_BOOST
         return score
 
     def _clean_text(self, value: Any) -> str:
@@ -847,12 +955,14 @@ class SearchBackend:
             return DEFAULT_PAGE_SIZE
         return parsed_page_size if parsed_page_size > 0 else DEFAULT_PAGE_SIZE
 
-    def _merge_results(self, results: list[SearchResultItem]) -> list[SearchResultItem]:
+    def _merge_results(
+        self, results: list[SearchResultItem], query: str
+    ) -> list[SearchResultItem]:
         unique_results: list[SearchResultItem] = []
         seen: set[tuple[str, str]] = set()
 
         for item in results:
-            item.score = self._ranking_score(item)
+            item.score = self._ranking_score(item, query)
 
         for item in sorted(results, key=lambda item: (-item.score, item.title.lower())):
             key = (item.title.lower(), item.url)

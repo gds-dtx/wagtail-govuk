@@ -72,6 +72,45 @@ def jwks_view(request):
     )
 
 
+def _page_numbers(results) -> list[dict]:
+    """The numbers the pagination offers, eliding a long run of pages.
+
+    The Design System's pagination shows the first and last page, the current
+    one and its neighbours, and an ellipsis for the rest.
+    """
+    paginator = getattr(results, "paginator", None)
+    if paginator is None or paginator.num_pages < 2:
+        return []
+
+    numbers = []
+    for entry in paginator.get_elided_page_range(
+        results.number, on_each_side=1, on_ends=1
+    ):
+        if isinstance(entry, int):
+            numbers.append(
+                {
+                    "number": entry,
+                    "is_current": entry == results.number,
+                    "is_ellipsis": False,
+                }
+            )
+        else:
+            numbers.append({"number": "", "is_current": False, "is_ellipsis": True})
+    return numbers
+
+
+def _pagination_query(query: str, tag: str, source: str) -> str:
+    """The query string a page link carries, so that paging keeps the search
+    and any filters the reader has chosen."""
+    return urlencode(
+        {
+            name: value
+            for name, value in (("query", query), ("tag", tag), ("source", source))
+            if value
+        }
+    )
+
+
 @require_http_methods(["GET"])
 def search_view(request):
     query = (request.GET.get("query") or "").strip()
@@ -98,6 +137,10 @@ def search_view(request):
         {
             "query": query,
             "results": results,
+            "page_numbers": _page_numbers(results),
+            "pagination_query": _pagination_query(
+                query, selected_tag, selected_source
+            ),
             "available_tags": getattr(results, "available_tags", []),
             "available_sources": getattr(results, "available_sources", []),
             "selected_tag": getattr(results, "selected_tag", None),

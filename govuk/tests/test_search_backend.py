@@ -9,8 +9,10 @@ from govuk.models import (
     ContentDiscoverySettings,
     ContentDiscoverySource,
     ExternalContentItem,
+    GovukSkill,
     GovukTag,
     SectionPage,
+    SkillsAZPage,
     TagListingsPage,
 )
 from govuk.search_backend import search_backend
@@ -345,3 +347,109 @@ class SearchBackendInternalPriorityAndRecencyTests(TestCase):
         self.assertIsNotNone(old_result)
         self.assertIsNotNone(new_result)
         self.assertGreater(new_result.score, old_result.score)
+
+
+class SearchBackendSkillTests(TestCase):
+    """Skills are snippets, so nothing reaches them through the page tree."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+    def _add_skills_index(self):
+        skills_page = self.root_page.add_child(
+            instance=SkillsAZPage(title="Skills A-Z", slug="skills-az")
+        )
+        skills_page.save_revision().publish()
+        return skills_page.specific
+
+    def _result_for_title(self, results, title: str):
+        return next((item for item in results if item.title == title), None)
+
+    def test_a_skill_is_found_by_its_name(self):
+        skills_page = self._add_skills_index()
+        skill = GovukSkill.objects.create(
+            title="Prototyping",
+            body="<p>Building throwaway versions to test an idea.</p>",
+        )
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+        result = self._result_for_title(page.object_list, "Prototyping")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.url, f"{skills_page.url}#{skill.slug}")
+
+    def test_a_skill_is_found_by_the_wording_of_its_level_points(self):
+        """The level points hold most of a skill's text, and they are the part
+        someone is most likely to half-remember."""
+        self._add_skills_index()
+        GovukSkill.objects.create(
+            title="Systems design",
+            body="<p>Designing whole systems.</p>",
+            working_points=[
+                {"type": "point", "value": "identify interdependencies in a service"},
+            ],
+        )
+
+        page = search_backend.search(
+            "interdependencies", filters={"site": self.site}, page=1
+        )
+
+        self.assertIsNotNone(
+            self._result_for_title(page.object_list, "Systems design")
+        )
+
+    def test_a_skill_matching_only_the_streamfield_json_is_not_returned(self):
+        """The database filter reads the raw JSON, so it also matches the keys
+        the editor never typed. Scoring is what keeps those out."""
+        self._add_skills_index()
+        GovukSkill.objects.create(
+            title="Systems design",
+            body="<p>Designing whole systems.</p>",
+            working_points=[
+                {"type": "point", "value": "identify interdependencies in a service"},
+            ],
+        )
+
+        page = search_backend.search("point", filters={"site": self.site}, page=1)
+
+        self.assertIsNone(self._result_for_title(page.object_list, "Systems design"))
+
+    def test_skills_are_left_out_when_the_site_has_no_skills_index(self):
+        """Without the index page there is nowhere for a result to link to."""
+        GovukSkill.objects.create(title="Prototyping", body="<p>Prototyping.</p>")
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+
+        self.assertIsNone(self._result_for_title(page.object_list, "Prototyping"))
+
+    def test_a_page_named_exactly_as_searched_beats_a_skill_that_quotes_it(self):
+        """Someone typing a role name in full wants that role, not a skill whose
+        longer name happens to contain it."""
+        self._add_skills_index()
+        role_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Business analyst", slug="business-analyst", body=""
+            )
+        )
+        role_page.save_revision().publish()
+        GovukSkill.objects.create(
+            title="Enterprise architecture (business analyst)",
+            body="<p>Architecture for a business analyst.</p>",
+        )
+
+        page = search_backend.search(
+            "business analyst", filters={"site": self.site}, page=1
+        )
+        titles = [item.title for item in page.object_list]
+
+        self.assertIn("Business analyst", titles)
+        self.assertIn("Enterprise architecture (business analyst)", titles)
+        self.assertLess(
+            titles.index("Business analyst"),
+            titles.index("Enterprise architecture (business analyst)"),
+        )
