@@ -1087,7 +1087,12 @@ class SearchBackend:
             return ""
         if source_value == THIS_SITE_SOURCE_FILTER:
             return THIS_SITE_SOURCE_FILTER
-        if not source_value.isdigit():
+        # Not ``isdigit``: that counts "²" and "₂" as digits and ``int`` then
+        # refuses them, so a source of "²" in the query string was a 500 rather
+        # than the no-such-source-so-show-everything every other unreadable
+        # value gets. ``isdecimal`` is the set ``int`` can actually read, and it
+        # still admits digits written in other scripts.
+        if not source_value.isdecimal():
             return ""
 
         parsed_source_id = int(source_value)

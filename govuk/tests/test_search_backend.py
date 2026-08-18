@@ -794,3 +794,54 @@ class SearchBackendPostgresResultTests(TestCase):
         self.assertEqual(
             [item.title for item in results.object_list], ["Accessibility specialist"]
         )
+
+
+class SearchBackendSourceFilterTests(TestCase):
+    """A source the site cannot read is no source, not a 500.
+
+    ``str.isdigit`` is true of "²" and "₂" and ``int`` then refuses them, so
+    "/search/?query=data&source=²" raised where every other unreadable source
+    fell back to showing all of them.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Accessibility specialist",
+                slug="accessibility-specialist",
+                body="",
+            )
+        )
+        self.page.save_revision().publish()
+
+    def _search(self, source: str):
+        return search_backend.search(
+            "accessibility",
+            filters={
+                "site": self.site,
+                "request": RequestFactory().get("/search/"),
+                "source": source,
+            },
+            page=1,
+        )
+
+    def test_a_source_of_superscript_two_is_read_as_no_source(self):
+        results = self._search("²")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+        self.assertEqual(results.selected_source_id, "")
+
+    def test_a_source_that_is_no_number_at_all_is_read_the_same_way(self):
+        results = self._search("abc")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+        self.assertEqual(results.selected_source_id, "")
+
+    def test_a_source_numbered_in_another_script_is_still_a_number(self):
+        self.assertEqual(search_backend._normalised_source_filter("٣"), "3")
