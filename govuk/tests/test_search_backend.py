@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 
-from django.test import TestCase
+from django.db import connection
+from django.test import RequestFactory, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from wagtail.models import Page, Site
 
@@ -592,4 +594,105 @@ class SearchBackendSkillTests(TestCase):
         self.assertLess(
             titles.index("Guidance for delivery teams"),
             titles.index("Systems design"),
+        )
+
+
+class SearchBackendBreadcrumbTests(TestCase):
+    """Results share their ancestors, so they should not each go and fetch them."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.section = self.root_page.add_child(
+            instance=SectionPage(title="Data roles", slug="data-roles")
+        )
+        self.section.save_revision().publish()
+        self.pages = []
+        for index in range(1, 5):
+            page = self.section.add_child(
+                instance=ContentPage(
+                    title=f"Breadcrumb sample role {index}",
+                    slug=f"breadcrumb-sample-role-{index}",
+                    body="",
+                )
+            )
+            page.save_revision().publish()
+            self.pages.append(page)
+
+    def test_a_result_carries_the_pages_above_it(self):
+        request = RequestFactory().get("/search/")
+
+        results = search_backend.search(
+            "breadcrumb sample role",
+            filters={"site": self.site, "request": request},
+            page=1,
+        )
+        sample = next(
+            item for item in results.object_list if item.title.startswith("Breadcrumb")
+        )
+
+        self.assertEqual(
+            [crumb["title"] for crumb in sample.breadcrumbs],
+            [self.root_page.title, self.section.title],
+        )
+
+    def test_the_pages_above_are_fetched_once_a_request_not_once_a_result(self):
+        request = RequestFactory().get("/search/")
+        site_root = self.site.root_page
+
+        with CaptureQueriesContext(connection) as first:
+            search_backend._page_breadcrumbs(
+                self.pages[0], request=request, site_root=site_root
+            )
+        with CaptureQueriesContext(connection) as rest:
+            for page in self.pages[1:]:
+                search_backend._page_breadcrumbs(
+                    page, request=request, site_root=site_root
+                )
+
+        self.assertGreater(len(first.captured_queries), 0)
+        self.assertEqual(len(rest.captured_queries), 0)
+
+    def test_a_second_request_reads_the_titles_as_they_are_now(self):
+        """The cache is the request's, so an edit between requests still shows."""
+        site_root = self.site.root_page
+        search_backend._page_breadcrumbs(
+            self.pages[0], request=RequestFactory().get("/search/"), site_root=site_root
+        )
+
+        self.section.title = "Renamed data roles"
+        self.section.save_revision().publish()
+
+        crumbs = search_backend._page_breadcrumbs(
+            self.pages[0], request=RequestFactory().get("/search/"), site_root=site_root
+        )
+
+        self.assertEqual(crumbs[-1]["title"], "Renamed data roles")
+
+    def test_the_breadcrumbs_are_the_same_without_a_request(self):
+        with_request = search_backend._page_breadcrumbs(
+            self.pages[0],
+            request=RequestFactory().get("/search/"),
+            site_root=self.site.root_page,
+        )
+        without_request = search_backend._page_breadcrumbs(
+            self.pages[0], request=None, site_root=self.site.root_page
+        )
+
+        self.assertEqual(
+            [crumb["title"] for crumb in without_request],
+            [crumb["title"] for crumb in with_request],
+        )
+
+    def test_a_result_that_includes_itself_ends_with_itself(self):
+        crumbs = search_backend._page_breadcrumbs(
+            self.pages[0],
+            request=RequestFactory().get("/search/"),
+            site_root=self.site.root_page,
+            include_page=True,
+        )
+
+        self.assertEqual(
+            [crumb["title"] for crumb in crumbs],
+            [self.root_page.title, self.section.title, self.pages[0].title],
         )

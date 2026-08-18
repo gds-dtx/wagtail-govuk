@@ -775,7 +775,10 @@ class SearchBackend:
         include_page: bool = False,
     ) -> list[dict[str, str]]:
         breadcrumbs: list[dict[str, str]] = []
-        for ancestor in page.get_ancestors(inclusive=include_page).specific():
+        ancestors = self._ancestors_of(
+            page, request=request, include_page=include_page
+        )
+        for ancestor in ancestors:
             if site_root and not ancestor.path.startswith(site_root.path):
                 continue
             if not include_page and ancestor.pk == page.pk:
@@ -789,6 +792,45 @@ class SearchBackend:
                 }
             )
         return breadcrumbs
+
+    def _ancestors_of(self, page: Page, *, request, include_page: bool) -> list[Page]:
+        """The pages above this one, fetched once per request rather than per result.
+
+        Results share their ancestors: every one of them is under the same home
+        page and most are under one of a handful of sections. Asking each result
+        for its own ancestors cost a query or three a result, and since the
+        results are paginated most of that was spent on entries the reader never
+        sees. A path in the tree spells out the paths above it, so the ones not
+        yet fetched can be fetched together and kept for the rest of the request.
+        """
+        steps = range(page.steplen, len(page.path) + 1, page.steplen)
+        paths = [page.path[:step] for step in steps]
+        if not include_page:
+            paths = paths[:-1]
+
+        fetched = self._ancestor_pages(request)
+        missing = [path for path in paths if path not in fetched]
+        if missing:
+            for ancestor in Page.objects.filter(path__in=missing).specific():
+                fetched[ancestor.path] = ancestor
+
+        return [fetched[path] for path in paths if path in fetched]
+
+    def _ancestor_pages(self, request) -> dict[str, Page]:
+        """The ancestors this request has already fetched, keyed by path.
+
+        Held on the request, as Wagtail holds its own site root paths, so that
+        the cache lives exactly as long as the page being answered. Without a
+        request there is nothing to hold it on, and each call fetches its own.
+        """
+        if request is None:
+            return {}
+
+        fetched = getattr(request, "_govuk_search_ancestors", None)
+        if fetched is None:
+            fetched = {}
+            request._govuk_search_ancestors = fetched
+        return fetched
 
     def _page_url(self, page: Page, request) -> str:
         url = page.get_url(request=request)
