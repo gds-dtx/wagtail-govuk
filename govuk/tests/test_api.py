@@ -293,6 +293,37 @@ class ExternalContentApiTests(ApiMetaAssertionsMixin, TestCase):
         combined_urls = {item["url"] for item in combined_response.json()["items"]}
         self.assertEqual(combined_urls, {self.item_beta_source_one.url})
 
+    def test_a_filter_int_cannot_read_matches_nothing_rather_than_raising(self):
+        """"²" is a digit to str.isdigit and not a number to int.
+
+        The filters parsed the one and tested with the other, so "?tag=²"
+        answered 500 where "?tag=nonsense" already answered an empty list.
+        """
+        for url in ("/api/externalcontent/items/", "/api/externalcontent/sources/"):
+            for parameter in ("tag", "source"):
+                with self.subTest(url=url, parameter=parameter):
+                    response = self.client.get(url, {parameter: "²"})
+
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.json()["items"], [])
+
+    def test_a_nul_in_a_filter_is_dropped_rather_than_sent_to_the_database(self):
+        """PostgreSQL refuses a string literal carrying a NUL outright.
+
+        SQLite takes it and matches nothing, which is why the tests and CI
+        were quiet while "?tag=%00" answered 500 on dev and production. The
+        NUL leaves an empty filter, which is the filter that was always asked
+        for and means no filter at all.
+        """
+        for url in ("/api/externalcontent/items/", "/api/externalcontent/sources/"):
+            unfiltered = self.client.get(url).json()["items"]
+            for parameter in ("tag", "source"):
+                with self.subTest(url=url, parameter=parameter):
+                    response = self.client.get(url, {parameter: "\x00"})
+
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.json()["items"], unfiltered)
+
     def test_sources_endpoint_supports_tag_and_source_filters(self):
         alpha_response = self.client.get("/api/externalcontent/sources/", {"tag": "alpha"})
         self.assertEqual(alpha_response.status_code, 200)
