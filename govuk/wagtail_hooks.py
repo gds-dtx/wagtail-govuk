@@ -587,8 +587,11 @@ def _normalised_selected_ids(raw_ids: list[str]) -> list[int]:
 
 def _page_rows_for_site(site: Site) -> list[dict]:
     root_page = site.root_page.specific
+    # Inclusive: the home page holds the content the front page shows, and an
+    # export of everything that left it out had to be finished by hand in the
+    # new instance. The import side has always known what to do with one.
     pages = (
-        Page.objects.descendant_of(root_page, inclusive=False)
+        Page.objects.descendant_of(root_page, inclusive=True)
         .specific()
         .order_by("path")
     )
@@ -597,7 +600,7 @@ def _page_rows_for_site(site: Site) -> list[dict]:
             "id": page.pk,
             "title": page.title,
             "slug": page.slug,
-            "depth": max(page.depth - root_page.depth - 1, 0),
+            "depth": page.depth - root_page.depth,
             "model_label": page._meta.label,
             "is_private": page.view_restrictions.exists(),
         }
@@ -699,7 +702,7 @@ def pages_export_view(request):
         return redirect(redirect_url)
 
     selected_pages = list(
-        Page.objects.descendant_of(selected_site.root_page, inclusive=False)
+        Page.objects.descendant_of(selected_site.root_page, inclusive=True)
         .filter(pk__in=selected_page_ids)
         .specific()
         .order_by("path")

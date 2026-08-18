@@ -598,3 +598,46 @@ class PageImportExportAdminViewTests(TestCase):
         self.assertIn("Import complete", " ".join(messages))
         self.content_page.refresh_from_db()
         self.assertEqual(self.content_page.body, "<p>New body</p>")
+
+    def test_the_home_page_can_be_exported_and_comes_back_in_place(self):
+        """The front page is content, and export used to leave it behind.
+
+        A cutover that exported everything offered and imported it into a new
+        instance still opened on "Welcome to your new Wagtail site!", because
+        the site root was the one page the export list never showed. The
+        import side has always known what to do with a home page node.
+        """
+        home_page = self.site.root_page.specific
+        home_page.title = "Capability Framework"
+        home_page.hero_title = "Find your role"
+        home_page.save_revision().publish()
+
+        index = self.client.get(self.index_url)
+        self.assertContains(index, "Capability Framework")
+
+        response = self.client.post(
+            self.export_url,
+            data={"site_id": self.site.pk, "page_ids": [home_page.pk]},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(payload["pages"][0]["settings"]["slug"], home_page.slug)
+        self.assertEqual(payload["pages"][0]["fields"]["hero_title"], "Find your role")
+        exported_children = [
+            child["settings"]["slug"] for child in payload["pages"][0]["children"]
+        ]
+        self.assertIn("benefits", exported_children)
+
+        home_page.title = "Overwritten by hand"
+        home_page.hero_title = ""
+        home_page.save_revision().publish()
+        pages_before = Page.objects.count()
+
+        self._import(payload)
+
+        home_page.refresh_from_db()
+        self.assertEqual(Page.objects.count(), pages_before)
+        self.assertEqual(self.site.root_page_id, home_page.pk)
+        self.assertEqual(home_page.specific.title, "Capability Framework")
+        self.assertEqual(home_page.specific.hero_title, "Find your role")
