@@ -200,7 +200,7 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
     tag_lookup = _import_tags_from_payload(raw_tags=raw_tags, raw_pages=raw_pages)
 
     if skills_enabled:
-        _import_framework_wording(raw_wording, site=site, result=result)
+        _import_framework_wording(raw_wording, site=site, user=user, result=result)
         _import_skills(raw_skills, result=result)
         _import_roles(raw_roles, result=result)
         _import_site_wide_changelog(payload.get("changelog"), result=result)
@@ -278,7 +278,22 @@ def _import_site_name(raw_site, *, site: Site):
         site.save(update_fields=["site_name"])
 
 
-def _import_framework_wording(raw_wording, *, site: Site, result: PageImportResult):
+def _user_can_change_framework_wording(user, site: Site) -> bool:
+    """The same permission the wording's own settings form asks for.
+
+    Wagtail refuses to open that form without it, so the import must not be the
+    way round it.
+    """
+    if user is None:
+        return False
+
+    permission_policy = CapabilityFrameworkWordingSettings.get_permission_policy()
+    return permission_policy.user_has_permission_for_instance(user, "change", site)
+
+
+def _import_framework_wording(
+    raw_wording, *, site: Site, user, result: PageImportResult
+):
     """Carry the editable wording over.
 
     Only the fields the file names are set. An export written before the
@@ -298,6 +313,17 @@ def _import_framework_wording(raw_wording, *, site: Site, result: PageImportResu
     if not isinstance(raw_wording, dict):
         result.skipped += 1
         result.errors.append("Payload 'wording' value must be an object when provided.")
+        return
+
+    if not _user_can_change_framework_wording(user, site):
+        # Reported and skipped rather than refused outright: every export file
+        # carries the wording, so refusing the file would leave an editor who
+        # may import pages unable to import anything at all.
+        result.skipped += 1
+        result.errors.append(
+            "Wording was left as it was because you do not have permission to "
+            "change the capability framework wording."
+        )
         return
 
     wording = CapabilityFrameworkWordingSettings.for_site(site)

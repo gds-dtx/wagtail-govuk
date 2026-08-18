@@ -8,6 +8,8 @@ the three would be free to drift.
 import json
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group, Permission
+from django.contrib.contenttypes.models import ContentType
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -301,6 +303,96 @@ class WordingOnlyExportViewTests(TestCase):
         self.assertContains(
             response, "No matching pages, skills or roles were found for export."
         )
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class WordingImportPermissionTests(TestCase):
+    """Who may change the wording, now that a file can.
+
+    It is a site setting, and Wagtail will not open its form without the
+    permission to change it. An editor may hold none of that and still reach
+    the import form, which every export file now hands the wording to.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.editor = get_user_model().objects.create_user(
+            username="wording-editor",
+            email="wording-editor@example.gov.uk",
+            password="unused-password",
+        )
+        # The group Wagtail ships: the admin, and pages, and nothing else.
+        self.editor.groups.add(Group.objects.get(name="Editors"))
+        self.client.force_login(self.editor)
+        self.wording = CapabilityFrameworkWordingSettings.for_site(self.site)
+        self.wording.updates_heading = "Updates"
+        self.wording.save()
+
+    def _grant_the_wording_permission(self):
+        self.editor.user_permissions.add(
+            Permission.objects.get(
+                content_type=ContentType.objects.get_for_model(
+                    CapabilityFrameworkWordingSettings
+                ),
+                codename="change_capabilityframeworkwordingsettings",
+            )
+        )
+        self.editor = get_user_model().objects.get(pk=self.editor.pk)
+        self.client.force_login(self.editor)
+
+    def _import(self, payload: dict, *, follow: bool = True):
+        return self.client.post(
+            reverse("govuk_pages_import"),
+            data={
+                "site_id": self.site.pk,
+                "json_file": SimpleUploadedFile(
+                    "import.json",
+                    json.dumps(payload).encode("utf-8"),
+                    content_type="application/json",
+                ),
+            },
+            follow=follow,
+        )
+
+    def _reloaded(self) -> CapabilityFrameworkWordingSettings:
+        return CapabilityFrameworkWordingSettings.objects.get(pk=self.wording.pk)
+
+    def test_an_editor_who_cannot_open_the_form_cannot_import_the_wording(self):
+        self.assertFalse(
+            self.editor.has_perm("govuk.change_capabilityframeworkwordingsettings")
+        )
+
+        response = self._import({"wording": {"updates_heading": "Rewritten"}})
+
+        self.assertEqual(self._reloaded().updates_heading, "Updates")
+        self.assertContains(response, "you do not have permission")
+
+    def test_the_pages_in_the_same_file_still_arrive(self):
+        """Every export carries the wording, so refusing the file outright
+        would leave an editor unable to import a page at all."""
+        response = self._import(
+            {
+                "wording": {"updates_heading": "Rewritten"},
+                "pages": [
+                    {
+                        "model": "govuk.ContentPage",
+                        "settings": {"title": "Guidance", "slug": "guidance"},
+                        "fields": {"body": "<p>Imported.</p>"},
+                    }
+                ],
+            }
+        )
+
+        self.assertEqual(self._reloaded().updates_heading, "Updates")
+        self.assertTrue(ContentPage.objects.filter(slug="guidance").exists())
+        self.assertContains(response, "you do not have permission")
+
+    def test_the_permission_the_form_asks_for_is_the_one_that_lets_it_through(self):
+        self._grant_the_wording_permission()
+
+        self._import({"wording": {"updates_heading": "Rewritten"}})
+
+        self.assertEqual(self._reloaded().updates_heading, "Rewritten")
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
