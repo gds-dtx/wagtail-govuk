@@ -2937,18 +2937,27 @@ class RolePage(Page):
         return None
 
     def get_selected_role_ids(self) -> list[int]:
+        """The ids of the roles chosen here, without fetching the roles.
+
+        Read from the stored JSON, which already holds them. Reading the blocks
+        instead resolves the chooser, which is a query for records the caller
+        may not want: the side navigation asks all 52 role pages for their ids
+        and then fetches every role it was told about in one, so it was paying
+        a query a page to learn what the JSON says. A page that has never been
+        saved has no JSON to read, so the blocks remain the fallback.
+        """
         role_ids: list[int] = []
         seen: set[int] = set()
 
-        for block in self.selected_roles:
-            role_id = self._extract_role_id(getattr(block, "value", None))
+        for raw_block in getattr(self.selected_roles, "raw_data", []) or []:
+            role_id = self._extract_role_id(raw_block)
             if role_id and role_id not in seen:
                 role_ids.append(role_id)
                 seen.add(role_id)
 
         if not role_ids:
-            for raw_block in getattr(self.selected_roles, "raw_data", []) or []:
-                role_id = self._extract_role_id(raw_block)
+            for block in self.selected_roles:
+                role_id = self._extract_role_id(getattr(block, "value", None))
                 if role_id and role_id not in seen:
                     role_ids.append(role_id)
                     seen.add(role_id)

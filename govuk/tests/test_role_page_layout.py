@@ -1,6 +1,8 @@
 from datetime import date
 
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils.text import slugify
 from wagtail.models import Site
 
@@ -286,6 +288,39 @@ class RolePageLayoutTests(TestCase):
         # A fixed cost: the site, its root page and one query for the children.
         with self.assertNumQueries(3):
             further_resources_group()
+
+    def test_reading_the_chosen_role_ids_costs_no_query(self):
+        """The ids are in the page's own JSON.
+
+        Resolving the blocks instead fetches the roles, and the side navigation
+        asks every role page for its ids before fetching every role it was told
+        about in one: a query a page, for records it is about to fetch anyway.
+        """
+        page = RolePage.objects.get(pk=self.data_analyst_page.pk)
+
+        with self.assertNumQueries(0):
+            role_ids = page.get_selected_role_ids()
+
+        self.assertEqual(role_ids, [self.data_analyst.pk])
+
+    def test_the_navigation_costs_the_same_whatever_the_number_of_role_pages(self):
+        """It runs on all 52 role pages of the framework, and on each of them
+        it walks all 52."""
+        with CaptureQueriesContext(connection) as with_two_pages:
+            role_navigation_groups()
+
+        for index in range(6):
+            role = GovukRole.objects.create(
+                title=f"Extra role {index}", family="Data"
+            )
+            self._add_role_page(
+                title=f"Extra role {index}", slug=f"extra-role-{index}", role=role
+            )
+
+        with CaptureQueriesContext(connection) as with_eight_pages:
+            role_navigation_groups()
+
+        self.assertEqual(len(with_eight_pages), len(with_two_pages))
 
     def test_draft_and_role_pages_stay_out_of_further_resources(self):
         draft = self.root_page.add_child(
