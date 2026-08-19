@@ -61,6 +61,7 @@ from govuk.page_import_export import (
     dump_payload_as_json,
     import_pages_from_payload,
 )
+from govuk.utils import row_id_from_text
 
 GOVUK_BUTTON_FEATURE = "govuk-button"
 GOVUK_START_BUTTON_FEATURE = "govuk-start-button"
@@ -558,9 +559,10 @@ def _selected_site_for_request(request) -> Site | None:
         or request.POST.get("site_id")
         or ""
     ).strip()
-    if raw_site_id.isdigit():
+    requested_site_id = row_id_from_text(raw_site_id)
+    if requested_site_id is not None:
         selected_site = next(
-            (site for site in sites if site.pk == int(raw_site_id)),
+            (site for site in sites if site.pk == requested_site_id),
             None,
         )
         if selected_site is not None:
@@ -577,16 +579,19 @@ def _import_export_admin_url(site_id: int) -> str:
 def _normalised_selected_ids(raw_ids: list[str]) -> list[int]:
     selected_ids: list[int] = []
     for raw_id in raw_ids:
-        raw_value = (raw_id or "").strip()
-        if raw_value.isdigit():
-            selected_ids.append(int(raw_value))
+        selected_id = row_id_from_text(raw_id)
+        if selected_id is not None:
+            selected_ids.append(selected_id)
     return selected_ids
 
 
 def _page_rows_for_site(site: Site) -> list[dict]:
     root_page = site.root_page.specific
+    # Inclusive: the home page holds the content the front page shows, and an
+    # export of everything that left it out had to be finished by hand in the
+    # new instance. The import side has always known what to do with one.
     pages = (
-        Page.objects.descendant_of(root_page, inclusive=False)
+        Page.objects.descendant_of(root_page, inclusive=True)
         .specific()
         .order_by("path")
     )
@@ -595,7 +600,7 @@ def _page_rows_for_site(site: Site) -> list[dict]:
             "id": page.pk,
             "title": page.title,
             "slug": page.slug,
-            "depth": max(page.depth - root_page.depth - 1, 0),
+            "depth": page.depth - root_page.depth,
             "model_label": page._meta.label,
             "is_private": page.view_restrictions.exists(),
         }
@@ -697,7 +702,7 @@ def pages_export_view(request):
         return redirect(redirect_url)
 
     selected_pages = list(
-        Page.objects.descendant_of(selected_site.root_page, inclusive=False)
+        Page.objects.descendant_of(selected_site.root_page, inclusive=True)
         .filter(pk__in=selected_page_ids)
         .specific()
         .order_by("path")
@@ -792,6 +797,19 @@ def pages_import_view(request):
         site=selected_site,
         user=request.user,
     )
+    if not result.processed and result.errors:
+        # Nothing in the file was even a page, a skill or a role to look at.
+        # "Import complete" over a file that turned out not to be an export
+        # reads as success at the very moment someone is checking whether the
+        # content moved, with the reason it did not only in the line beneath.
+        # Every reason, not the first: a file can be refused for several at
+        # once, and the ones not shown would be met one at a time, an upload
+        # apiece.
+        messages.error(
+            request, f"Nothing was imported. {_errors_preview(result.errors)}"
+        )
+        return redirect(redirect_url)
+
     messages.success(
         request,
         (
@@ -801,12 +819,18 @@ def pages_import_view(request):
         ),
     )
     if result.errors:
-        preview = "; ".join(result.errors[:3])
-        if len(result.errors) > 3:
-            preview = f"{preview}; and {len(result.errors) - 3} more."
-        messages.warning(request, f"Some items were skipped: {preview}")
+        messages.warning(
+            request, f"Some items were skipped: {_errors_preview(result.errors)}"
+        )
 
     return redirect(redirect_url)
+
+
+def _errors_preview(errors: list[str]) -> str:
+    preview = "; ".join(errors[:3])
+    if len(errors) > 3:
+        preview = f"{preview}; and {len(errors) - 3} more."
+    return preview
 
 
 @require_admin_access

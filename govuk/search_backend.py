@@ -16,11 +16,17 @@ from django.utils import timezone
 from wagtail.models import Page, Site
 
 from govuk.models import ContentPage, ExternalContentItem, SectionPage
-from govuk.utils import normalised_text
+from govuk.utils import normalised_text, row_id_from_text
 
 DEFAULT_PAGE_SIZE = 15
 SEARCH_CONFIG = "english"
 SEARCH_WEIGHTS = [0.1, 0.2, 0.4, 1.0]
+# What PostgreSQL scores a row that the query did not match. Asking for more
+# than one word makes ``ts_rank`` an AND of the words, and it floors that at
+# 1e-20 rather than returning the zero it means, so "rank above zero" keeps
+# every row in the table. SQLite matches on the text itself and has no such
+# floor, which is why local runs and CI never saw it.
+UNMATCHED_RANK = 1e-20
 PAGE_TAG_TEXT_WEIGHT = 0.75
 CARD_TAG_TEXT_WEIGHT = 1.0
 TAG_RESULT_WEIGHT = 1.2
@@ -57,7 +63,7 @@ class SearchBackend:
         self, query: str, filters: dict[str, Any] | None = None, page: int | str = 1
     ) -> PaginatorPage:
         filters = filters or {}
-        clean_query = (query or "").strip()
+        clean_query = self._clean_query(query)
         selected_tag_key = self._normalised_tag_filter(filters.get("tag"))
         selected_source_key = self._normalised_source_filter(filters.get("source"))
 
@@ -443,7 +449,7 @@ class SearchBackend:
             queryset.annotate(
                 rank=SearchRank(search_vector, search_query, weights=SEARCH_WEIGHTS),
             )
-            .filter(rank__gt=0)
+            .filter(rank__gt=UNMATCHED_RANK)
             .order_by("-rank", "-first_published_at", "title")
         )
 
@@ -463,7 +469,7 @@ class SearchBackend:
             queryset.annotate(
                 card_rank=SearchRank(rows_vector, search_query, weights=SEARCH_WEIGHTS),
             )
-            .filter(card_rank__gt=0)
+            .filter(card_rank__gt=UNMATCHED_RANK)
             .order_by("-card_rank", "-first_published_at", "title")
         )
 
@@ -483,7 +489,7 @@ class SearchBackend:
             queryset.annotate(
                 hero_rank=SearchRank(hero_vector, search_query, weights=SEARCH_WEIGHTS),
             )
-            .filter(hero_rank__gt=0)
+            .filter(hero_rank__gt=UNMATCHED_RANK)
             .order_by("-hero_rank", "-first_published_at", "title")
         )
 
@@ -523,7 +529,7 @@ class SearchBackend:
                     search_vector, search_query, weights=SEARCH_WEIGHTS
                 ),
             )
-            .filter(external_rank__gt=0)
+            .filter(external_rank__gt=UNMATCHED_RANK)
             .order_by(
                 "-external_rank",
                 "-updated_at",
@@ -863,6 +869,16 @@ class SearchBackend:
 
         return unique_results
 
+    def _clean_query(self, query: Any) -> str:
+        """The words searched for, without the one character text cannot hold.
+
+        PostgreSQL refuses a string carrying a NUL outright, so "?query=%00"
+        was a 500 on dev and production while SQLite searched for it, found
+        nothing and said so. Dropping it leaves the rest of the query to be
+        searched for, and a query of nothing else falls to the empty state.
+        """
+        return str(query or "").replace("\x00", "").strip()
+
     def _normalised_tag_filter(self, value: Any) -> str:
         return normalised_text(value).lower()
 
@@ -872,11 +888,11 @@ class SearchBackend:
             return ""
         if source_value == THIS_SITE_SOURCE_FILTER:
             return THIS_SITE_SOURCE_FILTER
-        if not source_value.isdigit():
-            return ""
-
-        parsed_source_id = int(source_value)
-        if parsed_source_id <= 0:
+        # Not ``isdigit`` then ``int``: "²" is isdigit-True and ``int`` refuses
+        # it, so a source of "²" in the query string was a 500 rather than the
+        # no-such-source-so-show-everything every other unreadable value gets.
+        parsed_source_id = row_id_from_text(source_value)
+        if parsed_source_id is None or parsed_source_id <= 0:
             return ""
         return str(parsed_source_id)
 
