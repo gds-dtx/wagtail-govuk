@@ -15,6 +15,7 @@ from django.utils.text import slugify
 from django.utils import timezone
 from wagtail.fields import StreamField
 from wagtail.models import Page, PageViewRestriction, Site
+from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import RichText
 
 from govuk.models import (
@@ -169,9 +170,11 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
     tag_lookup = _import_tags_from_payload(raw_tags=raw_tags, raw_pages=raw_pages)
 
     if settings.FEATURE_FLAGS.get("SKILLS"):
-        _import_skills(raw_skills, result=result)
-        _import_roles(raw_roles, result=result)
-        _import_site_wide_changelog(payload.get("changelog"), result=result)
+        _import_skills(raw_skills, user=user, result=result)
+        _import_roles(raw_roles, user=user, result=result)
+        _import_site_wide_changelog(
+            payload.get("changelog"), user=user, result=result
+        )
 
     site_root = _replace_placeholder_home_page(
         raw_pages,
@@ -194,6 +197,35 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
 def dump_payload_as_json(payload: dict) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def user_may(user, model, action: str) -> bool:
+    """Whether the user could do this to a snippet through its own admin.
+
+    Snippets are governed by Django's model permissions, which is what the
+    snippet views ask for. The pages in a file are already checked one by one
+    against the page permissions, so a file was the way round the snippet
+    permissions and only the snippet permissions: an account with nothing but
+    access to the admin could rewrite every skill and role in the framework by
+    uploading one, while the snippet menu it would have used stayed shut.
+    """
+    if user is None:
+        return False
+    return ModelPermissionPolicy(model).user_has_permission(user, action)
+
+
+def _permission_error(model, action: str, subject: str) -> str:
+    """Why an entry was left alone, and the permission that would allow it.
+
+    Named in full because the person who ran the import is rarely the person
+    who administers groups, and "you do not have permission" on its own leaves
+    them nothing to ask for.
+    """
+    codename = f"{model._meta.app_label}.{action}_{model._meta.model_name}"
+    return (
+        f"Skipped {subject} because you do not have permission to {action} "
+        f"{model._meta.verbose_name_plural} ({codename})."
+    )
 
 
 def _import_site_name(raw_site, *, site: Site):
@@ -666,12 +698,12 @@ def _serialise_value(value):
     return value
 
 
-def _import_skills(raw_skills: list, *, result: PageImportResult):
+def _import_skills(raw_skills: list, *, user, result: PageImportResult):
     for node in raw_skills:
-        _import_skill_node(node=node, result=result)
+        _import_skill_node(node=node, user=user, result=result)
 
 
-def _import_skill_node(*, node, result: PageImportResult):
+def _import_skill_node(*, node, user, result: PageImportResult):
     result.processed += 1
     if not isinstance(node, dict):
         result.skipped += 1
@@ -692,6 +724,12 @@ def _import_skill_node(*, node, result: PageImportResult):
         action = "update"
         skill = existing_skill
 
+    required = "add" if action == "create" else "change"
+    if not user_may(user, GovukSkill, required):
+        result.skipped += 1
+        result.errors.append(_permission_error(GovukSkill, required, f"skill '{slug}'"))
+        return
+
     default_title = slug.replace("-", " ").strip().title() or slug
     skill.slug = slug
     skill.title = str(node.get("title") or skill.title or default_title).strip() or default_title
@@ -708,7 +746,9 @@ def _import_skill_node(*, node, result: PageImportResult):
         result.errors.append(f"Skipped skill '{slug}': {exc}")
         return
 
-    _import_changelog(node.get("changelog"), subject=skill, field_name="skill", result=result)
+    _import_changelog(
+        node.get("changelog"), subject=skill, field_name="skill", user=user, result=result
+    )
 
     if action == "create":
         result.created += 1
@@ -742,12 +782,12 @@ def _deserialise_skill_points(raw_points) -> list[dict[str, str]]:
     return points_payload
 
 
-def _import_roles(raw_roles: list, *, result: PageImportResult):
+def _import_roles(raw_roles: list, *, user, result: PageImportResult):
     for node in raw_roles:
-        _import_role_node(node=node, result=result)
+        _import_role_node(node=node, user=user, result=result)
 
 
-def _import_role_node(*, node, result: PageImportResult):
+def _import_role_node(*, node, user, result: PageImportResult):
     result.processed += 1
     if not isinstance(node, dict):
         result.skipped += 1
@@ -767,6 +807,12 @@ def _import_role_node(*, node, result: PageImportResult):
     else:
         action = "update"
         role = existing_role
+
+    required = "add" if action == "create" else "change"
+    if not user_may(user, GovukRole, required):
+        result.skipped += 1
+        result.errors.append(_permission_error(GovukRole, required, f"role '{slug}'"))
+        return
 
     default_title = slug.replace("-", " ").strip().title() or slug
     role.slug = slug
@@ -798,7 +844,9 @@ def _import_role_node(*, node, result: PageImportResult):
         result.errors.append(f"Skipped role '{slug}': {exc}")
         return
 
-    _import_changelog(node.get("changelog"), subject=role, field_name="role", result=result)
+    _import_changelog(
+        node.get("changelog"), subject=role, field_name="role", user=user, result=result
+    )
 
     if action == "create":
         result.created += 1
@@ -846,34 +894,56 @@ def _deserialise_scs_skills(raw_skills, *, role_slug: str, result: PageImportRes
     return blocks_payload
 
 
-def _import_changelog(raw_entries, *, subject, field_name: str, result: PageImportResult):
+def _import_changelog(
+    raw_entries, *, subject, field_name: str, user, result: PageImportResult
+):
     """Replace the changelog entries attached to one role or skill."""
     _replace_changelog(
         raw_entries,
         owner={field_name: subject},
         label=str(subject),
+        user=user,
         result=result,
     )
 
 
-def _import_site_wide_changelog(raw_entries, *, result: PageImportResult):
+def _import_site_wide_changelog(raw_entries, *, user, result: PageImportResult):
     """Replace the framework-wide entries, which belong to no role or skill."""
     _replace_changelog(
         raw_entries,
         owner={"role": None, "skill": None},
         label="the framework",
+        user=user,
         result=result,
     )
 
 
-def _replace_changelog(raw_entries, *, owner: dict, label: str, result: PageImportResult):
+def _replace_changelog(
+    raw_entries, *, owner: dict, label: str, user, result: PageImportResult
+):
     """Swap a set of changelog entries for the imported ones.
 
     Entries carry no stable identifier of their own, so the imported set
     replaces whatever is there rather than trying to match entry by entry.
+
+    A changelog is its own snippet rather than a panel on the role, so the
+    permission to rewrite one is its own too: a file naming entries is checked
+    the way the changelog menu is. Reported and skipped rather than refused,
+    so the role or skill it came with still arrives.
     """
     if not isinstance(raw_entries, list):
         return
+
+    # A replace is a delete and then an add, so both are asked for: holding one
+    # without the other would empty the changelog and then fail to refill it.
+    for required in ("delete", "add"):
+        if not user_may(user, GovukChangelogEntry, required):
+            result.errors.append(
+                _permission_error(
+                    GovukChangelogEntry, required, f"the changelog for {label}"
+                )
+            )
+            return
 
     filters = {}
     for name, value in owner.items():
