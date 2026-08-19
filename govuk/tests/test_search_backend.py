@@ -1,6 +1,11 @@
 from datetime import timedelta
+from unittest import skipUnless
 
-from django.test import TestCase
+from django.contrib.postgres.search import SearchRank
+from django.db import connection
+from django.db.models import QuerySet
+from django.db.models.lookups import GreaterThan
+from django.test import RequestFactory, SimpleTestCase, TestCase
 from django.utils import timezone
 from wagtail.models import Page, Site
 
@@ -13,7 +18,7 @@ from govuk.models import (
     SectionPage,
     TagListingsPage,
 )
-from govuk.search_backend import search_backend
+from govuk.search_backend import UNMATCHED_RANK, search_backend
 
 
 class SearchBackendExternalContentRankingTests(TestCase):
@@ -345,3 +350,217 @@ class SearchBackendInternalPriorityAndRecencyTests(TestCase):
         self.assertIsNotNone(old_result)
         self.assertIsNotNone(new_result)
         self.assertGreater(new_result.score, old_result.score)
+
+
+class SearchBackendPostgresRankTests(SimpleTestCase):
+    """A rank above zero is not the same thing as a match.
+
+    PostgreSQL reads a query of more than one word as an AND of the words and
+    floors the rank of a row that failed it at 1e-20 rather than returning the
+    zero it means. Everything the four full-text searches read is then above
+    zero, so the site answers a search for words it does not hold with every
+    page it has. SQLite matches on the text itself, which is why neither a
+    local run nor CI has ever shown it.
+    """
+
+    def _rank_floor(self, queryset: QuerySet) -> float:
+        conditions = [
+            node
+            for node in queryset.query.where.children
+            if isinstance(node, GreaterThan) and isinstance(node.lhs, SearchRank)
+        ]
+        self.assertEqual(len(conditions), 1, "expected one rank condition")
+        return conditions[0].rhs
+
+    def test_a_page_search_asks_for_more_than_an_unmatched_rank(self):
+        queryset = search_backend._search_pages_postgres(
+            Page.objects.all(), "two words"
+        )
+
+        self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
+
+    def test_a_section_card_search_asks_for_more_than_an_unmatched_rank(self):
+        queryset = search_backend._search_sections_postgres(
+            SectionPage.objects.all(), "two words"
+        )
+
+        self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
+
+    def test_a_hero_search_asks_for_more_than_an_unmatched_rank(self):
+        queryset = search_backend._search_hero_postgres(
+            ContentPage.objects.all(), "two words"
+        )
+
+        self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
+
+    def test_an_external_content_search_asks_for_more_than_an_unmatched_rank(self):
+        queryset = search_backend._search_external_content_postgres(
+            ExternalContentItem.objects.all(), "two words"
+        )
+
+        self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
+
+
+@skipUnless(
+    connection.vendor == "postgresql",
+    "the full-text search this covers is PostgreSQL's",
+)
+class SearchBackendPostgresResultTests(TestCase):
+    """What a PostgreSQL instance answers, which is what dev and production are."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Accessibility specialist",
+                slug="accessibility-specialist",
+                body="",
+            )
+        )
+        self.page.save_revision().publish()
+        self.other_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Delivery manager", slug="delivery-manager", body=""
+            )
+        )
+        self.other_page.save_revision().publish()
+
+    def _search(self, query: str):
+        return search_backend.search(
+            query,
+            filters={"site": self.site, "request": RequestFactory().get("/search/")},
+            page=1,
+        )
+
+    def test_words_the_site_does_not_hold_find_nothing(self):
+        results = self._search("quantum widget")
+
+        self.assertEqual(list(results.object_list), [])
+
+    def test_a_page_named_by_two_of_its_words_is_still_found(self):
+        results = self._search("accessibility specialist")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+
+
+class SearchBackendSourceFilterTests(TestCase):
+    """A source the site cannot read is no source, not a 500.
+
+    ``str.isdigit`` is true of "²" and "₂" and ``int`` then refuses them, so
+    "/search/?query=data&source=²" raised where every other unreadable source
+    fell back to showing all of them.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Accessibility specialist",
+                slug="accessibility-specialist",
+                body="",
+            )
+        )
+        self.page.save_revision().publish()
+
+    def _search(self, source: str):
+        return search_backend.search(
+            "accessibility",
+            filters={
+                "site": self.site,
+                "request": RequestFactory().get("/search/"),
+                "source": source,
+            },
+            page=1,
+        )
+
+    def test_a_source_of_superscript_two_is_read_as_no_source(self):
+        results = self._search("²")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+        self.assertEqual(results.selected_source_id, "")
+
+    def test_a_source_that_is_no_number_at_all_is_read_the_same_way(self):
+        results = self._search("abc")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+        self.assertEqual(results.selected_source_id, "")
+
+    def test_a_source_numbered_in_another_script_is_still_a_number(self):
+        self.assertEqual(search_backend._normalised_source_filter("٣"), "3")
+
+    def test_a_source_of_more_digits_than_int_reads_matches_nothing(self):
+        """Reading the digits is not enough on its own to reach ``int``.
+
+        Python refuses a run of more than 4,300 digits, so a source of 4,301 of
+        them is decimal all the way down and was still a 500 -- on PostgreSQL
+        as much as on SQLite, since it is ``int`` that objects, not the engine.
+        """
+        results = self._search("1" * 4301)
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+        self.assertEqual(results.selected_source_id, "")
+
+    def test_a_source_larger_than_a_row_id_goes_the_same_way(self):
+        largest = 2**63 - 1
+        self.assertEqual(
+            search_backend._normalised_source_filter(str(largest)), str(largest)
+        )
+        self.assertEqual(search_backend._normalised_source_filter(str(largest + 1)), "")
+
+
+class SearchBackendNulQueryTests(TestCase):
+    """A NUL in the query is dropped rather than handed to the database.
+
+    PostgreSQL refuses a string literal carrying one, so "/search/?query=%00"
+    answered 500 on dev and production. SQLite takes it, which is why the
+    suite and CI never saw it: these tests read the query the backend built
+    rather than waiting for an engine to object to it.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Accessibility specialist",
+                slug="accessibility-specialist",
+                body="",
+            )
+        )
+        self.page.save_revision().publish()
+
+    def _search(self, query: str):
+        return search_backend.search(
+            query,
+            filters={"site": self.site, "request": RequestFactory().get("/search/")},
+            page=1,
+        )
+
+    def test_a_query_of_nothing_but_a_nul_is_the_empty_state(self):
+        results = self._search("\x00")
+
+        self.assertEqual(list(results.object_list), [])
+        self.assertEqual(results.paginator.count, 0)
+
+    def test_a_nul_among_the_words_leaves_the_words(self):
+        results = self._search("accessibility\x00")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+
+    def test_the_query_the_backend_searches_for_holds_no_nul(self):
+        self.assertEqual(search_backend._clean_query("data\x00 "), "data")
+        self.assertEqual(search_backend._clean_query("\x00"), "")
+        self.assertEqual(search_backend._clean_query(None), "")
+
