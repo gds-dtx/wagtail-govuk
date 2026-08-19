@@ -408,7 +408,7 @@ class PageImportExportAdminViewTests(TestCase):
 
         call_order: list[str] = []
 
-        def _record_tags(*, raw_tags, raw_pages):
+        def _record_tags(*, raw_tags, raw_pages, user, result):
             call_order.append("tags")
             return {"by_slug": {}, "by_name": {}}
 

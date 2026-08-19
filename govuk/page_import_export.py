@@ -168,7 +168,9 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
     _import_site_name(payload.get("site"), site=site)
 
-    tag_lookup = _import_tags_from_payload(raw_tags=raw_tags, raw_pages=raw_pages)
+    tag_lookup = _import_tags_from_payload(
+        raw_tags=raw_tags, raw_pages=raw_pages, user=user, result=result
+    )
 
     if settings.FEATURE_FLAGS.get("SKILLS"):
         _import_skills(raw_skills, user=user, result=result)
@@ -321,7 +323,32 @@ def _replace_placeholder_home_page(raw_pages: list, *, site: Site, site_root: Pa
     return replacement.specific
 
 
-def _import_tags_from_payload(*, raw_tags: list, raw_pages: list) -> dict[str, dict[str, int]]:
+def _import_tags_from_payload(
+    *, raw_tags: list, raw_pages: list, user=None, result: PageImportResult = None
+) -> dict[str, dict[str, int]]:
+    """Create the tags this file needs, as far as the file's owner may.
+
+    Tags come from two places and the two are not the same permission.
+
+    A tag named on a page is the page editor's free-tagging field: taggit has
+    no user in scope and asks nothing, so anyone who may edit the page may
+    already coin the tag by typing it. Those follow the page, which is checked
+    on its own further down.
+
+    The 'tags' list at the top of the file belongs to no page. It is an edit to
+    the tag dictionary and nothing else, which is what the tag snippet menu is
+    for, so it is asked for the permission that menu asks for.
+    """
+    if not user_may(user, GovukTag, "add"):
+        dropped = _dictionary_only_new_tags(raw_tags=raw_tags, raw_pages=raw_pages)
+        if dropped and result is not None:
+            result.errors.append(
+                _permission_error(
+                    GovukTag, "add", f"{len(dropped)} tag(s) named only in 'tags'"
+                )
+            )
+        raw_tags = []
+
     tag_candidates = _collect_tag_candidates(raw_tags=raw_tags, raw_pages=raw_pages)
     ordered_candidates: dict[str, str] = {}
     for tag_slug, tag_name in tag_candidates:
@@ -385,6 +412,28 @@ def _collect_page_node_tag_candidates(*, node, candidates: list[tuple[str, str]]
         return
     for child_node in child_entries:
         _collect_page_node_tag_candidates(node=child_node, candidates=candidates)
+
+
+def _dictionary_only_new_tags(*, raw_tags, raw_pages) -> set[str]:
+    """Slugs the 'tags' list alone would coin.
+
+    Only what is actually lost is worth a message: a tag the file also puts on
+    a page arrives by that route anyway, and one that already exists is not
+    being created by anybody.
+    """
+    from_list = {slug for slug, _ in _extract_tag_candidates_from_tag_list(raw_tags)}
+    if not from_list:
+        return set()
+
+    from_pages: list[tuple[str, str]] = []
+    if isinstance(raw_pages, list):
+        for node in raw_pages:
+            _collect_page_node_tag_candidates(node=node, candidates=from_pages)
+
+    only_in_list = from_list - {slug for slug, _ in from_pages}
+    return only_in_list - set(
+        GovukTag.objects.filter(slug__in=only_in_list).values_list("slug", flat=True)
+    )
 
 
 def _extract_tag_candidates_from_tag_list(raw_tags) -> list[tuple[str, str]]:

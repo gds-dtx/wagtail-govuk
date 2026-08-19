@@ -26,6 +26,7 @@ from govuk.models import (
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
+    GovukTag,
     SectionPage,
 )
 from govuk.page_import_export import PAGE_EXPORT_FORMAT
@@ -198,6 +199,60 @@ class ImportExportPermissionTests(TestCase):
         self.assertEqual(self.skill.title, "Renamed")
         self.assertEqual(self.role.title, "Renamed too")
 
+
+    # -- import: the tag dictionary -------------------------------------------
+
+    def test_a_tag_named_only_in_the_tag_list_is_not_coined_by_that_account(self):
+        """The 'tags' list at the top of a file is an edit to the dictionary and
+        nothing else, which is what the tag snippet menu is for."""
+        self.client.force_login(self._user("nobody"))
+
+        response = self._import({"tags": [{"slug": "invented-tag", "name": "Invented"}]})
+
+        self.assertFalse(GovukTag.objects.filter(slug="invented-tag").exists())
+        self.assertIn("govuk.add_govuktag", self._messages(response))
+
+    def test_a_tag_on_a_page_the_account_may_edit_still_arrives(self):
+        """Not a regression dressed as a fix.
+
+        The page editor's tag field is free-tagging and taggit asks nothing, so
+        anyone who may edit the page may already coin the tag by typing it.
+        Requiring add_govuktag here would make an import stricter than the
+        editor it is standing in for.
+        """
+        self.client.force_login(
+            self._user(
+                "editor",
+                page_permissions=[(self.root_page, "add_page"), (self.root_page, "publish_page")],
+            )
+        )
+
+        self._import(
+            {
+                "pages": [
+                    {
+                        "model": "govuk.ContentPage",
+                        "settings": {"slug": "tagged", "title": "Tagged"},
+                        "tags": [{"slug": "from-a-page", "name": "From a page"}],
+                    }
+                ]
+            }
+        )
+
+        self.assertTrue(GovukTag.objects.filter(slug="from-a-page").exists())
+        # And it reached the page, rather than merely being created beside it.
+        page = ContentPage.objects.get(slug="tagged")
+        self.assertEqual([tag.slug for tag in page.tags.all()], ["from-a-page"])
+
+    def test_nothing_is_reported_when_the_tag_list_would_coin_nothing(self):
+        """A tag that already exists is not being created by anybody, so the
+        message would be noise on a file that changed no dictionary."""
+        GovukTag.objects.create(slug="already-here", name="Already here")
+        self.client.force_login(self._user("nobody"))
+
+        response = self._import({"tags": [{"slug": "already-here", "name": "Already here"}]})
+
+        self.assertNotIn("govuk.add_govuktag", self._messages(response))
     # -- export: the shared password ------------------------------------------
 
     def _protect(self, page, password="correct-horse-battery-staple"):
