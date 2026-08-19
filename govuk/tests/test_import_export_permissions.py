@@ -4,7 +4,8 @@ Every view here is behind ``require_admin_access`` and nothing else, so the
 only permission any of it asked for was the one that opens the admin at all.
 The pages in a file were checked one by one; nothing else was. An account with
 no permission beyond access to the admin could rewrite every skill and role in
-the framework by uploading a file.
+the framework by uploading a file, and download the shared password of a page
+it may not open.
 """
 
 import json
@@ -16,6 +17,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import (
     GroupPagePermission,
+    PageViewRestriction,
     Site,
 )
 
@@ -26,6 +28,7 @@ from govuk.models import (
     GovukSkill,
     SectionPage,
 )
+from govuk.page_import_export import PAGE_EXPORT_FORMAT
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -105,6 +108,12 @@ class ImportExportPermissionTests(TestCase):
                 "action": "import",
             },
             follow=True,
+        )
+
+    def _export(self, **selections):
+        return self.client.post(
+            f"{self.export_url}?site={self.site.pk}",
+            {"action": "export", **selections},
         )
 
     def _messages(self, response) -> str:
@@ -188,3 +197,134 @@ class ImportExportPermissionTests(TestCase):
         self.role.refresh_from_db()
         self.assertEqual(self.skill.title, "Renamed")
         self.assertEqual(self.role.title, "Renamed too")
+
+    # -- export: the shared password ------------------------------------------
+
+    def _protect(self, page, password="correct-horse-battery-staple"):
+        PageViewRestriction.objects.create(
+            page=page,
+            restriction_type=PageViewRestriction.PASSWORD,
+            password=password,
+        )
+
+    def _exported_privacy(self, response, slug: str):
+        payload = json.loads(response.content.decode())
+
+        def walk(node):
+            yield node
+            for child in node.get("children") or []:
+                yield from walk(child)
+
+        for node in walk(payload["pages"][0]):
+            if node["settings"].get("slug") == slug:
+                return node["privacy"]
+        raise AssertionError(f"'{slug}' was not in the export")
+
+    def test_the_export_carries_a_password_for_someone_who_may_set_it(self):
+        self._protect(self.content_page)
+        self.client.force_login(self._superuser())
+
+        response = self._export(page_ids=[str(self.section_page.pk)])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self._exported_privacy(response, "apply"),
+            [{"type": "password", "password": "correct-horse-battery-staple"}],
+        )
+
+    def test_the_export_withholds_it_from_someone_who_may_not(self):
+        """Wagtail's own privacy dialog is shut to this account. The download
+        was the way round it: the whole file, in cleartext, on one POST."""
+        self._protect(self.content_page)
+        self.client.force_login(
+            self._user(
+                "editor",
+                page_permissions=[(self.root_page, "change_page")],
+            )
+        )
+
+        response = self._export(page_ids=[str(self.section_page.pk)])
+
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertNotIn("correct-horse-battery-staple", body)
+        # The restriction is still named, so what the page's privacy is stays
+        # legible and the file still says the page is not public.
+        self.assertEqual(
+            self._exported_privacy(response, "apply"), [{"type": "password"}]
+        )
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class ImportedPasswordRestrictionTests(TestCase):
+    """A password restriction that arrives without its password.
+
+    Which is what an export taken by someone who may not read passwords now
+    carries, so the import has to have an answer that is not "the password is
+    the empty string".
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.page = self.root_page.add_child(
+            instance=ContentPage(title="Apply", slug="apply", body="<p>Body</p>")
+        )
+        self.user = get_user_model().objects.create_superuser(
+            username="admin-user",
+            email="admin@example.gov.uk",
+            password="unused-password",
+        )
+        self.client.force_login(self.user)
+
+    def _import_privacy(self, privacy):
+        return self.client.post(
+            reverse("govuk_pages_import"),
+            {
+                "json_file": SimpleUploadedFile(
+                    "export.json",
+                    json.dumps(
+                        {
+                            "format": PAGE_EXPORT_FORMAT,
+                            "pages": [
+                                {
+                                    "model": "govuk.ContentPage",
+                                    "settings": {"slug": "apply", "title": "Apply"},
+                                    "privacy": privacy,
+                                }
+                            ],
+                        }
+                    ).encode(),
+                    content_type="application/json",
+                ),
+                "action": "import",
+            },
+            follow=True,
+        )
+
+    def test_the_password_already_on_the_page_stands(self):
+        PageViewRestriction.objects.create(
+            page=self.page,
+            restriction_type=PageViewRestriction.PASSWORD,
+            password="kept",
+        )
+
+        self._import_privacy([{"type": "password"}])
+
+        restriction = PageViewRestriction.objects.get(page=self.page)
+        self.assertEqual(restriction.password, "kept")
+
+    def test_a_page_with_no_password_of_its_own_is_not_given_an_empty_one(self):
+        response = self._import_privacy([{"type": "password"}])
+
+        self.assertFalse(PageViewRestriction.objects.filter(page=self.page).exists())
+        self.assertIn(
+            "gives no password for it",
+            " ".join(str(message) for message in response.context["messages"]),
+        )
+
+    def test_a_password_the_file_does_name_is_still_applied(self):
+        self._import_privacy([{"type": "password", "password": "from-the-file"}])
+
+        restriction = PageViewRestriction.objects.get(page=self.page)
+        self.assertEqual(restriction.password, "from-the-file")

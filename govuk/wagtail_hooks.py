@@ -734,6 +734,7 @@ def pages_export_view(request):
         pages=selected_pages,
         skills=selected_skills,
         roles=selected_roles,
+        user=request.user,
     )
     file_contents = dump_payload_as_json(payload)
     timestamp = timezone.now().strftime("%Y%m%d-%H%M%S")

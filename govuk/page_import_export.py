@@ -73,6 +73,7 @@ def build_page_export_payload(
     pages: list[Page],
     skills: list[GovukSkill] | None = None,
     roles: list[GovukRole] | None = None,
+    user=None,
 ) -> dict:
     selected_roots = _deduplicate_selected_roots(pages)
     payload = {
@@ -85,7 +86,7 @@ def build_page_export_payload(
             "site_name": site.site_name,
             "is_default_site": site.is_default_site,
         },
-        "pages": [_serialise_page_tree(page) for page in selected_roots],
+        "pages": [_serialise_page_tree(page, user=user) for page in selected_roots],
     }
     if settings.FEATURE_FLAGS.get("SKILLS"):
         payload["skills"] = [
@@ -471,16 +472,16 @@ def _deduplicate_selected_roots(pages: list[Page]) -> list[Page]:
     return roots
 
 
-def _serialise_page_tree(page: Page) -> dict:
+def _serialise_page_tree(page: Page, *, user=None) -> dict:
     specific_page = page.specific
     return {
         "model": specific_page._meta.label,
         "settings": _serialise_page_settings(specific_page),
         "fields": _serialise_page_fields(specific_page),
         "tags": _serialise_tags(specific_page),
-        "privacy": _serialise_privacy(specific_page),
+        "privacy": _serialise_privacy(specific_page, user=user),
         "children": [
-            _serialise_page_tree(child.specific)
+            _serialise_page_tree(child.specific, user=user)
             for child in specific_page.get_children().order_by("path")
         ],
     }
@@ -666,11 +667,23 @@ def _serialise_tags(page: Page) -> list[dict[str, str]]:
     return tags_payload
 
 
-def _serialise_privacy(page: Page) -> list[dict]:
+def _serialise_privacy(page: Page, *, user=None) -> list[dict]:
+    """A page's view restrictions, and its shared password where it has one.
+
+    The password is the only thing an export carries that is not otherwise
+    readable somewhere in the admin, and Wagtail keeps it behind the same
+    permission it keeps the privacy dialog behind. Asking that permission here
+    stops the download being the way round the dialog. The restriction itself
+    is still named, so what the page's privacy is remains legible and an export
+    taken by someone who may set it still round-trips whole.
+    """
     restrictions_payload: list[dict] = []
     for restriction in page.view_restrictions.all():
         row: dict[str, object] = {"type": restriction.restriction_type}
-        if restriction.restriction_type == PageViewRestriction.PASSWORD:
+        if restriction.restriction_type == PageViewRestriction.PASSWORD and (
+            user is not None
+            and page.permissions_for_user(user).can_set_view_restrictions()
+        ):
             row["password"] = restriction.password
         if restriction.restriction_type == PageViewRestriction.GROUPS:
             row["groups"] = list(
@@ -1107,7 +1120,7 @@ def _import_page_node(
             page.save()
             _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
             page.save()
-            _apply_privacy(page, node.get("privacy"), user=user)
+            _apply_privacy(page, node.get("privacy"), user=user, result=result)
 
             if action == "create":
                 result.created += 1
@@ -1540,7 +1553,19 @@ def _update_tag_lookup(tag_lookup, *, tag_id: int, tag_slug: str, tag_name: str)
         by_name.setdefault(name_key, tag_id)
 
 
-def _apply_privacy(page: Page, privacy_data, *, user):
+def _apply_privacy(page: Page, privacy_data, *, user, result: PageImportResult = None):
+    # Read before the delete below. A file can name a password restriction
+    # without naming the password: that is what an export taken by someone who
+    # may not read passwords carries, and it was becoming a restriction whose
+    # password is the empty string, which anybody gets past by submitting the
+    # form. The page's own password stands in where there is one, and where
+    # there is not the restriction is reported rather than applied, because an
+    # unrestricted page is at least a visible mistake.
+    existing_password = ""
+    for restriction in page.view_restrictions.all():
+        if restriction.restriction_type == PageViewRestriction.PASSWORD:
+            existing_password = restriction.password or ""
+
     page.view_restrictions.all().delete()
     if not isinstance(privacy_data, list):
         return
@@ -1562,7 +1587,15 @@ def _apply_privacy(page: Page, privacy_data, *, user):
             password="",
         )
         if restriction_type == PageViewRestriction.PASSWORD:
-            restriction.password = str(raw_restriction.get("password") or "")
+            password = str(raw_restriction.get("password") or "") or existing_password
+            if not password:
+                if result is not None:
+                    result.errors.append(
+                        f"Page '{page.slug}' was left without its password "
+                        "restriction because the file gives no password for it."
+                    )
+                continue
+            restriction.password = password
         restriction.save(user=user)
 
         if restriction_type == PageViewRestriction.GROUPS:
