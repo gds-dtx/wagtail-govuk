@@ -1422,6 +1422,42 @@ def _import_page_node(
         )
         return
 
+    if (
+        parent_page.pk == site_root.pk
+        and slug == site_root.slug
+        and site_root.specific_class is not model_class
+        and Page.objects.child_of(site_root).exists()
+    ):
+        # The file starts at the home page, but this site's home page is of a
+        # different type and already holds pages: it can be neither updated in
+        # place, a page's type being fixed, nor replaced, which is reserved
+        # for the empty placeholder a fresh instance ships. Falling through
+        # would create a second home page beside the pages this one holds and
+        # pull every slug-matched page in the file under it -- the whole site
+        # restructured, every URL gaining a /home/ prefix, behind a green
+        # report. The home page's own content is refused with the reason, and
+        # what the file holds inside it still imports where it is.
+        result.skipped += 1
+        result.errors.append(
+            f"The home page was left as it is: the file's home page is a "
+            f"{model_class._meta.label} but this site's is a "
+            f"{site_root.specific_class._meta.label} with pages under it, so "
+            "it can be neither updated in place nor replaced. The pages "
+            "inside it were still imported."
+        )
+        child_entries = node.get("children")
+        if isinstance(child_entries, list):
+            for child_node in child_entries:
+                _import_page_node(
+                    node=child_node,
+                    parent_page=site_root,
+                    site_root=site_root,
+                    user=user,
+                    result=result,
+                    tag_lookup=tag_lookup,
+                )
+        return
+
     try:
         with transaction.atomic():
             page, action = _find_or_create_page(
