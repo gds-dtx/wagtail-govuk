@@ -255,6 +255,68 @@ class ImportExportPermissionTests(TestCase):
         )
 
 
+
+    # -- export and listing: pages this account may not edit ------------------
+
+    def test_a_page_this_account_may_not_edit_is_not_offered_for_export(self):
+        self.client.force_login(
+            self._user(
+                "editor",
+                page_permissions=[(self.content_page, "change_page")],
+            )
+        )
+
+        response = self.client.get(self.index_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Apply")
+        self.assertNotContains(response, "Benefits")
+
+    def test_nor_exported_when_its_id_is_asked_for_directly(self):
+        self.client.force_login(
+            self._user(
+                "editor",
+                page_permissions=[(self.content_page, "change_page")],
+            )
+        )
+
+        response = self._export(
+            page_ids=[str(self.section_page.pk), str(self.content_page.pk)]
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual(
+            [node["settings"]["slug"] for node in payload["pages"]], ["apply"]
+        )
+
+    def test_snippets_are_not_offered_to_an_account_that_may_not_manage_them(self):
+        self.client.force_login(
+            self._user("nobody", page_permissions=[(self.root_page, "change_page")])
+        )
+
+        response = self.client.get(self.index_url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Data analyst")
+        self.assertNotContains(response, "Accessibility")
+
+    def test_nor_exported_when_their_ids_are_asked_for_directly(self):
+        self.client.force_login(
+            self._user("nobody", page_permissions=[(self.root_page, "change_page")])
+        )
+
+        response = self._export(
+            page_ids=[str(self.section_page.pk)],
+            role_ids=[str(self.role.pk)],
+            skill_ids=[str(self.skill.pk)],
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode())
+        self.assertEqual(payload["roles"], [])
+        self.assertEqual(payload["skills"], [])
+
 @override_settings(FEATURE_FLAGS=_feature_flags())
 class ImportedPasswordRestrictionTests(TestCase):
     """A password restriction that arrives without its password.
