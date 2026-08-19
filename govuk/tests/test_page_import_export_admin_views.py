@@ -580,6 +580,32 @@ class PageImportExportAdminViewTests(TestCase):
                 )
                 self.assertIn("Nothing was imported.", messages[0])
 
+    def test_every_reason_nothing_was_imported_is_given_not_just_the_first(self):
+        """A file can be refused for several reasons at once.
+
+        Showing only the first turns them into a queue: fix one, upload again,
+        meet the next. The banner names them together, the way the skipped-items
+        warning under a completed import already does.
+        """
+        response = self._import(
+            {
+                "format": PAGE_EXPORT_FORMAT,
+                "changelog": [
+                    {"note": "An entry with no date"},
+                    {"date": "2026-08-19", "note": ""},
+                ],
+                "tags": [{"slug": "carried-tag", "name": "Carried tag"}],
+            }
+        )
+        messages = [str(message) for message in response.context["messages"]]
+
+        self.assertIn("Nothing was imported.", messages[0])
+        self.assertEqual(
+            messages[0].count("Skipped a changelog entry for the framework"),
+            2,
+            messages[0],
+        )
+
     def test_a_file_holding_one_page_is_still_reported_as_complete(self):
         response = self._import(
             {

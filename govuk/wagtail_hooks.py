@@ -802,7 +802,12 @@ def pages_import_view(request):
         # "Import complete" over a file that turned out not to be an export
         # reads as success at the very moment someone is checking whether the
         # content moved, with the reason it did not only in the line beneath.
-        messages.error(request, f"Nothing was imported. {result.errors[0]}")
+        # Every reason, not the first: a file can be refused for several at
+        # once, and the ones not shown would be met one at a time, an upload
+        # apiece.
+        messages.error(
+            request, f"Nothing was imported. {_errors_preview(result.errors)}"
+        )
         return redirect(redirect_url)
 
     messages.success(
@@ -814,12 +819,18 @@ def pages_import_view(request):
         ),
     )
     if result.errors:
-        preview = "; ".join(result.errors[:3])
-        if len(result.errors) > 3:
-            preview = f"{preview}; and {len(result.errors) - 3} more."
-        messages.warning(request, f"Some items were skipped: {preview}")
+        messages.warning(
+            request, f"Some items were skipped: {_errors_preview(result.errors)}"
+        )
 
     return redirect(redirect_url)
+
+
+def _errors_preview(errors: list[str]) -> str:
+    preview = "; ".join(errors[:3])
+    if len(errors) > 3:
+        preview = f"{preview}; and {len(errors) - 3} more."
+    return preview
 
 
 @require_admin_access
