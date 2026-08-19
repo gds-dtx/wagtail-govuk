@@ -408,14 +408,14 @@ class PageImportExportAdminViewTests(TestCase):
 
         call_order: list[str] = []
 
-        def _record_tags(*, raw_tags, raw_pages):
+        def _record_tags(*, raw_tags, raw_pages, user, result):
             call_order.append("tags")
             return {"by_slug": {}, "by_name": {}}
 
-        def _record_skills(raw_skills, *, result):
+        def _record_skills(raw_skills, *, user, result):
             call_order.append("skills")
 
-        def _record_roles(raw_roles, *, result):
+        def _record_roles(raw_roles, *, user, result):
             call_order.append("roles")
 
         def _record_pages(*args, **kwargs):

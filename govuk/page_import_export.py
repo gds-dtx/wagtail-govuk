@@ -15,6 +15,7 @@ from django.utils.text import slugify
 from django.utils import timezone
 from wagtail.fields import StreamField
 from wagtail.models import Page, PageViewRestriction, Site
+from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import RichText
 
 from govuk.models import (
@@ -73,6 +74,7 @@ def build_page_export_payload(
     pages: list[Page],
     skills: list[GovukSkill] | None = None,
     roles: list[GovukRole] | None = None,
+    user=None,
 ) -> dict:
     selected_roots = _deduplicate_selected_roots(pages)
     payload = {
@@ -85,7 +87,7 @@ def build_page_export_payload(
             "site_name": site.site_name,
             "is_default_site": site.is_default_site,
         },
-        "pages": [_serialise_page_tree(page) for page in selected_roots],
+        "pages": [_serialise_page_tree(page, user=user) for page in selected_roots],
     }
     if settings.FEATURE_FLAGS.get("SKILLS"):
         payload["skills"] = [
@@ -167,12 +169,16 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
     _import_site_name(payload.get("site"), site=site)
 
-    tag_lookup = _import_tags_from_payload(raw_tags=raw_tags, raw_pages=raw_pages)
+    tag_lookup = _import_tags_from_payload(
+        raw_tags=raw_tags, raw_pages=raw_pages, user=user, result=result
+    )
 
     if settings.FEATURE_FLAGS.get("SKILLS"):
-        _import_skills(raw_skills, result=result)
-        _import_roles(raw_roles, result=result)
-        _import_site_wide_changelog(payload.get("changelog"), result=result)
+        _import_skills(raw_skills, user=user, result=result)
+        _import_roles(raw_roles, user=user, result=result)
+        _import_site_wide_changelog(
+            payload.get("changelog"), user=user, result=result
+        )
 
     site_root = _replace_placeholder_home_page(
         raw_pages,
@@ -195,6 +201,35 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
 def dump_payload_as_json(payload: dict) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
+
+
+def user_may(user, model, action: str) -> bool:
+    """Whether the user could do this to a snippet through its own admin.
+
+    Snippets are governed by Django's model permissions, which is what the
+    snippet views ask for. The pages in a file are already checked one by one
+    against the page permissions, so a file was the way round the snippet
+    permissions and only the snippet permissions: an account with nothing but
+    access to the admin could rewrite every skill and role in the framework by
+    uploading one, while the snippet menu it would have used stayed shut.
+    """
+    if user is None:
+        return False
+    return ModelPermissionPolicy(model).user_has_permission(user, action)
+
+
+def _permission_error(model, action: str, subject: str) -> str:
+    """Why an entry was left alone, and the permission that would allow it.
+
+    Named in full because the person who ran the import is rarely the person
+    who administers groups, and "you do not have permission" on its own leaves
+    them nothing to ask for.
+    """
+    codename = f"{model._meta.app_label}.{action}_{model._meta.model_name}"
+    return (
+        f"Skipped {subject} because you do not have permission to {action} "
+        f"{model._meta.verbose_name_plural} ({codename})."
+    )
 
 
 def _import_site_name(raw_site, *, site: Site):
@@ -289,7 +324,32 @@ def _replace_placeholder_home_page(raw_pages: list, *, site: Site, site_root: Pa
     return replacement.specific
 
 
-def _import_tags_from_payload(*, raw_tags: list, raw_pages: list) -> dict[str, dict[str, int]]:
+def _import_tags_from_payload(
+    *, raw_tags: list, raw_pages: list, user=None, result: PageImportResult = None
+) -> dict[str, dict[str, int]]:
+    """Create the tags this file needs, as far as the file's owner may.
+
+    Tags come from two places and the two are not the same permission.
+
+    A tag named on a page is the page editor's free-tagging field: taggit has
+    no user in scope and asks nothing, so anyone who may edit the page may
+    already coin the tag by typing it. Those follow the page, which is checked
+    on its own further down.
+
+    The 'tags' list at the top of the file belongs to no page. It is an edit to
+    the tag dictionary and nothing else, which is what the tag snippet menu is
+    for, so it is asked for the permission that menu asks for.
+    """
+    if not user_may(user, GovukTag, "add"):
+        dropped = _dictionary_only_new_tags(raw_tags=raw_tags, raw_pages=raw_pages)
+        if dropped and result is not None:
+            result.errors.append(
+                _permission_error(
+                    GovukTag, "add", f"{len(dropped)} tag(s) named only in 'tags'"
+                )
+            )
+        raw_tags = []
+
     tag_candidates = _collect_tag_candidates(raw_tags=raw_tags, raw_pages=raw_pages)
     ordered_candidates: dict[str, str] = {}
     for tag_slug, tag_name in tag_candidates:
@@ -353,6 +413,28 @@ def _collect_page_node_tag_candidates(*, node, candidates: list[tuple[str, str]]
         return
     for child_node in child_entries:
         _collect_page_node_tag_candidates(node=child_node, candidates=candidates)
+
+
+def _dictionary_only_new_tags(*, raw_tags, raw_pages) -> set[str]:
+    """Slugs the 'tags' list alone would coin.
+
+    Only what is actually lost is worth a message: a tag the file also puts on
+    a page arrives by that route anyway, and one that already exists is not
+    being created by anybody.
+    """
+    from_list = {slug for slug, _ in _extract_tag_candidates_from_tag_list(raw_tags)}
+    if not from_list:
+        return set()
+
+    from_pages: list[tuple[str, str]] = []
+    if isinstance(raw_pages, list):
+        for node in raw_pages:
+            _collect_page_node_tag_candidates(node=node, candidates=from_pages)
+
+    only_in_list = from_list - {slug for slug, _ in from_pages}
+    return only_in_list - set(
+        GovukTag.objects.filter(slug__in=only_in_list).values_list("slug", flat=True)
+    )
 
 
 def _extract_tag_candidates_from_tag_list(raw_tags) -> list[tuple[str, str]]:
@@ -440,16 +522,16 @@ def _deduplicate_selected_roots(pages: list[Page]) -> list[Page]:
     return roots
 
 
-def _serialise_page_tree(page: Page) -> dict:
+def _serialise_page_tree(page: Page, *, user=None) -> dict:
     specific_page = page.specific
     return {
         "model": specific_page._meta.label,
         "settings": _serialise_page_settings(specific_page),
         "fields": _serialise_page_fields(specific_page),
         "tags": _serialise_tags(specific_page),
-        "privacy": _serialise_privacy(specific_page),
+        "privacy": _serialise_privacy(specific_page, user=user),
         "children": [
-            _serialise_page_tree(child.specific)
+            _serialise_page_tree(child.specific, user=user)
             for child in specific_page.get_children().order_by("path")
         ],
     }
@@ -635,11 +717,23 @@ def _serialise_tags(page: Page) -> list[dict[str, str]]:
     return tags_payload
 
 
-def _serialise_privacy(page: Page) -> list[dict]:
+def _serialise_privacy(page: Page, *, user=None) -> list[dict]:
+    """A page's view restrictions, and its shared password where it has one.
+
+    The password is the only thing an export carries that is not otherwise
+    readable somewhere in the admin, and Wagtail keeps it behind the same
+    permission it keeps the privacy dialog behind. Asking that permission here
+    stops the download being the way round the dialog. The restriction itself
+    is still named, so what the page's privacy is remains legible and an export
+    taken by someone who may set it still round-trips whole.
+    """
     restrictions_payload: list[dict] = []
     for restriction in page.view_restrictions.all():
         row: dict[str, object] = {"type": restriction.restriction_type}
-        if restriction.restriction_type == PageViewRestriction.PASSWORD:
+        if restriction.restriction_type == PageViewRestriction.PASSWORD and (
+            user is not None
+            and page.permissions_for_user(user).can_set_view_restrictions()
+        ):
             row["password"] = restriction.password
         if restriction.restriction_type == PageViewRestriction.GROUPS:
             row["groups"] = list(
@@ -667,12 +761,12 @@ def _serialise_value(value):
     return value
 
 
-def _import_skills(raw_skills: list, *, result: PageImportResult):
+def _import_skills(raw_skills: list, *, user, result: PageImportResult):
     for node in raw_skills:
-        _import_skill_node(node=node, result=result)
+        _import_skill_node(node=node, user=user, result=result)
 
 
-def _import_skill_node(*, node, result: PageImportResult):
+def _import_skill_node(*, node, user, result: PageImportResult):
     result.processed += 1
     if not isinstance(node, dict):
         result.skipped += 1
@@ -693,6 +787,12 @@ def _import_skill_node(*, node, result: PageImportResult):
         action = "update"
         skill = existing_skill
 
+    required = "add" if action == "create" else "change"
+    if not user_may(user, GovukSkill, required):
+        result.skipped += 1
+        result.errors.append(_permission_error(GovukSkill, required, f"skill '{slug}'"))
+        return
+
     default_title = slug.replace("-", " ").strip().title() or slug
     skill.slug = slug
     skill.title = str(node.get("title") or skill.title or default_title).strip() or default_title
@@ -709,7 +809,9 @@ def _import_skill_node(*, node, result: PageImportResult):
         result.errors.append(f"Skipped skill '{slug}': {exc}")
         return
 
-    _import_changelog(node.get("changelog"), subject=skill, field_name="skill", result=result)
+    _import_changelog(
+        node.get("changelog"), subject=skill, field_name="skill", user=user, result=result
+    )
 
     if action == "create":
         result.created += 1
@@ -743,12 +845,12 @@ def _deserialise_skill_points(raw_points) -> list[dict[str, str]]:
     return points_payload
 
 
-def _import_roles(raw_roles: list, *, result: PageImportResult):
+def _import_roles(raw_roles: list, *, user, result: PageImportResult):
     for node in raw_roles:
-        _import_role_node(node=node, result=result)
+        _import_role_node(node=node, user=user, result=result)
 
 
-def _import_role_node(*, node, result: PageImportResult):
+def _import_role_node(*, node, user, result: PageImportResult):
     result.processed += 1
     if not isinstance(node, dict):
         result.skipped += 1
@@ -768,6 +870,12 @@ def _import_role_node(*, node, result: PageImportResult):
     else:
         action = "update"
         role = existing_role
+
+    required = "add" if action == "create" else "change"
+    if not user_may(user, GovukRole, required):
+        result.skipped += 1
+        result.errors.append(_permission_error(GovukRole, required, f"role '{slug}'"))
+        return
 
     default_title = slug.replace("-", " ").strip().title() or slug
     role.slug = slug
@@ -799,7 +907,9 @@ def _import_role_node(*, node, result: PageImportResult):
         result.errors.append(f"Skipped role '{slug}': {exc}")
         return
 
-    _import_changelog(node.get("changelog"), subject=role, field_name="role", result=result)
+    _import_changelog(
+        node.get("changelog"), subject=role, field_name="role", user=user, result=result
+    )
 
     if action == "create":
         result.created += 1
@@ -847,34 +957,56 @@ def _deserialise_scs_skills(raw_skills, *, role_slug: str, result: PageImportRes
     return blocks_payload
 
 
-def _import_changelog(raw_entries, *, subject, field_name: str, result: PageImportResult):
+def _import_changelog(
+    raw_entries, *, subject, field_name: str, user, result: PageImportResult
+):
     """Replace the changelog entries attached to one role or skill."""
     _replace_changelog(
         raw_entries,
         owner={field_name: subject},
         label=str(subject),
+        user=user,
         result=result,
     )
 
 
-def _import_site_wide_changelog(raw_entries, *, result: PageImportResult):
+def _import_site_wide_changelog(raw_entries, *, user, result: PageImportResult):
     """Replace the framework-wide entries, which belong to no role or skill."""
     _replace_changelog(
         raw_entries,
         owner={"role": None, "skill": None},
         label="the framework",
+        user=user,
         result=result,
     )
 
 
-def _replace_changelog(raw_entries, *, owner: dict, label: str, result: PageImportResult):
+def _replace_changelog(
+    raw_entries, *, owner: dict, label: str, user, result: PageImportResult
+):
     """Swap a set of changelog entries for the imported ones.
 
     Entries carry no stable identifier of their own, so the imported set
     replaces whatever is there rather than trying to match entry by entry.
+
+    A changelog is its own snippet rather than a panel on the role, so the
+    permission to rewrite one is its own too: a file naming entries is checked
+    the way the changelog menu is. Reported and skipped rather than refused,
+    so the role or skill it came with still arrives.
     """
     if not isinstance(raw_entries, list):
         return
+
+    # A replace is a delete and then an add, so both are asked for: holding one
+    # without the other would empty the changelog and then fail to refill it.
+    for required in ("delete", "add"):
+        if not user_may(user, GovukChangelogEntry, required):
+            result.errors.append(
+                _permission_error(
+                    GovukChangelogEntry, required, f"the changelog for {label}"
+                )
+            )
+            return
 
     filters = {}
     for name, value in owner.items():
@@ -1040,7 +1172,7 @@ def _import_page_node(
             page.save()
             _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
             page.save()
-            _apply_privacy(page, node.get("privacy"), user=user)
+            _apply_privacy(page, node.get("privacy"), user=user, result=result)
 
             if action == "create":
                 result.created += 1
@@ -1473,7 +1605,19 @@ def _update_tag_lookup(tag_lookup, *, tag_id: int, tag_slug: str, tag_name: str)
         by_name.setdefault(name_key, tag_id)
 
 
-def _apply_privacy(page: Page, privacy_data, *, user):
+def _apply_privacy(page: Page, privacy_data, *, user, result: PageImportResult = None):
+    # Read before the delete below. A file can name a password restriction
+    # without naming the password: that is what an export taken by someone who
+    # may not read passwords carries, and it was becoming a restriction whose
+    # password is the empty string, which anybody gets past by submitting the
+    # form. The page's own password stands in where there is one, and where
+    # there is not the restriction is reported rather than applied, because an
+    # unrestricted page is at least a visible mistake.
+    existing_password = ""
+    for restriction in page.view_restrictions.all():
+        if restriction.restriction_type == PageViewRestriction.PASSWORD:
+            existing_password = restriction.password or ""
+
     page.view_restrictions.all().delete()
     if not isinstance(privacy_data, list):
         return
@@ -1495,7 +1639,15 @@ def _apply_privacy(page: Page, privacy_data, *, user):
             password="",
         )
         if restriction_type == PageViewRestriction.PASSWORD:
-            restriction.password = str(raw_restriction.get("password") or "")
+            password = str(raw_restriction.get("password") or "") or existing_password
+            if not password:
+                if result is not None:
+                    result.errors.append(
+                        f"Page '{page.slug}' was left without its password "
+                        "restriction because the file gives no password for it."
+                    )
+                continue
+            restriction.password = password
         restriction.save(user=user)
 
         if restriction_type == PageViewRestriction.GROUPS:
