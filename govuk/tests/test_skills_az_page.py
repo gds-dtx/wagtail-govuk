@@ -96,7 +96,7 @@ class SkillsAZPageTests(TestCase):
         self.assertContains(
             response, '<h1 class="govuk-heading-xl">Skills A-Z</h1>', html=True
         )
-        self.assertContains(response, "govuk-breadcrumbs--mobile-only")
+        self.assertContains(response, "app-breadcrumbs--mobile-only")
 
     def test_the_skills_index_breadcrumb_reads_the_way_a_roles_does(self):
         """Both stand in for the same navigation, so both start at Home."""
@@ -108,7 +108,9 @@ class SkillsAZPageTests(TestCase):
             html=True,
         )
         self.assertContains(
-            response, '<span aria-current="page">Skills A-Z</span>', html=True
+            response,
+            '<li class="govuk-breadcrumbs__list-item" aria-current="page">Skills A-Z</li>',
+            html=True,
         )
         # Not the site name, which is long enough to wrap on a narrow screen.
         self.assertNotContains(response, "Capability Framework</a>")

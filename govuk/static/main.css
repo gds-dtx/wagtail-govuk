@@ -262,14 +262,22 @@ main > :nth-last-child(1 of .section-cards-container) {
     max-width: 100%;
 }
 
-.search-result-breadcrumbs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    align-items: center;
+/* Search results read as one column of entries rather than a grid of cards, so
+   that a title or a summary has the width to sit on fewer lines: in three
+   columns a result's title took three lines where here it takes one. A rule
+   between the entries does the separating that the card borders used to. */
+.app-search-results {
+    margin-top: 0;
+    border-top: 1px solid #b1b4b6;
 }
 
-.search-result-breadcrumbs__separator {
+.app-search-result {
+    margin-bottom: 0;
+    padding: 15px 0;
+    border-bottom: 1px solid #b1b4b6;
+}
+
+.app-search-result__meta {
     color: #505a5f;
 }
 
@@ -377,8 +385,46 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 @media (min-width: 48.0625em) {
+    /* The bar holds three things on one row: the service name, the navigation
+       links, then the search box against the right edge. Frontend lets the
+       links wrapper grow into whatever space is left, which pushed the search
+       box down onto a second row; the free space belongs to the search box. */
+    .govuk-service-navigation .govuk-service-navigation__wrapper {
+        flex-grow: 0;
+    }
+
+    /* Flex wraps on flex-basis before it shrinks, so a box asking for 20rem
+       drops to a row of its own rather than taking the 18rem that are going.
+       A smaller basis that grows into what is left keeps it on the row, and
+       the cap stops it stretching across the bar when it does wrap. */
     .govuk-service-navigation .app-site-search {
-        min-width: 20rem;
+        flex: 1 1 16rem;
+        min-width: 16rem;
+        max-width: 20rem;
+        /* The box is shorter than the service name beside it and the bar aligns
+           its contents to the top, so without these it hangs off the bar's top
+           border. They also keep it clear of the bar's edges on the narrower
+           widths where it still wraps to a row of its own. */
+        margin-top: 7px;
+        margin-bottom: 7px;
+    }
+
+    /* The search box is pushed right by `margin-left: auto`, which collapses to
+       nothing once the row is full — leaving it touching "Sign in". A column
+       gap holds the two apart whatever the auto margin does. */
+    .govuk-service-navigation__container {
+        column-gap: 20px;
+    }
+}
+
+/* On a narrow screen the box has a row to itself, but the bar aligns its
+   contents to the start, so it takes only the width of its content and stops
+   short of the margin the rest of the page lines up with. A hair below the
+   breakpoint above, because a max-width query includes the width it names and
+   both would otherwise apply at exactly 48.0625em. */
+@media (max-width: 48.0525em) {
+    .govuk-service-navigation .app-site-search {
+        width: 100%;
     }
 }
 
@@ -611,9 +657,12 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 /* The breadcrumb stands in for the side navigation once that is hidden, so it
-   only shows at the widths where the navigation does not. */
+   only shows at the widths where the navigation does not. The class is ours
+   rather than a GOV.UK Frontend modifier, which ships only
+   govuk-breadcrumbs--collapse-on-mobile and govuk-breadcrumbs--inverse, so it
+   carries the app prefix the Design System asks bespoke classes to use. */
 @media (min-width: 40.0625em) {
-    .govuk-breadcrumbs--mobile-only {
+    .app-breadcrumbs--mobile-only {
         display: none;
     }
 }
@@ -647,5 +696,39 @@ main > :nth-last-child(1 of .section-cards-container) {
 
     .role-level-header {
         font-size: 1.7rem;
+    }
+}
+
+/* A long unbroken string, such as the support email address in the welcome
+   content, otherwise pushes a horizontal scrollbar onto the page at 320px,
+   which fails WCAG 1.4.10 Reflow. Only a word that cannot fit is broken, so
+   ordinary copy is unaffected. */
+.govuk-body,
+.govuk-body-l,
+.govuk-body-m,
+.govuk-body-s,
+.govuk-heading-xl,
+.govuk-heading-l,
+.govuk-heading-m,
+.govuk-heading-s,
+.govuk-list,
+.govuk-table__cell,
+.govuk-link {
+    overflow-wrap: break-word;
+}
+
+/* The two-column skill tables still demand 324px at the 320px reflow width,
+   because `overflow-wrap` breaks a word only once the line is laid out — it
+   does not lower the table's intrinsic minimum. Hyphenation does, and it
+   breaks between syllables rather than mid-word, so the table fits without
+   the sideways scrolling that fails WCAG 1.4.10. Above this width the
+   columns have room and are left alone. A hair below the breakpoint the
+   min-width queries use, because a max-width query includes the width it
+   names and both would otherwise apply at exactly 40.0625em. */
+@media (max-width: 40.0525em) {
+    .govuk-table__header,
+    .govuk-table__cell {
+        -webkit-hyphens: auto;
+        hyphens: auto;
     }
 }

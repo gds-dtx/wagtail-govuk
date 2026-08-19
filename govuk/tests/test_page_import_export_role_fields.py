@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from wagtail.models import Page, Site
@@ -106,6 +108,210 @@ class RoleExportImportFieldTests(TestCase):
         self.assertEqual(
             exported["chief-technology-officer"]["scs_skills"],
             ["capability-building"],
+        )
+
+    def test_export_carries_the_roles_that_could_lead_to_a_role_as_slugs(self):
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": self.role.pk}
+        ]
+        self.scs_role.save()
+
+        payload = self._export()
+        exported = {row["slug"]: row for row in payload["roles"]}
+
+        self.assertEqual(
+            exported["chief-technology-officer"]["roles_that_could_lead_here"],
+            ["data-analyst"],
+        )
+
+    def test_import_restores_a_wiped_progression_mapping(self):
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": self.role.pk}
+        ]
+        self.scs_role.save()
+        payload = self._export()
+
+        self.scs_role.roles_that_could_lead_here = []
+        self.scs_role.save()
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+        self.assertEqual(result.errors, [])
+
+        scs_role = GovukRole.objects.get(slug="chief-technology-officer")
+        self.assertEqual(
+            [role.slug for role in scs_role.get_roles_that_could_lead_here()],
+            ["data-analyst"],
+        )
+
+    def test_a_role_can_name_one_that_is_imported_after_it(self):
+        """Roles arrive in one pass, so the references are resolved in a second."""
+        payload = self._export()
+        exported = {row["slug"]: row for row in payload["roles"]}
+        exported["chief-technology-officer"]["roles_that_could_lead_here"] = [
+            "data-analyst"
+        ]
+        # Chief technology officer is imported first, before data analyst exists.
+        payload["roles"] = [
+            exported["chief-technology-officer"],
+            exported["data-analyst"],
+        ]
+        GovukRole.objects.all().delete()
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+        self.assertEqual(result.errors, [])
+
+        scs_role = GovukRole.objects.get(slug="chief-technology-officer")
+        self.assertEqual(
+            [role.slug for role in scs_role.get_roles_that_could_lead_here()],
+            ["data-analyst"],
+        )
+
+    def test_a_rejected_role_keeps_the_progression_mapping_it_already_had(self):
+        """The references are resolved in a second pass, which must not carry
+        over a payload the first pass judged invalid and refused to save."""
+        other_role = GovukRole.objects.create(title="Data engineer", family="Data")
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": other_role.pk}
+        ]
+        self.scs_role.save()
+
+        payload = self._export()
+        for row in payload["roles"]:
+            if row["slug"] == "chief-technology-officer":
+                # Longer than the field allows, so full_clean rejects it.
+                row["title"] = "C" * 300
+                row["roles_that_could_lead_here"] = ["data-analyst"]
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+
+        self.assertEqual(result.skipped, 1)
+        scs_role = GovukRole.objects.get(slug="chief-technology-officer")
+        self.assertEqual(
+            [role.slug for role in scs_role.get_roles_that_could_lead_here()],
+            [other_role.slug],
+        )
+
+    def test_a_role_with_no_progression_mapping_is_not_written_a_second_time(self):
+        """Almost every role in the framework names none, and the second pass
+        would otherwise rewrite an unchanged empty field on each of them."""
+        payload = self._export()
+        for row in payload["roles"]:
+            self.assertEqual(row["roles_that_could_lead_here"], [])
+
+        # The second pass is the only thing that saves that field on its own.
+        saved = []
+        original_save = GovukRole.save
+
+        def record(role, *args, update_fields=None, **kwargs):
+            if update_fields == ["roles_that_could_lead_here"]:
+                saved.append(role.slug)
+            return original_save(role, *args, update_fields=update_fields, **kwargs)
+
+        with patch.object(GovukRole, "save", record):
+            result = import_pages_from_payload(
+                payload=payload, site=self.site, user=self.user
+            )
+
+        self.assertEqual(result.errors, [])
+        self.assertEqual(saved, [])
+
+    def test_a_file_written_before_the_field_existed_leaves_the_mapping_alone(self):
+        """The known-good exports kept for staging and production were written
+        without this field. Reading their silence as "empty it" would clear the
+        curated path off every senior role, and report nothing."""
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": self.role.pk}
+        ]
+        self.scs_role.save()
+        payload = self._export()
+        for row in payload["roles"]:
+            row.pop("roles_that_could_lead_here", None)
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+        self.assertEqual(result.errors, [])
+
+        scs_role = GovukRole.objects.get(slug="chief-technology-officer")
+        self.assertEqual(
+            [role.slug for role in scs_role.get_roles_that_could_lead_here()],
+            ["data-analyst"],
+        )
+
+    def test_an_empty_list_still_empties_the_mapping(self):
+        """Said outright rather than left out, which is what an export of a
+        role an editor has cleared carries."""
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": self.role.pk}
+        ]
+        self.scs_role.save()
+        payload = self._export()
+        for row in payload["roles"]:
+            if row["slug"] == "chief-technology-officer":
+                row["roles_that_could_lead_here"] = []
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+        self.assertEqual(result.errors, [])
+
+        scs_role = GovukRole.objects.get(slug="chief-technology-officer")
+        self.assertEqual(scs_role.get_roles_that_could_lead_here(), [])
+
+    def test_a_mapping_that_is_not_an_array_is_reported_rather_than_obeyed(self):
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": self.role.pk}
+        ]
+        self.scs_role.save()
+        payload = self._export()
+        for row in payload["roles"]:
+            if row["slug"] == "chief-technology-officer":
+                row["roles_that_could_lead_here"] = "data-analyst"
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+
+        self.assertEqual(
+            result.errors,
+            [
+                "Role 'chief-technology-officer' kept its existing progression "
+                "roles because 'roles_that_could_lead_here' is not an array."
+            ],
+        )
+        scs_role = GovukRole.objects.get(slug="chief-technology-officer")
+        self.assertEqual(
+            [role.slug for role in scs_role.get_roles_that_could_lead_here()],
+            ["data-analyst"],
+        )
+
+    def test_a_progression_role_missing_from_the_destination_is_reported(self):
+        self.scs_role.roles_that_could_lead_here = [
+            {"type": "role", "value": self.role.pk}
+        ]
+        self.scs_role.save()
+        payload = self._export()
+        payload["roles"] = [
+            row for row in payload["roles"] if row["slug"] != "data-analyst"
+        ]
+        self.role.delete()
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+
+        self.assertEqual(
+            result.errors,
+            [
+                "Role 'chief-technology-officer' skipped a role that could lead "
+                "to it for missing role 'data-analyst'."
+            ],
         )
 
     def test_export_carries_every_skill_field(self):
@@ -429,3 +635,85 @@ class RoleExportImportFieldTests(TestCase):
         self.assertEqual(
             scs_role.get_scs_grade_labels(), ["SCS 1 (Senior Civil Service 1)"]
         )
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class ImportIntoASiteWithSkillsSwitchedOffTests(TestCase):
+    """Importing the framework where FEATURE_SKILLS is unset.
+
+    This is how a new environment goes wrong: the flag is set by the Terraform
+    that builds the instance, not by anything in this repository, so a site can
+    come up without it and take an import that quietly drops the framework.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.user = get_user_model().objects.create_superuser(
+            username="importer",
+            email="importer@example.com",
+            password="password",
+        )
+        self.role = GovukRole.objects.create(title="Data analyst", family="Data")
+        GovukSkill.objects.create(title="Data modelling")
+        GovukChangelogEntry.objects.create(
+            date="2026-03-01", note="<p>Framework wide update.</p>"
+        )
+        page = self.site.root_page.add_child(
+            instance=RolePage(
+                title="Data analyst",
+                slug="data-analyst",
+                selected_roles=[{"type": "role", "value": self.role.pk}],
+            )
+        )
+        page.save_revision().publish()
+
+        self.payload = build_page_export_payload(
+            site=self.site,
+            pages=[page.specific],
+            skills=list(GovukSkill.objects.all()),
+            roles=list(GovukRole.objects.all()),
+        )
+
+    def _import_with_skills_off(self):
+        GovukRole.objects.all().delete()
+        GovukSkill.objects.all().delete()
+        GovukChangelogEntry.objects.all().delete()
+        RolePage.objects.all().delete()
+        with override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False)):
+            return import_pages_from_payload(
+                payload=self.payload, site=self.site, user=self.user
+            )
+
+    def test_the_flag_is_named_rather_than_the_file_being_blamed(self):
+        result = self._import_with_skills_off()
+
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("FEATURE_SKILLS", result.errors[0])
+        self.assertIn("skills, roles, changelog and wording", result.errors[0])
+
+    def test_the_pages_still_arrive(self):
+        """Reporting the problem must not turn into refusing the import: the
+        pages are the bulk of the file and they transfer perfectly well."""
+        result = self._import_with_skills_off()
+
+        self.assertEqual(result.skipped, 0)
+        self.assertTrue(RolePage.objects.filter(slug="data-analyst").exists())
+
+    def test_each_page_does_not_repeat_the_same_cause(self):
+        """Every role page names a role, so left alone this drowns the one
+        message that explains the run in a page-by-page list of symptoms."""
+        result = self._import_with_skills_off()
+
+        self.assertEqual(
+            [error for error in result.errors if "dropped role" in error], []
+        )
+
+    def test_a_file_carrying_no_framework_content_is_not_warned_about(self):
+        """A site legitimately running without the framework imports its own
+        pages all the time, and has nothing to be told."""
+        for key in ("skills", "roles", "changelog", "wording"):
+            self.payload.pop(key, None)
+
+        result = self._import_with_skills_off()
+
+        self.assertEqual(result.errors, [])

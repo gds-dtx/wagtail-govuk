@@ -29,6 +29,7 @@ from wagtail.admin.rich_text.converters.html_to_contentstate import (
     PageLinkElementHandler,
 )
 from wagtail.admin.rich_text.editors.draftail import features as draftail_features
+from wagtail.contrib.settings.models import register_setting
 from wagtail.models import Page, Site
 from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import EmbedHandler
@@ -44,6 +45,7 @@ from govuk.content_discovery_import import (
     import_content_discovery_sources_from_csv,
 )
 from govuk.models import (
+    CapabilityFrameworkWordingSettings,
     ContentDiscoverySettings,
     ContentDiscoverySource,
     EdDSAKeyPair,
@@ -715,13 +717,14 @@ def pages_export_view(request):
     )
 
     if not selected_page_ids and not selected_skill_ids and not selected_role_ids:
-        if skills_feature_enabled:
-            messages.error(
-                request, "Select at least one page, skill or role to export."
-            )
-        else:
+        # Nothing ticked still has something to carry: the framework wording is
+        # a site setting, so it hangs off no page and cannot be ticked. Without
+        # this, applying a wording change elsewhere would mean exporting a page
+        # nobody wanted to move and overwriting it on the way in, or trimming
+        # the file by hand.
+        if not skills_feature_enabled:
             messages.error(request, "Select at least one page to export.")
-        return redirect(redirect_url)
+            return redirect(redirect_url)
 
     # A page id can be typed into the form as easily as it can be ticked, so
     # the same permission the listing was filtered by is asked again here.
@@ -750,7 +753,18 @@ def pages_export_view(request):
         else []
     )
 
-    if not selected_pages and not selected_skills and not selected_roles:
+    asked_for_content = bool(
+        selected_page_ids or selected_skill_ids or selected_role_ids
+    )
+    if (
+        asked_for_content
+        and not selected_pages
+        and not selected_skills
+        and not selected_roles
+    ):
+        # Only where something was ticked and none of it could be found. An
+        # export of the wording alone asks for nothing else and is not a
+        # failure to report.
         if skills_feature_enabled:
             messages.error(
                 request,
@@ -769,7 +783,10 @@ def pages_export_view(request):
     )
     file_contents = dump_payload_as_json(payload)
     timestamp = timezone.now().strftime("%Y%m%d-%H%M%S")
-    file_name = f"pages-export-site-{selected_site.pk}-{timestamp}.json"
+    # Named for what is in it, so that a wording export is still recognisable
+    # in a downloads folder a fortnight later.
+    subject = "pages" if asked_for_content else "wording"
+    file_name = f"{subject}-export-site-{selected_site.pk}-{timestamp}.json"
 
     response = HttpResponse(file_contents, content_type="application/json")
     response["Content-Disposition"] = f'attachment; filename="{file_name}"'
@@ -1233,5 +1250,6 @@ if settings.FEATURE_FLAGS.get("SKILLS"):
     _register_snippet_if_needed(GovukSkillViewSet)
     _register_snippet_if_needed(GovukRoleViewSet)
     _register_snippet_if_needed(GovukChangelogEntryViewSet)
+    register_setting(CapabilityFrameworkWordingSettings, icon="edit")
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)

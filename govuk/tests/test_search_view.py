@@ -213,6 +213,93 @@ class SearchViewFilterTests(TestCase):
         self.assertNotContains(response, "Hero title fallback page")
 
 
+class SearchResultsLayoutTests(TestCase):
+    """The results read as one column of entries under the Design System's pagination."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.paginated_tag = GovukTag.objects.create(
+            slug="paginated", name="Paginated"
+        )
+
+        # A page of results holds 15, so 20 pages give a second page to go to.
+        for index in range(1, 21):
+            page = self.root_page.add_child(
+                instance=ContentPage(
+                    title=f"Paginated result {index}",
+                    slug=f"paginated-result-{index}",
+                    body="",
+                )
+            )
+            page.tags.add(self.paginated_tag)
+            page.save_revision().publish()
+
+        self.single_result = self.root_page.add_child(
+            instance=ContentPage(
+                title="Solitary result page",
+                slug="solitary-result-page",
+                body="",
+            )
+        )
+        self.single_result.save_revision().publish()
+
+    def test_each_result_is_an_entry_in_one_list(self):
+        response = self.client.get(reverse("search"), {"query": "solitary"})
+
+        self.assertContains(response, 'class="govuk-list app-search-results"')
+        self.assertContains(response, 'class="app-search-result"', count=1)
+
+    def test_pagination_offers_the_pages_a_long_result_set_runs_to(self):
+        response = self.client.get(reverse("search"), {"query": "paginated result"})
+
+        self.assertContains(response, "govuk-pagination")
+        self.assertContains(response, 'aria-label="Page 1"')
+        self.assertContains(response, 'aria-label="Page 2"')
+        self.assertContains(response, 'aria-current="page"')
+        self.assertContains(response, "page=2")
+
+    def test_the_page_a_reader_is_on_is_the_current_one(self):
+        response = self.client.get(
+            reverse("search"), {"query": "paginated result", "page": 2}
+        )
+
+        self.assertContains(
+            response,
+            '<li class="govuk-pagination__item govuk-pagination__item--current">'
+            '<a class="govuk-link govuk-pagination__link" '
+            'href="?query=paginated+result&amp;page=2" aria-label="Page 2" '
+            'aria-current="page">2</a></li>',
+            html=True,
+        )
+
+    def test_a_page_link_keeps_the_search_and_the_filters(self):
+        response = self.client.get(
+            reverse("search"),
+            {"query": "paginated result", "tag": self.paginated_tag.slug},
+        )
+
+        self.assertContains(
+            response, "?query=paginated+result&amp;tag=paginated&amp;page=2"
+        )
+
+    def test_a_filter_that_matched_nothing_is_not_carried_into_the_page_links(self):
+        """The search drops a tag it cannot offer, so a link still carrying it
+        would show a filtered address over unfiltered results."""
+        response = self.client.get(
+            reverse("search"), {"query": "paginated result", "tag": "no-such-tag"}
+        )
+
+        self.assertContains(response, "?query=paginated+result&amp;page=2")
+        self.assertNotContains(response, "tag=no-such-tag")
+
+    def test_there_is_no_pagination_where_everything_fits_on_one_page(self):
+        response = self.client.get(reverse("search"), {"query": "solitary"})
+
+        self.assertContains(response, "Solitary result page")
+        self.assertNotContains(response, "govuk-pagination")
+
+
 class SearchViewRestrictedPageTests(TestCase):
     """A search result names a page and summarises it, so a page held back
     from this reader has no business appearing in one.

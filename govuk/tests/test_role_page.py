@@ -145,6 +145,18 @@ class RolePageTests(TestCase):
             "Analyses digital evidence and investigates incidents.",
         )
 
+    def test_skill_points_are_introduced_by_the_framework_wording(self):
+        """The points are written as the ends of "You can:", so it is printed."""
+        response = self.client.get(self.role_page.url)
+
+        self.assertContains(response, "You can:")
+
+    def test_a_delegated_grade_role_has_none_of_the_senior_civil_service_wording(self):
+        response = self.client.get(self.role_page.url)
+
+        self.assertNotContains(response, "A specific digital forensics analyst job")
+        self.assertNotContains(response, "will need to use digital and data skills to")
+
     def test_role_page_supports_tags(self):
         policy_tag = GovukTag.objects.create(slug="policy", name="Policy")
         security_tag = GovukTag.objects.create(slug="security", name="Security")

@@ -69,6 +69,34 @@ class SkillsWagtailHooksTests(SimpleTestCase):
 
         _reload_hooks()
 
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    @patch("wagtail.contrib.settings.models.register_setting")
+    def test_registers_the_framework_wording_setting_when_enabled(
+        self, mock_register_setting
+    ):
+        hooks_module = _reload_hooks()
+
+        mock_register_setting.assert_called_once_with(
+            hooks_module.CapabilityFrameworkWordingSettings, icon="edit"
+        )
+
+        _reload_hooks()
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    @patch("wagtail.contrib.settings.models.register_setting")
+    def test_does_not_register_the_framework_wording_setting_when_disabled(
+        self, mock_register_setting
+    ):
+        hooks_module = _reload_hooks()
+
+        self.assertNotIn(
+            call(hooks_module.CapabilityFrameworkWordingSettings, icon="edit"),
+            mock_register_setting.mock_calls,
+        )
+        self.assertEqual(mock_register_setting.call_count, 0)
+
+        _reload_hooks()
+
     def test_skills_and_roles_viewsets_have_expected_admin_configuration(self):
         hooks_module = _reload_hooks()
 
