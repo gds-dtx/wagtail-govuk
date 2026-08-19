@@ -9,12 +9,12 @@ from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.core.paginator import Page as PaginatorPage
 from django.core.paginator import Paginator
 from django.db import connections
-from django.db.models import Max, Q, QuerySet, TextField
+from django.db.models import Max, Q, QuerySet, TextField, prefetch_related_objects
 from django.db.models.functions import Cast
 from django.utils.html import strip_tags
 from django.utils.text import slugify
 from django.utils import timezone
-from wagtail.models import Page, Site
+from wagtail.models import Page, PageViewRestriction, Site
 
 from govuk.models import (
     SKILL_LEVEL_CHOICES,
@@ -24,7 +24,7 @@ from govuk.models import (
     SectionPage,
     SkillsAZPage,
 )
-from govuk.utils import normalised_text
+from govuk.utils import normalised_text, row_id_from_text
 
 DEFAULT_PAGE_SIZE = 15
 SEARCH_CONFIG = "english"
@@ -680,8 +680,7 @@ class SearchBackend:
     def _apply_filters(self, queryset: QuerySet, filters: dict[str, Any]) -> QuerySet:
         if filters.get("live", True):
             queryset = queryset.live()
-        if filters.get("public", True):
-            queryset = queryset.public()
+        queryset = self._viewable_by_reader(queryset, filters)
 
         site_or_root = filters.get("site")
         if site_or_root:
@@ -699,6 +698,89 @@ class SearchBackend:
             queryset = queryset.exclude(pk__in=exclude_ids)
 
         return queryset
+
+    def _viewable_by_reader(
+        self, queryset: QuerySet, filters: dict[str, Any]
+    ) -> QuerySet:
+        """The pages this reader would actually be served.
+
+        ``public()`` answers the whole question only while nobody is signed in:
+        it drops every restricted page, whoever is asking. Signed in, the
+        search was asking nothing at all, so a page held back for one group, or
+        kept behind a shared password, was listed by title and description to
+        anybody holding an account -- while the page itself went on answering
+        that same reader with a redirect or the password form. A restriction is
+        there to keep something quiet before it is announced, and a search
+        result names it and summarises it.
+
+        So each restriction is put the question Wagtail puts at serve time, and
+        only those it refuses are excluded. What the search lists is then what
+        the site would serve: a group's own members still find their page, a
+        password already entered this session no longer hides the page it was
+        entered for, and a superuser meets the password form here exactly as
+        they would meet it on the page.
+        """
+        if filters.get("public", True):
+            return queryset.public()
+
+        request = filters.get("request")
+        if request is None:
+            # A restriction is a question about a reader, and without a request
+            # there is no reader to ask it about. Nothing extra is let through.
+            return queryset.public()
+
+        refused = self._refused_restrictions_q(request)
+        return queryset.exclude(refused) if refused else queryset
+
+    def _refused_restrictions_q(self, request) -> Q:
+        """Pages under a restriction this request fails, as one Q.
+
+        Held on the request, as the ancestors above are: a single search runs
+        several querysets and the same restrictions decide all of them, while
+        asking a group restriction costs a query every time it is asked.
+        """
+        cached = getattr(request, "_govuk_search_refused_restrictions", None)
+        if cached is not None:
+            return cached
+
+        restrictions = list(
+            PageViewRestriction.objects.select_related("page").prefetch_related("groups")
+        )
+        self._prime_reader_groups(request, restrictions)
+
+        refused = Q()
+        for restriction in restrictions:
+            if restriction.accept_request(request):
+                continue
+            # A restriction covers the page it is set on and everything below
+            # it, which is how Wagtail decides what it applies to.
+            page = restriction.page
+            refused |= Q(path__startswith=page.path, depth__gte=page.depth)
+
+        request._govuk_search_refused_restrictions = refused
+        return refused
+
+    @staticmethod
+    def _prime_reader_groups(request, restrictions: list[PageViewRestriction]) -> None:
+        """Fetch the reader's groups once, before they are asked for repeatedly.
+
+        ``accept_request`` reads ``request.user.groups.all()`` itself, and a
+        related manager builds a fresh queryset every call, so a site with a
+        dozen group restrictions asked the same question a dozen times. Filling
+        the cache Django keeps on the user answers all of them from the first.
+        """
+        user = getattr(request, "user", None)
+        if getattr(user, "pk", None) is None or user.is_superuser:
+            # A superuser passes a group restriction without being asked, and
+            # an anonymous or absent user has no groups to fetch.
+            return
+        if not any(
+            restriction.restriction_type == PageViewRestriction.GROUPS
+            for restriction in restrictions
+        ):
+            return
+
+        prefetch_related_objects([user], "groups")
 
     def _external_content_queryset(self, filters: dict[str, Any]) -> QuerySet:
         queryset = ExternalContentItem.objects.filter(hidden=False).select_related(
@@ -1097,16 +1179,11 @@ class SearchBackend:
             return ""
         if source_value == THIS_SITE_SOURCE_FILTER:
             return THIS_SITE_SOURCE_FILTER
-        # Not ``isdigit``: that counts "²" and "₂" as digits and ``int`` then
-        # refuses them, so a source of "²" in the query string was a 500 rather
-        # than the no-such-source-so-show-everything every other unreadable
-        # value gets. ``isdecimal`` is the set ``int`` can actually read, and it
-        # still admits digits written in other scripts.
-        if not source_value.isdecimal():
-            return ""
-
-        parsed_source_id = int(source_value)
-        if parsed_source_id <= 0:
+        # Not ``isdigit`` then ``int``: "²" is isdigit-True and ``int`` refuses
+        # it, so a source of "²" in the query string was a 500 rather than the
+        # no-such-source-so-show-everything every other unreadable value gets.
+        parsed_source_id = row_id_from_text(source_value)
+        if parsed_source_id is None or parsed_source_id <= 0:
             return ""
         return str(parsed_source_id)
 

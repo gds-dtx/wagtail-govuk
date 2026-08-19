@@ -38,6 +38,8 @@ from wagtail.images.blocks import ImageChooserBlock
 from wagtail.models import Orderable, Page, Site
 from wagtail.snippets.blocks import SnippetChooserBlock
 
+from govuk.utils import row_id_from_text
+
 
 HEX_COLOR_VALIDATOR = RegexValidator(
     regex=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
@@ -1762,11 +1764,9 @@ class GovukRole(models.Model):
         if type(value) is int and value > 0:
             return value
         if isinstance(value, str):
-            stripped = value.strip()
-            if stripped.isdigit():
-                parsed = int(stripped)
-                if parsed > 0:
-                    return parsed
+            parsed = row_id_from_text(value)
+            if parsed is not None and parsed > 0:
+                return parsed
         skill_pk = getattr(value, "pk", None)
         if type(skill_pk) is int and skill_pk > 0:
             return skill_pk
@@ -2180,11 +2180,9 @@ class ContentDiscoverySource(Orderable):
         if type(value) is int and value > 0:
             return value
         if isinstance(value, str):
-            stripped = value.strip()
-            if stripped.isdigit():
-                parsed = int(stripped)
-                if parsed > 0:
-                    return parsed
+            parsed = row_id_from_text(value)
+            if parsed is not None and parsed > 0:
+                return parsed
         tag_pk = getattr(value, "pk", None)
         if type(tag_pk) is int and tag_pk > 0:
             return tag_pk
@@ -2925,11 +2923,9 @@ class RolePage(Page):
         if type(value) is int and value > 0:
             return value
         if isinstance(value, str):
-            stripped = value.strip()
-            if stripped.isdigit():
-                parsed = int(stripped)
-                if parsed > 0:
-                    return parsed
+            parsed = row_id_from_text(value)
+            if parsed is not None and parsed > 0:
+                return parsed
         role_pk = getattr(value, "pk", None)
         if type(role_pk) is int and role_pk > 0:
             return role_pk
@@ -3770,10 +3766,7 @@ class TagListingsPage(Page):
             if not selected_source_key:
                 selected_source_key = None
             elif selected_source_key != THIS_SITE_SOURCE_FILTER:
-                if selected_source_key.isdigit():
-                    selected_source_key = int(selected_source_key)
-                else:
-                    selected_source_key = None
+                selected_source_key = row_id_from_text(selected_source_key)
 
         external_queryset = self._external_listing_queryset(
             tag_ids=configured_tag_ids,

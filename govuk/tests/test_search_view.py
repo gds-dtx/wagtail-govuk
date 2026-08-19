@@ -1,6 +1,10 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils.text import slugify
 from wagtail.models import PageViewRestriction, Site
 
 from govuk.models import (
@@ -12,6 +16,7 @@ from govuk.models import (
     GovukTag,
     SectionPage,
 )
+from govuk.search_backend import search_backend
 
 
 class SearchViewVisibilityTests(TestCase):
@@ -293,3 +298,201 @@ class SearchResultsLayoutTests(TestCase):
 
         self.assertContains(response, "Solitary result page")
         self.assertNotContains(response, "govuk-pagination")
+
+
+class SearchViewRestrictedPageTests(TestCase):
+    """A search result names a page and summarises it, so a page held back
+    from this reader has no business appearing in one.
+
+    ``LOGIN`` is covered above: signing in is the whole of what it asks, so a
+    signed-in reader sees those. The two below ask for more than an account.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+        self.open_page = self._publish("Restricted search open page")
+        self.group_page = self._publish("Restricted search group page")
+        self.password_page = self._publish("Restricted search password page")
+
+        self.board = Group.objects.create(name="Restricted search board")
+        restriction = self.group_page.view_restrictions.create(
+            restriction_type=PageViewRestriction.GROUPS
+        )
+        restriction.groups.add(self.board)
+
+        self.password_restriction = self.password_page.view_restrictions.create(
+            restriction_type=PageViewRestriction.PASSWORD,
+            password="correct-horse-battery-staple",
+        )
+
+    def _publish(self, title, parent=None):
+        page = (parent or self.root_page).add_child(
+            instance=ContentPage(title=title, slug=slugify(title), body="")
+        )
+        page.save_revision().publish()
+        return page
+
+    def _search(self):
+        return self.client.get(reverse("search"), {"query": "restricted search"})
+
+    def _sign_in(self, username, **kwargs):
+        user = get_user_model().objects.create_user(
+            username=username, password="password", **kwargs
+        )
+        self.client.force_login(user)
+        return user
+
+    def test_a_group_page_is_withheld_from_a_reader_outside_the_group(self):
+        self._sign_in("restricted-search-outsider")
+
+        response = self._search()
+
+        self.assertContains(response, "Restricted search open page")
+        self.assertNotContains(response, "Restricted search group page")
+
+    def test_a_group_page_is_shown_to_a_member_of_that_group(self):
+        user = self._sign_in("restricted-search-member")
+        user.groups.add(self.board)
+
+        response = self._search()
+
+        self.assertContains(response, "Restricted search group page")
+
+    def test_a_group_page_is_shown_to_a_superuser(self):
+        self._sign_in("restricted-search-admin", is_superuser=True, is_staff=True)
+
+        response = self._search()
+
+        self.assertContains(response, "Restricted search group page")
+
+    def test_a_password_page_is_withheld_until_the_password_is_given(self):
+        self._sign_in("restricted-search-reader")
+
+        self.assertNotContains(self._search(), "Restricted search password page")
+
+        self.client.post(
+            reverse(
+                "wagtailcore_authenticate_with_password",
+                args=[self.password_restriction.id, self.password_page.id],
+            ),
+            {
+                "password": "correct-horse-battery-staple",
+                "return_url": self.password_page.url,
+            },
+        )
+
+        self.assertContains(self._search(), "Restricted search password page")
+
+    def test_a_password_page_is_withheld_from_a_superuser_as_well(self):
+        """Wagtail serves a superuser the password form like anybody else, so
+        the search says the same thing the page would."""
+        self._sign_in("restricted-search-super", is_superuser=True, is_staff=True)
+
+        self.assertNotContains(self._search(), "Restricted search password page")
+
+    def test_a_page_below_a_restricted_one_is_withheld_too(self):
+        """A restriction covers the branch, not the one page, and so does the
+        page it hides behind it."""
+        self._publish("Restricted search child page", parent=self.group_page)
+        self._sign_in("restricted-search-passer-by")
+
+        response = self._search()
+
+        self.assertNotContains(response, "Restricted search child page")
+
+    def test_the_count_matches_what_the_reader_is_shown(self):
+        """Counting what was filtered out would announce the pages by number."""
+        self._sign_in("restricted-search-counter")
+
+        response = self._search()
+
+        self.assertEqual(
+            response.context["results"].paginator.count,
+            len(response.context["results"].object_list),
+        )
+        titles = {item.title for item in response.context["results"].object_list}
+        self.assertIn("Restricted search open page", titles)
+        self.assertNotIn("Restricted search group page", titles)
+        self.assertNotIn("Restricted search password page", titles)
+
+
+class SearchBackendWithoutARequestTests(TestCase):
+    """``public=False`` says the caller will decide who may see what. Asked
+    without a request there is no reader to decide about, so nothing
+    restricted is let through."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        root = self.site.root_page.specific
+        self.open_page = root.add_child(
+            instance=ContentPage(
+                title="Requestless search open page",
+                slug="requestless-search-open-page",
+                body="",
+            )
+        )
+        self.open_page.save_revision().publish()
+        self.shut_page = root.add_child(
+            instance=ContentPage(
+                title="Requestless search shut page",
+                slug="requestless-search-shut-page",
+                body="",
+            )
+        )
+        self.shut_page.save_revision().publish()
+        self.shut_page.view_restrictions.create(
+            restriction_type=PageViewRestriction.GROUPS
+        ).groups.add(Group.objects.create(name="Requestless search board"))
+
+    def test_nothing_restricted_comes_back_without_a_request(self):
+        results = search_backend.search(
+            "requestless search",
+            filters={"site": self.site, "public": False},
+            page=1,
+        )
+        titles = {item.title for item in results.object_list}
+
+        self.assertIn("Requestless search open page", titles)
+        self.assertNotIn("Requestless search shut page", titles)
+
+
+class SearchRestrictionQueryCostTests(TestCase):
+    """The reader's groups are asked for once a search, not once a restriction."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        root = self.site.root_page.specific
+        board = Group.objects.create(name="Query cost board")
+        for number in range(6):
+            page = root.add_child(
+                instance=ContentPage(
+                    title=f"Query cost page {number}",
+                    slug=f"query-cost-page-{number}",
+                    body="",
+                )
+            )
+            page.save_revision().publish()
+            page.view_restrictions.create(
+                restriction_type=PageViewRestriction.GROUPS
+            ).groups.add(board)
+
+    def test_the_readers_groups_are_fetched_once_however_many_restrictions(self):
+        user = get_user_model().objects.create_user(
+            username="query-cost-reader", password="password"
+        )
+        self.client.force_login(user)
+
+        with CaptureQueriesContext(connection) as queries:
+            self.client.get(reverse("search"), {"query": "query cost"})
+
+        # Django's own permission cache joins the same table to reach
+        # auth_permission, which is a different question and asked once.
+        group_lookups = [
+            entry
+            for entry in queries.captured_queries
+            if "auth_user_groups" in entry["sql"]
+            and "auth_permission" not in entry["sql"]
+        ]
+        self.assertEqual(len(group_lookups), 1, group_lookups)
