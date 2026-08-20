@@ -3,9 +3,8 @@
 {% wagtail_site as current_site %}
 {% block title %}Search{% endblock %}
 {% block content %}
-    <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
-        <div class="govuk-grid-row">
-            <div class="govuk-grid-column-two-thirds">
+    <div class="section-cards-container">
+        <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
                 <h1 class="govuk-heading-l">Search result{{ results.paginator.count|pluralize }}</h1>
                 {% if query %}
                     {% if available_tags or available_sources %}
@@ -169,7 +168,6 @@
                 {% else %}
                     <p class="govuk-body">Enter a search term to find pages.</p>
                 {% endif %}
-            </div>
         </div>
     </div>
 {% endblock %}
