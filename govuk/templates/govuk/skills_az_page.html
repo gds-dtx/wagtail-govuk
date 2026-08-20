@@ -99,6 +99,15 @@
                                             </tbody>
                                         </table>
                                     {% endif %}
+                                    {% if skill_section.changelog.entries %}
+                                        <h3 class="govuk-heading-s govuk-!-margin-bottom-2">{{ framework_wording.updates_heading }}</h3>
+                                        <div class="changelog-content">
+                                            {% for entry in skill_section.changelog.entries %}
+                                                <p class="govuk-body-s govuk-!-font-weight-bold">{{ entry.date|date:"j F Y" }}</p>
+                                                <div class="govuk-body-s">{{ entry.note|richtext }}</div>
+                                            {% endfor %}
+                                        </div>
+                                    {% endif %}
                                     {% if skill_section.roles %}
                                         <h3 class="govuk-heading-s govuk-!-margin-bottom-2">{{ framework_wording.skill_roles_heading }}</h3>
                                         <ul class="govuk-list">
