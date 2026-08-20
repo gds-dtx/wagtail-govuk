@@ -21,6 +21,7 @@ from govuk.views import (
     assets_alias_view,
     custom_css_view,
     feedback_view,
+    framework_csv_view,
     jwks_view,
     oidc_callback,
     oidc_login,
@@ -75,6 +76,13 @@ urlpatterns = [
     path("accounts/logout/", account_logout_redirect, name="account_logout"),
     path("accounts/", include("allauth.urls")),
     path("search/", search_view, name="search"),
+    # Before the Wagtail catch-all: /download/ itself is a page, and these are
+    # the files it links to.
+    path(
+        "download/<slug:name>.csv",
+        framework_csv_view,
+        name="govuk_framework_csv",
+    ),
     path("robots.txt", robots_txt_view, name="govuk_robots_txt"),
 ]
 
