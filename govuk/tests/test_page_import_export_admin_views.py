@@ -435,6 +435,62 @@ class PageImportExportAdminViewTests(TestCase):
 
         self.assertEqual(call_order, ["tags", "skills", "roles", "pages"])
 
+    def test_a_home_page_of_another_type_is_refused_not_rebuilt_around(self):
+        """A with-root file against a worked-on site whose home is another type.
+
+        Neither guard can act: the type cannot change in place, and only an
+        empty placeholder is replaced. Falling through built a second home
+        page and moved every slug-matched page in the file under it -- the
+        whole site restructured, every URL gaining a /home/ prefix, behind a
+        green report. Seen for real importing a with-root export into the
+        dev rehearsal, whose home page is a SectionPage.
+        """
+        payload = {
+            "format": PAGE_EXPORT_FORMAT,
+            "pages": [
+                {
+                    "model": "govuk.ContentPage",
+                    "settings": {"title": "The framework", "slug": self.root_page.slug},
+                    "fields": {"body": "<p>Welcome</p>"},
+                    "children": [
+                        {
+                            "model": "govuk.SectionPage",
+                            "settings": {"title": "Benefits changed", "slug": "benefits"},
+                            "fields": {},
+                        },
+                        {
+                            "model": "govuk.ContentPage",
+                            "settings": {"title": "Brand new", "slug": "brand-new"},
+                            "fields": {"body": "<p>New</p>"},
+                        },
+                    ],
+                }
+            ],
+        }
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.admin_user
+        )
+
+        # The site keeps its shape: one home page, and nothing moved under a
+        # second one.
+        self.assertEqual(Page.objects.filter(slug=self.root_page.slug).count(), 1)
+        self.section_page.refresh_from_db()
+        self.assertEqual(self.section_page.get_parent().pk, self.root_page.pk)
+        # What the file holds inside its home page still arrives, in place:
+        # the slug match updated where it stands, the new page was created
+        # under the root the site already has.
+        self.assertEqual(
+            Page.objects.get(pk=self.section_page.pk).title, "Benefits changed"
+        )
+        brand_new = Page.objects.get(slug="brand-new")
+        self.assertEqual(brand_new.get_parent().pk, self.root_page.pk)
+        # And the report says what was refused and why.
+        self.assertTrue(
+            any("home page was left as it is" in error for error in result.errors),
+            result.errors,
+        )
+
     def test_import_creates_only_new_tags_and_sets_page_and_card_tags(self):
         existing_tag = GovukTag.objects.create(slug="existing-tag", name="Existing tag")
 
