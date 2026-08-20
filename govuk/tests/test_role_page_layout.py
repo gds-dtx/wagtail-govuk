@@ -286,7 +286,9 @@ class RolePageLayoutTests(TestCase):
             page.save_revision().publish()
 
         # A fixed cost: the site, its root page and one query for the children.
-        with self.assertNumQueries(3):
+        # Two more than the pages and roles: the default site and its
+        # wording, which names the group headings, read once per call.
+        with self.assertNumQueries(5):
             further_resources_group()
 
     def test_reading_the_chosen_role_ids_costs_no_query(self):

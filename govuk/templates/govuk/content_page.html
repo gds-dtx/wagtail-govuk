@@ -43,8 +43,8 @@
                             {% if framework_changelog.last_updated_date %}
                                 <hr class="govuk-section-break govuk-section-break--l govuk-section-break--visible">
                                 <p class="govuk-body-s">
-                                    Last updated {{ framework_changelog.last_updated_date|date:"j F Y" }} —
-                                    <a href="#update-history" id="jump-link" class="govuk-link">See all updates</a>
+                                    {{ framework_wording.last_updated_prefix }} {{ framework_changelog.last_updated_date|date:"j F Y" }} —
+                                    <a href="#update-history" id="jump-link" class="govuk-link">{{ framework_wording.see_all_updates_link_text }}</a>
                                 </p>
                             {% endif %}
                             {% if self.show_framework_welcome %}
@@ -58,17 +58,19 @@
                                 readable without JavaScript.
                             {% endcomment %}
                             {% if framework_changelog.entries %}
-                                <h2 class="govuk-heading-m" id="update-history">Updates</h2>
-                                <p class="govuk-body-s publish-dates">Published {{ framework_changelog.published_date|date:"j F Y" }}</p>
+                                <h2 class="govuk-heading-m" id="update-history">{{ framework_wording.updates_heading }}</h2>
+                                <p class="govuk-body-s publish-dates">{{ framework_wording.published_prefix }} {{ framework_changelog.published_date|date:"j F Y" }}</p>
                                 <p class="govuk-body-s">
-                                    Last updated {{ framework_changelog.last_updated_date|date:"j F Y" }}
+                                    {{ framework_wording.last_updated_prefix }} {{ framework_changelog.last_updated_date|date:"j F Y" }}
                                     <a href="#update-history"
                                        id="toggle-link"
                                        class="govuk-link"
                                        role="button"
                                        aria-controls="collapsible-div"
                                        aria-expanded="true"
-                                       hidden>+ show all updates</a>
+                                       data-show-text="{{ framework_wording.show_all_updates_link_text }}"
+                                       data-hide-text="{{ framework_wording.hide_all_updates_link_text }}"
+                                       hidden>{{ framework_wording.show_all_updates_link_text }}</a>
                                 </p>
                                 <div id="collapsible-div" class="changelog-content">
                                     {% for entry in framework_changelog.entries %}
