@@ -423,8 +423,11 @@ main > :nth-last-child(1 of .section-cards-container) {
     display: none;
     font-family: "GDS Transport", arial, sans-serif;
     font-weight: 400;
-    font-size: 0.875rem;
-    line-height: 1.1428571429;
+    /* A deliberate step away from the live service, which sets 14px here:
+       review round 1 (T18/T24) asked for the Design System sub-navigation
+       size instead. */
+    font-size: 1rem;
+    line-height: 1.25;
 }
 
 .role-nav__title {
@@ -463,10 +466,16 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 .role-nav__item a:focus {
+    /* The Design System's link focus, asked for in review round 1 (T20/T24):
+       yellow behind, black text, and the black line along the bottom edge
+       that the yellow alone does not give. */
+    outline: 3px solid transparent;
     color: #0b0c0c;
     background-color: #fd0;
+    box-shadow: 0 -2px #fd0, 0 4px #0b0c0c;
     border-color: #0b0c0c;
     border-left-color: #fd0;
+    text-decoration: none;
     position: relative;
 }
 
