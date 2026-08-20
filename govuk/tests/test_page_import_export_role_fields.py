@@ -613,6 +613,26 @@ class RoleExportImportFieldTests(TestCase):
 
         self.assertEqual(GovukChangelogEntry.objects.count(), 2)
 
+    def test_hyphen_paragraph_bullets_are_repaired_on_the_way_in(self):
+        """Migration 0058 fixed the rows that existed when it ran; a file
+        written before the bullets were understood would put the dashes
+        straight back on the next import."""
+        payload = self._export()
+        payload["changelog"] = [
+            {
+                "date": "2026-05-29",
+                "note": "<p>8 skills updated:</p><p>- data innovation</p><p>- data ethics</p>",
+                "change_type": "",
+                "live": True,
+            }
+        ]
+
+        import_pages_from_payload(payload=payload, site=self.site, user=self.user)
+
+        entry = GovukChangelogEntry.objects.get(role=None, skill=None)
+        self.assertIn("<ul><li>data innovation</li><li>data ethics</li></ul>", entry.note)
+        self.assertNotIn("<p>- ", entry.note)
+
     def test_unknown_grade_keys_are_dropped_rather_than_failing_the_import(self):
         payload = self._export()
         for row in payload["roles"]:

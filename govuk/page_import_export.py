@@ -18,6 +18,7 @@ from wagtail.models import Page, PageViewRestriction, Site
 from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import RichText
 
+from govuk.capability_framework import repair_changelog_html
 from govuk.models import (
     JOB_GRADE_CHOICES,
     SCS_GRADE_CHOICES,
@@ -1291,7 +1292,11 @@ def _replace_changelog(
             continue
 
         entry_date = parse_date(str(raw_entry.get("date") or "").strip()[:10])
-        note = str(raw_entry.get("note") or "").strip()
+        # Repaired on the way in: exports written before the bullets were
+        # understood carry a paragraph per hyphen line, and migration 0058
+        # only fixed the rows that existed when it ran -- an import would
+        # put the dashes straight back.
+        note = repair_changelog_html(str(raw_entry.get("note") or "").strip())
         if entry_date is None or not note:
             result.errors.append(
                 f"Skipped a changelog entry for {label} with no date or note."

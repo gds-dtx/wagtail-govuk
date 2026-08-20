@@ -1535,8 +1535,13 @@ class GovukSkill(models.Model):
         ]
 
     def get_changelog(self) -> dict:
-        """Published entries for this skill, newest first, with key dates."""
-        entries = list(self.changelog_entries.filter(live=True))
+        """Published entries for this skill, newest first, with key dates.
+
+        Filtered in Python rather than with .filter(), which would go back to
+        the database and waste the prefetch the skills A to Z does for all 185
+        skills at once.
+        """
+        entries = [entry for entry in self.changelog_entries.all() if entry.live]
         return {"entries": entries, **_changelog_dates(entries)}
 
     def get_roles_requiring_skill(self) -> list["GovukRole"]:
@@ -3438,7 +3443,8 @@ class SkillsAZPage(Page):
         return super().can_exist_under(parent)
 
     def get_skill_sections(self) -> list[dict]:
-        skills = list(GovukSkill.objects.all())
+        # One query for every skill's entries, not one per skill.
+        skills = list(GovukSkill.objects.prefetch_related("changelog_entries"))
         skills.sort(
             key=lambda skill: (
                 (skill.title or "").strip().lower(),
@@ -3458,6 +3464,9 @@ class SkillsAZPage(Page):
                     {"role": role, "url": role_urls.get(role.pk, "")}
                     for role in roles_by_skill.get(skill.pk, [])
                 ],
+                # The same updates a role page shows, so a skill's history is
+                # readable where the skill is, not only in search dates.
+                "changelog": skill.get_changelog(),
             }
             for skill in skills
         ]
