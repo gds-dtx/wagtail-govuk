@@ -81,7 +81,7 @@ class FrameworkWordingExportImportTests(TestCase):
         )
         self.assertEqual(exported["contents_heading"], "Contents")
         # 38 fields under 7 panel groups, which is the whole form.
-        self.assertEqual(len(exported), 38)
+        self.assertEqual(len(exported), 52)
 
     def test_an_edit_survives_the_journey_to_another_environment(self):
         self.wording.related_roles_heading = "Roles sharing skills with {role}"

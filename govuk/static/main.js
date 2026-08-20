@@ -144,7 +144,9 @@ function setChangelogToggle() {
   function setExpanded(expanded) {
     panel.hidden = !expanded;
     toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
-    toggle.textContent = expanded ? "- hide all updates" : "+ show all updates";
+    toggle.textContent = expanded
+      ? toggle.dataset.hideText || "- hide all updates"
+      : toggle.dataset.showText || "+ show all updates";
   }
 
   toggle.hidden = false;

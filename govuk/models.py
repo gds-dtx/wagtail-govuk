@@ -618,6 +618,12 @@ class CapabilityFrameworkWordingSettings(BaseSiteSetting):
     ROLE_PLACEHOLDER = "{role}"
     LEVEL_PLACEHOLDER = "{level}"
     ORDINAL_PLACEHOLDER = "{ordinal}"
+    ARTICLE_PLACEHOLDER = "{article}"
+    FAMILY_PLACEHOLDER = "{family}"
+    COUNT_PLACEHOLDER = "{count}"
+    FIRST_PLACEHOLDER = "{first}"
+    LAST_PLACEHOLDER = "{last}"
+    LEVELS_RANGE_PLACEHOLDER = "{levels_range}"
 
     contents_heading = models.CharField(
         max_length=255,
@@ -834,12 +840,108 @@ class CapabilityFrameworkWordingSettings(BaseSiteSetting):
         help_text="Shown on the skills page while no skills exist.",
     )
 
+    overview_heading_text = models.CharField(
+        max_length=255,
+        default="What {article} {role} does",
+        help_text="Heading over a role's description. {article} is a or an.",
+    )
+    role_lead_text = models.CharField(
+        max_length=500,
+        default=(
+            "Find out what {article} {role} in government does and the skills "
+            "you need to do the role at each level."
+        ),
+        help_text="The sentence under a role's heading.",
+    )
+    scs_role_lead_text = models.CharField(
+        max_length=500,
+        default=(
+            "Find out what {article} {role} in the Senior Civil Service does "
+            "and the skills you need to do the role."
+        ),
+        help_text="The sentence under a Senior Civil Service role's heading.",
+    )
+    role_levels_opening_one = models.CharField(
+        max_length=255,
+        default="There is one {role} role level.",
+        help_text="Opens the levels section for a role with a single level.",
+    )
+    role_levels_opening_many = models.CharField(
+        max_length=255,
+        default="There are {count} {role} role levels{levels_range}.",
+        help_text=(
+            "Opens the levels section. {levels_range} is the from-to clause "
+            "below, or nothing where the levels are unnamed."
+        ),
+    )
+    role_levels_range_text = models.CharField(
+        max_length=255,
+        default=", from {first} to {last}",
+        help_text="The from-to clause naming the first and last role levels.",
+    )
+    role_levels_described_one = models.CharField(
+        max_length=255,
+        default=(
+            "The typical responsibilities and skills for this role level are "
+            "described below."
+        ),
+        help_text="Follows the opening for a role with a single level.",
+    )
+    role_levels_described_many = models.CharField(
+        max_length=255,
+        default=(
+            "The typical responsibilities and skills for each role level are "
+            "described in the sections below."
+        ),
+        help_text="Follows the opening for a role with several levels.",
+    )
+    role_levels_purpose_text = models.CharField(
+        max_length=500,
+        default=(
+            "You can use this to identify the skills you need to progress in "
+            "your career, or simply to learn more about each role in the "
+            "Government Digital and Data profession."
+        ),
+        help_text="Closes the sentence under the role levels heading.",
+    )
+    show_all_updates_link_text = models.CharField(
+        max_length=100,
+        default="+ show all updates",
+        help_text="The link that opens the home page's collapsed update history.",
+    )
+    hide_all_updates_link_text = models.CharField(
+        max_length=100,
+        default="- hide all updates",
+        help_text="The link that closes the home page's update history.",
+    )
+    further_resources_heading = models.CharField(
+        max_length=255,
+        default="Further resources",
+        help_text="Heading over the navigation's non-role pages.",
+    )
+    role_family_group_title = models.CharField(
+        max_length=255,
+        default="{family} roles",
+        help_text=(
+            "Title of each family's navigation group and home page section. "
+            "{family} is the family's name from the role records."
+        ),
+    )
+    breadcrumb_home_label = models.CharField(
+        max_length=100,
+        default="Home",
+        help_text="The first entry of the narrow-screen breadcrumb.",
+    )
+
     panels = [
         MultiFieldPanel(
             [
                 FieldPanel("contents_heading"),
                 FieldPanel("last_updated_prefix"),
                 FieldPanel("see_all_updates_link_text"),
+                FieldPanel("overview_heading_text"),
+                FieldPanel("role_lead_text"),
+                FieldPanel("scs_role_lead_text"),
             ],
             heading="Above a role",
         ),
@@ -880,6 +982,17 @@ class CapabilityFrameworkWordingSettings(BaseSiteSetting):
         ),
         MultiFieldPanel(
             [
+                FieldPanel("role_levels_opening_one"),
+                FieldPanel("role_levels_opening_many"),
+                FieldPanel("role_levels_range_text"),
+                FieldPanel("role_levels_described_one"),
+                FieldPanel("role_levels_described_many"),
+                FieldPanel("role_levels_purpose_text"),
+            ],
+            heading="Role levels introduction",
+        ),
+        MultiFieldPanel(
+            [
                 FieldPanel("related_roles_heading"),
                 FieldPanel("related_roles_table_role_heading"),
                 FieldPanel("related_roles_table_skills_heading"),
@@ -892,9 +1005,19 @@ class CapabilityFrameworkWordingSettings(BaseSiteSetting):
             [
                 FieldPanel("updates_heading"),
                 FieldPanel("published_prefix"),
+                FieldPanel("show_all_updates_link_text"),
+                FieldPanel("hide_all_updates_link_text"),
                 FieldPanel("no_roles_message"),
             ],
             heading="Updates and empty states",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("further_resources_heading"),
+                FieldPanel("role_family_group_title"),
+                FieldPanel("breadcrumb_home_label"),
+            ],
+            heading="Navigation",
         ),
         MultiFieldPanel(
             [
@@ -944,6 +1067,12 @@ class CapabilityFrameworkWordingSettings(BaseSiteSetting):
             self.ROLE_PLACEHOLDER, role_title
         )
         return wording
+
+    def family_group_title(self, family: str) -> str:
+        """A family's navigation group title, used as the home page section
+        heading and the narrow-screen breadcrumb entry alike, so the anchor
+        the breadcrumb points at always matches the heading it lands on."""
+        return self.role_family_group_title.replace(self.FAMILY_PLACEHOLDER, family)
 
     def skill_level_scale(self, *, label: str, ordinal: str) -> str:
         """What a screen reader is given in place of the progress bar."""
@@ -2668,8 +2797,11 @@ class ContentPage(Page):
 
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
+        framework_wording = CapabilityFrameworkWordingSettings.for_request(request)
         if self.show_role_navigation or self.show_framework_welcome:
-            groups = role_navigation_groups(current_page_id=self.pk)
+            groups = role_navigation_groups(
+                current_page_id=self.pk, wording=framework_wording
+            )
             if self.show_role_navigation:
                 context["role_navigation"] = groups
             if self.show_framework_welcome:
@@ -2677,6 +2809,8 @@ class ContentPage(Page):
                 context["framework_contents"] = self.framework_welcome_contents(groups)
         if self.show_framework_updates:
             context["framework_changelog"] = site_wide_changelog()
+        # The framework wording names the updates block and the navigation.
+        context["framework_wording"] = framework_wording
         # Only one side column fits, so the role navigation wins where an
         # editor has asked for both.
         context["heading_navigation"] = (
@@ -2703,6 +2837,22 @@ class ContentPage(Page):
         return sections[:1] + groups + sections[1:]
 
 
+def _default_site_wording() -> "CapabilityFrameworkWordingSettings":
+    """The framework wording for the default site, or the model's defaults.
+
+    The navigation helpers have no request to hang a lookup on, and an unsaved
+    instance carries every default, so a site that has never edited the
+    wording reads the same either way.
+    """
+    site = Site.objects.filter(is_default_site=True).first()
+    saved = (
+        CapabilityFrameworkWordingSettings.objects.filter(site=site).first()
+        if site
+        else None
+    )
+    return saved or CapabilityFrameworkWordingSettings()
+
+
 def role_page_urls_by_role_id(*, exclude_page_id: int | None = None) -> dict[int, str]:
     """Map each role id to the URL of a live page that renders it."""
     urls: dict[int, str] = {}
@@ -2718,7 +2868,7 @@ def role_page_urls_by_role_id(*, exclude_page_id: int | None = None) -> dict[int
     return urls
 
 
-def further_resources_group(*, current_page_id: int | None = None) -> dict | None:
+def further_resources_group(*, current_page_id: int | None = None, wording=None) -> dict | None:
     """The pages about the framework itself, for the side navigation.
 
     The live service closes its navigation with these: the skills index and
@@ -2746,10 +2896,14 @@ def further_resources_group(*, current_page_id: int | None = None) -> dict | Non
             }
         )
 
-    return {"title": "Further resources", "items": items} if items else None
+    if not items:
+        return None
+    if wording is None:
+        wording = _default_site_wording()
+    return {"title": wording.further_resources_heading, "items": items}
 
 
-def role_navigation_groups(*, current_page_id: int | None = None) -> list[dict]:
+def role_navigation_groups(*, current_page_id: int | None = None, wording=None) -> list[dict]:
     """The side navigation: live roles grouped by family, then the rest.
 
     Mirrors the DDaT Capability Framework, which lists every role grouped
@@ -2779,15 +2933,19 @@ def role_navigation_groups(*, current_page_id: int | None = None) -> list[dict]:
             }
         )
 
+    if wording is None:
+        wording = _default_site_wording()
     navigation = [
         {
-            "title": f"{family} roles",
+            "title": wording.family_group_title(family),
             "items": sorted(items, key=lambda item: (item["title"] or "").lower()),
         }
         for family, items in sorted(groups.items())
     ]
 
-    resources = further_resources_group(current_page_id=current_page_id)
+    resources = further_resources_group(
+        current_page_id=current_page_id, wording=wording
+    )
     if resources:
         navigation.append(resources)
     return navigation
@@ -2806,10 +2964,13 @@ def framework_breadcrumbs(request, page, *, family: str = "") -> list[dict]:
     if not home_url:
         return []
 
-    trail = [{"title": "Home", "url": home_url, "is_current": False}]
+    wording = CapabilityFrameworkWordingSettings.for_request(request)
+    trail = [
+        {"title": wording.breadcrumb_home_label, "url": home_url, "is_current": False}
+    ]
 
     if family:
-        group_title = f"{family} roles"
+        group_title = wording.family_group_title(family)
         trail.append(
             {
                 "title": group_title,
@@ -3032,14 +3193,16 @@ class RolePage(Page):
         return "an" if vowel_sounded else "a"
 
     @classmethod
-    def _overview_heading(cls, display_role_name: str) -> str:
+    def _overview_heading(cls, display_role_name: str, wording) -> str:
         """The heading over a role's description, and the contents entry that
         points at it, which have to read the same."""
         article = cls._role_article(display_role_name)
-        return f"What {article} {display_role_name} does"
+        return wording.overview_heading_text.replace(
+            wording.ARTICLE_PLACEHOLDER, article
+        ).replace(wording.ROLE_PLACEHOLDER, display_role_name)
 
     @classmethod
-    def _role_lead(cls, section: dict) -> str:
+    def _role_lead(cls, section: dict, wording) -> str:
         """The one sentence the framework prints under a role's heading.
 
         For example "Find out what a business architect in government does and
@@ -3051,19 +3214,13 @@ class RolePage(Page):
             return ""
 
         article = cls._role_article(name)
-
-        if section["is_scs"]:
-            return (
-                f"Find out what {article} {name} in the Senior Civil Service "
-                "does and the skills you need to do the role."
-            )
-        return (
-            f"Find out what {article} {name} in government does and the skills "
-            "you need to do the role at each level."
+        text = wording.scs_role_lead_text if section["is_scs"] else wording.role_lead_text
+        return text.replace(wording.ARTICLE_PLACEHOLDER, article).replace(
+            wording.ROLE_PLACEHOLDER, name
         )
 
     @classmethod
-    def _role_levels_intro(cls, section: dict) -> list[str]:
+    def _role_levels_intro(cls, section: dict, wording) -> list[str]:
         """The two sentences the framework prints under the role levels heading.
 
         For example "There are 4 business architect role levels, from trainee
@@ -3081,27 +3238,26 @@ class RolePage(Page):
         ]
 
         if len(levels) == 1:
-            opening = f"There is one {display_role_name} role level."
-            described = (
-                "The typical responsibilities and skills for this role level "
-                "are described below."
+            opening = wording.role_levels_opening_one.replace(
+                wording.ROLE_PLACEHOLDER, display_role_name
             )
+            described = wording.role_levels_described_one
         else:
-            opening = f"There are {len(levels)} {display_role_name} role levels"
+            levels_range = ""
             if len(titles) > 1:
-                opening += f", from {titles[0]} to {titles[-1]}"
-            opening += "."
-            described = (
-                "The typical responsibilities and skills for each role level "
-                "are described in the sections below."
+                levels_range = wording.role_levels_range_text.replace(
+                    wording.FIRST_PLACEHOLDER, titles[0]
+                ).replace(wording.LAST_PLACEHOLDER, titles[-1])
+            opening = (
+                wording.role_levels_opening_many.replace(
+                    wording.COUNT_PLACEHOLDER, str(len(levels))
+                )
+                .replace(wording.ROLE_PLACEHOLDER, display_role_name)
+                .replace(wording.LEVELS_RANGE_PLACEHOLDER, levels_range)
             )
+            described = wording.role_levels_described_many
 
-        return [
-            opening,
-            f"{described} You can use this to identify the skills you need to "
-            "progress in your career, or simply to learn more about each role "
-            "in the Government Digital and Data profession.",
-        ]
+        return [opening, f"{described} {wording.role_levels_purpose_text}"]
 
     @staticmethod
     def _section_anchors(
@@ -3234,7 +3390,9 @@ class RolePage(Page):
             role = section["role"]
             display_role_name = self._display_role_name(role.title)
             section["display_role_name"] = display_role_name
-            section["overview_heading"] = self._overview_heading(display_role_name)
+            section["overview_heading"] = self._overview_heading(
+                display_role_name, framework_wording
+            )
             section["wording"] = framework_wording.for_role(
                 display_role_name=display_role_name, role_title=role.title
             )
@@ -3278,12 +3436,16 @@ class RolePage(Page):
                     for entry in senior_roles_by_source.get(role.pk, [])
                 ]
             section["changelog"] = role.get_changelog()
-            section["lead"] = self._role_lead(section)
-            section["levels_intro"] = self._role_levels_intro(section)
+            section["lead"] = self._role_lead(section, framework_wording)
+            section["levels_intro"] = self._role_levels_intro(
+                section, framework_wording
+            )
             section["contents"] = self._contents_entries(section)
 
         context["role_sections"] = role_sections
-        context["role_navigation"] = role_navigation_groups(current_page_id=self.pk)
+        context["role_navigation"] = role_navigation_groups(
+            current_page_id=self.pk, wording=framework_wording
+        )
         # The side navigation is the way around the framework, but it is hidden
         # on a narrow screen, so a breadcrumb stands in for it there.
         context["breadcrumbs"] = self._role_breadcrumbs(request, role_sections)
@@ -3485,7 +3647,9 @@ class SkillsAZPage(Page):
         # The skills index sits alongside the roles in the framework, so it
         # carries the same side navigation, and the same narrow-screen
         # breadcrumb standing in for it.
-        context["role_navigation"] = role_navigation_groups(current_page_id=self.pk)
+        context["role_navigation"] = role_navigation_groups(
+            current_page_id=self.pk, wording=framework_wording
+        )
         context["breadcrumbs"] = framework_breadcrumbs(request, self)
         context["breadcrumbs_mobile_only"] = True
         return context
