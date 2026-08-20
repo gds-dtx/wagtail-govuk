@@ -262,24 +262,8 @@ main > :nth-last-child(1 of .section-cards-container) {
     max-width: 100%;
 }
 
-/* Search results read as one column of entries rather than a grid of cards, so
-   that a title or a summary has the width to sit on fewer lines: in three
-   columns a result's title took three lines where here it takes one. A rule
-   between the entries does the separating that the card borders used to. */
-.app-search-results {
-    margin-top: 0;
-    border-top: 1px solid #b1b4b6;
-}
-
-.app-search-result {
-    margin-bottom: 0;
-    padding: 15px 0;
-    border-bottom: 1px solid #b1b4b6;
-}
-
-.app-search-result__meta {
-    color: #505a5f;
-}
+/* Search results use the same card grid as the rest of the site, which is the
+   design the service ships today. */
 
 .listing-filters {
     display: flex;
@@ -388,8 +372,11 @@ main > :nth-last-child(1 of .section-cards-container) {
     /* The bar holds three things on one row: the service name, the navigation
        links, then the search box against the right edge. Frontend lets the
        links wrapper grow into whatever space is left, which pushed the search
-       box down onto a second row; the free space belongs to the search box. */
-    .govuk-service-navigation .govuk-service-navigation__wrapper {
+       box down onto a second row; the free space belongs to the search box.
+       Only when the box is actually on the row: on a bar without it the
+       wrapper must keep growing, or the featured sign-in link that aligns
+       right inside it ends up at the bar's left edge. */
+    .govuk-service-navigation .govuk-service-navigation__container:has(.app-site-search) .govuk-service-navigation__wrapper {
         flex-grow: 0;
     }
 

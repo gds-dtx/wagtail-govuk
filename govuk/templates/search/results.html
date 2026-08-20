@@ -81,18 +81,15 @@
                         {{ results.paginator.count|default:0|comma_number }} result{{ results.paginator.count|pluralize }}
                     </p>
                     {% if results %}
-                        <ul class="govuk-list app-search-results">
+                        <div class="section-cards">
                             {% for result in results %}
-                                <li class="app-search-result">
-                                    <h2 class="govuk-heading-s govuk-!-margin-bottom-1">
-                                        <a class="govuk-link govuk-link--no-visited-state"
+                                <article class="section-card">
+                                    <h2 class="govuk-heading-s govuk-!-margin-bottom-2">
+                                        <a class="govuk-link govuk-link--no-visited-state section-card__link--stretched"
                                            href="{{ result.url }}">{{ result.title }}</a>
                                     </h2>
-                                    {% if result.search_description and result.search_description != "None" %}
-                                        <p class="govuk-body govuk-!-margin-bottom-1">{{ result.search_description }}</p>
-                                    {% endif %}
                                     {% if result.source_name or result.tags or not result.is_external %}
-                                        <p class="govuk-body-s govuk-!-margin-bottom-1 tags-container">
+                                        <p class="govuk-body-s govuk-!-margin-bottom-2 tags-container">
                                             {% if result.source_name %}
                                                 <strong class="govuk-tag">{{ result.source_name }}</strong>
                                             {% elif not result.is_external %}
@@ -103,14 +100,15 @@
                                             {% endif %}
                                         </p>
                                     {% endif %}
-                                    {% if result.last_updated %}
-                                        <p class="govuk-body-s app-search-result__meta govuk-!-margin-bottom-0">
-                                            Last updated: {{ result.last_updated|date:"j F Y" }}
-                                        </p>
+                                    {% if result.search_description and result.search_description != "None" %}
+                                        <p class="govuk-body section-card__text">{{ result.search_description }}</p>
                                     {% endif %}
-                                </li>
+                                    {% if result.last_updated %}
+                                        <p class="govuk-body-s govuk-!-margin-bottom-0">Last updated: {{ result.last_updated|date:"j F Y" }}</p>
+                                    {% endif %}
+                                </article>
                             {% endfor %}
-                        </ul>
+                        </div>
                         {% if page_numbers %}
                             <nav class="govuk-pagination" aria-label="Search results">
                                 {% if results.has_previous %}
