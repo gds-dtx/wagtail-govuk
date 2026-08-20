@@ -214,7 +214,7 @@ class SearchViewFilterTests(TestCase):
 
 
 class SearchResultsLayoutTests(TestCase):
-    """The results read as one column of entries under the Design System's pagination."""
+    """The results use the deployed design's card grid, with pagination below."""
 
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
@@ -244,11 +244,11 @@ class SearchResultsLayoutTests(TestCase):
         )
         self.single_result.save_revision().publish()
 
-    def test_each_result_is_an_entry_in_one_list(self):
+    def test_each_result_is_a_card_in_the_grid(self):
         response = self.client.get(reverse("search"), {"query": "solitary"})
 
-        self.assertContains(response, 'class="govuk-list app-search-results"')
-        self.assertContains(response, 'class="app-search-result"', count=1)
+        self.assertContains(response, 'class="section-cards"')
+        self.assertContains(response, 'class="section-card"', count=1)
 
     def test_pagination_offers_the_pages_a_long_result_set_runs_to(self):
         response = self.client.get(reverse("search"), {"query": "paginated result"})
