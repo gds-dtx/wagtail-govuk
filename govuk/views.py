@@ -11,6 +11,9 @@ from django.views.decorators.http import require_POST
 from django.views.decorators.http import require_http_methods
 from wagtail.models import Site
 
+from django.utils import timezone
+
+from govuk import framework_csv
 from govuk.forms import FeedbackForm
 from govuk.models import CustomiseSettings, EdDSAKeySettings, Feedback
 from govuk.oidc import (
@@ -156,6 +159,46 @@ def search_view(request):
             "selected_source_label": getattr(results, "selected_source_label", ""),
         },
     )
+
+
+FRAMEWORK_CSV_DOWNLOADS = {
+    # Filenames follow the published downloads, dated so a saved file says
+    # which day's content it holds.
+    "roles": ("Role content - Capability Framework", framework_csv.write_roles_csv),
+    "skills": (
+        "Skill description content - Capability Framework",
+        framework_csv.write_skills_csv,
+    ),
+    "changelog": (
+        "Change notes - Changelog - Capability Framework",
+        framework_csv.write_changelog_csv,
+    ),
+}
+
+
+@require_http_methods(["GET"])
+def framework_csv_view(request, name):
+    """One of the framework's published CSVs, built from the content asked for.
+
+    Generated at request time rather than kept as a file, so the download is
+    the published content by construction -- the live service's copies were
+    regenerated on a schedule and drifted, and its links now answer
+    AccessDenied. The label and columns match the published downloads.
+    """
+    if not settings.FEATURE_FLAGS.get("SKILLS"):
+        raise Http404
+    try:
+        label, write = FRAMEWORK_CSV_DOWNLOADS[name]
+    except KeyError:
+        raise Http404
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    stamp = timezone.now().date().isoformat()
+    response["Content-Disposition"] = (
+        f'attachment; filename="{label} - {stamp}.csv"'
+    )
+    write(response)
+    return response
 
 
 def _normalised_referrer(value: str | None) -> str:
