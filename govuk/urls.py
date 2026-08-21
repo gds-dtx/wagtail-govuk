@@ -36,6 +36,11 @@ from govuk.view_securitytxt import security_txt_view
 admin.autodiscover()
 admin.site.login = secure_admin_login(admin.site.login)
 
+# Branded 500s: Django's default handler renders without the request, which
+# would strip the header and contact details off the one page that most needs
+# to look like the service.
+handler500 = "govuk.views.server_error"
+
 urlpatterns = [
     path("login/", oidc_login_redirect, name="account_login"),
     path("accounts/login/", oidc_login_redirect),

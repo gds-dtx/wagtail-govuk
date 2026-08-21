@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% comment %}
+    The GOV.UK Design System's "page not found" page. Django renders this
+    for every 404 once DEBUG is off, Wagtail's page misses included.
+{% endcomment %}
+{% block title %}Page not found{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
+        <div class="govuk-grid-row">
+            <div class="govuk-grid-column-two-thirds">
+                <h1 class="govuk-heading-l">Page not found</h1>
+                <p class="govuk-body">If you typed the web address, check it is correct.</p>
+                <p class="govuk-body">If you pasted the web address, check you copied the entire address.</p>
+                {% include "includes/error_contact.html" with contact_lead="If the web address is correct or you selected a link or button, contact the" %}
+            </div>
+        </div>
+    </div>
+{% endblock %}

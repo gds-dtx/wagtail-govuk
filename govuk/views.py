@@ -4,7 +4,12 @@ from django.conf import settings
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.staticfiles.views import serve as staticfiles_serve
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseServerError,
+    JsonResponse,
+)
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -199,6 +204,29 @@ def framework_csv_view(request, name):
     )
     write(response)
     return response
+
+
+BARE_SERVER_ERROR_HTML = (
+    "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+    "<title>Sorry, there is a problem with the service</title></head>"
+    "<body><h1>Sorry, there is a problem with the service</h1>"
+    "<p>Try again later.</p></body></html>"
+)
+
+
+def server_error(request):
+    """The GOV.UK problem-with-the-service page, as branded as the moment allows.
+
+    Django's own 500 handler renders the template without the request, so the
+    page could never carry the site's header or contact details. Rendering
+    with the request restores those -- and when the problem is deep enough
+    that even this template cannot render (the database gone, say), the bare
+    page below still answers rather than a blank error.
+    """
+    try:
+        return render(request, "500.html", status=500)
+    except Exception:
+        return HttpResponseServerError(BARE_SERVER_ERROR_HTML)
 
 
 def _normalised_referrer(value: str | None) -> str:

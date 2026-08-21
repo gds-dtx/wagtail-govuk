@@ -155,3 +155,40 @@ class AuthenticatedUserRedirectMiddleware:
         ):
             return None
         return destination_path
+
+
+class MaintenanceModeMiddleware:
+    """Answer everything but the essentials with the service-unavailable page.
+
+    Switched by the MAINTENANCE_MODE environment variable, so closing the
+    service for a cutover is a configuration change, not a deployment. The
+    health check stays open or the orchestrator would replace the instance,
+    and the admin stays open so the people doing the work can see it.
+    """
+
+    EXEMPT_PREFIXES = (
+        "/api/health/",
+        "/admin",
+        "/django-admin",
+        "/accounts",
+        "/_util",
+        "/static",
+    )
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from django.conf import settings
+        from django.shortcuts import render
+
+        if not getattr(settings, "MAINTENANCE_MODE", False):
+            return self.get_response(request)
+        if request.path.startswith(self.EXEMPT_PREFIXES):
+            return self.get_response(request)
+        return render(
+            request,
+            "503.html",
+            {"maintenance_resume_text": getattr(settings, "MAINTENANCE_RESUME_TEXT", "")},
+            status=503,
+        )
