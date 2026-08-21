@@ -173,6 +173,11 @@ class MaintenanceModeMiddleware:
         "/accounts",
         "/_util",
         "/static",
+        # The unavailable page's own dressing: the GOV.UK fonts and crest are
+        # served through the /assets alias and the customised styles through
+        # /gen, and a page explaining the closure should not arrive undressed.
+        "/assets",
+        "/gen",
     )
 
     def __init__(self, get_response):
