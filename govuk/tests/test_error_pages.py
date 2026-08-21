@@ -132,6 +132,12 @@ class MaintenanceModeTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
 
+    def test_the_pages_own_dressing_stays_open(self):
+        """The fonts, crest and customised styles the 503 page itself loads."""
+        for path in ("/assets/images/govuk-crest.svg", "/gen/custom.css", "/static/main.css"):
+            response = self.client.get(path)
+            self.assertNotEqual(response.status_code, 503, path)
+
     def test_the_admin_stays_reachable(self):
         response = self.client.get("/admin/")
 
