@@ -256,6 +256,7 @@ MIDDLEWARE = [
     "govuk.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "govuk.middleware.MaintenanceModeMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -414,6 +415,13 @@ FEATURE_FLAGS = {
     "PEOPLE_FINDER": _bool_env("FEATURE_PEOPLE_FINDER"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
 }
+
+# Closes the service behind the GOV.UK service-unavailable page for a cutover
+# or an outage, leaving the health check and the admin open. The resume text
+# names the moment the service comes back, in the pattern's own form:
+# "9am on Monday 19 November 2018".
+MAINTENANCE_MODE = _bool_env("MAINTENANCE_MODE", default=False)
+MAINTENANCE_RESUME_TEXT = os.getenv("MAINTENANCE_RESUME_TEXT", "")
 
 # When enabled, logs inbound Django requests (including headers) at INFO level.
 INCOMING_REQUEST_INFO_LOGGING = _bool_env("INCOMING_REQUEST_INFO_LOGGING")

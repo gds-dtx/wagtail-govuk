@@ -430,6 +430,29 @@ class CustomiseSettings(BaseSiteSetting):
         validators=[HEX_COLOR_VALIDATOR],
         help_text="Optional hero text color in hex, for example #ffffff.",
     )
+    error_contact_link_text = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "Who the error pages offer to put a reader in touch with, for "
+            "example a team's name. Leave blank for no contact sentence."
+        ),
+    )
+    error_contact_email = models.EmailField(
+        blank=True,
+        default="",
+        help_text="Where the error pages' contact link points.",
+    )
+    error_contact_about = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "What the reader would be speaking to someone about, closing the "
+            "contact sentence: 'if you need to speak to someone about the …'."
+        ),
+    )
     extra_css = models.TextField(
         blank=True,
         default="",
@@ -442,6 +465,9 @@ class CustomiseSettings(BaseSiteSetting):
         FieldPanel("show_service_name_in_navigation"),
         FieldPanel("hide_sign_in_link"),
         FieldPanel("search_placeholder"),
+        FieldPanel("error_contact_link_text"),
+        FieldPanel("error_contact_email"),
+        FieldPanel("error_contact_about"),
         FieldPanel("hero_background_color"),
         FieldPanel("hero_text_color"),
         FieldPanel("extra_css"),
