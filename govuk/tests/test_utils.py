@@ -1,3 +1,5 @@
+import time
+
 from django.test import SimpleTestCase, TestCase
 
 from govuk.utils import LARGEST_ROW_ID, normalised_text, row_id_from_text
@@ -122,6 +124,16 @@ class NormalisedTextTests(TestCase):
     def test_nothing_at_all_gives_an_empty_string(self):
         self.assertEqual(normalised_text(None), "")
         self.assertEqual(normalised_text(""), "")
+
+    def test_a_body_of_unclosed_tags_is_normalised_quickly(self):
+        """Every indexed field goes through here, so it cannot go quadratic.
+
+        Reading the attributes as "[^>]*" a megabyte of "</p</p</p..." was
+        read to the end again from every "</p" in it, and took 75 seconds.
+        """
+        started = time.monotonic()
+        normalised_text("</p" * 340_000)
+        self.assertLess(time.monotonic() - started, 1)
 
 
 class RowIdFromTextTests(SimpleTestCase):

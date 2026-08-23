@@ -17,9 +17,14 @@ LARGEST_ROW_ID = 2**63 - 1
 # only thing standing between the two is the opening tag. Opening and closing
 # alike separate what is either side of them; the collapse below means the
 # spare spaces this adds in the ordinary case cost nothing.
+#
+# The attribute run stops at a "<" as well as at the closing ">". A tag cannot
+# hold a raw "<" anyway, and spelt "[^>]*" a body of "<li<li<li..." is read to
+# the end again from every "<li" in it, which is quadratic: 1MB took 75
+# seconds, on a path every indexed field goes through.
 _BLOCK_BOUNDARY = re.compile(
     r"</?(?:p|li|ul|ol|h[1-6]|div|section|article|table|tr|td|th|blockquote|dl|dd|dt)"
-    r"\b[^>]*>"
+    r"\b[^<>]*>"
     r"|<br\s*/?>",
     re.IGNORECASE,
 )
