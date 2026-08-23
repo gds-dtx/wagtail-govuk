@@ -18,8 +18,12 @@ from html.parser import HTMLParser
 
 from django.utils.html import escape
 
-MARKDOWN_LINK = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
-EMPTY_MARKDOWN_LINK = re.compile(r"\[\s*\]\([^)]*\)")
+# Link text and targets stop at the next bracket rather than running to the
+# end of the note. Allowing "[" inside the text, or "(" inside the target,
+# lets a note built from repeated "[a](" restart the scan at every character,
+# which is quadratic in the length of the note.
+MARKDOWN_LINK = re.compile(r"\[([^\][]+)\]\(([^()]+)\)")
+EMPTY_MARKDOWN_LINK = re.compile(r"\[\s*+\]\([^()\[\]]*\)")
 
 NOT_IN_USE = "NOT IN USE"
 # The published exports use this sentence, without bullets, where a skill
@@ -232,8 +236,15 @@ def changelog_note_to_html(text: str) -> str:
     return "".join(html_parts)
 
 
-_BULLET_PARAGRAPH = re.compile(r"<p>\s*-\s*((?:(?!</p>).)*?)\s*</p>", re.DOTALL)
-_BULLET_RUN = re.compile(r"(?:<p>\s*-\s*(?:(?!</p>).)*?</p>\s*)+", re.DOTALL)
+# "Everything up to the closing tag", written so the engine never rescans:
+# ``[^<]*`` cannot cross a "<", and the group that follows only starts at one.
+# Spelt ``(?:(?!</p>).)*?`` instead, a paragraph that never closes is re-read
+# from every position the leading whitespace can backtrack to, so a note of a
+# few hundred KB takes minutes. The whitespace runs are possessive for the
+# same reason: giving a space back can never help "-" or "<" match.
+_PARAGRAPH_BODY = r"[^<]*(?:<(?!/p>)[^<]*)*"
+_BULLET_PARAGRAPH = re.compile(rf"<p>\s*+-\s*+({_PARAGRAPH_BODY})</p>")
+_BULLET_RUN = re.compile(rf"(?:<p>\s*+-\s*+{_PARAGRAPH_BODY}</p>\s*+)+")
 
 
 def repair_changelog_html(html: str) -> str:
@@ -249,7 +260,9 @@ def repair_changelog_html(html: str) -> str:
 
     def to_list(match: re.Match) -> str:
         items = "".join(
-            f"<li>{bullet.group(1)}</li>"
+            # The pattern reads up to the closing tag rather than stopping
+            # short of the trailing whitespace, so strip it here.
+            f"<li>{bullet.group(1).strip()}</li>"
             for bullet in _BULLET_PARAGRAPH.finditer(match.group(0))
         )
         return f"<ul>{items}</ul>" if items else match.group(0)

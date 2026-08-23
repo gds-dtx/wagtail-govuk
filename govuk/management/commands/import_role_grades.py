@@ -24,8 +24,11 @@ from django.utils.text import slugify
 from govuk.models import JOB_GRADE_CHOICES, GovukRole
 
 LIVE_BASE_URL = "https://ddat-capability-framework.service.gov.uk"
+# Every run inside the tag stops at a "<", which a tag cannot hold anyway.
+# Spelt "[^>]*" and "[^"]*" the three of them nest, and a page of repeated
+# "<h3 class=..." with no ">" in it took 157 seconds at 116KB to refuse.
 LEVEL_HEADING = re.compile(
-    r'<h3[^>]*class="[^"]*role-level-header[^"]*"[^>]*>(.*?)</h3>', re.S
+    r'<h3[^<>]*class="[^"<>]*role-level-header[^"<>]*"[^<>]*>(.*?)</h3>', re.S
 )
 GRADE_SENTENCE = re.compile(
     r"performed at\s+the\s+Civil Service job grade of:(.*?)(?:Skill\s+Description|Level:|$)",
@@ -137,12 +140,12 @@ class Command(BaseCommand):
 
     @staticmethod
     def _heading_title(raw_heading: str) -> str:
-        title = unescape(re.sub(r"<[^>]+>", "", raw_heading)).strip()
+        title = unescape(re.sub(r"<[^<>]+>", "", raw_heading)).strip()
         return re.sub(r"^\s*\d+\.\s*", "", title).strip()
 
     @staticmethod
     def _grades_in(fragment: str) -> list[str]:
-        text = re.sub(r"\s+", " ", unescape(re.sub(r"<[^>]+>", " ", fragment)))
+        text = re.sub(r"\s+", " ", unescape(re.sub(r"<[^<>]+>", " ", fragment)))
         sentence = GRADE_SENTENCE.search(text)
         if not sentence:
             return []

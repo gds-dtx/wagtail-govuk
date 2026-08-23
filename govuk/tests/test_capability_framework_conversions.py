@@ -1,3 +1,4 @@
+import time
 from datetime import date
 
 from django.test import SimpleTestCase
@@ -155,6 +156,34 @@ class ChangelogRepairTests(SimpleTestCase):
     def test_empty_values(self):
         self.assertEqual(repair_changelog_html(""), "")
         self.assertEqual(repair_changelog_html(None), "")
+
+
+class ChangelogNoteScalingTests(SimpleTestCase):
+    """A big note must not send the patterns quadratic.
+
+    An imported note reaches these conversions before anything has looked at
+    its size, and the 0058 data migration runs them at container boot, so a
+    note that backtracks for minutes stops the site coming up.
+    """
+
+    # Each of these took minutes at this size before the patterns were
+    # rewritten, and runs in milliseconds now. A whole second is far below
+    # the old cost and far above the new one, so it will not flake.
+    BUDGET_SECONDS = 1
+
+    def assert_runs_quickly(self, convert, value):
+        started = time.monotonic()
+        convert(value)
+        self.assertLess(time.monotonic() - started, self.BUDGET_SECONDS)
+
+    def test_a_paragraph_that_never_closes_is_repaired_quickly(self):
+        self.assert_runs_quickly(repair_changelog_html, "<p>-" + " " * 64_000)
+
+    def test_unterminated_markdown_links_convert_quickly(self):
+        self.assert_runs_quickly(changelog_note_to_html, "[a](" * 32_000)
+
+    def test_unterminated_empty_markdown_links_convert_quickly(self):
+        self.assert_runs_quickly(changelog_note_to_html, "[](" * 64_000)
 
 
 class ParseIsoDateTests(SimpleTestCase):
