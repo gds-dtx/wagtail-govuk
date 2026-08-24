@@ -8,7 +8,6 @@ from django.utils.text import slugify
 from wagtail.models import Page, Site
 
 from govuk.capability_framework import (
-    NOT_IN_USE,
     changelog_note_to_html,
     parse_iso_date,
     parse_points,
