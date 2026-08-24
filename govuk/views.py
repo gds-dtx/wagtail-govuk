@@ -12,11 +12,9 @@ from django.http import (
 )
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_POST
-from django.views.decorators.http import require_http_methods
-from wagtail.models import Site
-
 from django.utils import timezone
+from django.views.decorators.http import require_http_methods, require_POST
+from wagtail.models import Site
 
 from govuk import framework_csv
 from govuk.forms import FeedbackForm

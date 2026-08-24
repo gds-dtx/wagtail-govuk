@@ -3,6 +3,7 @@ from django.test import RequestFactory, TestCase, override_settings
 from wagtail.models import PageViewRestriction, Site
 
 from govuk.models import (
+    THIS_SITE_SOURCE_FILTER,
     ContentDiscoverySettings,
     ContentDiscoverySource,
     ContentPage,
@@ -11,7 +12,6 @@ from govuk.models import (
     GovukTag,
     RolePage,
     SectionPage,
-    THIS_SITE_SOURCE_FILTER,
     TagListingsPage,
 )
 

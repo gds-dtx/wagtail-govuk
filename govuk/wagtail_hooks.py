@@ -3,9 +3,8 @@ import io
 import json
 from datetime import timedelta
 
-from draftjs_exporter.dom import DOM
-from django.conf import settings
 from django import forms
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.http import (
     HttpResponse,
@@ -15,9 +14,10 @@ from django.http import (
 )
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse, reverse_lazy
+from django.utils import timezone
 from django.utils.html import escape
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.utils import timezone
+from draftjs_exporter.dom import DOM
 from wagtail import hooks
 from wagtail.admin import messages
 from wagtail.admin.auth import permission_denied, require_admin_access
@@ -35,8 +35,10 @@ from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import EmbedHandler
 from wagtail.rich_text.pages import PageLinkHandler
 from wagtail.snippets.models import register_snippet
-from wagtail.snippets.views.snippets import IndexView as SnippetIndexView
-from wagtail.snippets.views.snippets import SnippetViewSet
+from wagtail.snippets.views.snippets import (
+    IndexView as SnippetIndexView,
+    SnippetViewSet,
+)
 from wagtail.whitelist import check_url
 
 from govuk.content_discovery import ContentDiscoveryError, sync_content_discovery_source
