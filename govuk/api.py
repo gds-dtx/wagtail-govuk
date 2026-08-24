@@ -6,7 +6,6 @@ from django.db.models import Count, Q
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.urls import reverse
-from django.utils.html import strip_tags
 from rest_framework import generics, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated

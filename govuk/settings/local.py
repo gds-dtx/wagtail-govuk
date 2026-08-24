@@ -1,4 +1,3 @@
-import os
 from .base import *
 
 # Local settings - these are used for local development and testing

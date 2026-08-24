@@ -5,12 +5,81 @@ from unittest.mock import patch, sentinel
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 
+from django.http.request import validate_host
+
 from govuk.settings.runtime import (
     LOCAL_SETTINGS_MODULE,
+    deployment_allowed_hosts,
     is_gunicorn_process,
     is_runserver_process,
     resolve_wsgi_settings_module,
 )
+
+
+class DeploymentAllowedHostsTests(SimpleTestCase):
+    """The Host headers a deployed instance has to answer to.
+
+    There is no wildcard in the deployed allow-list, so anything missing from
+    it is a 400 rather than a page.
+    """
+
+    DOMAIN = "gds-capframework-001.dev.wagtail.ukps.digital"
+    TASK_ADDRESS = "10.0.3.47"
+
+    def hosts(self, environ, own_address=TASK_ADDRESS):
+        return deployment_allowed_hosts(
+            environ=environ, resolve_own_address=lambda: own_address
+        )
+
+    def test_the_load_balancer_health_check_is_answered(self):
+        """The check connects to the task by IP and sends that IP as the Host.
+
+        A target group has no setting that would make it send the site's
+        domain instead, and its matcher only accepts 2xx, so a 400 here marks
+        a healthy container unhealthy and the orchestrator replaces it.
+        """
+        hosts = self.hosts({"DOMAIN": self.DOMAIN})
+
+        self.assertTrue(validate_host(self.TASK_ADDRESS, hosts))
+
+    def test_the_site_domain_is_answered(self):
+        hosts = self.hosts({"DOMAIN": self.DOMAIN})
+
+        self.assertTrue(validate_host(self.DOMAIN, hosts))
+
+    def test_nothing_else_is_answered(self):
+        """The point of the allow-list survives adding to it."""
+        hosts = self.hosts({"DOMAIN": self.DOMAIN})
+
+        for host in ("example.com", "evil.test", "10.0.3.48"):
+            with self.subTest(host=host):
+                self.assertFalse(validate_host(host, hosts))
+
+    def test_allowed_hosts_names_the_hosts_and_domain_is_the_fallback(self):
+        hosts = self.hosts(
+            {"ALLOWED_HOSTS": "one.example, two.example", "DOMAIN": self.DOMAIN}
+        )
+
+        self.assertEqual(hosts, ["one.example", "two.example", self.TASK_ADDRESS])
+
+    def test_blank_entries_are_dropped(self):
+        hosts = self.hosts({"ALLOWED_HOSTS": " one.example , , two.example ,"})
+
+        self.assertEqual(hosts, ["one.example", "two.example", self.TASK_ADDRESS])
+
+    def test_an_address_already_listed_is_not_repeated(self):
+        hosts = self.hosts({"ALLOWED_HOSTS": f"{self.DOMAIN},{self.TASK_ADDRESS}"})
+
+        self.assertEqual(hosts, [self.DOMAIN, self.TASK_ADDRESS])
+
+    def test_an_unresolvable_hostname_leaves_the_rest_intact(self):
+        """Nothing to add, rather than a settings module that will not import."""
+        hosts = self.hosts({"DOMAIN": self.DOMAIN}, own_address=None)
+
+        self.assertEqual(hosts, [self.DOMAIN])
+
+    def test_no_configuration_at_all_still_answers_the_health_check(self):
+        self.assertEqual(self.hosts({}), [self.TASK_ADDRESS])
 
 
 class RunserverDetectionTests(SimpleTestCase):
