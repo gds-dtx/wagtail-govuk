@@ -7,6 +7,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.settings import base as base_settings
+from govuk.settings.runtime import own_ipv4_address
 
 
 class ResolveSimpleJwtAudienceTests(SimpleTestCase):
@@ -193,6 +194,15 @@ class DevSecuritySettingsTests(SimpleTestCase):
 
     _BASE_ENV = {"BASE_URL": "https://service.example.gov.uk/"}
 
+    def _with_own_address(self, hosts):
+        """The configured hosts, plus the address the health check arrives on.
+
+        The load balancer connects to the task by IP and sends that IP as the
+        Host header, so ``dev.py`` adds it -- see ``deployment_allowed_hosts``.
+        """
+        own_address = own_ipv4_address()
+        return [*hosts, own_address] if own_address else list(hosts)
+
     def test_debug_defaults_to_false_when_unset(self):
         dev = self._import_dev(self._BASE_ENV)
 
@@ -219,7 +229,8 @@ class DevSecuritySettingsTests(SimpleTestCase):
         )
 
         self.assertEqual(
-            dev.ALLOWED_HOSTS, ["service.example.gov.uk", "health.internal"]
+            dev.ALLOWED_HOSTS,
+            self._with_own_address(["service.example.gov.uk", "health.internal"]),
         )
 
     def test_allowed_hosts_falls_back_to_domain_when_unset(self):
@@ -227,7 +238,21 @@ class DevSecuritySettingsTests(SimpleTestCase):
             {**self._BASE_ENV, "DOMAIN": "service.example.gov.uk"}
         )
 
-        self.assertEqual(dev.ALLOWED_HOSTS, ["service.example.gov.uk"])
+        self.assertEqual(
+            dev.ALLOWED_HOSTS, self._with_own_address(["service.example.gov.uk"])
+        )
+
+    def test_the_load_balancer_health_check_host_is_allowed(self):
+        """It arrives as the task's own IP, and a 400 gets the task replaced."""
+        dev = self._import_dev(
+            {**self._BASE_ENV, "DOMAIN": "service.example.gov.uk"}
+        )
+
+        own_address = own_ipv4_address()
+        if own_address is None:
+            self.skipTest("No resolvable address on this machine")
+        self.assertIn(own_address, dev.ALLOWED_HOSTS)
+        self.assertNotIn("*", dev.ALLOWED_HOSTS)
 
 
 class SyncDefaultSiteFromEnvTests(TestCase):
