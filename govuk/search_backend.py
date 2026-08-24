@@ -6,14 +6,13 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
-from django.core.paginator import Page as PaginatorPage
-from django.core.paginator import Paginator
+from django.core.paginator import Page as PaginatorPage, Paginator
 from django.db import connections
 from django.db.models import Max, Q, QuerySet, TextField, prefetch_related_objects
 from django.db.models.functions import Cast
+from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.text import slugify
-from django.utils import timezone
 from wagtail.models import Page, PageViewRestriction, Site
 
 from govuk.models import (

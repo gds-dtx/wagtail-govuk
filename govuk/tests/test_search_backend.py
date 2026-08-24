@@ -11,9 +11,9 @@ from django.utils import timezone
 from wagtail.models import Page, Site
 
 from govuk.models import (
-    ContentPage,
     ContentDiscoverySettings,
     ContentDiscoverySource,
+    ContentPage,
     ExternalContentItem,
     GovukChangelogEntry,
     GovukSkill,

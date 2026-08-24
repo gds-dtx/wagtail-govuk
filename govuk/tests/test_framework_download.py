@@ -102,7 +102,9 @@ class FrameworkCsvDownloadTests(TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_the_command_and_the_download_write_the_same_file(self):
-        import tempfile, pathlib
+        import pathlib
+        import tempfile
+
         from django.core.management import call_command
 
         with tempfile.TemporaryDirectory() as outdir:

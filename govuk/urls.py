@@ -1,13 +1,12 @@
+from allauth.account.decorators import secure_admin_login
 from django.conf import settings
-from django.urls import include, path
+from django.conf.urls.static import static
 from django.contrib import admin
-
-from wagtail.admin import urls as wagtailadmin_urls
+from django.urls import include, path
 from wagtail import urls as wagtail_urls
+from wagtail.admin import urls as wagtailadmin_urls
 from wagtail.documents import urls as wagtaildocs_urls
 
-
-from allauth.account.decorators import secure_admin_login
 from govuk.api import (
     ExternalContentItemsAPIView,
     ExternalContentSourcesAPIView,
@@ -16,6 +15,8 @@ from govuk.api import (
     api_root_view,
     api_router,
 )
+from govuk.view_robots import robots_txt_view
+from govuk.view_securitytxt import security_txt_view
 from govuk.views import (
     account_logout_redirect,
     assets_alias_view,
@@ -30,8 +31,6 @@ from govuk.views import (
     search_view,
     wagtail_logout_redirect,
 )
-from govuk.view_robots import robots_txt_view
-from govuk.view_securitytxt import security_txt_view
 
 admin.autodiscover()
 admin.site.login = secure_admin_login(admin.site.login)
@@ -96,9 +95,6 @@ if settings.FEATURE_FLAGS.get("FEEDBACK"):
         path("feedback", feedback_view),
         path("feedback/", feedback_view, name="feedback"),
     ]
-
-
-from django.conf.urls.static import static
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

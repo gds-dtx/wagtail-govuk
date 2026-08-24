@@ -5,9 +5,9 @@ from wagtail.models import Site
 
 from govuk.api import DEFAULT_API_REPOSITORY_URL, _get_api_version
 from govuk.models import (
-    ContentPage,
     ContentDiscoverySettings,
     ContentDiscoverySource,
+    ContentPage,
     ExternalContentItem,
     ExternalContentItemTag,
     GovukTag,

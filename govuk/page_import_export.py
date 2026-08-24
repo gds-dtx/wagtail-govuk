@@ -8,11 +8,10 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.exceptions import FieldDoesNotExist, ValidationError
-from django.db import transaction
-from django.db import models as django_models
+from django.db import models as django_models, transaction
+from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime, parse_time
 from django.utils.text import slugify
-from django.utils import timezone
 from wagtail.fields import StreamField
 from wagtail.models import Page, PageViewRestriction, Site
 from wagtail.permission_policies import ModelPermissionPolicy
@@ -803,18 +802,19 @@ def _serialise_page_settings(page: Page) -> dict:
 
 def _serialise_page_fields(page: Page) -> dict:
     values: dict[str, object] = {}
-    for field in page._meta.local_fields:
-        if field.name in BASE_PAGE_LOCAL_FIELD_NAMES or field.name == "page_ptr":
+    # Named model_field, not field: dataclasses.field is imported at the top of
+    # this module and a loop variable would shadow it.
+    for model_field in page._meta.local_fields:
+        name = model_field.name
+        if name in BASE_PAGE_LOCAL_FIELD_NAMES or name == "page_ptr":
             continue
-        if field.auto_created:
+        if model_field.auto_created:
             continue
 
-        raw_value = field.value_from_object(page)
-        serialisable = field.get_prep_value(raw_value)
+        raw_value = model_field.value_from_object(page)
+        serialisable = model_field.get_prep_value(raw_value)
 
-        snippet_stream = PAGE_SNIPPET_SLUG_STREAM_FIELDS.get(
-            (page._meta.label, field.name)
-        )
+        snippet_stream = PAGE_SNIPPET_SLUG_STREAM_FIELDS.get((page._meta.label, name))
         if snippet_stream is not None:
             block_type, snippet_model = snippet_stream
             serialisable = _serialise_snippet_chooser_stream(
@@ -823,7 +823,7 @@ def _serialise_page_fields(page: Page) -> dict:
                 snippet_model=snippet_model,
             )
 
-        values[field.name] = _serialise_value(serialisable)
+        values[name] = _serialise_value(serialisable)
     return values
 
 

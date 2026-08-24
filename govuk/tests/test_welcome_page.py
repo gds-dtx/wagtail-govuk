@@ -6,7 +6,6 @@ from django.test import TestCase
 from django.utils.text import slugify
 from wagtail.models import Site
 
-from govuk.page_import_export import _serialise_page_fields
 from govuk.models import (
     ContentPage,
     GovukChangelogEntry,
@@ -15,6 +14,7 @@ from govuk.models import (
     SkillsAZPage,
     site_wide_changelog,
 )
+from govuk.page_import_export import _serialise_page_fields
 
 
 class ContentPageRoleNavigationTests(TestCase):

@@ -23,8 +23,7 @@ from django.db import models, transaction
 from django.db.models import Q
 from django.db.models.functions import Coalesce
 from django.utils import timezone
-from django.utils.text import slugify
-from django.utils.text import Truncator
+from django.utils.text import Truncator, slugify
 from modelcluster.contrib.taggit import ClusterTaggableManager
 from modelcluster.fields import ParentalKey
 from modelcluster.models import ClusterableModel
@@ -39,7 +38,6 @@ from wagtail.models import Orderable, Page, Site
 from wagtail.snippets.blocks import SnippetChooserBlock
 
 from govuk.utils import row_id_from_text
-
 
 HEX_COLOR_VALIDATOR = RegexValidator(
     regex=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",

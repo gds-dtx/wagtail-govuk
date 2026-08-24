@@ -3,9 +3,8 @@ import sys
 from unittest.mock import patch, sentinel
 
 from django.core.exceptions import ImproperlyConfigured
-from django.test import SimpleTestCase
-
 from django.http.request import validate_host
+from django.test import SimpleTestCase
 
 from govuk.settings.runtime import (
     LOCAL_SETTINGS_MODULE,
