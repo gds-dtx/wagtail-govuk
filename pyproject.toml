@@ -12,7 +12,7 @@ dependencies = [
   # Django 6.1 dropped django.utils.cache.cc_delim_re, which Django REST
   # Framework still imports, so an unpinned build stopped starting up. Hold to
   # the 6.0 series until a REST Framework release lands that works with 6.1.
-  "Django>=6.0.2,<6.2",
+  "Django>=6.0.2,<6.1",
   "wagtail==7.4.3",
   "gunicorn==26.1.0",
   "whitenoise==6.12.0",
