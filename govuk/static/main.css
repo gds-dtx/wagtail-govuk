@@ -733,3 +733,17 @@ main > :nth-last-child(1 of .section-cards-container) {
         hyphens: auto;
     }
 }
+
+/* A skill table is one link per row, so the rows read as a list and the
+   underlines stack up into noise — which is why the live service leaves them
+   off (T31.2). The column heading and the link colour carry the meaning at
+   rest; hover and focus put the underline back, so a pointer or the keyboard
+   still marks out what is clickable. */
+.govuk-table a.skill-name {
+    text-decoration: none;
+}
+
+.govuk-table a.skill-name:hover,
+.govuk-table a.skill-name:focus {
+    text-decoration: underline;
+}
