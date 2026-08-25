@@ -1,6 +1,11 @@
+/* The Design System's own wrapper padding is more than these pages want —
+   they carry their own spacing — but zero left the h1 touching the service
+   navigation. 25px is what the live service leaves between the phase banner
+   and the heading (T12). Pages that join the navigation to the hero override
+   this with govuk-!-padding-0, so their flush edge is unaffected. */
 .govuk-main-wrapper {
     display: block;
-    padding: 0px;
+    padding: 25px 0 0;
 }
 
 .masthead {
