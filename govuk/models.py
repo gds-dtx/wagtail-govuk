@@ -2841,16 +2841,23 @@ class ContentPage(Page):
             self.enable_free_text_heading_navigation and not self.show_role_navigation
         )
         # The generic ancestor trail names its first crumb after the site,
-        # which on this service is a sentence long and reads as a heading
+        # which on the framework is a sentence long and reads as a heading
         # rather than a way back, and it shows at every width where the live
         # service has no breadcrumb at all. Follow the role pages instead:
         # home, then this page, and only where the navigation is hidden.
-        site = Site.find_for_request(request)
-        if site and self.pk != site.root_page_id:
-            context["breadcrumbs"] = framework_breadcrumbs(request, self)
-            context["breadcrumbs_mobile_only"] = True
-        else:
-            context["breadcrumbs"] = []
+        #
+        # On a framework only. This is the page type every instance builds
+        # with, and a site whose pages nest more than one deep wants the trail
+        # the context processor assembles. The home label below comes from
+        # wording settings the admin does not register without this flag, so
+        # a site without it would carry a crumb no editor there can change.
+        if settings.FEATURE_FLAGS.get("SKILLS"):
+            site = Site.find_for_request(request)
+            if site and self.pk != site.root_page_id:
+                context["breadcrumbs"] = framework_breadcrumbs(request, self)
+                context["breadcrumbs_mobile_only"] = True
+            else:
+                context["breadcrumbs"] = []
         return context
 
     def framework_welcome_contents(self, role_groups: list[dict]) -> list[dict]:
