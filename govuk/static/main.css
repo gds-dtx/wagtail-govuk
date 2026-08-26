@@ -783,6 +783,16 @@ main > :nth-last-child(1 of .section-cards-container) {
     font-weight: 700;
 }
 
+/* That guard only reaches a table carrying govuk-table. One without it whose
+   cells still carry the modifiers - hand-written markup, or a paste that kept
+   the classes on the cells but lost the one on the table - would hand its
+   right alignment to the rule above, which the element in its selector makes
+   the heavier of the two. Name the modifiers to give it back. */
+.rich-text-content table:not(.govuk-table) th.govuk-table__header--numeric,
+.rich-text-content table:not(.govuk-table) td.govuk-table__cell--numeric {
+    text-align: right;
+}
+
 .rich-text-content table:not(.govuk-table) th:last-child,
 .rich-text-content table:not(.govuk-table) td:last-child {
     padding-right: 0;
