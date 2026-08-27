@@ -803,3 +803,31 @@ main > :nth-last-child(1 of .section-cards-container) {
         margin-bottom: 30px;
     }
 }
+
+/* Hyphenation above lowers a two-column table's intrinsic minimum enough to
+   fit 320px. A table of four columns of full sentences — the contextual
+   challenge levels — cannot be made to fit, and left alone it drags the whole
+   document sideways, which fails WCAG 1.4.10. The criterion exempts content
+   that genuinely needs two dimensions, so the table keeps its shape and
+   scrolls inside this region while the page itself stops overflowing.
+
+   The region is given tabindex="0" and a name from the table's caption where
+   it is written, so a keyboard can reach and scroll it. */
+.table-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+    /* Momentum scrolling on iOS, and a focus ring that is not clipped. */
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll:focus-visible {
+    outline: 3px solid var(--govuk-focus-colour, #fd0);
+    outline-offset: 0;
+}
+
+/* The scrolled table should not also try to shrink to the viewport, or the
+   columns collapse into unreadable slivers instead of scrolling. */
+.table-scroll > table {
+    min-width: 100%;
+    width: auto;
+}
