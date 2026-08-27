@@ -74,6 +74,9 @@ class PageImportResult:
     created: int = 0
     updated: int = 0
     skipped: int = 0
+    # Written to a revision for a publisher to review, rather than made live,
+    # because the account running the import may not publish.
+    drafted: int = 0
     errors: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
@@ -1526,10 +1529,14 @@ def _import_page_node(
                 result=result,
             )
             page.full_clean()
-            page.save()
-            _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
-            page.save()
-            _apply_privacy(page, node.get("privacy"), user=user, result=result)
+            _write_page(
+                page,
+                node=node,
+                action=action,
+                user=user,
+                result=result,
+                tag_lookup=tag_lookup,
+            )
 
             if action == "create":
                 result.created += 1
@@ -1551,6 +1558,57 @@ def _import_page_node(
     except (ValidationError, ValueError, PermissionError) as exc:
         result.skipped += 1
         result.errors.append(f"Skipped '{slug}': {exc}")
+
+
+def _write_page(page: Page, *, node: dict, action: str, user, result, tag_lookup):
+    """Commit an imported page through Wagtail's own publishing route.
+
+    The import used to call ``page.save()`` twice and stop. That wrote straight
+    over the live row, which meant two things. Any account that could reach the
+    Import / Export screen could publish -- an editor with no publish
+    permission changed 67 live pages in a rehearsal against a copy of the
+    database. And because no revision and no log entry were written, the page's
+    history showed nothing: no author, no date, nothing to revert to. Ordinary
+    editing in the admin has always recorded all of that.
+
+    So: a revision every time, published only if this account may publish, and
+    an entry in the log either way.
+
+    A page this import creates is not live until the publish below, so writing
+    to its row shows the public nothing. An existing page is different -- if
+    the account cannot publish, its row, its tags and its view restrictions are
+    all left exactly as they were and the new values wait in a draft.
+    """
+    can_publish = page.permissions_for_user(user).can_publish()
+    is_new = action == "create"
+
+    if can_publish or is_new:
+        page.save()
+        _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
+        page.save()
+        _apply_privacy(page, node.get("privacy"), user=user, result=result)
+    else:
+        # ClusterTaggableManager holds the tags in memory until save(), which
+        # is not called here, so they reach the revision without touching the
+        # live page.
+        _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
+
+    revision = page.save_revision(
+        user=user,
+        clean=False,
+        log_action="wagtail.create" if is_new else True,
+    )
+
+    if can_publish:
+        revision.publish(user=user)
+        return
+
+    result.drafted += 1
+    result.errors.append(
+        f"'{page.slug}' was saved as a draft rather than published, because "
+        "you do not have permission to publish it. Somebody who does can "
+        "review and publish it from the page's history."
+    )
 
 
 def _find_or_create_page(*, slug: str, model_class, parent_page: Page, site_root: Page, user):
@@ -1576,7 +1634,17 @@ def _find_or_create_page(*, slug: str, model_class, parent_page: Page, site_root
                 f"You do not have permission to create pages under '{parent_page.title}'."
             )
         new_title = slug.replace("-", " ").strip().title() or slug
-        new_page = model_class(title=new_title, slug=slug, draft_title=new_title)
+        # Not live yet. Wagtail's default is live=True the moment a page is
+        # added to the tree, which would put a half-populated page in front of
+        # the public between here and the publish at the end of the import --
+        # and would leave it there permanently if the account cannot publish.
+        new_page = model_class(
+            title=new_title,
+            slug=slug,
+            draft_title=new_title,
+            live=False,
+            has_unpublished_changes=True,
+        )
         parent_page.add_child(instance=new_page)
         return new_page.specific, "create"
 

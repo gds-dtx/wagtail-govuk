@@ -856,12 +856,17 @@ def pages_import_view(request):
         )
         return redirect(redirect_url)
 
+    drafted_note = (
+        f" {result.drafted} left as drafts for a publisher to review."
+        if result.drafted
+        else ""
+    )
     messages.success(
         request,
         (
             "Import complete. "
             f"Processed {result.processed}, created {result.created}, "
-            f"updated {result.updated}, skipped {result.skipped}."
+            f"updated {result.updated}, skipped {result.skipped}.{drafted_note}"
         ),
     )
     if result.errors:
