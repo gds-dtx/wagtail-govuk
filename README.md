@@ -1,5 +1,22 @@
 # wagtail-govuk
 
+A Wagtail content management system with a GOV.UK Design System front end. One
+codebase serves several government sites, each configured by environment
+variables and by site settings held in the CMS, so most of what makes an
+instance particular to a service lives in its configuration rather than in a
+fork.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to send a change back.
+
+## Documentation
+
+- [Accessibility](docs/accessibility.md) — the component baseline, the
+  guarantees under automated test, known deviations and audit status.
+- [Editorial workflow](docs/editorial-workflow.md) — how content is drafted,
+  moderated and published, who can do what, and where the audit trail is.
+- [Cutting a site over to Wagtail](docs/cutover.md) — the migration runbook,
+  including the three kinds of state that do not travel in a content export.
+
 ## Local Setup
 
 1. Create and activate a virtual environment
@@ -77,3 +94,11 @@ site_id,url,name,disable_tls_verification,default_tags
 1,https://example.gov.uk/feed.xml,Example feed,false,policy|news
 1,https://api.github.com/orgs/alphagov/repos,GOV.UK repos,false,open-source
 ```
+
+## Licence
+
+The code in this repository is published under the [MIT Licence](LICENCE).
+
+Documentation and content are © Crown copyright and available under the terms
+of the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/),
+except where otherwise stated.

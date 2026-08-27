@@ -1,5 +1,9 @@
 [build-system]
-requires = ["setuptools>=69", "wheel"]
+# 77 is where setuptools learned PEP 639, which is how `license` below is
+# written. The older `license = {text = "MIT"}` table still works but is on its
+# way out, and this project's build environment is resolved fresh each time, so
+# there is nothing to gain by holding the older spelling.
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,6 +11,8 @@ name = "wagtail-govuk"
 version = "0.0.1"
 description = "Wagtail GOV.UK themed site"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENCE"]
 requires-python = ">=3.12"
 dependencies = [
   # Django 6.1 dropped django.utils.cache.cc_delim_re, which Django REST
