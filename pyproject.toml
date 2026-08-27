@@ -19,7 +19,14 @@ dependencies = [
   # Framework still imports, so an unpinned build stopped starting up. Hold to
   # the 6.0 series until a REST Framework release lands that works with 6.1.
   "Django>=6.0.2,<6.1",
-  "wagtail==7.4.1",
+  # 7.4.3, not 7.4.1: the earlier pin carries fifteen published advisories,
+  # the worst of them PYSEC-2026-616 (CVSS 3.1 AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:H)
+  # -- an account with the lowest admin privilege reading and rewriting content
+  # it has no permission for. The rest are improper permission and restriction
+  # handling across the pages, documents, images and snippets admin APIs. The
+  # 7.4 series is a patch line, so the migration set is byte-identical to
+  # 7.4.1's and the whole suite passes unchanged.
+  "wagtail==7.4.3",
   "gunicorn==26.0.0",
   "whitenoise==6.12.0",
   "django-allauth[socialaccount,openid]==65.17.0",
