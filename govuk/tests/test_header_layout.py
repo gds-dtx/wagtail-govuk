@@ -90,6 +90,59 @@ class HeaderLayoutTests(TestCase):
         self.assertContains(self._get(), 'placeholder="Search for roles or skills"')
 
 
+class ServiceNavigationTests(TestCase):
+    """The menu only appears when it has somewhere to go.
+
+    The Design System's JavaScript un-hides the toggle below its breakpoint
+    whatever the list holds, so a site with no menu pages and no sign-in link
+    used to show a Menu button on every narrow-screen page that expanded to
+    nothing.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.page = self.site.root_page.specific.add_child(
+            instance=ContentPage(title="A page", slug="a-page")
+        )
+        self.page.save_revision().publish()
+
+        self.settings = CustomiseSettings.for_site(self.site)
+
+    def _get(self):
+        return self.client.get(self.page.url)
+
+    def test_the_menu_renders_for_the_sign_in_link_alone(self):
+        response = self._get()
+
+        self.assertContains(response, "govuk-service-navigation__toggle")
+        self.assertContains(response, 'id="navigation"')
+
+    def test_the_menu_goes_away_when_it_would_be_empty(self):
+        self.settings.hide_sign_in_link = True
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertNotContains(response, "govuk-service-navigation__toggle")
+        self.assertNotContains(response, 'id="navigation"')
+
+    def test_a_page_in_the_menus_brings_it_back(self):
+        menu_page = self.site.root_page.specific.add_child(
+            instance=ContentPage(
+                title="Guidance", slug="guidance", show_in_menus=True
+            )
+        )
+        menu_page.save_revision().publish()
+
+        self.settings.hide_sign_in_link = True
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertContains(response, "govuk-service-navigation__toggle")
+        self.assertContains(response, "Guidance")
+
+
 class PhaseBannerWordingTests(TestCase):
     """The phase banner wording either side of the feedback link is editable."""
 

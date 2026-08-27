@@ -118,33 +118,42 @@
                                 <a href="/" class="govuk-service-navigation__link">{% block service_name %}{{ current_site.site_name|cut:"GOV.UK" }}{% endblock %}</a>
                             </span>
                         {% endif %}
-                        <nav aria-label="Menu" class="govuk-service-navigation__wrapper">
-                            <button type="button"
-                                    class="govuk-service-navigation__toggle govuk-js-service-navigation-toggle"
-                                    aria-controls="navigation"
-                                    hidden
-                                    aria-hidden="true">Menu</button>
-                            <ul class="govuk-service-navigation__list" id="navigation">
-                                {% for item in service_navigation_items %}
-                                    <li class="govuk-service-navigation__item{% if item.is_active %} govuk-service-navigation__item--active{% endif %}">
-                                        <a class="govuk-service-navigation__link"
-                                           href="{{ item.url }}"
-                                           {% if item.is_active %}aria-current="page"{% endif %}>{{ item.title }}</a>
-                                    </li>
-                                {% endfor %}
-                                {% if request.user.is_authenticated %}
-                                    <li class="govuk-service-navigation__item app-service-navigation__item--featured">
-                                        <a class="govuk-service-navigation__link"
-                                           href="{% url 'account_logout' %}">Sign out</a>
-                                    </li>
-                                {% elif not customise_settings.hide_sign_in_link %}
-                                    <li class="govuk-service-navigation__item app-service-navigation__item--featured">
-                                        <a class="govuk-service-navigation__link"
-                                           href="{% url 'account_login' %}">Sign in</a>
-                                    </li>
-                                {% endif %}
-                            </ul>
-                        </nav>
+                        {% comment %}
+                            A site with nothing in its menu and no sign-in link leaves this
+                            list empty, and the Design System's JavaScript still un-hides the
+                            toggle below its breakpoint. That gave every narrow-screen page a
+                            Menu button that reported aria-expanded="true" and revealed
+                            nothing. Only render the navigation when it would hold something.
+                        {% endcomment %}
+                        {% if service_navigation_items or request.user.is_authenticated or not customise_settings.hide_sign_in_link %}
+                            <nav aria-label="Menu" class="govuk-service-navigation__wrapper">
+                                <button type="button"
+                                        class="govuk-service-navigation__toggle govuk-js-service-navigation-toggle"
+                                        aria-controls="navigation"
+                                        hidden
+                                        aria-hidden="true">Menu</button>
+                                <ul class="govuk-service-navigation__list" id="navigation">
+                                    {% for item in service_navigation_items %}
+                                        <li class="govuk-service-navigation__item{% if item.is_active %} govuk-service-navigation__item--active{% endif %}">
+                                            <a class="govuk-service-navigation__link"
+                                               href="{{ item.url }}"
+                                               {% if item.is_active %}aria-current="page"{% endif %}>{{ item.title }}</a>
+                                        </li>
+                                    {% endfor %}
+                                    {% if request.user.is_authenticated %}
+                                        <li class="govuk-service-navigation__item app-service-navigation__item--featured">
+                                            <a class="govuk-service-navigation__link"
+                                               href="{% url 'account_logout' %}">Sign out</a>
+                                        </li>
+                                    {% elif not customise_settings.hide_sign_in_link %}
+                                        <li class="govuk-service-navigation__item app-service-navigation__item--featured">
+                                            <a class="govuk-service-navigation__link"
+                                               href="{% url 'account_login' %}">Sign in</a>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                        {% endif %}
                         {% if customise_settings.show_service_name_in_navigation %}
                             {% include "includes/site_search.html" %}
                         {% endif %}
