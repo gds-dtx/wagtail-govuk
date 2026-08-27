@@ -287,6 +287,12 @@ NOINDEX = _bool_env("NOINDEX", default=True)
 
 SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", default=True)
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "sessionid")
+# Django defaults this to False, so without it the CSRF cookie is the one
+# credential on the site that would go out over plaintext HTTP. The site is
+# HTTPS-only and sends HSTS, so match the session cookie.
+# Note httpOnly is deliberately left off: Wagtail's admin JavaScript reads
+# this cookie to set the X-CSRFToken header.
+CSRF_COOKIE_SECURE = _bool_env("CSRF_COOKIE_SECURE", default=True)
 SESSION_COOKIE_AGE = int(
     os.getenv("SESSION_COOKIE_AGE", 60 * 60 * 12)
 )  # 12 hour default
