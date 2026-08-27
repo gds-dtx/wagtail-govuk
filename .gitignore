@@ -1,5 +1,12 @@
 media/
 
+# collectstatic output. STATIC_ROOT is the repository root's static/, while the
+# source files live in govuk/static/ and are tracked. Without this line a
+# `git add .` after a local collectstatic commits several hundred generated,
+# content-hashed copies of files that are already in the repository. The image
+# runs collectstatic itself at build time.
+/static/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
