@@ -142,7 +142,14 @@ class SchedulingControlsInTheAdminTests(TestCase):
         data = querydict_from_html(self._edit_page_html(), form_id="page-edit-form")
         # A StreamField's inputs are built by its JavaScript, so they are not
         # in the served HTML for the scrape above to find.
-        data.update(nested_form_data({"framework_welcome_body": streamfield([])}))
+        data.update(
+            nested_form_data(
+                {
+                    "framework_welcome_body": streamfield([]),
+                    "body_blocks": streamfield([]),
+                }
+            )
+        )
         data["title"] = "A page, edited"
         data["body"] = rich_text("<p>New words.</p>")
         data["action-publish"] = "action-publish"

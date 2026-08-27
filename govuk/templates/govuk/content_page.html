@@ -51,6 +51,7 @@
                                 {% include "includes/framework_welcome.html" %}
                             {% endif %}
                             {% if self.body %}{{ self.body | richtext }}{% endif %}
+                            {% if self.body_blocks %}{% include_block self.body_blocks %}{% endif %}
                             {% comment %}
                                 The full site-wide history is long, so main.js
                                 collapses it behind the toggle. Both start out

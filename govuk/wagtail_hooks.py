@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import re
 from datetime import timedelta
 
 from django import forms
@@ -15,7 +16,7 @@ from django.http import (
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse, reverse_lazy
 from django.utils import timezone
-from django.utils.html import escape
+from django.utils.html import escape, strip_tags
 from django.utils.http import url_has_allowed_host_and_scheme
 from draftjs_exporter.dom import DOM
 from wagtail import hooks
@@ -201,12 +202,44 @@ class RawHtmlElementHandler(AtomicBlockEntityElementHandler):
         )
 
 
+_TABLE_FRAGMENT_RE = re.compile(r"^\s*<table\b", re.IGNORECASE)
+_CAPTION_RE = re.compile(r"<caption\b[^>]*>(.*?)</caption>", re.IGNORECASE | re.DOTALL)
+
+
+def _wrap_table_in_scroll_region(html: str) -> str:
+    """Give a hand-written table the scrollable region main.css styles.
+
+    A table of four columns of full sentences cannot be made to fit 320px, and
+    left alone it drags the whole document sideways -- WCAG 1.4.10 Reflow. The
+    criterion exempts content that genuinely needs two dimensions, so the table
+    keeps its shape and scrolls inside a region of its own. Focusable, so a
+    keyboard can scroll it, and named from the caption where there is one.
+
+    The test is whether the fragment *starts* with a table, which is what an
+    editor pasting one produces. Anything else is left alone: a fragment with
+    prose around a table is the editor laying the page out themselves.
+    """
+    if not _TABLE_FRAGMENT_RE.match(html):
+        return html
+
+    caption_match = _CAPTION_RE.search(html)
+    caption = strip_tags(caption_match.group(1)).strip() if caption_match else ""
+    label = escape(caption) if caption else "Table"
+    return (
+        f'<div class="table-scroll" tabindex="0" role="region" '
+        f'aria-label="{label}">{html}</div>'
+    )
+
+
 class RawHtmlEmbedHandler(EmbedHandler):
     identifier = RAW_HTML_EMBEDTYPE
 
     @classmethod
     def expand_db_attributes_many(cls, attrs_list: list[dict]) -> list[str]:
-        return [_decode_raw_html(attrs.get("html", "")) for attrs in attrs_list]
+        return [
+            _wrap_table_in_scroll_region(_decode_raw_html(attrs.get("html", "")))
+            for attrs in attrs_list
+        ]
 
 
 def raw_html_entity(props: dict):

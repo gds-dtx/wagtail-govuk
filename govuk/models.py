@@ -32,6 +32,7 @@ from wagtail import blocks
 from wagtail.admin.panels import FieldPanel, InlinePanel, MultiFieldPanel
 from wagtail.blocks import StructValue
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
+from wagtail.contrib.table_block.blocks import TableBlock
 from wagtail.fields import RichTextField, StreamField
 from wagtail.images.blocks import ImageChooserBlock
 from wagtail.models import Orderable, Page, Site
@@ -2728,6 +2729,63 @@ class InsetTextBlock(blocks.RichTextBlock):
         template = "blocks/framework_welcome_inset_text.html"
 
 
+class GovukTableBlock(TableBlock):
+    """A table an editor builds in a grid, rendered as a GOV.UK table.
+
+    Wagtail's rich text has no table feature, so before this the only way to
+    put one on a content page was to hand-write the HTML into a raw HTML
+    embed. That is not a formatting option a content designer has, which is
+    what left "tables can be added to the page" as the last unticked box on
+    CS32-3527 while everything around it was done.
+
+    Cells hold text, not HTML: the renderer stays on Wagtail's default, so
+    whatever is typed is escaped. A table is a place a paste from a document
+    would otherwise carry markup straight onto a public page.
+    """
+
+    def __init__(self, *args, table_options=None, **kwargs):
+        # Wagtail hands handsontable whatever LANGUAGE_CODE is, and ours is
+        # en-gb. The vendored handsontable 6.2.2 ships one locale, en-US, so
+        # it logs a console error and falls back to it anyway. The strings
+        # this picks are the grid's own context menu ("Insert row above"),
+        # where the two spellings do not differ. Naming the locale it has
+        # keeps the admin console clean.
+        table_options = {"language": "en-US", **(table_options or {})}
+        super().__init__(*args, table_options=table_options, **kwargs)
+
+    class Meta:
+        icon = "table"
+        label = "Table"
+        template = "blocks/govuk_table.html"
+        help_text = (
+            "Right-click a cell to add or remove rows and columns. Give the "
+            "table a caption: it is how somebody using a screen reader knows "
+            "what the table is before reading it."
+        )
+
+
+class ContentBodyBlock(blocks.StreamBlock):
+    """Prose and tables, in whatever order the page needs them.
+
+    ``ContentPage.body`` is a rich text field and stays one -- 67 pages of
+    live content are stored in it, and the verified export was taken with it
+    that shape. This renders after it, so an editor adding a table to an
+    existing page changes nothing about the page's existing text.
+
+    A page that needs a table part-way through moves its body text into a Text
+    block here, which offers the same formatting the body field does.
+    """
+
+    # No features argument, so this offers exactly what the body field above
+    # offers -- both take the default set, which the rich text hooks extend
+    # with the GOV.UK button, start button, inset text and raw HTML.
+    text = blocks.RichTextBlock(label="Text", icon="pilcrow")
+    table = GovukTableBlock()
+
+    class Meta:
+        required = False
+
+
 class ContentPage(Page):
     parent_page_types = [
         "govuk.ContentPage",
@@ -2779,6 +2837,17 @@ class ContentPage(Page):
         help_text="Show page metadata above the main content.",
     )
     body = RichTextField(blank=True)
+    body_blocks = StreamField(
+        ContentBodyBlock(),
+        blank=True,
+        use_json_field=True,
+        verbose_name="Tables and further content",
+        help_text=(
+            "Shown after the body above. To put a table part-way through a "
+            "page, move the body text into a Text block here and add the "
+            "table between the blocks."
+        ),
+    )
     enable_free_text_heading_navigation = models.BooleanField(
         default=False,
         verbose_name="Enable sidebar heading navigation",
@@ -2831,6 +2900,7 @@ class ContentPage(Page):
         FieldPanel("hero_intro"),
         FieldPanel("author"),
         FieldPanel("body"),
+        FieldPanel("body_blocks"),
         FieldPanel("framework_welcome_body"),
     ]
 

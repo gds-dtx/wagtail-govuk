@@ -220,6 +220,10 @@ INSTALLED_APPS = [
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
     "wagtail.contrib.settings",
+    # The grid editor behind ContentPage.body_blocks. Without it a table
+    # reaches a content page only as hand-written HTML, which is not a
+    # formatting option a content designer has (CS32-3527).
+    "wagtail.contrib.table_block",
     "wagtail.embeds",
     "wagtail.sites",
     "wagtail.users",
