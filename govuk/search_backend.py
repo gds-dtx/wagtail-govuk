@@ -19,7 +19,9 @@ from govuk.models import (
     SKILL_LEVEL_CHOICES,
     ContentPage,
     ExternalContentItem,
+    GovukRole,
     GovukSkill,
+    RolePage,
     SectionPage,
     SkillsAZPage,
 )
@@ -169,12 +171,17 @@ class SearchBackend:
 
         request = filters.get("request")
         site_root = self._site_root_page(filters)
+        pages = list(queryset)
+        specific_pages = {page.pk: page.specific for page in pages}
+        role_descriptions = self._role_page_descriptions(specific_pages.values())
         results: list[SearchResultItem] = []
-        for page in queryset:
-            specific_page = page.specific
+        for page in pages:
+            specific_page = specific_pages[page.pk]
             title = normalised_text(page.title)
             display_title = self._page_result_title(specific_page)
-            description = self._page_search_description(specific_page)
+            description = self._page_search_description(
+                specific_page
+            ) or role_descriptions.get(page.pk, "")
             tag_items = self._page_tag_items(specific_page)
             tag_labels = [tag["value"] for tag in tag_items]
             tag_keys = [tag["key"] for tag in tag_items]
@@ -209,6 +216,47 @@ class SearchBackend:
                 )
             )
         return results
+
+    def _role_page_descriptions(self, pages) -> dict[int, str]:
+        """The description a role page borrows from the role it leads with.
+
+        A RolePage carries no words of its own: no hero intro, no search
+        description, because the text belongs to the GovukRole snippet it
+        selects. So a search for "product manager" returned the role as a bare
+        title and a tag while the skill beside it showed a full description --
+        on a site whose whole subject is roles, that is the one result a
+        reader most needs to be able to tell apart from its neighbours.
+
+        Skill results already do this, from GovukSkill.body.
+
+        One query for the lot. get_selected_role_ids reads the ids out of the
+        stored StreamField JSON without resolving the chooser, which is what
+        makes the batch possible -- see its own note on the side navigation
+        that was paying a query per page to learn what the JSON already said.
+        """
+        first_role_id_by_page: dict[int, int] = {}
+        for page in pages:
+            if not isinstance(page, RolePage):
+                continue
+            if self._page_search_description(page):
+                continue
+            role_ids = page.get_selected_role_ids()
+            if role_ids:
+                first_role_id_by_page[page.pk] = role_ids[0]
+
+        if not first_role_id_by_page:
+            return {}
+
+        bodies_by_role_id = {
+            role.pk: normalised_text(role.body)
+            for role in GovukRole.objects.filter(
+                pk__in=set(first_role_id_by_page.values())
+            ).only("pk", "body")
+        }
+        return {
+            page_pk: bodies_by_role_id.get(role_id, "")
+            for page_pk, role_id in first_role_id_by_page.items()
+        }
 
     def _build_card_results(
         self, query: str, filters: dict[str, Any]

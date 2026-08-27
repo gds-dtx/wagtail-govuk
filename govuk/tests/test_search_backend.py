@@ -5,7 +5,7 @@ from django.contrib.postgres.search import SearchRank
 from django.db import connection
 from django.db.models import QuerySet
 from django.db.models.lookups import GreaterThan
-from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from wagtail.models import Page, Site
@@ -16,8 +16,10 @@ from govuk.models import (
     ContentPage,
     ExternalContentItem,
     GovukChangelogEntry,
+    GovukRole,
     GovukSkill,
     GovukTag,
+    RolePage,
     SectionPage,
     SkillsAZPage,
     TagListingsPage,
@@ -913,3 +915,128 @@ class SearchBackendNulQueryTests(TestCase):
         self.assertEqual(search_backend._clean_query("data\x00 "), "data")
         self.assertEqual(search_backend._clean_query("\x00"), "")
         self.assertEqual(search_backend._clean_query(None), "")
+
+
+@override_settings(
+    FEATURE_FLAGS={
+        "SKILLS": True,
+        "ORGANISATIONS": False,
+        "PEOPLE_FINDER": False,
+        "FEEDBACK": False,
+    }
+)
+class SearchBackendRolePageDescriptionTests(TestCase):
+    """A role result should say what the role is, as a skill result does.
+
+    A RolePage has no hero intro and no search description -- the words are on
+    the GovukRole snippet it selects -- so a role came back from a search as a
+    bare title beside skills that carried full descriptions.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+        self.role = GovukRole.objects.create(
+            slug="product-manager",
+            title="Product manager",
+            body="<p>A product manager is responsible for the quality of "
+            "their products.</p>",
+        )
+        self.page = self._role_page("product-manager", "Product manager", self.role)
+
+    def _role_page(self, slug: str, title: str, *roles) -> RolePage:
+        page = self.root_page.add_child(
+            instance=RolePage(
+                title=title,
+                slug=slug,
+                selected_roles=[
+                    {"type": "role", "value": role.pk} for role in roles
+                ],
+            )
+        )
+        page.save_revision().publish()
+        return page.specific
+
+    def _result_for_url(self, query: str, url: str):
+        page = search_backend.search(query, filters={"site": self.site}, page=1)
+        return next((item for item in page.object_list if item.url == url), None)
+
+    def test_a_role_result_carries_the_roles_own_description(self):
+        result = self._result_for_url("product manager", self.page.url)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(
+            result.search_description,
+            "A product manager is responsible for the quality of their products.",
+        )
+
+    def test_the_description_is_plain_text(self):
+        """It is rendered into a <p>, so markup would show as markup."""
+        result = self._result_for_url("product manager", self.page.url)
+
+        self.assertNotIn("<p>", result.search_description)
+
+    def test_a_page_that_has_its_own_description_keeps_it(self):
+        self.page.search_description = "Set by an editor"
+        self.page.save_revision().publish()
+
+        result = self._result_for_url("product manager", self.page.url)
+
+        self.assertEqual(result.search_description, "Set by an editor")
+
+    def test_the_first_selected_role_is_the_one_that_describes_the_page(self):
+        """Role pages that group several roles lead with the first."""
+        second = GovukRole.objects.create(
+            slug="delivery-manager",
+            title="Delivery manager",
+            body="<p>Second role.</p>",
+        )
+        page = self._role_page("grouped", "Grouped roles", self.role, second)
+
+        result = self._result_for_url("grouped", page.url)
+
+        self.assertEqual(
+            result.search_description,
+            "A product manager is responsible for the quality of their products.",
+        )
+
+    def test_a_role_page_selecting_nothing_is_still_returned(self):
+        page = self._role_page("empty-role-page", "Empty role page")
+
+        result = self._result_for_url("empty role page", page.url)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.search_description, "")
+
+    def test_every_role_page_costs_one_query_between_them(self):
+        """Not one per page.
+
+        The framework has 52 role pages and a broad search can return many of
+        them at once, so a query apiece is the difference between a search
+        page and a slow one. get_selected_role_ids reads the stored JSON
+        rather than resolving the chooser, which is what allows the batch.
+        """
+        roles = [
+            GovukRole.objects.create(
+                slug=f"described-role-{index}",
+                title=f"Described role {index}",
+                body=f"<p>Body of described role {index}.</p>",
+            )
+            for index in range(5)
+        ]
+        for index, role in enumerate(roles):
+            self._role_page(f"described-role-{index}", f"Described role {index}", role)
+
+        with CaptureQueriesContext(connection) as queries:
+            results = search_backend.search(
+                "described role", filters={"site": self.site}, page=1
+            )
+            self.assertEqual(len(results.object_list), 5)
+
+        role_queries = [
+            query["sql"]
+            for query in queries.captured_queries
+            if "govuk_govukrole" in query["sql"] and "govuk_govukrole_tags" not in query["sql"]
+        ]
+        self.assertEqual(len(role_queries), 1, role_queries)

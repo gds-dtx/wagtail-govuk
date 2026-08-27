@@ -145,6 +145,40 @@ class MaintenanceModeTests(TestCase):
         # the maintenance still get through.
         self.assertNotEqual(response.status_code, 503)
 
+    def test_the_exempt_roots_stay_reachable_without_their_trailing_slash(self):
+        """/admin should reach APPEND_SLASH, not the unavailable page."""
+        for path in ("/admin", "/django-admin", "/accounts", "/api/health"):
+            response = self.client.get(path)
+            self.assertNotEqual(response.status_code, 503, path)
+
+    def test_a_page_that_merely_starts_with_an_exempt_word_is_closed(self):
+        """The prefixes are path segments, not string prefixes.
+
+        Without the trailing slash "/admin" also matches "/admin-guidance",
+        which would leave content pages open through a cutover.
+        """
+        for path in (
+            "/admin-guidance/",
+            "/accounts-payable/",
+            "/assets-register/",
+            "/static-content/",
+            "/generalist/",
+        ):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 503, path)
+
+    def test_the_unavailable_page_says_when_to_come_back(self):
+        """RFC 9110 Retry-After, so a crawler does not hammer a closed service."""
+        response = self.client.get("/")
+
+        self.assertEqual(response["Retry-After"], "3600")
+
+    @override_settings(MAINTENANCE_RETRY_AFTER=120)
+    def test_the_retry_window_is_configurable(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response["Retry-After"], "120")
+
     @override_settings(MAINTENANCE_MODE=False)
     def test_switched_off_the_service_answers_normally(self):
         response = self.client.get("/")

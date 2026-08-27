@@ -17,6 +17,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import (
     GroupPagePermission,
+    Page,
     PageViewRestriction,
     Site,
 )
@@ -445,3 +446,158 @@ class ImportedPasswordRestrictionTests(TestCase):
 
         restriction = PageViewRestriction.objects.get(page=self.page)
         self.assertEqual(restriction.password, "from-the-file")
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class PlaceholderHomePageReplacementPermissionTests(TestCase):
+    """Who may swap a new instance's placeholder home page for an imported one.
+
+    This is the only write in the importer that reaches above the site root:
+    it adds a page under the tree root, repoints the site, and deletes the
+    page that was there -- taking any descendants with it. It took a user and
+    never looked at it, so an account with nothing but access to the admin
+    could delete the home page by uploading a file, while the page explorer
+    it would have used offered it no delete button at all.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        # Left empty and of the starter type, which is what makes it a
+        # replaceable placeholder.
+        self.placeholder = self.site.root_page.specific
+        self.assertIsInstance(self.placeholder, SectionPage)
+        self.assertFalse(self.placeholder.get_children().exists())
+
+        self.import_url = reverse("govuk_pages_import")
+
+    def _payload(self) -> dict:
+        return {
+            "format": PAGE_EXPORT_FORMAT,
+            "pages": [
+                {
+                    "model": "govuk.ContentPage",
+                    "settings": {"title": "Capability Framework", "slug": "home"},
+                    "fields": {"body": "<p>The framework.</p>"},
+                    "tags": [],
+                    "privacy": [],
+                    "children": [],
+                }
+            ],
+        }
+
+    def _import(self):
+        return self.client.post(
+            self.import_url,
+            {
+                "json_file": SimpleUploadedFile(
+                    "export.json",
+                    json.dumps(self._payload()).encode(),
+                    content_type="application/json",
+                ),
+                "action": "import",
+            },
+            follow=True,
+        )
+
+    def _messages(self, response) -> str:
+        return " ".join(str(message) for message in response.context["messages"])
+
+    def _admin_only_user(self):
+        group = Group.objects.create(name="admin-only")
+        group.permissions.set(Permission.objects.filter(codename="access_admin"))
+        user = get_user_model().objects.create_user(
+            username="nobody",
+            email="nobody@example.gov.uk",
+            password="unused-password",
+            is_staff=True,
+        )
+        user.groups.add(group)
+        return user
+
+    def test_an_account_with_only_admin_access_cannot_replace_the_home_page(self):
+        self.client.force_login(self._admin_only_user())
+
+        response = self._import()
+
+        self.site.refresh_from_db()
+        self.assertEqual(self.site.root_page.pk, self.placeholder.pk)
+        self.assertTrue(Page.objects.filter(pk=self.placeholder.pk).exists())
+        self.assertIn("wagtailcore.change_site", self._messages(response))
+
+    def _editor_with_full_rights_over_the_home_page(self):
+        group = Group.objects.create(name="site-editor")
+        group.permissions.set(Permission.objects.filter(codename="access_admin"))
+        for codename in ("add_page", "change_page", "publish_page", "bulk_delete_page"):
+            GroupPagePermission.objects.create(
+                group=group,
+                page=self.placeholder,
+                permission=Permission.objects.get(
+                    content_type__app_label="wagtailcore", codename=codename
+                ),
+            )
+        user = get_user_model().objects.create_user(
+            username="editor",
+            email="editor@example.gov.uk",
+            password="unused-password",
+            is_staff=True,
+        )
+        user.groups.add(group)
+        return user
+
+    def test_full_rights_over_the_home_page_are_not_rights_over_the_site(self):
+        """The strictly harder half of the pair.
+
+        This account passes can_delete on the home page -- change and publish
+        between them are enough for Wagtail. What it may not do is repoint the
+        Site at something else, and that is the write that makes a replacement
+        a replacement rather than a deletion.
+        """
+        user = self._editor_with_full_rights_over_the_home_page()
+        self.assertTrue(self.placeholder.permissions_for_user(user).can_delete())
+        self.client.force_login(user)
+
+        response = self._import()
+
+        self.site.refresh_from_db()
+        self.assertEqual(self.site.root_page.pk, self.placeholder.pk)
+        self.assertTrue(Page.objects.filter(pk=self.placeholder.pk).exists())
+        self.assertIn("wagtailcore.change_site", self._messages(response))
+
+    def test_rights_over_the_site_are_not_rights_over_the_page(self):
+        """The other half: allowed to repoint a Site, not to delete this page."""
+        group = Group.objects.create(name="site-admin")
+        group.permissions.set(
+            Permission.objects.filter(codename__in=["access_admin", "change_site"])
+        )
+        user = get_user_model().objects.create_user(
+            username="site-admin",
+            email="site-admin@example.gov.uk",
+            password="unused-password",
+            is_staff=True,
+        )
+        user.groups.add(group)
+        self.client.force_login(user)
+
+        response = self._import()
+
+        self.site.refresh_from_db()
+        self.assertEqual(self.site.root_page.pk, self.placeholder.pk)
+        self.assertIn("permission to delete", self._messages(response))
+
+    def test_an_administrator_still_replaces_it(self):
+        """The check must not close the door on the person it was built for."""
+        self.client.force_login(
+            get_user_model().objects.create_superuser(
+                username="admin-user",
+                email="admin@example.gov.uk",
+                password="unused-password",
+            )
+        )
+
+        self._import()
+
+        self.site.refresh_from_db()
+        new_root = self.site.root_page.specific
+        self.assertIsInstance(new_root, ContentPage)
+        self.assertEqual(new_root.slug, "home")
+        self.assertFalse(Page.objects.filter(pk=self.placeholder.pk).exists())

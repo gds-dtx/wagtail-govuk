@@ -1,5 +1,5 @@
 {% extends "wagtailcore/page.html" %}
-{% load wagtailcore_tags %}
+{% load wagtailcore_tags govuk_filters %}
 {% comment %}
     The heading sits beside the side navigation rather than in the site hero,
     which is how the DDaT Capability Framework lays a role page out.
@@ -300,7 +300,7 @@
                                                 <div class="changelog-content">
                                                     {% for entry in role_section.changelog.entries %}
                                                         <p class="govuk-body-s govuk-!-font-weight-bold">{{ entry.date|date:"j F Y" }}</p>
-                                                        <div class="govuk-body-s">{{ entry.note|richtext }}</div>
+                                                        <div class="govuk-body-s">{% changelog_note entry %}</div>
                                                     {% endfor %}
                                                 </div>
                                             {% endif %}

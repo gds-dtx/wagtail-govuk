@@ -318,6 +318,33 @@ def _next_unique_slug(
     return slug_value
 
 
+def page_settings_panels() -> list:
+    """``Page.settings_panels``, minus scheduling while nothing can schedule.
+
+    Wagtail's go-live and expiry dates do nothing by themselves: they need the
+    ``publish_scheduled`` command run on a timer, and nothing in this service's
+    deployment runs it -- no cron, no worker, no scheduled task in any of the
+    three repos. An editor who sets a go-live date therefore gets a page that
+    quietly never publishes, with no error to tell them so. Not offering the
+    field is the honest version of that, and it leaves publishing as a thing
+    someone does deliberately rather than a thing that was supposed to happen.
+
+    ``SCHEDULED_PUBLISHING=true`` puts the panel back, and with it the "Edit
+    schedule" toggle in the status side panel -- Wagtail shows that only when
+    the form has a ``go_live_at`` field, which is this panel's doing.
+
+    Read once at import, as panel definitions are. Changing the env var means a
+    new container either way.
+    """
+    if getattr(settings, "SCHEDULED_PUBLISHING", False):
+        return list(Page.settings_panels)
+    return [
+        panel
+        for panel in Page.settings_panels
+        if getattr(panel, "path", None) != "wagtail.admin.panels.PublishingPanel"
+    ]
+
+
 @register_setting(icon="warning")
 class PhaseBannerSettings(BaseSiteSetting):
     enabled = models.BooleanField(
@@ -2807,7 +2834,7 @@ class ContentPage(Page):
         FieldPanel("framework_welcome_body"),
     ]
 
-    settings_panels = Page.settings_panels + [
+    settings_panels = page_settings_panels() + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
@@ -3105,7 +3132,7 @@ class RolePage(Page):
         FieldPanel("selected_roles"),
     ]
 
-    settings_panels = Page.settings_panels + [
+    settings_panels = page_settings_panels() + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
@@ -3626,7 +3653,7 @@ class SkillsAZPage(Page):
         FieldPanel("body"),
     ]
 
-    settings_panels = Page.settings_panels + [
+    settings_panels = page_settings_panels() + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
@@ -3811,7 +3838,7 @@ class TagListingsPage(Page):
         FieldPanel("free_text"),
     ]
 
-    settings_panels = Page.settings_panels + [
+    settings_panels = page_settings_panels() + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
@@ -4319,7 +4346,7 @@ class SectionPage(Page):
         FieldPanel("free_text"),
     ]
 
-    settings_panels = Page.settings_panels + [
+    settings_panels = page_settings_panels() + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),

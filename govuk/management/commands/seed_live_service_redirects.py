@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand, CommandError
 from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Site
 
-from govuk.models import GovukRole, GovukSkill, RolePage, SkillsAZPage
+from govuk.live_service_links import role_page_targets, skill_targets
 
 
 class Command(BaseCommand):
@@ -19,6 +19,9 @@ class Command(BaseCommand):
     carries the role or skill at the time the command is run, so it belongs
     in the runbook beside the import rather than in a migration. Run it again
     after content moves and the redirects follow; nothing is deleted.
+
+    The rule itself lives in govuk.live_service_links, which the changelog
+    notes are also rewritten through, so the two cannot drift apart.
     """
 
     help = (
@@ -40,17 +43,19 @@ class Command(BaseCommand):
         site = self._site(options.get("hostname"))
         created = updated = 0
 
-        for old_path, target in self._role_targets(site):
-            was_created = self._seed(site, old_path, redirect_page=target)
+        for slug, target in role_page_targets(site):
+            was_created = self._seed(site, f"/role/{slug}", redirect_page=target)
             created, updated = created + was_created, updated + (not was_created)
 
-        skill_targets, skills_note = self._skill_targets(site)
-        for old_path, link in skill_targets:
-            was_created = self._seed(site, old_path, redirect_link=link)
+        skills, skills_page = skill_targets(site)
+        for slug, link in skills:
+            was_created = self._seed(site, f"/skill/{slug}", redirect_link=link)
             created, updated = created + was_created, updated + (not was_created)
 
-        if skills_note:
-            self.stdout.write(skills_note)
+        if skills_page is None:
+            self.stdout.write(
+                "No live skills A to Z page: skill redirects were not seeded."
+            )
         self.stdout.write(
             f"Redirects for {site.hostname}: {created} created, {updated} updated."
         )
@@ -65,50 +70,6 @@ class Command(BaseCommand):
         if site is None:
             raise CommandError("There is no default site to seed redirects for.")
         return site
-
-    def _role_targets(self, site):
-        """(old_path, page) for every role a live page on this site renders.
-
-        The first page in tree order keeps a role that several pages carry,
-        matching the order the listings use.
-        """
-        slugs_by_id = dict(GovukRole.objects.values_list("pk", "slug"))
-        seen: set[int] = set()
-        targets = []
-        pages = (
-            RolePage.objects.live()
-            .descendant_of(site.root_page, inclusive=True)
-            .order_by("path")
-        )
-        for page in pages:
-            for role_id in page.get_selected_role_ids():
-                slug = slugs_by_id.get(role_id)
-                if not slug or role_id in seen:
-                    continue
-                seen.add(role_id)
-                targets.append((f"/role/{slug}", page))
-        return targets
-
-    def _skill_targets(self, site):
-        """(old_path, link) for every skill, into its section of the A to Z.
-
-        A skill is a snippet with no page of its own, so the redirect carries
-        the fragment the search results already use.
-        """
-        skills_page = (
-            SkillsAZPage.objects.live()
-            .descendant_of(site.root_page, inclusive=True)
-            .order_by("path")
-            .first()
-        )
-        if skills_page is None:
-            return [], "No live skills A to Z page: skill redirects were not seeded."
-        page_url = skills_page.url or ""
-        return [
-            (f"/skill/{slug}", f"{page_url}#{slug}")
-            for slug in GovukSkill.objects.values_list("slug", flat=True)
-            if slug
-        ], ""
 
     @staticmethod
     def _seed(site, old_path, *, redirect_page=None, redirect_link=""):

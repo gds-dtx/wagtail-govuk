@@ -395,6 +395,47 @@ def _import_framework_wording(
     result.updated += 1
 
 
+def _placeholder_replacement_refusal(user, *, site_root: Page) -> str | None:
+    """Why this user may not swap the home page, or None if they may.
+
+    Replacing the placeholder is the one write in this module that reaches
+    above the site root: it adds a page beside the site root, repoints the
+    Site at it, and deletes the page that was there, cascading to anything
+    beneath. Everything else here is checked -- snippets against their model
+    permissions, pages against can_add_subpage, can_edit and can_move, the
+    wording against its own settings policy -- so without this an account with
+    nothing but access to the import form could delete a site's home page,
+    while the explorer it would have used offered it no delete button.
+
+    Two permissions for the two writes.
+
+    The Site record, because repointing site.root_page is what the Sites area
+    of the admin exists to do, and wagtailcore.change_site is the permission
+    it asks for. Note it is *not* can_add_subpage on the tree root: Wagtail
+    refuses that to everyone, superusers included, because no page model
+    declares itself creatable directly under Root. The replacement is put
+    there anyway -- deliberately, since a site root has to live at depth 2 --
+    so that test would refuse the feature to the administrators it was built
+    for rather than restrict it.
+
+    The page itself, because a delete that cascades should ask what a delete
+    asks. can_delete is the same test the explorer's delete button uses.
+    """
+    if user is None:
+        return (
+            "Skipped replacing the placeholder home page because the import "
+            "was run without a user."
+        )
+    if not user_may(user, Site, "change"):
+        return _permission_error(Site, "change", "replacing the placeholder home page")
+    if not site_root.permissions_for_user(user).can_delete():
+        return (
+            "Skipped replacing the placeholder home page because you do not "
+            f"have permission to delete '{site_root.title}'."
+        )
+    return None
+
+
 def _replace_placeholder_home_page(raw_pages: list, *, site: Site, site_root: Page, user, result: PageImportResult) -> Page:
     """Swap a new instance's placeholder home page for the one being imported.
 
@@ -431,6 +472,11 @@ def _replace_placeholder_home_page(raw_pages: list, *, site: Site, site_root: Pa
 
     tree_root = site_root.get_parent()
     if tree_root is None:
+        return site_root
+
+    refusal = _placeholder_replacement_refusal(user, site_root=site_root)
+    if refusal is not None:
+        result.errors.append(refusal)
         return site_root
 
     placeholder_label = site_root._meta.label

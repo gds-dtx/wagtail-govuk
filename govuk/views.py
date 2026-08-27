@@ -58,7 +58,7 @@ def _eddsa_key_settings_for_request(request) -> EdDSAKeySettings:
     return EdDSAKeySettings.for_site(site)
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "HEAD"])
 def custom_css_view(request):
     custom_css = _customise_settings_for_request(request).render_custom_css()
     if not custom_css:
@@ -67,7 +67,7 @@ def custom_css_view(request):
     return HttpResponse(custom_css, content_type="text/css; charset=utf-8")
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "HEAD"])
 def jwks_view(request):
     jwks_keys = _eddsa_key_settings_for_request(request).build_jwks_keys()
     if not jwks_keys:
@@ -123,7 +123,7 @@ def _pagination_query(query: str, tag: str, source: str) -> str:
     )
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "HEAD"])
 def search_view(request):
     query = (request.GET.get("query") or "").strip()
     page_number = request.GET.get("page", 1)
@@ -179,7 +179,7 @@ FRAMEWORK_CSV_DOWNLOADS = {
 }
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "HEAD"])
 def framework_csv_view(request, name):
     """One of the framework's published CSVs, built from the content asked for.
 

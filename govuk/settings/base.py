@@ -422,12 +422,25 @@ FEATURE_FLAGS = {
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
 }
 
+# Wagtail's go-live and expiry dates only fire if something runs the
+# publish_scheduled management command on a schedule. Nothing does: there is no
+# cron, no worker and no scheduled task in any of the deployment repos, so a
+# date set in the admin is a promise the service cannot keep -- the page sits
+# there unpublished and nobody is told. Off, the publishing panel is hidden and
+# an editor publishes now or not at all. Turn it on the day the scheduled task
+# exists; nothing else has to change.
+SCHEDULED_PUBLISHING = _bool_env("SCHEDULED_PUBLISHING", default=False)
+
 # Closes the service behind the GOV.UK service-unavailable page for a cutover
 # or an outage, leaving the health check and the admin open. The resume text
 # names the moment the service comes back, in the pattern's own form:
 # "9am on Monday 19 November 2018".
 MAINTENANCE_MODE = _bool_env("MAINTENANCE_MODE", default=False)
 MAINTENANCE_RESUME_TEXT = os.getenv("MAINTENANCE_RESUME_TEXT", "")
+# Seconds, sent as the 503's Retry-After header. The resume text above is
+# prose for a reader ("9am on Monday 19 November 2018") and nothing can parse
+# it into a date, so the header takes its own number.
+MAINTENANCE_RETRY_AFTER = int(os.getenv("MAINTENANCE_RETRY_AFTER", 60 * 60))
 
 # When enabled, logs inbound Django requests (including headers) at INFO level.
 INCOMING_REQUEST_INFO_LOGGING = _bool_env("INCOMING_REQUEST_INFO_LOGGING")

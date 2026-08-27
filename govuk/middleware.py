@@ -166,19 +166,45 @@ class MaintenanceModeMiddleware:
     and the admin stays open so the people doing the work can see it.
     """
 
+    # Every prefix ends in its separator. Without the trailing slash "/admin"
+    # is also a prefix of "/admin-guidance", so a content page whose slug
+    # happens to start with one of these words would stay open through a
+    # cutover -- and the framework has pages beginning "accounts", "assets"
+    # and "static" waiting to be written.
     EXEMPT_PREFIXES = (
         "/api/health/",
+        "/admin/",
+        "/django-admin/",
+        "/accounts/",
+        "/_util/",
+        "/static/",
+        # The unavailable page's own dressing: the GOV.UK fonts and crest are
+        # served through the /assets alias and the customised styles through
+        # /gen, and a page explaining the closure should not arrive undressed.
+        "/assets/",
+        "/gen/",
+    )
+
+    # The roots themselves, which carry no trailing slash. Asking for /admin
+    # should reach Django's APPEND_SLASH redirect to /admin/ rather than the
+    # unavailable page; matching these exactly keeps /admin-guidance closed.
+    EXEMPT_PATHS = (
+        "/api/health",
         "/admin",
         "/django-admin",
         "/accounts",
         "/_util",
         "/static",
-        # The unavailable page's own dressing: the GOV.UK fonts and crest are
-        # served through the /assets alias and the customised styles through
-        # /gen, and a page explaining the closure should not arrive undressed.
         "/assets",
         "/gen",
     )
+
+    # RFC 9110 section 10.2.3: how long a client should wait before asking
+    # again. Without it a crawler is free to retry immediately and a browser
+    # has nothing to go on, so a planned hour's cutover reads as a permanent
+    # failure. An hour is the default because that is the order of a cutover;
+    # MAINTENANCE_RETRY_AFTER overrides it.
+    DEFAULT_RETRY_AFTER_SECONDS = 3600
 
     def __init__(self, get_response):
         self.get_response = get_response
@@ -189,11 +215,19 @@ class MaintenanceModeMiddleware:
 
         if not getattr(settings, "MAINTENANCE_MODE", False):
             return self.get_response(request)
-        if request.path.startswith(self.EXEMPT_PREFIXES):
+        if request.path in self.EXEMPT_PATHS or request.path.startswith(
+            self.EXEMPT_PREFIXES
+        ):
             return self.get_response(request)
-        return render(
+        response = render(
             request,
             "503.html",
             {"maintenance_resume_text": getattr(settings, "MAINTENANCE_RESUME_TEXT", "")},
             status=503,
         )
+        response["Retry-After"] = str(
+            getattr(
+                settings, "MAINTENANCE_RETRY_AFTER", self.DEFAULT_RETRY_AFTER_SECONDS
+            )
+        )
+        return response
