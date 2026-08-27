@@ -164,21 +164,6 @@ def search_view(request):
     )
 
 
-FRAMEWORK_CSV_DOWNLOADS = {
-    # Filenames follow the published downloads, dated so a saved file says
-    # which day's content it holds.
-    "roles": ("Role content - Capability Framework", framework_csv.write_roles_csv),
-    "skills": (
-        "Skill description content - Capability Framework",
-        framework_csv.write_skills_csv,
-    ),
-    "changelog": (
-        "Change notes - Changelog - Capability Framework",
-        framework_csv.write_changelog_csv,
-    ),
-}
-
-
 @require_http_methods(["GET", "HEAD"])
 def framework_csv_view(request, name):
     """One of the framework's published CSVs, built from the content asked for.
@@ -191,7 +176,7 @@ def framework_csv_view(request, name):
     if not settings.FEATURE_FLAGS.get("SKILLS"):
         raise Http404
     try:
-        label, write = FRAMEWORK_CSV_DOWNLOADS[name]
+        label, write = framework_csv.FRAMEWORK_CSV_DOWNLOADS[name]
     except KeyError:
         raise Http404
 

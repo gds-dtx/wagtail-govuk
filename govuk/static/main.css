@@ -831,3 +831,98 @@ main > :nth-last-child(1 of .section-cards-container) {
     min-width: 100%;
     width: auto;
 }
+
+/* The GOV.UK attachment component, for the framework's CSV downloads
+   (CS32-3313). Rules follow govuk_publishing_components' gem-c-attachment so
+   the card looks like the ones on GOV.UK, which is the point of the AC: a
+   reader who has downloaded a spreadsheet from a department before should
+   recognise this one without reading it.
+
+   The gem is not a dependency here -- it belongs to the Rails publishing
+   stack -- so the handful of rules the component needs are written out. The
+   font sizes and the thumbnail geometry are the gem's, and the colours come
+   from the Design System's own custom properties, which govuk-frontend 6
+   defines. */
+.gem-c-attachment {
+    position: relative;
+}
+
+/* The thumbnail floats, so the section has to contain it or the next
+   paragraph rides up alongside the spreadsheet icon. */
+.gem-c-attachment::after {
+    content: "";
+    display: block;
+    clear: both;
+}
+
+.gem-c-attachment__thumbnail {
+    position: relative;
+    float: left;
+    width: auto;
+    padding: 5px;
+}
+
+.gem-c-attachment__thumbnail-image {
+    display: block;
+    width: auto;
+    max-width: 66px;
+    height: 93px;
+    background: #fff;
+    box-shadow: 0 2px 2px #858686, 0 0 0 5px var(--govuk-border-colour, #cecece);
+    fill: #858686;
+    stroke: #858686;
+}
+
+.gem-c-attachment__details {
+    padding-left: 89px;
+}
+
+@media (min-width: 40.0625em) {
+    .gem-c-attachment__thumbnail-image {
+        max-width: 99px;
+        height: 140px;
+    }
+
+    .gem-c-attachment__details {
+        padding-left: 134px;
+    }
+}
+
+/* The title is a heading, so it inherits the heading font weight from the
+   Design System; the gem sets it back to normal weight and sizes it between
+   govuk-heading-s and govuk-heading-m. */
+.gem-c-attachment__title {
+    margin: 0 0 15px;
+    font-size: 1.3125rem;
+    font-weight: 400;
+    line-height: 1.1904761905;
+}
+
+@media (min-width: 40.0625em) {
+    .gem-c-attachment__title {
+        font-size: 1.6875rem;
+        line-height: 1.1111111111;
+    }
+}
+
+.gem-c-attachment__metadata {
+    margin: 0;
+    color: var(--govuk-secondary-text-colour, #484949);
+    font-size: 1.1875rem;
+    line-height: 1.3157894737;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* "CSV" is an abbreviation with a title, so the pointer says so rather than
+   underlining it as if it were a link. */
+.gem-c-attachment__abbr {
+    cursor: help;
+    text-decoration: none;
+}
+
+/* A download title is a filename-ish phrase and can be long, so it wraps
+   rather than pushing the card past the viewport at 320px. */
+.gem-c-attachment__link.govuk-link {
+    word-break: break-word;
+}

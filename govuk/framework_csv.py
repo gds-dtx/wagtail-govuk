@@ -160,3 +160,18 @@ def write_changelog_csv(f) -> int:
         )
         rows += 1
     return rows
+
+
+FRAMEWORK_CSV_DOWNLOADS = {
+    # Filenames follow the published downloads, dated so a saved file says
+    # which day's content it holds.
+    "roles": ("Role content - Capability Framework", write_roles_csv),
+    "skills": (
+        "Skill description content - Capability Framework",
+        write_skills_csv,
+    ),
+    "changelog": (
+        "Change notes - Changelog - Capability Framework",
+        write_changelog_csv,
+    ),
+}

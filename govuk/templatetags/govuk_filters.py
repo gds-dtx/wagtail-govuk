@@ -3,6 +3,7 @@ from django.utils.safestring import mark_safe
 from wagtail.models import Site
 from wagtail.rich_text import expand_db_html
 
+from govuk.attachments import rewrite_csv_download_links
 from govuk.live_service_links import (
     live_service_link_map,
     rewrite_live_service_links,
@@ -82,3 +83,17 @@ def changelog_note(context, entry):
     # What |richtext does: resolve Wagtail's own page and document links, which
     # an editor adding a note through the admin writes.
     return mark_safe(expand_db_html(rewritten))
+
+
+@register.filter
+def page_body(value):
+    """A page's rich text body, with CSV download links shown as attachments.
+
+    This replaces ``{{ self.body|richtext }}`` on content pages. Everything
+    ``|richtext`` does still happens -- Wagtail's own page, document and embed
+    links are resolved -- and then a paragraph holding nothing but a link to
+    one of the framework's CSVs becomes the GOV.UK attachment component, which
+    CS32-3313 asks for. See ``govuk.attachments`` for why that is done here
+    rather than asking an editor to write the markup.
+    """
+    return mark_safe(rewrite_csv_download_links(expand_db_html(str(value or ""))))
