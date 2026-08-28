@@ -86,6 +86,30 @@ class PointsToTextTests(SimpleTestCase):
     def test_placeholder_is_written_without_prefix_or_bullet(self):
         self.assertEqual(points_to_text([LEVEL_NOT_DEFINED]), LEVEL_NOT_DEFINED)
 
+    def test_the_placeholder_is_recognised_in_either_wording(self):
+        """The published skills export carries both: 37 rows say "currently"
+        and one does not. Matching only the first put that row out as
+        "You can:\\n- This skill level is not defined." in the CSV this
+        service publishes back."""
+        variant = "This skill level is not defined."
+
+        self.assertEqual(points_to_text([variant]), variant)
+
+    def test_a_real_point_that_merely_mentions_the_words_is_left_alone(self):
+        point = "This skill level is not defined by the role's seniority alone"
+
+        self.assertEqual(points_to_text([point]), f"You can:\n- {point}")
+
+    def test_the_placeholder_beside_real_points_stays_a_bullet(self):
+        """One point is a placeholder standing in for a description; the same
+        sentence in a list is a sentence in a list."""
+        points = [LEVEL_NOT_DEFINED, "do a real thing"]
+
+        self.assertEqual(
+            points_to_text(points),
+            f"You can:\n- {LEVEL_NOT_DEFINED}\n- do a real thing",
+        )
+
     def test_empty_points_produce_empty_string(self):
         self.assertEqual(points_to_text([]), "")
 

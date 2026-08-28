@@ -27,8 +27,14 @@ EMPTY_MARKDOWN_LINK = re.compile(r"\[\s*+\]\([^()\[\]]*\)")
 
 NOT_IN_USE = "NOT IN USE"
 # The published exports use this sentence, without bullets, where a skill
-# level has no description yet.
+# level has no description yet. The service publishes it in two wordings --
+# 37 rows carry "currently" and one does not -- so it is recognised by shape
+# rather than by the exact sentence. Matching the one sentence put the odd row
+# out under a "You can:" heading in the CSV this service publishes back.
 LEVEL_NOT_DEFINED = "This skill level is currently not defined."
+_LEVEL_NOT_DEFINED = re.compile(
+    r"^this skill level is (?:currently )?not defined\.?$", re.IGNORECASE
+)
 
 _BLOCK_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6"}
 
@@ -180,13 +186,20 @@ def rich_html_to_text(html) -> str:
     return "\n".join(parser.lines)
 
 
+def is_level_not_defined(text: str) -> bool:
+    """Whether a skill level's prose is the "no description yet" placeholder."""
+    return bool(_LEVEL_NOT_DEFINED.match(" ".join((text or "").split())))
+
+
 def points_to_text(points: list[str], *, prefix: str = "You can:") -> str:
     """Render skill level points back into the CSV prose convention."""
     if not points:
         return ""
-    if points == [LEVEL_NOT_DEFINED]:
-        # Placeholder text is published without a prefix or bullet.
-        return LEVEL_NOT_DEFINED
+    if len(points) == 1 and is_level_not_defined(points[0]):
+        # Placeholder text is published without a prefix or bullet, and in the
+        # wording it arrived in -- the round trip is not the place to settle
+        # which of the service's two sentences is the right one.
+        return points[0]
     bullets = "\n".join(f"- {point}" for point in points)
     return f"{prefix}\n{bullets}" if prefix else bullets
 
