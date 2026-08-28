@@ -1,8 +1,11 @@
 from django.core.management.base import BaseCommand, CommandError
-from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Site
 
-from govuk.live_service_links import role_page_targets, skill_targets
+from govuk.live_service_links import (
+    seed_live_service_redirects,
+    unanswerable_live_service_urls,
+    unseeded_live_service_redirects,
+)
 
 
 class Command(BaseCommand):
@@ -15,13 +18,17 @@ class Command(BaseCommand):
     itself answering 404 -- the welcome copy alone links 37 roles the live
     way.
 
-    The mapping is a rule, not content: each redirect points at whatever page
-    carries the role or skill at the time the command is run, so it belongs
-    in the runbook beside the import rather than in a migration. Run it again
-    after content moves and the redirects follow; nothing is deleted.
+    An import now seeds these itself, so on a fresh instance this command is a
+    second line rather than the only one. It stays because the mapping is a
+    rule, not content: each redirect points at whatever page carries the role
+    or skill at the time it is run, so a page moved or reslugged in the admin
+    afterwards is a reason to run it again. Nothing is deleted.
+
+    --check writes nothing and fails if any live-service URL would not reach
+    the right page, which is what CS32-1579 asks be tested before cutover.
 
     The rule itself lives in govuk.live_service_links, which the changelog
-    notes are also rewritten through, so the two cannot drift apart.
+    notes are also rewritten through, so the three cannot drift apart.
     """
 
     help = (
@@ -38,26 +45,64 @@ class Command(BaseCommand):
                 "leaves its other sites alone."
             ),
         )
+        parser.add_argument(
+            "--check",
+            action="store_true",
+            help=(
+                "Report what is missing and exit non-zero, without writing "
+                "anything. For the cutover check and for CI."
+            ),
+        )
 
     def handle(self, *args, **options):
         site = self._site(options.get("hostname"))
-        created = updated = 0
+        if options.get("check"):
+            self._check(site)
+            return
 
-        for slug, target in role_page_targets(site):
-            was_created = self._seed(site, f"/role/{slug}", redirect_page=target)
-            created, updated = created + was_created, updated + (not was_created)
-
-        skills, skills_page = skill_targets(site)
-        for slug, link in skills:
-            was_created = self._seed(site, f"/skill/{slug}", redirect_link=link)
-            created, updated = created + was_created, updated + (not was_created)
-
-        if skills_page is None:
+        seeded = seed_live_service_redirects(site)
+        if seeded.skills_have_nowhere_to_go:
             self.stdout.write(
                 "No live skills A to Z page: skill redirects were not seeded."
             )
         self.stdout.write(
-            f"Redirects for {site.hostname}: {created} created, {updated} updated."
+            f"Redirects for {site.hostname}: {seeded.created} created, "
+            f"{seeded.updated} updated, {seeded.unchanged} already correct."
+        )
+
+    def _check(self, site):
+        """Fail loudly rather than report a number nobody reads.
+
+        Two separate failures. A path with no redirect is one this command
+        would fix, so the message says to run it. A URL with no target at all
+        is content -- a role no live page renders -- and running the command
+        again would not touch it, so it is named separately to save somebody
+        trying.
+        """
+        unseeded = unseeded_live_service_redirects(site)
+        unanswerable = unanswerable_live_service_urls(site)
+
+        for path in unseeded:
+            self.stdout.write(f"  no redirect: {path}")
+        for url in unanswerable:
+            self.stdout.write(f"  nothing to point at: {url}")
+
+        problems = []
+        if unseeded:
+            problems.append(
+                f"{len(unseeded)} live service URLs have no redirect on "
+                f"{site.hostname}. Run this command without --check."
+            )
+        if unanswerable:
+            problems.append(
+                f"{len(unanswerable)} live service URLs have nothing to point "
+                "at: no live page on this site carries that role or skill."
+            )
+        if problems:
+            raise CommandError(" ".join(problems))
+
+        self.stdout.write(
+            f"Every live service URL redirects to a page on {site.hostname}."
         )
 
     def _site(self, hostname):
@@ -70,16 +115,3 @@ class Command(BaseCommand):
         if site is None:
             raise CommandError("There is no default site to seed redirects for.")
         return site
-
-    @staticmethod
-    def _seed(site, old_path, *, redirect_page=None, redirect_link=""):
-        _, was_created = Redirect.objects.update_or_create(
-            old_path=Redirect.normalise_path(old_path),
-            site=site,
-            defaults={
-                "redirect_page": redirect_page,
-                "redirect_link": redirect_link,
-                "is_permanent": True,
-            },
-        )
-        return was_created

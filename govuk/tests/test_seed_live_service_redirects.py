@@ -8,6 +8,7 @@ import json
 from io import StringIO
 
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Site
@@ -24,8 +25,9 @@ def _feature_flags() -> dict[str, bool]:
     }
 
 
-@override_settings(FEATURE_FLAGS=_feature_flags())
-class SeedLiveServiceRedirectsTests(TestCase):
+class LiveServiceFixture(TestCase):
+    """One role with a page that renders it, one skill with an A to Z to sit in."""
+
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
@@ -51,6 +53,9 @@ class SeedLiveServiceRedirectsTests(TestCase):
         call_command("seed_live_service_redirects", stdout=out)
         return out.getvalue()
 
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class SeedLiveServiceRedirectsTests(LiveServiceFixture):
     def test_a_live_role_url_reaches_the_page_that_renders_the_role(self):
         self._run()
 
@@ -138,3 +143,88 @@ class SeedLiveServiceRedirectsTests(TestCase):
         self.assertTrue(
             Redirect.objects.filter(old_path__startswith="/role/").exists()
         )
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class CheckLiveServiceRedirectsTests(LiveServiceFixture):
+    """--check, for step 6 of the cutover: before DNS, while it is still free.
+
+    CS32-1579's third acceptance criterion is that each old URL is tested and
+    returns the expected redirect, so this has to fail rather than report. A
+    command that prints "3 URLs have no redirect" and exits 0 is a line in a
+    log nobody reads at four in the afternoon on a cutover day.
+    """
+
+    def _check(self):
+        out = StringIO()
+        call_command("seed_live_service_redirects", "--check", stdout=out)
+        return out.getvalue()
+
+    def test_a_fully_seeded_site_passes(self):
+        self._run()
+
+        self.assertIn("Every live service URL redirects", self._check())
+
+    def test_a_missing_redirect_fails_and_names_the_url(self):
+        with self.assertRaises(CommandError) as refusal:
+            self._check()
+
+        self.assertIn("have no redirect", str(refusal.exception))
+        self.assertIn("Run this command without --check", str(refusal.exception))
+
+    def test_checking_writes_nothing(self):
+        """Otherwise the check and the fix are the same command, and a check
+        that repairs what it is checking can never fail twice running."""
+        with self.assertRaises(CommandError):
+            self._check()
+
+        self.assertFalse(Redirect.objects.exists())
+
+    def test_a_redirect_pointing_somewhere_else_fails(self):
+        """Seeded once, then the page moved, or the row was edited by hand."""
+        self._run()
+        redirect = Redirect.objects.get(
+            old_path=Redirect.normalise_path(f"/role/{self.role.slug}")
+        )
+        redirect.redirect_page = self.skills_page
+        redirect.save(update_fields=["redirect_page"])
+
+        with self.assertRaises(CommandError) as refusal:
+            self._check()
+
+        self.assertIn("have no redirect", str(refusal.exception))
+
+    def test_a_temporary_redirect_fails(self):
+        """The acceptance criterion says 301, and says so twice."""
+        self._run()
+        Redirect.objects.filter(
+            old_path=Redirect.normalise_path(f"/role/{self.role.slug}")
+        ).update(is_permanent=False)
+
+        with self.assertRaises(CommandError):
+            self._check()
+
+    def test_a_role_with_no_page_fails_differently(self):
+        """Seeding cannot fix this one, so the message does not suggest it.
+
+        The rule produces no target for a role no live page renders, so there
+        is nothing to create and nothing to report as missing -- and the URL is
+        one the live service publishes today.
+        """
+        GovukRole.objects.create(title="Unpublished role")
+        self._run()
+
+        with self.assertRaises(CommandError) as refusal:
+            self._check()
+
+        self.assertIn("nothing to point at", str(refusal.exception))
+        self.assertNotIn("have no redirect", str(refusal.exception))
+
+    def test_a_skill_with_no_a_to_z_fails(self):
+        self.skills_page.unpublish()
+        self._run()
+
+        with self.assertRaises(CommandError) as refusal:
+            self._check()
+
+        self.assertIn("nothing to point at", str(refusal.exception))

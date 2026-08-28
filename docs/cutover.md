@@ -22,7 +22,7 @@ Three things are outside it:
 
 | Not in the export | Where it lives | How it gets to production |
 | --- | --- | --- |
-| Redirects | `wagtail.contrib.redirects.Redirect` rows | `manage.py seed_live_service_redirects` |
+| Redirects | `wagtail.contrib.redirects.Redirect` rows | Seeded by the import itself; `manage.py seed_live_service_redirects` afterwards |
 | Site settings | `BaseSiteSetting` subclasses in `govuk/models.py` | Re-entered in the CMS |
 | Uploaded images and documents | The media volume | Re-uploaded, or copied at the storage layer |
 
@@ -89,7 +89,7 @@ the placeholder has no children. **Import before anyone adds a page by hand.**
 If the placeholder has picked up children, the import nests the whole site a
 level down and every URL gains a `/home/` prefix.
 
-## 4. Seed the redirects
+## 4. Check the redirects
 
 The live service publishes roles at `/role/<slug>` and skills at
 `/skill/<slug>`. Wagtail serves a role at `/<slug>` and every skill as a section
@@ -97,16 +97,32 @@ of the Skills A to Z. Without redirects, every bookmark, every search result and
 every link inside the migrated content itself answers 404 — the welcome copy
 alone links 37 roles the old way.
 
+**The import in step 3 seeds these itself**, so on a clean run there is nothing
+to do here but confirm it. The import report says how many it wrote. If the
+account that ran the import does not administer redirects, the report says that
+instead, in the "some items were skipped" line — read it.
+
 ```bash
 aws ecs execute-command --cluster <cluster> --task <task-id> \
   --container <container> --interactive \
-  --command "python manage.py seed_live_service_redirects --hostname <production-host>"
+  --command "python manage.py seed_live_service_redirects --hostname <production-host> --check"
 ```
 
-`--hostname` scopes the redirects to one site, so a shared instance leaves its
-other sites alone. The command creates or updates and deletes nothing, so it is
+`--check` writes nothing and exits non-zero listing anything that would not
+reach the right page. Two different failures, and they need different things
+doing:
+
+- **`no redirect: /role/…`** — run the same command without `--check`.
+- **`nothing to point at: /role/…`** — no live page on this site carries that
+  role, so no redirect can be built for it. That is a content problem: find out
+  whether the page failed to import or was never meant to exist.
+
+Without `--check`, the command creates or corrects and deletes nothing, so it is
 safe to run again after content moves — and it should be, because each redirect
 points at whichever page carries that role or skill at the time it runs.
+
+`--hostname` scopes the redirects to one site, so a shared instance leaves its
+other sites alone.
 
 ## 5. Re-enter the site settings
 
@@ -148,6 +164,10 @@ directory rather than in this repository.
 ```bash
 # Every URL the old service publishes still resolves
 node redirect_coverage.mjs                      # against the production host
+
+# The same question asked of the database rather than over HTTP, so it names
+# what is wrong rather than counting what is
+python manage.py seed_live_service_redirects --hostname <production-host> --check
 
 # The robots directive, which is the NOINDEX check
 curl -s https://<production-host>/robots.txt    # expect "Disallow:", NOT "Disallow: /"

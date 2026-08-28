@@ -27,6 +27,15 @@ def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
     }
 
 
+def _placeholder_notes(result) -> list[str]:
+    """The notes about the home page, and not the ones about redirects.
+
+    An import reports several things it did beyond adding what was in the
+    file, so these tests name the one they are about rather than counting.
+    """
+    return [note for note in result.notes if "placeholder home page" in note]
+
+
 @override_settings(FEATURE_FLAGS=_feature_flags())
 class RoleExportImportFieldTests(TestCase):
     """The export has to carry every field, or a transfer silently loses content."""
@@ -522,7 +531,7 @@ class RoleExportImportFieldTests(TestCase):
             payload=payload, site=self.site, user=self.user
         )
         self.assertEqual(result.errors, [])
-        self.assertEqual(len(result.notes), 1)
+        self.assertTrue(_placeholder_notes(result))
 
         self.site.refresh_from_db()
         new_root = self.site.root_page.specific
@@ -545,7 +554,7 @@ class RoleExportImportFieldTests(TestCase):
 
         self.site.refresh_from_db()
         self.assertEqual(self.site.root_page.pk, placeholder.pk)
-        self.assertEqual(result.notes, [])
+        self.assertEqual(_placeholder_notes(result), [])
 
     def _add_role_page(self) -> RolePage:
         page = self.site.root_page.add_child(

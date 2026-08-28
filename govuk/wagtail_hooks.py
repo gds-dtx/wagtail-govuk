@@ -902,6 +902,12 @@ def pages_import_view(request):
             f"updated {result.updated}, skipped {result.skipped}.{drafted_note}"
         ),
     )
+    if result.notes:
+        # Things the import did beyond adding and updating what was in the
+        # file: replacing a placeholder home page, seeding the live service's
+        # redirects. Both change the site in ways the counts above do not
+        # show, and both were previously recorded and then never shown.
+        messages.info(request, " ".join(result.notes))
     if result.errors:
         messages.warning(
             request, f"Some items were skipped: {_errors_preview(result.errors)}"

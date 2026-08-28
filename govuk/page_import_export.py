@@ -12,12 +12,17 @@ from django.db import models as django_models, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime, parse_time
 from django.utils.text import slugify
+from wagtail.contrib.redirects.models import Redirect
 from wagtail.fields import StreamField
 from wagtail.models import Page, PageViewRestriction, Site
 from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import RichText
 
 from govuk.capability_framework import repair_changelog_html
+from govuk.live_service_links import (
+    seed_live_service_redirects,
+    unseeded_live_service_redirects,
+)
 from govuk.models import (
     JOB_GRADE_CHOICES,
     SCS_GRADE_CHOICES,
@@ -231,6 +236,9 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
             result=result,
             tag_lookup=tag_lookup,
         )
+
+    if skills_enabled:
+        _seed_live_service_redirects(site=site, user=user, result=result)
     return result
 
 
@@ -265,6 +273,62 @@ def _permission_error(model, action: str, subject: str) -> str:
         f"Skipped {subject} because you do not have permission to {action} "
         f"{model._meta.verbose_name_plural} ({codename})."
     )
+
+
+def _seed_live_service_redirects(*, site: Site, user, result: PageImportResult):
+    """Point the live service's URLs at the pages this import just brought in.
+
+    The redirects are not in the export file -- they are rows in Wagtail's own
+    redirects app, and they name pages by primary key, which means nothing in
+    another database. So the runbook had a step for them, run by hand over
+    `aws ecs execute-command` on a task with `enable_execute_command` turned on
+    for the occasion, after the import and before DNS. Miss it and the site
+    launches looking complete: every page is there, and every bookmark, every
+    search result and every GovSearch link into the old service answers 404
+    (CS32-1579).
+
+    The import is the moment the pages those redirects point at come into
+    existence, so it is the moment to write them. The rule is the same one the
+    command uses and the changelog notes are rewritten through, and it creates
+    or corrects and never deletes, so running it here does not take the step
+    away from the runbook -- it stops the step being the only thing standing
+    between an import and a working site.
+
+    Nothing is said when there is nothing to do, which is the ordinary case: an
+    editor importing a page into a site whose redirects are already right
+    should not be told about redirects at all.
+    """
+    if not unseeded_live_service_redirects(site):
+        return
+
+    for action in ("add", "change"):
+        if not user_may(user, Redirect, action):
+            # Reported rather than passed over. The paths are missing whether
+            # or not this account could have written them, and the person who
+            # ran the import is the one who still has time to say so.
+            result.errors.append(
+                _permission_error(
+                    Redirect, action, "seeding the live service's redirects"
+                )
+            )
+            return
+
+    seeded = seed_live_service_redirects(site)
+    if seeded.written:
+        result.notes.append(
+            f"Redirected {seeded.written} of the live service's URLs to the "
+            f"pages this site serves them on ({seeded.created} new, "
+            f"{seeded.updated} repointed)."
+        )
+    if seeded.skills_have_nowhere_to_go:
+        # A note, not an error: nothing in the file was skipped, which is what
+        # this import's errors mean and what the admin says they mean. The
+        # loud version is `seed_live_service_redirects --check`, which the
+        # cutover runs before DNS moves and which fails on exactly this.
+        result.notes.append(
+            "The live service's /skill/ URLs were not redirected: this site "
+            "has no live skills A to Z page for them to point into."
+        )
 
 
 def _report_skills_feature_is_off(payload: dict, *, result: PageImportResult):
