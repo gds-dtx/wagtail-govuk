@@ -10,6 +10,36 @@ Read the whole thing before starting. The steps are ordered because several of
 them depend on the one before, and two of them are hard to undo once DNS has
 moved.
 
+## Where the content actually comes from
+
+**This repository holds no content, and it is not supposed to.** It holds one
+codebase serving several government sites. Roles, skills, change notes and page
+copy are not in it and must not be added to it: they arrive on an instance
+through the JSON export at `/admin/pages/import-export/`, and that export is the
+only supported way content reaches production.
+
+That has one consequence worth stating before anything else, because it is easy
+to get backwards. A running instance and the repository are not two views of the
+same thing. Content on the dev instance is a rehearsal artefact — useful for
+checking that a template renders and a redirect resolves, but not the thing
+being shipped. What production receives is whatever the export file holds on the
+day it is taken. So content being wrong, missing or out of date on an instance is
+never fixed by changing code; it is fixed by re-importing, and then re-exporting.
+
+**Do not use a data migration to deliver content.** A few migrations do carry
+DDaT-specific values — `0061_seed_roles_that_could_lead_here` is the clearest
+example, filling in the four Senior Civil Service progression lists. Every one of
+them is written to be a no-op on a database that does not already hold the rows
+it refers to, which is exactly what a fresh production database is. They run
+before the import, against an empty schema, and correctly do nothing. Relying on
+one to populate production would therefore fail silently: migrations succeed, the
+site comes up, and the field is simply empty. The export carries these fields
+itself — `roles_that_could_lead_here` is serialised on the way out and applied on
+the way in, and the importer distinguishes an export that *says nothing* about a
+field from one that asks for it to be *emptied* — so the import is the mechanism
+and the migrations are only a convenience for instances that already had content
+when they ran.
+
 ## What travels, and what does not
 
 The admin export at `/admin/pages/import-export/` produces a single JSON

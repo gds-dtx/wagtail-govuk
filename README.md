@@ -17,9 +17,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to send a change back.
   vulnerability is in [SECURITY.md](SECURITY.md).
 - [Editorial workflow](docs/editorial-workflow.md) — how content is drafted,
   moderated and published, who can do what, and where the audit trail is.
-- [Cutting a site over to Wagtail](docs/cutover.md) — the migration runbook,
-  including the three kinds of state that do not travel in a content export,
-  and how to refresh content before you go.
+- [Cutting a site over to Wagtail](docs/cutover.md) — the migration runbook.
+  Start with [where content comes from](docs/cutover.md#where-the-content-actually-comes-from):
+  none of it is in this repository. Also covers the three kinds of state that do
+  not travel in a content export, and how to refresh content before you go.
 - [Decommissioning the old service](docs/decommission.md) — what happens to the
   system being replaced, and why not at cutover.
 - [The published downloads](docs/downloads.md) — the three CSVs and their

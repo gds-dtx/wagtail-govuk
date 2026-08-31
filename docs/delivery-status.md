@@ -184,12 +184,21 @@ not exist" concern from 10 August **is resolved**: `/job-grades`, `/roadmap` and
 back to plain text rather than emitting a dead link
 (`_page_url_by_slug`, `govuk/models.py`).
 
-**Left, and this one is new:** the migrated content is now **stale against the
-live service**. Two roles the live service publishes have no page on dev at all
-— `agile-coach` and `data-and-artificial-intelligence-ai-ethicist`. Cutting over
-without a content refresh would ship a framework missing a role and two live
-URLs answering 404. The refresh procedure is now written up as a section of
-[cutover.md](cutover.md).
+**Left, and this one is new:** the content held on the dev instance is **stale
+against the live service**. Two roles the live service publishes have no page
+there at all — `agile-coach` and
+`data-and-artificial-intelligence-ai-ethicist`.
+
+This is not a defect in the code, and there is nothing to fix in this
+repository. The repository carries no content (see
+[cutover.md](cutover.md#where-the-content-actually-comes-from)); the dev
+instance's content is a rehearsal artefact, and what production receives is
+whatever the JSON export holds on the day. It is on this ticket because
+*executing the migration* is what this ticket covers, and executing it against
+a stale source would ship a framework missing a role, with two live URLs
+answering 404 on the first day. The refresh is a step in the runbook, not a
+change to the build — see
+[cutover.md](cutover.md#refreshing-the-content-before-you-export).
 
 Also left: hosting to migrate into, Content Lead sign-off on no content loss,
 and UR/Product sign-off on journeys.
