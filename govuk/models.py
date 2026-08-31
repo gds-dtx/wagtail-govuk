@@ -22,6 +22,7 @@ from django.core.validators import RegexValidator
 from django.db import models, transaction
 from django.db.models import Q
 from django.db.models.functions import Coalesce
+from django.http import Http404
 from django.utils import timezone
 from django.utils.text import Truncator, slugify
 from modelcluster.contrib.taggit import ClusterTaggableManager
@@ -2954,13 +2955,21 @@ class ContentPage(Page):
 
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
-        # Nothing framework-shaped until an editor has asked for it. The
-        # lookup below reads as a read and is not one: Wagtail's
-        # BaseSiteSetting.for_site does a get_or_create, so calling it
-        # unconditionally wrote a Capability Framework settings row for every
-        # site that rendered any page, including sites with the feature off
-        # and its admin panel unregistered.
-        wants_framework = (
+        # Nothing framework-shaped until an editor has asked for it, and
+        # nothing at all on a site without the framework. The lookup below
+        # reads as a read and is not one: Wagtail's BaseSiteSetting.for_site
+        # does a get_or_create, so calling it unconditionally wrote a
+        # Capability Framework settings row for every site that rendered any
+        # page, including sites with the feature off and its admin panel
+        # unregistered.
+        #
+        # The flag is checked as well as the switches because the switches are
+        # columns on a page type every instance shares, and a stored True
+        # outlives the site it was set on: the page export carries all four
+        # fields, so importing a framework export elsewhere sets them. Their
+        # panels are hidden without the flag, which would leave an editor
+        # looking at a role navigation they cannot find the switch for.
+        wants_framework = settings.FEATURE_FLAGS.get("SKILLS") and (
             self.show_role_navigation
             or self.show_framework_welcome
             or self.show_framework_updates
@@ -3272,6 +3281,22 @@ class RolePage(Page):
         if not settings.FEATURE_FLAGS.get("SKILLS"):
             return False
         return super().can_exist_under(parent)
+
+    def serve(self, request, *args, **kwargs):
+        """Not a page on a site without the framework, however it got here.
+
+        ``can_exist_under`` stops one being created or moved here through the
+        admin, and Wagtail does not check it again at serve time. The page
+        import does not go through the admin: it creates pages from a payload
+        for any model it can resolve, so a Capability Framework export landed
+        on another site leaves live, routable role pages behind. The importer
+        says so loudly, but a warning in a deployment log is not the same as
+        the page not being public. 404 is the honest answer and the one
+        ``govuk.views.framework_csv_view`` already gives for the CSVs.
+        """
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            raise Http404
+        return super().serve(request, *args, **kwargs)
 
     @staticmethod
     def _extract_role_id(value) -> int | None:
@@ -3792,6 +3817,12 @@ class SkillsAZPage(Page):
         if not settings.FEATURE_FLAGS.get("SKILLS"):
             return False
         return super().can_exist_under(parent)
+
+    def serve(self, request, *args, **kwargs):
+        """As ``RolePage.serve``: the A to Z is the framework's, not a page type."""
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            raise Http404
+        return super().serve(request, *args, **kwargs)
 
     def get_skill_sections(self) -> list[dict]:
         # One query for every skill's entries, not one per skill.

@@ -26,9 +26,9 @@ from govuk.attachments import (
 from govuk.models import ContentPage
 
 
-def _feature_flags() -> dict[str, bool]:
+def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
     return {
-        "SKILLS": True,
+        "SKILLS": skills_enabled,
         "ORGANISATIONS": False,
         "PEOPLE_FINDER": False,
         "FEEDBACK": False,
@@ -150,6 +150,33 @@ class AttachmentRewriteTests(TestCase):
         )
 
         self.assertEqual(html.count('<section class="gem-c-attachment'), 3)
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+class DownloadsBelongToTheFrameworkTests(TestCase):
+    """The three CSVs are the framework's, and so is the card that offers them.
+
+    ``page_body`` runs this over every content page on every site, and the
+    download URL is registered unconditionally -- it is the view that 404s
+    without the flag -- so nothing in the reverse or the regex stops a
+    non-framework page being rewritten.
+    """
+
+    def setUp(self):
+        cache.clear()
+
+    def test_a_csv_link_stays_an_ordinary_link_without_the_framework(self):
+        html = '<p><a href="/download/roles.csv">Role content</a></p>'
+
+        self.assertEqual(rewrite_csv_download_links(html), html)
+
+    def test_the_framework_tables_are_not_read_to_size_a_file(self):
+        """Measuring one of these means running the writer over GovukRole."""
+        with self.assertNumQueries(0):
+            rewrite_csv_download_links(
+                '<p><a href="/download/roles.csv">Roles</a></p>'
+                '<p><a href="/download/skills.csv">Skills</a></p>'
+            )
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())

@@ -57,9 +57,12 @@ Present in the codebase on every instance, reachable on none but a framework:
 - **Snippets** — `GovukRole`, `GovukSkill`, `GovukChangelogEntry`.
 - **Settings** — `CapabilityFrameworkWordingSettings`, 38 fields of framework
   vocabulary, registered in the admin only under the flag.
-- **Page types** — `RolePage` and `SkillsAZPage`, whose `can_create_at` and
-  `can_exist_under` both return `False` without the flag.
-- **Downloads** — `/download/<name>.csv`, which 404s without the flag.
+- **Page types** — `RolePage` and `SkillsAZPage`, which cannot be created or
+  moved without the flag (`can_create_at`, `can_exist_under`) and 404 rather
+  than serve if one reaches the site another way (`serve`).
+- **Downloads** — `/download/<name>.csv`, which 404s without the flag, and the
+  attachment component that offers it: `rewrite_csv_download_links` in
+  `govuk/attachments.py`.
 - **Fields on `ContentPage`** — `show_role_navigation`, `show_framework_updates`,
   `show_framework_welcome` and `framework_welcome_body`. These are the awkward
   ones: they sit on the page type every instance builds with. See below.
@@ -86,16 +89,66 @@ All three are fixed. The tests that hold them are
 `govuk/tests/test_content_page_panels.py` and
 `SearchWithoutTheFrameworkTests` in `govuk/tests/test_search_backend.py`.
 
+### What the second pass found
+
+A re-audit the same day, over the fix as well as the codebase, found three
+more — including one in the fix itself. All three have the same cause, and it
+is worth stating on its own because it is the part that is easy to get wrong
+twice:
+
+**The page import is the route that crosses the boundary.** It matches on slug,
+applies every concrete field it finds in the payload, and creates pages for any
+model it can resolve. It is generic by design, which is why it is a platform
+feature rather than a framework one. It is also why a check written against
+stored data is not enough: the data can arrive from a framework site.
+
+- **A stored `True` outlived the site it was set on.** The first fix keyed the
+  render off the three booleans alone. Hiding their panels does not clear the
+  columns, and the export carries them, so importing a framework export
+  elsewhere switched the framework on for a page whose editor had no switch to
+  turn it off. The probe rendered a role navigation listing the content page
+  itself. The guard now reads the flag as well as the switches.
+- **`RolePage` and `SkillsAZPage` served after an import.** Wagtail checks
+  `can_exist_under` when a page is created or moved in the admin, and the
+  import is not the admin. The importer warns, but a warning in a deployment
+  log is not the same as the page not being public. Both now 404.
+- **The CSV attachment card rendered anywhere.** `page_body` runs
+  `rewrite_csv_download_links` over every content page on every site, and the
+  download URL is registered unconditionally — it is the view that 404s. So a
+  paragraph holding only a link to `/download/roles.csv` became a file card
+  whose size was measured by running the framework's CSV writers over
+  `GovukRole`, pointing at a page that 404s. Left as an ordinary link it still
+  404s, but it looks like the mistake it is.
+
+These three are held by `test_a_switch_stored_by_another_site_is_not_honoured`
+in `govuk/tests/test_content_page_panels.py`,
+`DownloadsBelongToTheFrameworkTests` in `govuk/tests/test_csv_attachments.py`,
+and a serve test each in `govuk/tests/test_role_page.py` and
+`govuk/tests/test_skills_az_page.py`. Each was checked by reverting the fix and
+watching it fail; the CSV one fails with the three `GovukRole` and `GovukSkill`
+queries printed, which is the leak stated in the plainest form it has.
+
+There is one thing here that is deliberately not fixed. The import still
+*creates* framework pages and *applies* framework fields on a site with the
+flag off; `_report_skills_feature_is_off` in `govuk/page_import_export.py` says
+so plainly in the import report. Refusing the rows outright would mean an
+operator moving content between a framework site and a staging copy with the
+flag off silently loses it. The rows are now inert — nothing serves them and
+nothing renders them — which is the behaviour worth guaranteeing.
+
 When you add something to the framework, ask the three questions the audit
-asked:
+asked, and the fourth the second pass added:
 
 1. **Can an editor on another site see it?** Panels, menu items, choosers,
    help text.
 2. **Does another site's request touch it?** Queries, and especially writes —
    `for_site` and `for_request` both create rows.
 3. **Does another site's data model carry it?** A field on a shared page type is
-   the hardest of the three to take back, because removing it is a migration on
-   a codebase somebody else is also deploying.
+   the hardest to take back, because removing it is a migration on a codebase
+   somebody else is also deploying.
+4. **Could the import put it there?** If the answer to question 3 is yes, then
+   yes: the export carries every concrete field and the import applies them.
+   Gate on the flag, not on what the row says.
 
 The fields on `ContentPage` are there because question 3 was answered late. They
 stay, because the alternative is a schema change on a shared page type; they are

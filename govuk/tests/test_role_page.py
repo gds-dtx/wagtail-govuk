@@ -171,3 +171,16 @@ class RolePageTests(TestCase):
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_role_page_is_not_creatable_when_skills_feature_is_disabled(self):
         self.assertFalse(RolePage.can_create_at(self.root_page))
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    def test_a_role_page_does_not_serve_without_the_framework(self):
+        """Not creatable is not the same as not public.
+
+        Wagtail checks ``can_exist_under`` when a page is created or moved
+        through the admin and never again. The page import does not go through
+        the admin, so a Capability Framework export applied to another site
+        leaves live role pages routing on it.
+        """
+        response = self.client.get(self.role_page.url)
+
+        self.assertEqual(response.status_code, 404)

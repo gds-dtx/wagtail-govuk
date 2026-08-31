@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import re
 
+from django.conf import settings
 from django.core.cache import cache
 from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
@@ -154,7 +155,21 @@ _TRAILING_FORMAT = re.compile(r"\s*\(\s*CSV\s*\)\s*$", re.IGNORECASE)
 
 
 def rewrite_csv_download_links(html: str) -> str:
-    """Turn each paragraph holding only a CSV download link into the component."""
+    """Turn each paragraph holding only a CSV download link into the component.
+
+    Only on a site running the framework. The downloads are the framework's --
+    ``FRAMEWORK_CSV_DOWNLOADS`` is roles, skills and the changelog -- but the
+    only caller is ``page_body``, which renders every content page on every
+    site. The URL is registered unconditionally and it is
+    ``framework_csv_view`` that raises 404 without the flag, so the reverse
+    below succeeds anywhere: a non-framework editor who wrote a paragraph
+    holding just a link to ``/download/roles.csv`` would get a file card whose
+    size was measured by running the framework's CSV writers over
+    ``GovukRole``, pointing at a page that 404s. Left as an ordinary link, it
+    still 404s, but it looks like the mistake it is.
+    """
+    if not settings.FEATURE_FLAGS.get("SKILLS"):
+        return html
     if "/download/" not in html:
         return html
 

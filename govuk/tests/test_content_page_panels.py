@@ -13,6 +13,7 @@ from wagtail.models import Site
 from govuk.models import (
     CapabilityFrameworkWordingSettings,
     ContentPage,
+    GovukRole,
     content_page_content_panels,
     content_page_settings_panels,
 )
@@ -113,6 +114,29 @@ class ContentPageRenderWriteTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(CapabilityFrameworkWordingSettings.objects.count(), 0)
         self.assertIsNone(response.context.get("framework_wording"))
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    def test_a_switch_stored_by_another_site_is_not_honoured(self):
+        """The switches are columns on a page type every instance shares.
+
+        The page export carries all four framework fields, and the import
+        applies any field the model has, so importing a framework export onto
+        another site turns them on there. Hiding the panels alone would leave
+        an editor looking at a role navigation with no switch to find, filled
+        with whatever the page tree happens to hold -- the probe for this
+        rendered a "Further resources" group listing the content page itself.
+        """
+        GovukRole.objects.create(title="Leftover role", family="Data", slug="leftover")
+        self.page.show_role_navigation = True
+        self.page.show_framework_updates = True
+        self.page.save_revision().publish()
+
+        response = self.client.get(self.page.url)
+
+        self.assertNotContains(response, 'class="role-nav"')
+        self.assertIsNone(response.context.get("role_navigation"))
+        self.assertIsNone(response.context.get("framework_changelog"))
+        self.assertEqual(CapabilityFrameworkWordingSettings.objects.count(), 0)
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
     def test_a_page_that_asks_for_the_framework_still_gets_its_wording(self):

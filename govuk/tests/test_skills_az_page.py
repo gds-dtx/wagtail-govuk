@@ -127,6 +127,13 @@ class SkillsAZPageTests(TestCase):
     def test_skills_az_page_is_not_creatable_when_skills_feature_is_disabled(self):
         self.assertFalse(SkillsAZPage.can_create_at(self.root_page))
 
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    def test_the_a_to_z_does_not_serve_without_the_framework(self):
+        """Creatability is checked in the admin; the page import is not the admin."""
+        response = self.client.get(self.skills_page.url)
+
+        self.assertEqual(response.status_code, 404)
+
 
 @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
 class SkillsAZUpdatesTests(TestCase):
