@@ -12,10 +12,26 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to send a change back.
 
 - [Accessibility](docs/accessibility.md) — the component baseline, the
   guarantees under automated test, known deviations and audit status.
+- [Security](docs/security.md) — response headers, the authorisation model, the
+  dependency policy, and what has and has not been tested. Reporting a
+  vulnerability is in [SECURITY.md](SECURITY.md).
 - [Editorial workflow](docs/editorial-workflow.md) — how content is drafted,
   moderated and published, who can do what, and where the audit trail is.
 - [Cutting a site over to Wagtail](docs/cutover.md) — the migration runbook,
-  including the three kinds of state that do not travel in a content export.
+  including the three kinds of state that do not travel in a content export,
+  and how to refresh content before you go.
+- [Decommissioning the old service](docs/decommission.md) — what happens to the
+  system being replaced, and why not at cutover.
+- [The published downloads](docs/downloads.md) — the three CSVs and their
+  column schemas.
+- [Logging, monitoring and alerting](docs/monitoring.md) — what is emitted,
+  what is watched, and the alerts still to agree.
+- [Analytics](docs/analytics.md) — there is none; the options, and the decision
+  that has to be made before there is.
+- [User journeys](docs/user-journeys.md) — the journeys to test, written so
+  somebody who did not build it can run them.
+- [Delivery status](docs/delivery-status.md) — every Jira ticket, its evidence,
+  and what is genuinely left.
 
 ## Local Setup
 

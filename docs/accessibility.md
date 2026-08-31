@@ -77,6 +77,43 @@ below 641px `framework_welcome.html` renders all 67 role links on the home page
 side navigation leads to is still reachable. It is recorded here as a deviation
 under CS32-3308 and stated plainly in the statement itself.
 
+## Keyboard, contrast and naming (CS32-3341)
+
+CS32-3341 lists five kinds of testing. Automated scanning was already recorded
+above. Three more of the five are machine-checkable and were run against the
+dev instance on **31 August 2026**, across nine page types — home, a role, a
+Senior Civil Service role, the Skills A to Z, search results, the download page,
+a content page, the SCS context page with its six wide tables, and a 404.
+
+| Check | Method | Result |
+| --- | --- | --- |
+| Keyboard-only operation | Tab from the top of the document to the end, recording every stop | **743 tab stops across the nine pages. No keyboard traps.** |
+| Visible focus indicator | Compare the focused element's computed outline, box-shadow, background and border against its unfocused state | **0 stops with no visible change.** Every focusable element takes an indicator. |
+| Skip link first | Assert the first tab stop | **Correct on all nine pages** — "Skip to main content" is always the first stop. |
+| Colour contrast | axe `color-contrast` rule alone, so the result is attributable to that criterion | **0 violations on all nine pages.** |
+| Accessible names | Compute the name for every link, button, input, select, textarea and summary from `aria-label`, `aria-labelledby`, associated `<label>`, `alt`, `title`, SVG `<title>`, then text | **0 unnamed interactive controls** across six pages checked. |
+
+The last row is worth a note on method. A first pass reported unnamed controls
+on every page — the GOV.UK crest link and the search input. Both were false
+positives from a name computation that did not read SVG `<title>` elements or
+`<label for>` associations. Recomputing properly returned zero. It is recorded
+here because the failure mode is common: a naive accessible-name check will
+report the Design System header as broken on every GOV.UK site there is.
+
+**Screen reader testing has not been done.** It is the fifth item on
+CS32-3341's list and it needs a person with VoiceOver, NVDA or JAWS. The checks
+above cover the part of screen-reader behaviour that can be asserted
+mechanically — that every control has a name, a role and a reachable focus —
+and that is not the same as somebody using one. Do not read the table above as
+covering it.
+
+Testing with other assistive technology — voice control, switch access,
+magnification software — has also not been done.
+
+The script is `keyboard_audit.mjs` in the migration working directory rather
+than in this repository, because it tests a running instance rather than the
+code.
+
 ## Outstanding before launch (CS32-3308)
 
 - [ ] Full WCAG 2.2 AA audit by an independent auditor. The May 2026 test was of
@@ -100,3 +137,21 @@ under CS32-3308 and stated plainly in the statement itself.
       `aria-expanded="true"` over an empty list
       (`base.html`, `ServiceNavigationTests`). Fixed in the codebase; reaches
       the deployed instances with the next build.
+
+## Outstanding before launch (CS32-3341)
+
+- [ ] **Screen reader pass** over the journeys in
+      [user-journeys.md](user-journeys.md), J1 and J4 at minimum. Needs a
+      person. This is the largest remaining gap.
+- [ ] Testing with other assistive technology — voice control, switch access,
+      magnification.
+- [ ] Independent audit, as above under CS32-3308. The two tickets share this
+      one item; doing it once closes it on both.
+- [ ] Agree with Honor whether the independent audit has to happen before
+      migration or can follow it. Asked on 29 July and 6 August 2026 and not yet
+      answered — it is a scheduling decision, not a technical one, and it
+      determines whether this ticket blocks cutover.
+- [x] Automated accessibility scanning (26 August 2026).
+- [x] Keyboard-only testing (31 August 2026, nine page types).
+- [x] Colour contrast testing (31 August 2026, nine page types).
+- [x] Accessible name coverage (31 August 2026, six page types).

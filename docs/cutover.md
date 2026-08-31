@@ -52,6 +52,91 @@ present, and an empty one overwrites what is in the CMS.
       view. When it is on, `feedback_view` shadows any `/feedback` page, which is
       where the phase banner links site-wide.
 
+## Refreshing the content before you export
+
+The content in the source instance was imported from the live service's exports
+on the day the migration was rehearsed. The live service has kept publishing
+since. Everything below happens on the **source** instance, before step 2, and
+the gap it closes is real rather than theoretical.
+
+Measured on 31 August 2026, the live service's home page links 54 role pages.
+Two of them have no page on the dev instance at all:
+
+| Live URL | On dev |
+| --- | --- |
+| `/role/agile-coach` | 404. Dev holds only `project-agile-coach-new-role`, which is the proposal page, not the role. |
+| `/role/data-and-artificial-intelligence-ai-ethicist` | 404. Dev holds the superseded `data-ethicist`. |
+
+Cutting over without refreshing would publish a framework missing a role, and
+two live URLs would answer 404 on the first day. Neither would be noticed by any
+check that only asks whether the pages that *were* migrated still work.
+
+**Re-import from the live exports immediately before cutover**, not weeks
+before:
+
+```bash
+python manage.py import_capability_framework <directory-of-live-csvs>
+```
+
+The import matches on slug and never deletes, so it is safe to run against
+content editors have been working on. That safety has a cost, and the cost is
+the second half of this section.
+
+### Read what the import says it did not touch
+
+The import ends by naming everything in the CMS that the exports no longer
+publish:
+
+```
+In the CMS but not in this file: 1 role and 1 skill. Nothing was deleted.
+  role : data-ethicist (its page is still live)
+  skill: strategic-data-planning
+```
+
+That list is not an error and it is not automatically a list of things to
+delete. Three different things land in it:
+
+- **A role or skill genuinely retired from the framework.** Its page is still
+  live and still in the navigation, the search index and the skills A to Z.
+  Unpublish it, and add a redirect to whatever replaced it.
+- **A rename at the source.** The importer sees a new slug as an addition and
+  keeps the old one, so a rename arrives as one new page and one apparently
+  retired page. `data-ethicist` above is exactly this: the live service now
+  publishes the same role as `data-and-artificial-intelligence-ai-ethicist`.
+  Unpublish the old page and redirect it to the new one — do **not** delete it,
+  because the old URL is the one in circulation.
+- **Content an editor made by hand.** It was never in the exports and never will
+  be. Leave it alone. The heading says "in the CMS but not in this file" rather
+  than "retired" for this reason.
+
+Work through every line. A line nobody has looked at is a page still being
+served that nobody intends to serve.
+
+### Then re-check the redirects
+
+Content changes move the target of a redirect, so the redirect pass has to come
+after the refresh, not before:
+
+```bash
+python manage.py seed_live_service_redirects --hostname <host>
+python manage.py seed_live_service_redirects --hostname <host> --check
+```
+
+Any new role acquires its `/role/<slug>` redirect; any role whose page moved has
+its redirect corrected. `--check` then proves it, and a `nothing to point at`
+line names a live URL that would 404 on the first day.
+
+### A caveat on slugs
+
+Wagtail derives a slug from the title, and the live service's slugs are not
+always what that derivation produces — bracketed abbreviations are the usual
+cause. `Data and artificial intelligence (AI) ethicist` slugifies to
+`data-and-artificial-intelligence-ai-ethicist` only if the brackets are handled
+the same way at both ends. After a refresh that adds roles, compare the new
+pages' URLs against the live service's before assuming the redirects cover them:
+a redirect built from our slug points at our page, which is no help to somebody
+following a link built from theirs.
+
 ## 1. Bring up the instance
 
 Apply the Terraform for the new instance and wait for the service to be stable.
