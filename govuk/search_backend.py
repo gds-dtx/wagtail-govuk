@@ -233,7 +233,14 @@ class SearchBackend:
         stored StreamField JSON without resolving the chooser, which is what
         makes the batch possible -- see its own note on the side navigation
         that was paying a query per page to learn what the JSON already said.
+
+        Roles belong to the Capability Framework, so a site without it borrows
+        nothing: the page type is not creatable there and the snippets are not
+        its content.
         """
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return {}
+
         first_role_id_by_page: dict[int, int] = {}
         for page in pages:
             if not isinstance(page, RolePage):
@@ -396,7 +403,14 @@ class SearchBackend:
 
         The index page renders every skill as its own accordion section, so a
         result links into that section rather than the top of a long page.
+
+        Skills are the Capability Framework's, and the A to Z page that holds
+        them is not creatable without the flag. Search should not be the one
+        route that reaches them anyway.
         """
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return []
+
         skills_page = self._apply_filters(SkillsAZPage.objects.all(), filters).first()
         if skills_page is None:
             return []

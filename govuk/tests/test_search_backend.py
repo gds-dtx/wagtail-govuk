@@ -1040,3 +1040,104 @@ class SearchBackendRolePageDescriptionTests(TestCase):
             if "govuk_govukrole" in query["sql"] and "govuk_govukrole_tags" not in query["sql"]
         ]
         self.assertEqual(len(role_queries), 1, role_queries)
+
+
+def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
+    return {
+        "SKILLS": skills_enabled,
+        "ORGANISATIONS": False,
+        "PEOPLE_FINDER": False,
+        "FEEDBACK": False,
+    }
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+class SearchWithoutTheFrameworkTests(TestCase):
+    """Search is the one route that reaches snippets without the page tree.
+
+    Roles and skills are the Capability Framework's, and its page types are not
+    creatable on a site with the flag off -- but the search backend queried the
+    snippet tables regardless of the flag, so leftover or shared rows would
+    surface on a site that has no framework to explain them.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+    def test_a_skill_is_not_returned(self):
+        skills_page = self.root_page.add_child(
+            instance=SkillsAZPage(title="Skills A-Z", slug="skills-az")
+        )
+        skills_page.save_revision().publish()
+        GovukSkill.objects.create(
+            title="Prototyping",
+            body="<p>Building throwaway versions to test an idea.</p>",
+        )
+
+        results = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+
+        self.assertEqual(
+            [item for item in results.object_list if item.title == "Prototyping"],
+            [],
+        )
+
+    def test_a_role_page_borrows_no_description_from_a_role(self):
+        role = GovukRole.objects.create(
+            slug="product-manager",
+            title="Product manager",
+            body="<p>A product manager is responsible for their products.</p>",
+        )
+        page = self.root_page.add_child(
+            instance=RolePage(
+                title="Product manager",
+                slug="product-manager",
+                selected_roles=[{"type": "role", "value": role.pk}],
+            )
+        )
+        page.save_revision().publish()
+
+        results = search_backend.search(
+            "product manager", filters={"site": self.site}, page=1
+        )
+        result = next(
+            (item for item in results.object_list if item.url == page.specific.url),
+            None,
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.search_description, "")
+
+    def test_the_role_table_is_not_queried_at_all(self):
+        """Not merely filtered out afterwards -- not read."""
+        role = GovukRole.objects.create(
+            slug="delivery-manager", title="Delivery manager", body="<p>Body.</p>"
+        )
+        page = self.root_page.add_child(
+            instance=RolePage(
+                title="Delivery manager",
+                slug="delivery-manager",
+                selected_roles=[{"type": "role", "value": role.pk}],
+            )
+        )
+        page.save_revision().publish()
+
+        with CaptureQueriesContext(connection) as queries:
+            search_backend.search(
+                "delivery manager", filters={"site": self.site}, page=1
+            )
+
+        self.assertEqual(
+            [
+                query["sql"]
+                for query in queries.captured_queries
+                if "govuk_govukskill" in query["sql"]
+                or (
+                    "govuk_govukrole" in query["sql"]
+                    and "govuk_govukrole_tags" not in query["sql"]
+                )
+            ],
+            [],
+        )

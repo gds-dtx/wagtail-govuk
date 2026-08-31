@@ -10,6 +10,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to send a change back.
 
 ## Documentation
 
+- [Platform boundaries](docs/platform-boundaries.md) — what every instance
+  gets, what belongs to the Capability Framework alone, the feature flags and
+  what they do and do not gate, and the one-site-per-database rule. Read this
+  before building the second service on this codebase.
 - [Accessibility](docs/accessibility.md) — the component baseline, the
   guarantees under automated test, known deviations and audit status.
 - [Security](docs/security.md) — response headers, the authorisation model, the

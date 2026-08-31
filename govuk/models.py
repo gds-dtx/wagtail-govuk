@@ -346,6 +346,59 @@ def page_settings_panels() -> list:
     ]
 
 
+def content_page_content_panels() -> list:
+    """``ContentPage``'s editing panels, framework content only on a framework.
+
+    ContentPage is the page type every instance on this codebase builds with,
+    so anything offered here is offered to every site. The welcome content is
+    the Capability Framework's own -- role families, skill level definitions --
+    and an editor on a site without the framework has nothing to put in it and
+    no way to render it.
+
+    The field stays on the model either way. This decides what the form shows,
+    not what the database holds, so switching the flag needs no migration.
+    """
+    panels = list(Page.content_panels) + [
+        FieldPanel("hero_title"),
+        FieldPanel("hero_intro"),
+        FieldPanel("author"),
+        FieldPanel("body"),
+        FieldPanel("body_blocks"),
+    ]
+    if settings.FEATURE_FLAGS.get("SKILLS"):
+        panels.append(FieldPanel("framework_welcome_body"))
+    return panels
+
+
+def content_page_settings_panels() -> list:
+    """``ContentPage``'s settings panels, framework switches only on a framework.
+
+    The three framework switches each turn on a block of Capability Framework
+    furniture -- the role side navigation, the site-wide changelog, the welcome
+    layout. On a site without the framework they have nothing to show, and the
+    wording that labels them comes from settings the admin does not register
+    without the flag, so an editor there would be reading captions nobody on
+    that site can change.
+
+    Read once at import, as ``page_settings_panels`` is.
+    """
+    panels = page_settings_panels() + [
+        FieldPanel("enable_hero_styling"),
+        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("show_last_updated_date"),
+        FieldPanel("show_page_content_metadata"),
+        FieldPanel("enable_free_text_heading_navigation"),
+    ]
+    if settings.FEATURE_FLAGS.get("SKILLS"):
+        panels += [
+            FieldPanel("show_role_navigation"),
+            FieldPanel("show_framework_updates"),
+            FieldPanel("show_framework_welcome"),
+        ]
+    panels.append(InlinePanel("tagged_items", heading="Tags", label="Tag"))
+    return panels
+
+
 @register_setting(icon="warning")
 class PhaseBannerSettings(BaseSiteSetting):
     enabled = models.BooleanField(
@@ -2895,43 +2948,40 @@ class ContentPage(Page):
     )
     tags = ClusterTaggableManager(through="govuk.ContentPageTag", blank=True)
 
-    content_panels = Page.content_panels + [
-        FieldPanel("hero_title"),
-        FieldPanel("hero_intro"),
-        FieldPanel("author"),
-        FieldPanel("body"),
-        FieldPanel("body_blocks"),
-        FieldPanel("framework_welcome_body"),
-    ]
+    content_panels = content_page_content_panels()
 
-    settings_panels = page_settings_panels() + [
-        FieldPanel("enable_hero_styling"),
-        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
-        FieldPanel("show_last_updated_date"),
-        FieldPanel("show_page_content_metadata"),
-        FieldPanel("enable_free_text_heading_navigation"),
-        FieldPanel("show_role_navigation"),
-        FieldPanel("show_framework_updates"),
-        FieldPanel("show_framework_welcome"),
-        InlinePanel("tagged_items", heading="Tags", label="Tag"),
-    ]
+    settings_panels = content_page_settings_panels()
 
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
-        framework_wording = CapabilityFrameworkWordingSettings.for_request(request)
-        if self.show_role_navigation or self.show_framework_welcome:
-            groups = role_navigation_groups(
-                current_page_id=self.pk, wording=framework_wording
-            )
-            if self.show_role_navigation:
-                context["role_navigation"] = groups
-            if self.show_framework_welcome:
-                context["framework_sections"] = groups
-                context["framework_contents"] = self.framework_welcome_contents(groups)
-        if self.show_framework_updates:
-            context["framework_changelog"] = site_wide_changelog()
-        # The framework wording names the updates block and the navigation.
-        context["framework_wording"] = framework_wording
+        # Nothing framework-shaped until an editor has asked for it. The
+        # lookup below reads as a read and is not one: Wagtail's
+        # BaseSiteSetting.for_site does a get_or_create, so calling it
+        # unconditionally wrote a Capability Framework settings row for every
+        # site that rendered any page, including sites with the feature off
+        # and its admin panel unregistered.
+        wants_framework = (
+            self.show_role_navigation
+            or self.show_framework_welcome
+            or self.show_framework_updates
+        )
+        if wants_framework:
+            framework_wording = CapabilityFrameworkWordingSettings.for_request(request)
+            if self.show_role_navigation or self.show_framework_welcome:
+                groups = role_navigation_groups(
+                    current_page_id=self.pk, wording=framework_wording
+                )
+                if self.show_role_navigation:
+                    context["role_navigation"] = groups
+                if self.show_framework_welcome:
+                    context["framework_sections"] = groups
+                    context["framework_contents"] = self.framework_welcome_contents(
+                        groups
+                    )
+            if self.show_framework_updates:
+                context["framework_changelog"] = site_wide_changelog()
+            # The framework wording names the updates block and the navigation.
+            context["framework_wording"] = framework_wording
         # Only one side column fits, so the role navigation wins where an
         # editor has asked for both.
         context["heading_navigation"] = (
