@@ -1084,7 +1084,12 @@ class SearchWithoutTheFrameworkTests(TestCase):
             [],
         )
 
-    def test_a_role_page_borrows_no_description_from_a_role(self):
+    def test_a_role_page_is_not_a_search_result(self):
+        """It 404s when fetched, so listing it would be a link that does not work.
+
+        The page can be in the tree without ever having been creatable here:
+        the import makes pages for any model it can resolve.
+        """
         role = GovukRole.objects.create(
             slug="product-manager",
             title="Product manager",
@@ -1107,8 +1112,8 @@ class SearchWithoutTheFrameworkTests(TestCase):
             None,
         )
 
-        self.assertIsNotNone(result)
-        self.assertEqual(result.search_description, "")
+        self.assertIsNone(result)
+        self.assertEqual(self.client.get(page.specific.url).status_code, 404)
 
     def test_the_role_table_is_not_queried_at_all(self):
         """Not merely filtered out afterwards -- not read."""

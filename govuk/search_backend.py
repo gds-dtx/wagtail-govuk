@@ -24,6 +24,7 @@ from govuk.models import (
     RolePage,
     SectionPage,
     SkillsAZPage,
+    without_framework_pages,
 )
 from govuk.utils import normalised_text, row_id_from_text
 
@@ -163,7 +164,9 @@ class SearchBackend:
     def _build_page_results(
         self, query: str, filters: dict[str, Any]
     ) -> list[SearchResultItem]:
-        queryset = self._apply_filters(Page.objects.all(), filters)
+        queryset = self._apply_filters(
+            without_framework_pages(Page.objects.all()), filters
+        )
         if self._is_postgres(queryset.db):
             queryset = self._search_pages_postgres(queryset, query)
         else:

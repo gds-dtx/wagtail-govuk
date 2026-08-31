@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from wagtail.models import Site
 
@@ -56,6 +57,20 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         site = self._site(options.get("hostname"))
+
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            # Said out loud rather than left to the numbers. With no targets
+            # the write path prints three zeros and --check prints its
+            # all-clear, and an operator running this from a shared runbook
+            # would read either as "the redirects are in place" when the truth
+            # is that these URLs are not this service's to answer.
+            self.stdout.write(
+                "FEATURE_SKILLS is off on this instance. The live service's "
+                "/role/ and /skill/ URLs belong to the Capability Framework, "
+                "so there is nothing here to redirect."
+            )
+            return
+
         if options.get("check"):
             self._check(site)
             return

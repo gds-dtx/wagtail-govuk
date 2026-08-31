@@ -45,6 +45,8 @@ site-scoped, so two instances configure them independently:
 - **Tags** — `GovukTag` and the tagged-item models on each page type.
 - **Search** — `govuk/search_backend.py`, over pages, cards, tags and external
   content.
+- **The pages API** — `/api/pages/`, which is public: `WagtailPages` sets
+  `AllowAny`, overriding the authenticated mixin it also inherits.
 - **The chrome** — base template, GOV.UK Design System components, error pages,
   `robots.txt`, `security.txt`, the JWKS view, the OIDC login flow.
 - **The admin page import and export** — the format is generic; it carries the
@@ -58,8 +60,9 @@ Present in the codebase on every instance, reachable on none but a framework:
 - **Settings** — `CapabilityFrameworkWordingSettings`, 38 fields of framework
   vocabulary, registered in the admin only under the flag.
 - **Page types** — `RolePage` and `SkillsAZPage`, which cannot be created or
-  moved without the flag (`can_create_at`, `can_exist_under`) and 404 rather
-  than serve if one reaches the site another way (`serve`).
+  moved without the flag (`can_create_at`, `can_exist_under`), 404 rather than
+  serve if one reaches the site another way (`serve`), and are left out of every
+  generic public listing (`without_framework_pages`).
 - **Downloads** — `/download/<name>.csv`, which 404s without the flag, and the
   attachment component that offers it: `rewrite_csv_download_links` in
   `govuk/attachments.py`.
@@ -136,8 +139,75 @@ operator moving content between a framework site and a staging copy with the
 flag off silently loses it. The rows are now inert — nothing serves them and
 nothing renders them — which is the behaviour worth guaranteeing.
 
+### What the third pass found: 404 is only half an answer
+
+The second pass made the framework's page types 404 on a site without the
+framework. That stops them being read. It does not stop them being *named*, and
+four surfaces on this codebase list pages generically — they take a base `Page`
+queryset and hand back whatever is in the tree. Left alone they went on
+advertising titles, URLs and search descriptions for pages that answer 404 to
+everyone who clicks. A visitor reads that as a broken site rather than as a site
+that does not have the framework, which is worse than the original leak in the
+one way that matters: it is visible to the public.
+
+The pages API is the sharpest of the four. `WagtailPages` in `govuk/api.py`
+mixes in `AuthenticatedAPIViewSetMixin` and then sets
+`permission_classes = [AllowAny]`, which overrides it. The endpoint is public.
+Anything it lists is published to anyone who asks, and `?type=govuk.RolePage` is
+the obvious way to go looking.
+
+The fix is one helper, `without_framework_pages` in `govuk/models.py`. It takes a
+page queryset and returns it minus `RolePage` and `SkillsAZPage`, or returns it
+untouched when the flag is on, so the framework's own site is unaffected and
+there is no second code path to keep in step. Every generic public listing goes
+through it:
+
+| Surface | Where |
+| --- | --- |
+| The public pages API, listing and detail | `WagtailPages.get_queryset`, `govuk/api.py` |
+| Front-end search | `_build_page_results`, `govuk/search_backend.py` |
+| The service navigation menu | `navigation_and_breadcrumbs`, `govuk/context_processors.py` |
+| Tag listings | `TagListingsPage._page_listing_querysets`, `govuk/models.py` |
+
+Tag listings are the exception to the shape: there the role pages come from a
+whole queryset of their own rather than a filter on a shared one, so the
+queryset is not built at all and there is no query to run. That turned out to
+matter more than it sounds. `_available_filter_tags` reached into the list of
+querysets **by position** — `page_querysets[2]` was the role pages — so
+shortening the list made every tag listing page on a non-framework site a 500.
+It is keyed by model now, and
+`test_the_page_still_renders_with_the_role_queryset_absent` holds it. The lesson
+is smaller than the boundary work and worth writing down anyway: when a flag can
+remove an element, stop indexing the collection.
+
+**Not applied to the Wagtail admin, deliberately.** An editor who has ended up
+with these pages needs to see them in the explorer to delete them. Hiding them
+there would leave a site with pages nobody can find and nobody can remove.
+
+The same sweep turned up one more, away from the listings: `/role/<slug>` and
+`/skill/<slug>` are the live Capability Framework's URL shapes, and
+`seed_live_service_redirects` writes a couple of hundred permanent redirects
+from them onto whatever pages carry those roles today. The import already
+declined to seed without the flag; the management command did not, so an
+operator working a shared runbook on another service could fill its redirects
+admin with somebody else's URLs, each pointing at a page that now 404s — and
+`--check` would then print its cutover all-clear over the top. The guard is in
+`live_service_redirect_targets`, which is the rule both routes and the cutover
+check reach through, so a third caller inherits it; the command says the flag is
+off rather than reporting three zeros.
+
+These are held by `PagesApiWithoutTheFrameworkTests` in
+`govuk/tests/test_api.py`, `ServiceNavigationWithoutTheFrameworkTests` in
+`govuk/tests/test_context_processors.py`,
+`TagListingsWithoutTheFrameworkTests` in
+`govuk/tests/test_tag_listings_page.py`, and
+`test_a_role_page_is_not_a_search_result` in
+`govuk/tests/test_search_backend.py`. Each class also asserts the flag-on
+behaviour, so a future change that empties these listings on the framework's own
+site fails too.
+
 When you add something to the framework, ask the three questions the audit
-asked, and the fourth the second pass added:
+asked, the fourth the second pass added, and the fifth from the third:
 
 1. **Can an editor on another site see it?** Panels, menu items, choosers,
    help text.
@@ -149,6 +219,9 @@ asked, and the fourth the second pass added:
 4. **Could the import put it there?** If the answer to question 3 is yes, then
    yes: the export carries every concrete field and the import applies them.
    Gate on the flag, not on what the row says.
+5. **If it cannot be read, can it still be listed?** Refusing to serve something
+   and refusing to name it are two different fixes. Anything that lists pages
+   generically needs the second one.
 
 The fields on `ContentPage` are there because question 3 was answered late. They
 stay, because the alternative is a schema change on a shared page type; they are

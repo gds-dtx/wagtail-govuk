@@ -17,7 +17,12 @@ from wagtail.documents.api.v2.views import DocumentsAPIViewSet
 from wagtail.images.api.v2.views import ImagesAPIViewSet
 
 from govuk.authentication import InternalAccessJWTAuthentication
-from govuk.models import ContentDiscoverySource, ExternalContentItem, GovukTag
+from govuk.models import (
+    ContentDiscoverySource,
+    ExternalContentItem,
+    GovukTag,
+    without_framework_pages,
+)
 from govuk.utils import normalised_text, row_id_from_text
 
 DEFAULT_API_REPOSITORY_URL = "https://github.com/govuk-digital-backbone/wagtail-govuk"
@@ -183,7 +188,12 @@ class WagtailPages(AuthenticatedAPIViewSetMixin, PagesAPIViewSet):
     ]
 
     def get_queryset(self):
-        return super().get_queryset().prefetch_related("view_restrictions__groups")
+        # AllowAny above, so this listing is public. Framework pages that
+        # reached a non-framework site through the import 404 when fetched;
+        # naming them here would publish a list of titles that all 404.
+        return without_framework_pages(
+            super().get_queryset().prefetch_related("view_restrictions__groups")
+        )
 
 
 class WagtailImages(AuthenticatedAPIViewSetMixin, ImagesAPIViewSet):

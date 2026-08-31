@@ -3051,6 +3051,33 @@ def _default_site_wording() -> "CapabilityFrameworkWordingSettings":
     return saved or CapabilityFrameworkWordingSettings()
 
 
+def without_framework_pages(queryset):
+    """``queryset`` minus the framework's page types, on a site without it.
+
+    ``RolePage`` and ``SkillsAZPage`` 404 rather than serve without the flag,
+    but they can still be in the tree: the page import creates pages for any
+    model it can resolve, and it is generic on purpose. A listing that goes on
+    naming them offers a reader a set of links that all 404, which is a worse
+    answer than not listing them and reads as a broken site rather than a
+    site that does not have the framework.
+
+    The public surfaces that list pages generically go through here: the pages
+    API, front-end search and the navigation menu. Tag listings make the same
+    exclusion a queryset at a time in ``_page_listing_querysets``, because
+    there the framework's pages come from a queryset of their own rather than
+    a filter on a shared one, so it can leave the query unbuilt instead of
+    running one that excludes them. It is a no-op with the flag on, so the
+    framework's own site is unaffected.
+
+    Deliberately not applied to the Wagtail admin. An editor who has ended up
+    with these pages needs to be able to see them to delete them, and hiding
+    them there would leave the site with pages nobody can find or remove.
+    """
+    if settings.FEATURE_FLAGS.get("SKILLS"):
+        return queryset
+    return queryset.not_type(RolePage, SkillsAZPage)
+
+
 def role_page_urls_by_role_id(*, exclude_page_id: int | None = None) -> dict[int, str]:
     """Map each role id to the URL of a live page that renders it."""
     urls: dict[int, str] = {}
@@ -4048,12 +4075,19 @@ class TagListingsPage(Page):
             .annotate(sort_updated=page_sort_updated)
             .prefetch_related("tags", "view_restrictions")
             .distinct(),
-            RolePage.objects.live()
-            .filter(tags__id__in=tag_ids)
-            .annotate(sort_updated=page_sort_updated)
-            .prefetch_related("tags", "view_restrictions")
-            .distinct(),
         ]
+        # A tag listing is a platform page type and role pages are not, so the
+        # framework's are listed only where they can be read. See
+        # ``without_framework_pages``; this one is a whole queryset rather than
+        # a filter on a shared one, so there is no query to run at all.
+        if settings.FEATURE_FLAGS.get("SKILLS"):
+            page_querysets.append(
+                RolePage.objects.live()
+                .filter(tags__id__in=tag_ids)
+                .annotate(sort_updated=page_sort_updated)
+                .prefetch_related("tags", "view_restrictions")
+                .distinct()
+            )
         is_authenticated = bool(request and request.user.is_authenticated)
         if (
             not is_authenticated
@@ -4122,12 +4156,18 @@ class TagListingsPage(Page):
                 ).values_list("tag_id", flat=True)
             )
 
+        # Keyed by model rather than indexed by position: the role page
+        # queryset is not there at all on a site without the framework, and a
+        # fixed ``page_querysets[2]`` made that an IndexError -- a 500 on every
+        # tag listing page rather than a listing without role pages in it.
+        through_models = {
+            ContentPage: ContentPageTag,
+            SectionPage: SectionPageTag,
+            RolePage: RolePageTag,
+        }
         page_querysets = self._page_listing_querysets(tag_ids=tag_ids, request=request)
-        for page_queryset, through_model in (
-            (page_querysets[0], ContentPageTag),
-            (page_querysets[1], SectionPageTag),
-            (page_querysets[2], RolePageTag),
-        ):
+        for page_queryset in page_querysets:
+            through_model = through_models[page_queryset.model]
             page_ids = list(page_queryset.values_list("id", flat=True))
             if page_ids:
                 available_tag_ids.update(

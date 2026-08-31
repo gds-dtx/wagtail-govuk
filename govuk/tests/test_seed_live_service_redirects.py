@@ -13,12 +13,13 @@ from django.test import TestCase, override_settings
 from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Site
 
+from govuk.live_service_links import live_service_redirect_targets
 from govuk.models import GovukRole, GovukSkill, RolePage, SkillsAZPage
 
 
-def _feature_flags() -> dict[str, bool]:
+def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
     return {
-        "SKILLS": True,
+        "SKILLS": skills_enabled,
         "ORGANISATIONS": False,
         "PEOPLE_FINDER": False,
         "FEEDBACK": False,
@@ -228,3 +229,53 @@ class CheckLiveServiceRedirectsTests(LiveServiceFixture):
             self._check()
 
         self.assertIn("nothing to point at", str(refusal.exception))
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+class RedirectsBelongToTheFrameworkTests(LiveServiceFixture):
+    """The command runs on any instance; these URLs are only one service's.
+
+    The fixture is the awkward case rather than an impossible one: framework
+    snippets and role pages in the database of a site with the flag off. Both
+    routes exist -- a database restored from the framework, and the page
+    import, which creates a page for any model it can resolve. The import
+    already declines to seed (``skills_enabled`` in
+    ``import_pages_from_payload``). The command did not, so an operator working
+    through a shared runbook on another service could write a couple of hundred
+    permanent redirects to pages that 404.
+    """
+
+    def _check(self):
+        out = StringIO()
+        call_command("seed_live_service_redirects", "--check", stdout=out)
+        return out.getvalue()
+
+    def test_no_redirects_are_written(self):
+        self._run()
+
+        self.assertFalse(Redirect.objects.exists())
+
+    def test_the_command_says_why_rather_than_reporting_three_zeros(self):
+        output = self._run()
+
+        self.assertIn("FEATURE_SKILLS is off", output)
+        self.assertNotIn("already correct", output)
+
+    def test_checking_does_not_report_an_all_clear(self):
+        """The dangerous outcome, not the missing one.
+
+        With no targets, ``--check`` finds nothing unseeded and nothing
+        unanswerable, so it would print its cutover all-clear -- on a site
+        where every one of those URLs is somebody else's.
+        """
+        output = self._check()
+
+        self.assertNotIn("Every live service URL redirects", output)
+        self.assertIn("FEATURE_SKILLS is off", output)
+
+    def test_the_rule_itself_offers_no_targets(self):
+        """Guarded where the rule is, so a third caller inherits it."""
+        targets, skills_page = live_service_redirect_targets(self.site)
+
+        self.assertEqual(targets, {})
+        self.assertIsNone(skills_page)

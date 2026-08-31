@@ -30,6 +30,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from django.conf import settings
 from django.utils.html import escape
 from wagtail.contrib.redirects.models import Redirect
 
@@ -154,7 +155,20 @@ def live_service_redirect_targets(site) -> tuple[dict, SkillsAZPage | None]:
 
     Paths are normalised the way ``Redirect`` stores them, so they can be
     compared against existing rows without a second pass.
+
+    Nothing at all on a site without the framework. ``/role/`` and ``/skill/``
+    are the Capability Framework's URLs, not the platform's, and the pages they
+    would point at 404 there. The targets can still be found: the page import
+    creates a page for any model it can resolve, so a framework export landed
+    on another service leaves role pages in its tree, and seeding from them
+    would write a couple of hundred permanent redirects into that service's
+    redirects admin -- somebody else's URL shapes, each one pointing at a page
+    that answers 404. This is the one guard the seeding needs: both the import
+    and the management command reach the rule through here.
     """
+    if not settings.FEATURE_FLAGS.get("SKILLS"):
+        return {}, None
+
     targets: dict[str, tuple[RolePage | None, str]] = {}
     for slug, page in role_page_targets(site):
         targets[Redirect.normalise_path(f"/role/{slug}")] = (page, "")
