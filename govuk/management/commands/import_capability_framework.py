@@ -62,6 +62,65 @@ class Command(BaseCommand):
         else:
             self.stdout.write("No changelog.csv found, skipping changelog import")
 
+        self.report_retired(
+            role_slugs={entry["role"].slug for entry in roles},
+            skill_slugs=set(skills_by_slug),
+        )
+
+    def report_retired(self, *, role_slugs: set[str], skill_slugs: set[str]):
+        """Name the content in the CMS that this file no longer publishes.
+
+        The import adds and updates and never deletes, which is what makes it
+        safe to re-run. It also means a rename in the source arrives as an
+        addition: importing the exports published on 28 August 2026 over the
+        migrated content left 54 roles beside the source's 53, because
+        'Data ethicist' had become 'Data and artificial intelligence
+        ethicist' and both then had a live page.
+
+        Nothing is deleted here -- unpublishing a role page is a content
+        decision, and a delete that cascades through the page tree is the one
+        mistake this migration cannot take back. But silence is worse than a
+        list: the retired pages stay in the navigation, the search index and
+        the skills A to Z until somebody is told they are there.
+
+        Content an editor made by hand is named for the same reason, so the
+        heading says what is true of everything in the list -- it is in the
+        CMS and it is not in this file -- rather than calling it all retired.
+        """
+        retired_roles = sorted(
+            GovukRole.objects.exclude(slug="")
+            .exclude(slug__in=role_slugs)
+            .values_list("slug", flat=True)
+        )
+        retired_skills = sorted(
+            GovukSkill.objects.exclude(slug="")
+            .exclude(slug__in=skill_slugs)
+            .values_list("slug", flat=True)
+        )
+        if not retired_roles and not retired_skills:
+            return
+
+        counted = " and ".join(
+            f"{count} {noun if count == 1 else noun + 's'}"
+            for count, noun in ((len(retired_roles), "role"), (len(retired_skills), "skill"))
+            if count
+        )
+        self.stdout.write(
+            self.style.WARNING(
+                f"In the CMS but not in this file: {counted}. Nothing was deleted."
+            )
+        )
+        live_pages = set(
+            RolePage.objects.live()
+            .filter(slug__in=retired_roles)
+            .values_list("slug", flat=True)
+        )
+        for slug in retired_roles:
+            still_live = " (its page is still live)" if slug in live_pages else ""
+            self.stdout.write(f"  role : {slug}{still_live}")
+        for slug in retired_skills:
+            self.stdout.write(f"  skill: {slug}")
+
     def import_changelog(self, changelog_csv: Path):
         roles_by_slug = {role.slug: role for role in GovukRole.objects.all()}
         skills_by_slug = {skill.slug: skill for skill in GovukSkill.objects.all()}

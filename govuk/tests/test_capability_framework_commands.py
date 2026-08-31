@@ -322,6 +322,96 @@ class ImportCapabilityFrameworkTests(TestCase):
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
+class RetiredContentReportTests(TestCase):
+    """What the import says about content the exports have stopped publishing.
+
+    The import matches on slug and never deletes, which is what makes it safe
+    to re-run against a live CMS. It also means a rename in the source arrives
+    as an addition and the old role keeps its live page: rehearsing the 28
+    August 2026 exports over the migrated content ended with 54 roles against
+    the source's 53. Nothing here deletes anything, but the difference has to
+    be said out loud or the retired pages sit in the navigation, the search
+    index and the skills A to Z with nobody aware of them.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.data_dir = Path(self.tmp.name)
+        _write_fixtures(self.data_dir)
+        self._import()
+
+    def _import(self) -> str:
+        out = StringIO()
+        call_command("import_capability_framework", str(self.data_dir), stdout=out)
+        return out.getvalue()
+
+    def _rename_in_source(self):
+        """Publish the exports again with a role and a skill renamed."""
+        renamed = {
+            "Data architect": "Data and platform architect",
+            "Strategic data planning": "Strategic data and AI planning",
+        }
+        for name in ("roles.csv", "skills.csv"):
+            path = self.data_dir / name
+            text = path.read_text()
+            for old, new in renamed.items():
+                text = text.replace(old, new)
+            path.write_text(text)
+
+    def test_a_rename_in_the_source_is_reported_as_a_retirement(self):
+        self._rename_in_source()
+
+        output = self._import()
+
+        self.assertIn("In the CMS but not in this file: 1 role and 1 skill.", output)
+        self.assertIn("role : data-architect (its page is still live)", output)
+        self.assertIn("skill: strategic-data-planning", output)
+
+    def test_the_retired_content_is_reported_and_not_deleted(self):
+        self._rename_in_source()
+
+        self._import()
+
+        self.assertTrue(GovukRole.objects.filter(slug="data-architect").exists())
+        self.assertTrue(GovukSkill.objects.filter(slug="strategic-data-planning").exists())
+        self.assertTrue(RolePage.objects.get(slug="data-architect").live)
+        # The old name and the new one both have a role and a live page now.
+        self.assertEqual(RolePage.objects.live().count(), 4)
+
+    def test_a_source_that_still_publishes_everything_reports_nothing(self):
+        output = self._import()
+
+        self.assertNotIn("In the CMS but not in this file", output)
+
+    def test_a_page_that_has_been_unpublished_is_no_longer_flagged_as_live(self):
+        """Unpublishing is the work the warning is asking for, so doing it has
+        to change what the warning says. If a second run read identically to
+        the first there would be no way to tell the list had been dealt with.
+        """
+        self._rename_in_source()
+        RolePage.objects.get(slug="data-architect").unpublish()
+
+        output = self._import()
+
+        self.assertIn("role : data-architect\n", output)
+
+    def test_a_skill_an_editor_added_by_hand_is_named_too(self):
+        """The report says what is in the CMS and not in the file, which is
+        exactly what a hand-made skill is. Naming it is the honest answer: it
+        appears in the skills A to Z alongside the imported ones, and whoever
+        runs the refresh is the person who should know the exports will never
+        account for it.
+        """
+        GovukSkill.objects.create(title="Draft skill")
+
+        output = self._import()
+
+        self.assertIn("In the CMS but not in this file: 1 skill.", output)
+        self.assertIn("skill: draft-skill", output)
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
 class ExportCapabilityFrameworkTests(TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
