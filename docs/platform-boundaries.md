@@ -206,8 +206,32 @@ These are held by `PagesApiWithoutTheFrameworkTests` in
 behaviour, so a future change that empties these listings on the framework's own
 site fails too.
 
+### What the fourth pass found: rows a migration writes everywhere
+
+`0065_editor_snippet_permissions` gives the Editors and Moderators groups the
+permissions they need over the snippets. Some of those snippets are the
+framework's, and a migration cannot ask what the instance is for, so it writes
+them everywhere. On an instance with the flag off, 6 of Editors' 20 permissions
+and 10 of Moderators' 26 point at `GovukRole`, `GovukSkill`,
+`GovukChangelogEntry` and `CapabilityFrameworkWordingSettings` — models that
+site does not use.
+
+This is deliberate. A migration that branches on a feature flag makes the
+database depend on the environment it happened to be migrated in: the same
+codebase then produces two different databases, and a later migration has no way
+to tell which one it has. The rows are also inert. The models are not registered
+as snippets without the flag, so nothing lists them, and the group edit screen
+offers object permissions only for models that are registered — checked on a
+non-framework instance, where the only snippet it names is external content.
+
+So the residue on another service is these permission rows and the framework's
+own tables, which every instance's schema carries because the models are defined
+unconditionally. Neither is reachable, and both are the price of one codebase
+rather than a fork. Write them down rather than gating the migration.
+
 When you add something to the framework, ask the three questions the audit
-asked, the fourth the second pass added, and the fifth from the third:
+asked, the fourth the second pass added, the fifth from the third and the sixth
+from the fourth:
 
 1. **Can an editor on another site see it?** Panels, menu items, choosers,
    help text.
@@ -222,6 +246,10 @@ asked, the fourth the second pass added, and the fifth from the third:
 5. **If it cannot be read, can it still be listed?** Refusing to serve something
    and refusing to name it are two different fixes. Anything that lists pages
    generically needs the second one.
+6. **Does a migration write it?** Data migrations run on every instance and
+   cannot read the flag safely. Whatever they write lands on services that do
+   not want it and the flag cannot take it back, so it has to be inert by
+   construction.
 
 The fields on `ContentPage` are there because question 3 was answered late. They
 stay, because the alternative is a schema change on a shared page type; they are
