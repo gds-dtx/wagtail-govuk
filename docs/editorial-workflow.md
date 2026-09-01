@@ -62,15 +62,18 @@ workflow. That is intended, and it is what makes an urgent correction possible,
 but it means the workflow records what was reviewed rather than everything that
 was published. The audit log below records both.
 
-**Scheduling does not currently work.** A page can be given a go-live or expiry
-date under the publishing settings on its edit screen, and the CMS will accept
-it. But Wagtail only acts on those dates when `manage.py publish_scheduled` runs
-on a timer, and nothing on the deployed instances runs it — the container's
+**Scheduling is not offered.** There is no go-live or expiry date on a page's
+edit screen, and no "Edit schedule" toggle in the status side panel. That is
+deliberate. Wagtail only acts on those dates when `manage.py publish_scheduled`
+runs on a timer, and nothing on the deployed instances runs it — the container's
 command is `migrate` followed by `gunicorn` and there is no scheduler alongside
-it. A scheduled page therefore sits as an approved draft and never goes live,
-with nothing to indicate that it will not.
+it. Offering the field would mean accepting a date the service cannot honour:
+the page would sit as an approved draft, never go live, and tell nobody. So
+`page_settings_panels()` removes the publishing panel instead.
 
-Until a scheduler exists, publish at the time you want the change to appear.
+Publish at the time you want the change to appear. The day a scheduled task
+exists, `SCHEDULED_PUBLISHING=true` puts the panel back and nothing else has to
+change.
 
 **Reverting.** Every save is a revision. The page's History tab lists them and
 any one can be previewed and restored, so a bad edit is undone by republishing
@@ -122,6 +125,13 @@ Two things to know before using it on a live site: it runs outside the
 moderation workflow, and it **adds and updates but never deletes**. An import
 cannot be used to remove a page, and a file that omits a page leaves that page
 exactly as it was.
+
+Skipping the workflow does not mean skipping permissions. The import publishes
+only what the person running it could have published by hand: an editor's
+import lands as drafts, and the pages stay invisible to the public until a
+moderator publishes them. The audit log records it either way — an editor's
+import shows as `wagtail.create`, a moderator's adds `wagtail.publish`, both
+against the account that uploaded the file.
 
 ## The audit trail
 
