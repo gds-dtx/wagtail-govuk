@@ -7,6 +7,7 @@ from django.utils.text import slugify
 from wagtail.models import Site
 
 from govuk.models import (
+    CapabilityFrameworkWordingSettings,
     ContentPage,
     GovukChangelogEntry,
     GovukRole,
@@ -454,6 +455,27 @@ class FrameworkWelcomeContentTests(TestCase):
                 "support",
             ],
         )
+
+    def test_the_contents_heading_comes_from_the_wording_settings(self):
+        """The role pages read this setting; the welcome page hard-coded it.
+
+        A content team that renames the contents list expects both pages to
+        follow. Until this was fixed the welcome page kept saying "Contents"
+        whatever the setting said, which is the one string on the landing page
+        an editor could not reach.
+        """
+        page = self._welcome()
+        contents = page[page.index('id="contents"') : page.index("mobile-homepage-roles")]
+        self.assertIn("Contents", contents)
+
+        wording = CapabilityFrameworkWordingSettings.for_site(self.site)
+        wording.contents_heading = "In this guide"
+        wording.save()
+
+        page = self.client.get(self.page.url).content.decode()
+        contents = page[page.index('id="contents"') : page.index("mobile-homepage-roles")]
+        self.assertIn("In this guide", contents)
+        self.assertNotIn("Contents", contents)
 
     def test_every_contents_link_lands_somewhere(self):
         page = self._welcome()
