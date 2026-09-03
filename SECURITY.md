@@ -9,8 +9,8 @@ filed, including to whoever would exploit it.
 Report it through the government's
 [Vulnerability Reporting Service](https://vulnerability-reporting.service.security.gov.uk/).
 That is the route this service publishes: every instance built from this
-codebase serves `/.well-known/security.txt`, and that file points there
-(`SECURITY_TXT_URL`, `govuk/settings/base.py`). Using it means the report
+codebase redirects `/.well-known/security.txt` there
+(`SECURITYTXT_LOCATION`, `govuk/settings/base.py`). Using it means the report
 reaches the people who can act on it whether or not the affected site is one
 this team runs.
 
