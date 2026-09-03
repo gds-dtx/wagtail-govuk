@@ -11,7 +11,14 @@
         </title>
         <meta name="viewport"
               content="width=device-width, initial-scale=1, viewport-fit=cover">
-        <meta name="theme-color" content="blue">
+        {% comment %}
+            #0b0c0c is the Design System's black, and is what GOV.UK Frontend's
+            own template falls back to. The "blue" both this and the mask-icon
+            below carried is a CSS named colour -- #0000FF -- which is in no
+            GOV.UK palette. It tints the browser chrome on Android and the
+            pinned-tab icon in Safari.
+        {% endcomment %}
+        <meta name="theme-color" content="#0b0c0c">
         <link rel="stylesheet" href="{% static 'govuk-frontend-6.0.0.min.css' %}" />
         <link rel="stylesheet" href="{% static 'main.css' %}" />
         {% if additional_css %}
@@ -29,7 +36,7 @@
               type="image/svg+xml">
         <link rel="mask-icon"
               href="{% static 'assets/images/govuk-icon-mask.svg' %}"
-              color="blue">
+              color="#0b0c0c">
         <link rel="apple-touch-icon"
               href="{% static 'assets/images/govuk-icon-180.png' %}">
         <link rel="manifest" href="{% static 'assets/manifest.json' %}">
@@ -41,9 +48,7 @@
         {% endif %}
         {% block extra_head %}{% endblock %}
     </head>
-    <body class="govuk-template__body app-body-class"
-          data-test="My value"
-          data-other="report:details">
+    <body class="govuk-template__body app-body-class">
         <script nonce="{{ csp_nonce }}">
     document.body.className += ' js-enabled' + ('noModule' in HTMLScriptElement.prototype ? ' govuk-frontend-supported' : '');
         </script>
@@ -54,7 +59,12 @@
             <div class="govuk-header">
                 <div class="govuk-header__container govuk-width-container">
                     <div class="govuk-header__logo">
-                        <a href="/" class="govuk-header__homepage-link">
+                        {% comment %}
+                            The GOV.UK logo links to GOV.UK, as the Design
+                            System's header requires. The service's own home
+                            page is reached from the service name below.
+                        {% endcomment %}
+                        <a href="https://www.gov.uk" class="govuk-header__homepage-link">
                             {% if customise_settings and customise_settings.header_logo == "uk-government" %}
                                 <svg focusable="false"
                                      role="img"
@@ -93,51 +103,14 @@
                                     <path d="M93.94 41.25c.4 1.81 1.2 3.21 2.21 4.62 1 1.4 2.21 2.41 3.61 3.21s3.21 1.2 5.22 1.2 3.61-.4 4.82-1c1.4-.6 2.41-1.4 3.21-2.41.8-1 1.4-2.01 1.61-3.01s.4-2.01.4-3.01v.14h-10.86v-7.02h20.07v24.08h-8.03v-5.56c-.6.8-1.38 1.61-2.19 2.41-.8.8-1.81 1.2-2.81 1.81-1 .4-2.21.8-3.41 1.2s-2.41.4-3.81.4a18.56 18.56 0 0 1-14.65-6.63c-1.6-2.01-3.01-4.41-3.81-7.02s-1.4-5.62-1.4-8.83.4-6.02 1.4-8.83a20.45 20.45 0 0 1 19.46-13.65c3.21 0 4.01.2 5.82.8 1.81.4 3.61 1.2 5.02 2.01 1.61.8 2.81 2.01 4.01 3.21s2.21 2.61 2.81 4.21l-7.63 4.41c-.4-1-1-1.81-1.61-2.61-.6-.8-1.4-1.4-2.21-2.01-.8-.6-1.81-1-2.81-1.4-1-.4-2.21-.4-3.61-.4-2.01 0-3.81.4-5.22 1.2-1.4.8-2.61 1.81-3.61 3.21s-1.61 2.81-2.21 4.62c-.4 1.81-.6 3.71-.6 5.42s.8 5.22.8 5.22Zm57.8-27.9c3.21 0 6.22.6 8.63 1.81 2.41 1.2 4.82 2.81 6.62 4.82S170.2 24.39 171 27s1.4 5.62 1.4 8.83-.4 6.02-1.4 8.83-2.41 5.02-4.01 7.02-4.01 3.61-6.62 4.82-5.42 1.81-8.63 1.81-6.22-.6-8.63-1.81-4.82-2.81-6.42-4.82-3.21-4.41-4.01-7.02-1.4-5.62-1.4-8.83.4-6.02 1.4-8.83 2.41-5.02 4.01-7.02 4.01-3.61 6.42-4.82 5.42-1.81 8.63-1.81Zm0 36.73c1.81 0 3.61-.4 5.02-1s2.61-1.81 3.61-3.01 1.81-2.81 2.21-4.41c.4-1.81.8-3.61.8-5.62 0-2.21-.2-4.21-.8-6.02s-1.2-3.21-2.21-4.62c-1-1.2-2.21-2.21-3.61-3.01s-3.21-1-5.02-1-3.61.4-5.02 1c-1.4.8-2.61 1.81-3.61 3.01s-1.81 2.81-2.21 4.62c-.4 1.81-.8 3.61-.8 5.62 0 2.41.2 4.21.8 6.02.4 1.81 1.2 3.21 2.21 4.41s2.21 2.21 3.61 3.01c1.4.8 3.21 1 5.02 1Zm36.32 7.96-12.24-44.15h9.83l8.43 32.77h.4l8.23-32.77h9.83L200.3 58.04h-12.24Zm74.14-7.96c2.18 0 3.51-.6 3.51-.6 1.2-.6 2.01-1 2.81-1.81s1.4-1.81 1.81-2.81a13 13 0 0 0 .8-4.01V13.9h8.63v28.15c0 2.41-.4 4.62-1.4 6.62-.8 2.01-2.21 3.61-3.61 5.02s-3.41 2.41-5.62 3.21-4.62 1.2-7.02 1.2-5.02-.4-7.02-1.2c-2.21-.8-4.01-1.81-5.62-3.21s-2.81-3.01-3.61-5.02-1.4-4.21-1.4-6.62V13.9h8.63v26.95c0 1.61.2 3.01.8 4.01.4 1.2 1.2 2.21 2.01 2.81.8.8 1.81 1.4 2.81 1.81 0 0 1.34.6 3.51.6Zm34.22-36.18v18.92l15.65-18.92h10.82l-15.03 17.32 16.03 26.83h-10.21l-11.44-20.21-5.62 6.22v13.99h-8.83V13.9" />
                                 </svg>
                             {% endif %}
-                            {% if current_site.site_name %}
+                            {% if current_site.site_name and not customise_settings.show_service_name_in_navigation %}
                                 <span class="govuk-header__product-name">{{ current_site.site_name | cut:"GOV.UK" }}</span>
                             {% endif %}
                         </a>
                     </div>
-                    <div class="app-site-search">
-                        <form action="{% url 'search' %}"
-                              method="get"
-                              role="search"
-                              class="app-site-search__form">
-                            <label class="govuk-visually-hidden" for="app-site-search__input">
-                                Search
-                                {% if customise_settings and customise_settings.show_site_name_in_search_box %}
-                                    {% if current_site.site_name %}
-                                        {{ current_site.site_name }}
-                                    {% else %}
-                                        this site
-                                    {% endif %}
-                                {% endif %}
-                            </label>
-                            <input class="govuk-input app-site-search__input"
-                                   id="app-site-search__input"
-                                   name="query"
-                                   type="search"
-                                   value="{{ request.GET.query|default_if_none:'' }}"
-                                   placeholder="Search{% if customise_settings and customise_settings.show_site_name_in_search_box %}{% if current_site.site_name %} {{ current_site.site_name }}{% else %} this site{% endif %}{% endif %}" />
-                            <button class="govuk-button govuk-button--inverse app-site-search__button"
-                                    data-module="govuk-button"
-                                    type="submit"
-                                    enterkeyhint="search"
-                                    aria-label="Search">
-                                <svg class="gem-c-search__icon"
-                                     width="27"
-                                     height="27"
-                                     viewBox="0 0 27 27"
-                                     fill="none"
-                                     xmlns="http://www.w3.org/2000/svg"
-                                     aria-hidden="true"
-                                     focusable="false">
-                                    <circle cx="12.0161" cy="11.0161" r="8.51613" stroke="currentColor" stroke-width="3"></circle>
-                                    <line x1="17.8668" y1="17.3587" x2="26.4475" y2="25.9393" stroke="currentColor" stroke-width="3"></line>
-                                </svg>
-                            </button>
-                        </form>
-                    </div>
+                    {% if not customise_settings.show_service_name_in_navigation %}
+                        {% include "includes/site_search.html" %}
+                    {% endif %}
                 </div>
             </div>
             <section aria-label="Menu"
@@ -145,81 +118,101 @@
                      data-module="govuk-service-navigation">
                 <div class="govuk-width-container">
                     <div class="govuk-service-navigation__container">
-                        <!--span class="govuk-service-navigation__service-name">
-                            <a href="/" class="govuk-service-navigation__link">
-                                {% block service_name %}Service name{% endblock %}
-                            </a>
-                        </span -->
-                        <nav aria-label="Menu" class="govuk-service-navigation__wrapper">
-                            <button type="button"
-                                    class="govuk-service-navigation__toggle govuk-js-service-navigation-toggle"
-                                    aria-controls="navigation"
-                                    hidden
-                                    aria-hidden="true">Menu</button>
-                            <ul class="govuk-service-navigation__list" id="navigation">
-                                {% for item in service_navigation_items %}
-                                    <li class="govuk-service-navigation__item{% if item.is_active %} govuk-service-navigation__item--active{% endif %}">
-                                        <a class="govuk-service-navigation__link"
-                                           href="{{ item.url }}"
-                                           {% if item.is_active %}aria-current="page"{% endif %}>{{ item.title }}</a>
-                                    </li>
-                                {% endfor %}
-                                {% if request.user.is_authenticated %}
-                                    <li class="govuk-service-navigation__item app-service-navigation__item--featured">
-                                        <a class="govuk-service-navigation__link"
-                                           href="{% url 'account_logout' %}">Sign out</a>
-                                    </li>
-                                {% else %}
-                                    <li class="govuk-service-navigation__item app-service-navigation__item--featured">
-                                        <a class="govuk-service-navigation__link"
-                                           href="{% url 'account_login' %}">Sign in</a>
-                                    </li>
-                                {% endif %}
-                            </ul>
-                        </nav>
+                        {% if customise_settings.show_service_name_in_navigation and current_site.site_name %}
+                            <span class="govuk-service-navigation__service-name">
+                                <a href="/" class="govuk-service-navigation__link">{% block service_name %}{{ current_site.site_name|cut:"GOV.UK" }}{% endblock %}</a>
+                            </span>
+                        {% endif %}
+                        {% comment %}
+                            A site with nothing in its menu and no sign-in link leaves this
+                            list empty, and the Design System's JavaScript still un-hides the
+                            toggle below its breakpoint. That gave every narrow-screen page a
+                            Menu button that reported aria-expanded="true" and revealed
+                            nothing. Only render the navigation when it would hold something.
+                        {% endcomment %}
+                        {% if service_navigation_items or request.user.is_authenticated or not customise_settings.hide_sign_in_link %}
+                            <nav aria-label="Menu" class="govuk-service-navigation__wrapper">
+                                <button type="button"
+                                        class="govuk-service-navigation__toggle govuk-js-service-navigation-toggle"
+                                        aria-controls="navigation"
+                                        hidden
+                                        aria-hidden="true">Menu</button>
+                                <ul class="govuk-service-navigation__list" id="navigation">
+                                    {% for item in service_navigation_items %}
+                                        <li class="govuk-service-navigation__item{% if item.is_active %} govuk-service-navigation__item--active{% endif %}">
+                                            <a class="govuk-service-navigation__link"
+                                               href="{{ item.url }}"
+                                               {% if item.is_active %}aria-current="page"{% endif %}>{{ item.title }}</a>
+                                        </li>
+                                    {% endfor %}
+                                    {% if request.user.is_authenticated %}
+                                        <li class="govuk-service-navigation__item app-service-navigation__item--featured">
+                                            <a class="govuk-service-navigation__link"
+                                               href="{% url 'account_logout' %}">Sign out</a>
+                                        </li>
+                                    {% elif not customise_settings.hide_sign_in_link %}
+                                        <li class="govuk-service-navigation__item app-service-navigation__item--featured">
+                                            <a class="govuk-service-navigation__link"
+                                               href="{% url 'account_login' %}">Sign in</a>
+                                        </li>
+                                    {% endif %}
+                                </ul>
+                            </nav>
+                        {% endif %}
+                        {% if customise_settings.show_service_name_in_navigation %}
+                            {% include "includes/site_search.html" %}
+                        {% endif %}
                     </div>
                 </div>
             </section>
             {% if not self.enable_combined_service_navigation_and_hero_styling and phase_banner_settings and phase_banner_settings.enabled %}
                 {% include "includes/phase_banner.html" with phase_banner_settings=phase_banner_settings %}
             {% endif %}
-            {% if breadcrumbs and not self.enable_combined_service_navigation_and_hero_styling %}
-                <div class="govuk-width-container">
-                    <nav class="govuk-breadcrumbs" aria-label="Breadcrumb">
-                        <ol class="govuk-breadcrumbs__list">
-                            {% for item in breadcrumbs %}
-                                <li class="govuk-breadcrumbs__list-item">
-                                    {% if item.is_current %}
-                                        <span aria-current="page">{{ item.title }}</span>
-                                    {% else %}
-                                        <a class="govuk-breadcrumbs__link" href="{{ item.url }}">{{ item.title }}</a>
-                                    {% endif %}
-                                </li>
-                            {% endfor %}
-                        </ol>
-                    </nav>
-                </div>
-            {% endif %}
         </header>
+        {% comment %}
+            The breadcrumb sits between the header and the main content rather
+            than inside the header, which is where the Design System puts it and
+            which keeps it out of the banner landmark.
+        {% endcomment %}
+        {% if breadcrumbs and not self.enable_combined_service_navigation_and_hero_styling %}
+            <div class="govuk-width-container">
+                <nav class="govuk-breadcrumbs{% if breadcrumbs_mobile_only %} app-breadcrumbs--mobile-only{% endif %}"
+                     aria-label="Breadcrumb">
+                    <ol class="govuk-breadcrumbs__list">
+                        {% for item in breadcrumbs %}
+                            {% if item.is_current %}
+                                <li class="govuk-breadcrumbs__list-item" aria-current="page">{{ item.title }}</li>
+                            {% else %}
+                                <li class="govuk-breadcrumbs__list-item">
+                                    <a class="govuk-breadcrumbs__link" href="{{ item.url }}">{{ item.title }}</a>
+                                </li>
+                            {% endif %}
+                        {% endfor %}
+                    </ol>
+                </nav>
+            </div>
+        {% endif %}
         <main class="govuk-main-wrapper {% if self.enable_combined_service_navigation_and_hero_styling %}govuk-!-padding-0{% endif %}"
               id="main-content"
               role="main">
-            {% if self.hero_title or self.title or self.search_description or self.hero_intro %}
-                <div class="{% if self.enable_hero_styling or self.enable_combined_service_navigation_and_hero_styling %}masthead {% if self.enable_combined_service_navigation_and_hero_styling %}masthead--combined{% endif %}{% endif %}">
-                    <div class="hero">
-                        <div class="hero__content">
-                            {% if self.hero_title or self.title %}
-                                <h1 class="hero__title">{{ self.hero_title | default:self.title }}</h1>
-                            {% endif %}
-                            {% if self.hero_intro %}
-                                <div class="hero__description rich-text-content">{{ self.hero_intro|richtext }}</div>
-                            {% elif self.search_description %}
-                                <p class="hero__description rich-text-content">{{ self.search_description }}</p>
-                            {% endif %}
+            {% block page_hero %}
+                {% if self.hero_title or self.title or self.search_description or self.hero_intro %}
+                    <div class="{% if self.enable_hero_styling or self.enable_combined_service_navigation_and_hero_styling %}masthead {% if self.enable_combined_service_navigation_and_hero_styling %}masthead--combined{% endif %}{% endif %}">
+                        <div class="hero">
+                            <div class="hero__content">
+                                {% if self.hero_title or self.title %}
+                                    <h1 class="hero__title govuk-heading-xl">{{ self.hero_title | default:self.title }}</h1>
+                                {% endif %}
+                                {% if self.hero_intro %}
+                                    <div class="hero__description rich-text-content">{{ self.hero_intro|richtext }}</div>
+                                {% elif self.search_description %}
+                                    <p class="hero__description rich-text-content">{{ self.search_description }}</p>
+                                {% endif %}
+                            </div>
                         </div>
                     </div>
-                </div>
-            {% endif %}
+                {% endif %}
+            {% endblock %}
             {% if self.enable_combined_service_navigation_and_hero_styling and phase_banner_settings and phase_banner_settings.enabled %}
                 {% include "includes/phase_banner.html" with phase_banner_settings=phase_banner_settings %}
             {% endif %}
@@ -239,6 +232,22 @@
             {% endif %}
             {% block content %}
             {% endblock %}
+            {% comment %}
+                Hidden until main.js reveals it, so it is never offered where it
+                could not work.
+            {% endcomment %}
+            <button type="button" id="back-to-top" class="govuk-link">
+                <svg role="presentation"
+                     focusable="false"
+                     class="back-to-top__icon"
+                     xmlns="http://www.w3.org/2000/svg"
+                     width="13"
+                     height="17"
+                     viewBox="0 0 13 17">
+                <path fill="currentColor" d="M6.5 0L0 6.5 1.4 8l4-4v12.7h2V4l4.3 4L13 6.4z" />
+                </svg>
+                Back to top
+            </button>
         </main>
         <footer class="govuk-template__footer">
             <div class="govuk-footer">
@@ -290,10 +299,16 @@
                                     {% endfor %}
                                 {% endif %}
                             </ul>
-                            <div class="govuk-footer__meta-custom"
-                                 {% if not app_debug %}hidden{% endif %}>
-                                Debug: {{ app_debug|default:"unknown" }} | Version: {{ app_version|default:"unknown" }} | Settings: {{ django_settings_module|default:"unknown" }}
-                            </div>
+                            {% comment %}
+                                `hidden` kept this out of sight but not out of the page
+                                source, so a production page still told a reader which
+                                settings module and version it was running.
+                            {% endcomment %}
+                            {% if app_debug %}
+                                <div class="govuk-footer__meta-custom">
+                                    Debug: {{ app_debug|default:"unknown" }} | Version: {{ app_version|default:"unknown" }} | Settings: {{ django_settings_module|default:"unknown" }}
+                                </div>
+                            {% endif %}
                             <svg aria-hidden="true"
                                  focusable="false"
                                  class="govuk-footer__licence-logo"

@@ -4,7 +4,6 @@ from django.apps import AppConfig
 from django.conf import settings
 from django.db.models.signals import post_migrate
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +31,37 @@ def _sync_default_site_after_migrate(app_config, **kwargs):
     sync_default_site_from_env()
 
 
+def _warn_about_framework_across_sites(app_config, **kwargs):
+    """One database per site while the Capability Framework is switched on.
+
+    Roles, skills, changelog entries and tags are snippets with no site of
+    their own, so where two Wagtail Sites share a database they share the
+    framework's content: the side navigation on one site lists the other's
+    roles and links to them by the other site's hostname. The deployment is a
+    database per instance, so this does not arise today, and the fix is a
+    schema change rather than a flag.
+
+    Say so out loud instead of leaving it to be discovered. A warning, not an
+    error -- it belongs in the deployment log, not in the way of a deployment.
+    """
+    if app_config.label != "wagtailcore":
+        return
+    if not settings.FEATURE_FLAGS.get("SKILLS"):
+        return
+
+    from wagtail.models import Site
+
+    site_count = Site.objects.count()
+    if site_count > 1:
+        logger.warning(
+            "FEATURE_SKILLS is on and this database holds %s Wagtail sites. "
+            "Capability Framework snippets are not site-scoped, so every site "
+            "here will show the same roles, skills and changelog. Run one "
+            "database per site, or scope the snippets first.",
+            site_count,
+        )
+
+
 class GovukConfig(AppConfig):
     name = "govuk"
     verbose_name = "GOV.UK"
@@ -56,4 +86,8 @@ class GovukConfig(AppConfig):
         post_migrate.connect(
             _sync_default_site_after_migrate,
             dispatch_uid="govuk.sync_default_site_after_migrate",
+        )
+        post_migrate.connect(
+            _warn_about_framework_across_sites,
+            dispatch_uid="govuk.warn_about_framework_across_sites",
         )

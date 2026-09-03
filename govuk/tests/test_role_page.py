@@ -145,6 +145,18 @@ class RolePageTests(TestCase):
             "Analyses digital evidence and investigates incidents.",
         )
 
+    def test_skill_points_are_introduced_by_the_framework_wording(self):
+        """The points are written as the ends of "You can:", so it is printed."""
+        response = self.client.get(self.role_page.url)
+
+        self.assertContains(response, "You can:")
+
+    def test_a_delegated_grade_role_has_none_of_the_senior_civil_service_wording(self):
+        response = self.client.get(self.role_page.url)
+
+        self.assertNotContains(response, "A specific digital forensics analyst job")
+        self.assertNotContains(response, "will need to use digital and data skills to")
+
     def test_role_page_supports_tags(self):
         policy_tag = GovukTag.objects.create(slug="policy", name="Policy")
         security_tag = GovukTag.objects.create(slug="security", name="Security")
@@ -159,3 +171,16 @@ class RolePageTests(TestCase):
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_role_page_is_not_creatable_when_skills_feature_is_disabled(self):
         self.assertFalse(RolePage.can_create_at(self.root_page))
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    def test_a_role_page_does_not_serve_without_the_framework(self):
+        """Not creatable is not the same as not public.
+
+        Wagtail checks ``can_exist_under`` when a page is created or moved
+        through the admin and never again. The page import does not go through
+        the admin, so a Capability Framework export applied to another site
+        leaves live role pages routing on it.
+        """
+        response = self.client.get(self.role_page.url)
+
+        self.assertEqual(response.status_code, 404)

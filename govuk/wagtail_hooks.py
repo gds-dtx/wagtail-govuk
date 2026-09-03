@@ -1,11 +1,11 @@
 import base64
 import io
 import json
+import re
 from datetime import timedelta
 
-from draftjs_exporter.dom import DOM
-from django.conf import settings
 from django import forms
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.http import (
     HttpResponse,
@@ -15,9 +15,10 @@ from django.http import (
 )
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse, reverse_lazy
-from django.utils.html import escape
-from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils import timezone
+from django.utils.html import escape, strip_tags
+from django.utils.http import url_has_allowed_host_and_scheme
+from draftjs_exporter.dom import DOM
 from wagtail import hooks
 from wagtail.admin import messages
 from wagtail.admin.auth import permission_denied, require_admin_access
@@ -29,12 +30,16 @@ from wagtail.admin.rich_text.converters.html_to_contentstate import (
     PageLinkElementHandler,
 )
 from wagtail.admin.rich_text.editors.draftail import features as draftail_features
+from wagtail.contrib.settings.models import register_setting
 from wagtail.models import Page, Site
+from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import EmbedHandler
 from wagtail.rich_text.pages import PageLinkHandler
 from wagtail.snippets.models import register_snippet
-from wagtail.snippets.views.snippets import IndexView as SnippetIndexView
-from wagtail.snippets.views.snippets import SnippetViewSet
+from wagtail.snippets.views.snippets import (
+    IndexView as SnippetIndexView,
+    SnippetViewSet,
+)
 from wagtail.whitelist import check_url
 
 from govuk.content_discovery import ContentDiscoveryError, sync_content_discovery_source
@@ -43,12 +48,14 @@ from govuk.content_discovery_import import (
     import_content_discovery_sources_from_csv,
 )
 from govuk.models import (
+    CapabilityFrameworkWordingSettings,
     ContentDiscoverySettings,
     ContentDiscoverySource,
     EdDSAKeyPair,
     EdDSAKeySettings,
     ExternalContentItem,
     Feedback,
+    GovukChangelogEntry,
     GovukRole,
     GovukSkill,
     GovukTag,
@@ -60,6 +67,7 @@ from govuk.page_import_export import (
     dump_payload_as_json,
     import_pages_from_payload,
 )
+from govuk.utils import row_id_from_text
 
 GOVUK_BUTTON_FEATURE = "govuk-button"
 GOVUK_START_BUTTON_FEATURE = "govuk-start-button"
@@ -194,12 +202,44 @@ class RawHtmlElementHandler(AtomicBlockEntityElementHandler):
         )
 
 
+_TABLE_FRAGMENT_RE = re.compile(r"^\s*<table\b", re.IGNORECASE)
+_CAPTION_RE = re.compile(r"<caption\b[^>]*>(.*?)</caption>", re.IGNORECASE | re.DOTALL)
+
+
+def _wrap_table_in_scroll_region(html: str) -> str:
+    """Give a hand-written table the scrollable region main.css styles.
+
+    A table of four columns of full sentences cannot be made to fit 320px, and
+    left alone it drags the whole document sideways -- WCAG 1.4.10 Reflow. The
+    criterion exempts content that genuinely needs two dimensions, so the table
+    keeps its shape and scrolls inside a region of its own. Focusable, so a
+    keyboard can scroll it, and named from the caption where there is one.
+
+    The test is whether the fragment *starts* with a table, which is what an
+    editor pasting one produces. Anything else is left alone: a fragment with
+    prose around a table is the editor laying the page out themselves.
+    """
+    if not _TABLE_FRAGMENT_RE.match(html):
+        return html
+
+    caption_match = _CAPTION_RE.search(html)
+    caption = strip_tags(caption_match.group(1)).strip() if caption_match else ""
+    label = escape(caption) if caption else "Table"
+    return (
+        f'<div class="table-scroll" tabindex="0" role="region" '
+        f'aria-label="{label}">{html}</div>'
+    )
+
+
 class RawHtmlEmbedHandler(EmbedHandler):
     identifier = RAW_HTML_EMBEDTYPE
 
     @classmethod
     def expand_db_attributes_many(cls, attrs_list: list[dict]) -> list[str]:
-        return [_decode_raw_html(attrs.get("html", "")) for attrs in attrs_list]
+        return [
+            _wrap_table_in_scroll_region(_decode_raw_html(attrs.get("html", "")))
+            for attrs in attrs_list
+        ]
 
 
 def raw_html_entity(props: dict):
@@ -430,8 +470,22 @@ class GovukRoleViewSet(SnippetViewSet):
     menu_label = "Roles"
     menu_name = "govuk-roles"
     menu_order = 216
-    list_display = ["title", "slug"]
-    search_fields = ["title", "slug", "body"]
+    list_display = ["title", "family", "slug"]
+    list_filter = ["family"]
+    search_fields = ["title", "slug", "body", "family"]
+
+
+class GovukChangelogEntryViewSet(SnippetViewSet):
+    model = GovukChangelogEntry
+    icon = "history"
+    add_to_admin_menu = True
+    menu_label = "Changelog"
+    menu_name = "govuk-changelog"
+    menu_order = 217
+    list_display = ["date", "role", "skill", "change_type", "live"]
+    list_filter = ["live", "date"]
+    search_fields = ["note", "change_type"]
+    ordering = ["-date"]
 
 
 class FeedbackIndexView(SnippetIndexView):
@@ -543,9 +597,10 @@ def _selected_site_for_request(request) -> Site | None:
         or request.POST.get("site_id")
         or ""
     ).strip()
-    if raw_site_id.isdigit():
+    requested_site_id = row_id_from_text(raw_site_id)
+    if requested_site_id is not None:
         selected_site = next(
-            (site for site in sites if site.pk == int(raw_site_id)),
+            (site for site in sites if site.pk == requested_site_id),
             None,
         )
         if selected_site is not None:
@@ -562,25 +617,35 @@ def _import_export_admin_url(site_id: int) -> str:
 def _normalised_selected_ids(raw_ids: list[str]) -> list[int]:
     selected_ids: list[int] = []
     for raw_id in raw_ids:
-        raw_value = (raw_id or "").strip()
-        if raw_value.isdigit():
-            selected_ids.append(int(raw_value))
+        selected_id = row_id_from_text(raw_id)
+        if selected_id is not None:
+            selected_ids.append(selected_id)
     return selected_ids
 
 
-def _page_rows_for_site(site: Site) -> list[dict]:
+def _page_rows_for_site(site: Site, user) -> list[dict]:
+    """The pages this user may export, which are the ones they may edit.
+
+    Offering the rest and dropping them at the point of export would read as
+    the export having failed. They are not offered.
+    """
     root_page = site.root_page.specific
-    pages = (
-        Page.objects.descendant_of(root_page, inclusive=False)
+    # Inclusive: the home page holds the content the front page shows, and an
+    # export of everything that left it out had to be finished by hand in the
+    # new instance. The import side has always known what to do with one.
+    pages = [
+        page
+        for page in Page.objects.descendant_of(root_page, inclusive=True)
         .specific()
         .order_by("path")
-    )
+        if page.permissions_for_user(user).can_edit()
+    ]
     return [
         {
             "id": page.pk,
             "title": page.title,
             "slug": page.slug,
-            "depth": max(page.depth - root_page.depth - 1, 0),
+            "depth": page.depth - root_page.depth,
             "model_label": page._meta.label,
             "is_private": page.view_restrictions.exists(),
         }
@@ -588,7 +653,19 @@ def _page_rows_for_site(site: Site) -> list[dict]:
     ]
 
 
-def _skill_rows() -> list[dict]:
+def _may_manage_snippet(user, model) -> bool:
+    """Whether the snippet's own menu would open for this user.
+
+    Export offers what that menu would show them, and no more.
+    """
+    return ModelPermissionPolicy(model).user_has_any_permission(
+        user, ["add", "change", "delete"]
+    )
+
+
+def _skill_rows(user) -> list[dict]:
+    if not _may_manage_snippet(user, GovukSkill):
+        return []
     return list(
         GovukSkill.objects.order_by("title", "slug").values(
             "id",
@@ -598,7 +675,9 @@ def _skill_rows() -> list[dict]:
     )
 
 
-def _role_rows() -> list[dict]:
+def _role_rows(user) -> list[dict]:
+    if not _may_manage_snippet(user, GovukRole):
+        return []
     return list(
         GovukRole.objects.order_by("title", "slug").values(
             "id",
@@ -640,10 +719,10 @@ def pages_import_export_index_view(request):
             "header_icon": "download",
             "sites": _all_admin_sites(),
             "selected_site": selected_site,
-            "page_rows": _page_rows_for_site(selected_site),
+            "page_rows": _page_rows_for_site(selected_site, request.user),
             "skills_feature_enabled": skills_feature_enabled,
-            "skill_rows": _skill_rows() if skills_feature_enabled else [],
-            "role_rows": _role_rows() if skills_feature_enabled else [],
+            "skill_rows": _skill_rows(request.user) if skills_feature_enabled else [],
+            "role_rows": _role_rows(request.user) if skills_feature_enabled else [],
         },
     )
 
@@ -673,38 +752,54 @@ def pages_export_view(request):
     )
 
     if not selected_page_ids and not selected_skill_ids and not selected_role_ids:
-        if skills_feature_enabled:
-            messages.error(
-                request, "Select at least one page, skill or role to export."
-            )
-        else:
+        # Nothing ticked still has something to carry: the framework wording is
+        # a site setting, so it hangs off no page and cannot be ticked. Without
+        # this, applying a wording change elsewhere would mean exporting a page
+        # nobody wanted to move and overwriting it on the way in, or trimming
+        # the file by hand.
+        if not skills_feature_enabled:
             messages.error(request, "Select at least one page to export.")
-        return redirect(redirect_url)
+            return redirect(redirect_url)
 
-    selected_pages = list(
-        Page.objects.descendant_of(selected_site.root_page, inclusive=False)
+    # A page id can be typed into the form as easily as it can be ticked, so
+    # the same permission the listing was filtered by is asked again here.
+    selected_pages = [
+        page
+        for page in Page.objects.descendant_of(selected_site.root_page, inclusive=True)
         .filter(pk__in=selected_page_ids)
         .specific()
         .order_by("path")
-    )
+        if page.permissions_for_user(request.user).can_edit()
+    ]
     selected_skills = (
         list(
             GovukSkill.objects.filter(pk__in=selected_skill_ids).order_by(
                 "title", "slug"
             )
         )
-        if skills_feature_enabled
+        if skills_feature_enabled and _may_manage_snippet(request.user, GovukSkill)
         else []
     )
     selected_roles = (
         list(
             GovukRole.objects.filter(pk__in=selected_role_ids).order_by("title", "slug")
         )
-        if skills_feature_enabled
+        if skills_feature_enabled and _may_manage_snippet(request.user, GovukRole)
         else []
     )
 
-    if not selected_pages and not selected_skills and not selected_roles:
+    asked_for_content = bool(
+        selected_page_ids or selected_skill_ids or selected_role_ids
+    )
+    if (
+        asked_for_content
+        and not selected_pages
+        and not selected_skills
+        and not selected_roles
+    ):
+        # Only where something was ticked and none of it could be found. An
+        # export of the wording alone asks for nothing else and is not a
+        # failure to report.
         if skills_feature_enabled:
             messages.error(
                 request,
@@ -719,10 +814,14 @@ def pages_export_view(request):
         pages=selected_pages,
         skills=selected_skills,
         roles=selected_roles,
+        user=request.user,
     )
     file_contents = dump_payload_as_json(payload)
     timestamp = timezone.now().strftime("%Y%m%d-%H%M%S")
-    file_name = f"pages-export-site-{selected_site.pk}-{timestamp}.json"
+    # Named for what is in it, so that a wording export is still recognisable
+    # in a downloads folder a fortnight later.
+    subject = "pages" if asked_for_content else "wording"
+    file_name = f"{subject}-export-site-{selected_site.pk}-{timestamp}.json"
 
     response = HttpResponse(file_contents, content_type="application/json")
     response["Content-Disposition"] = f'attachment; filename="{file_name}"'
@@ -777,21 +876,51 @@ def pages_import_view(request):
         site=selected_site,
         user=request.user,
     )
+    if not result.processed and result.errors:
+        # Nothing in the file was even a page, a skill or a role to look at.
+        # "Import complete" over a file that turned out not to be an export
+        # reads as success at the very moment someone is checking whether the
+        # content moved, with the reason it did not only in the line beneath.
+        # Every reason, not the first: a file can be refused for several at
+        # once, and the ones not shown would be met one at a time, an upload
+        # apiece.
+        messages.error(
+            request, f"Nothing was imported. {_errors_preview(result.errors)}"
+        )
+        return redirect(redirect_url)
+
+    drafted_note = (
+        f" {result.drafted} left as drafts for a publisher to review."
+        if result.drafted
+        else ""
+    )
     messages.success(
         request,
         (
             "Import complete. "
             f"Processed {result.processed}, created {result.created}, "
-            f"updated {result.updated}, skipped {result.skipped}."
+            f"updated {result.updated}, skipped {result.skipped}.{drafted_note}"
         ),
     )
+    if result.notes:
+        # Things the import did beyond adding and updating what was in the
+        # file: replacing a placeholder home page, seeding the live service's
+        # redirects. Both change the site in ways the counts above do not
+        # show, and both were previously recorded and then never shown.
+        messages.info(request, " ".join(result.notes))
     if result.errors:
-        preview = "; ".join(result.errors[:3])
-        if len(result.errors) > 3:
-            preview = f"{preview}; and {len(result.errors) - 3} more."
-        messages.warning(request, f"Some items were skipped: {preview}")
+        messages.warning(
+            request, f"Some items were skipped: {_errors_preview(result.errors)}"
+        )
 
     return redirect(redirect_url)
+
+
+def _errors_preview(errors: list[str]) -> str:
+    preview = "; ".join(errors[:3])
+    if len(errors) > 3:
+        preview = f"{preview}; and {len(errors) - 3} more."
+    return preview
 
 
 @require_admin_access
@@ -1166,5 +1295,7 @@ _register_snippet_if_needed(ExternalContentItemViewSet)
 if settings.FEATURE_FLAGS.get("SKILLS"):
     _register_snippet_if_needed(GovukSkillViewSet)
     _register_snippet_if_needed(GovukRoleViewSet)
+    _register_snippet_if_needed(GovukChangelogEntryViewSet)
+    register_setting(CapabilityFrameworkWordingSettings, icon="edit")
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)

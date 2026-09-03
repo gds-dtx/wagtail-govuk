@@ -1,6 +1,11 @@
+/* The Design System's own wrapper padding is more than these pages want —
+   they carry their own spacing — but zero left the h1 touching the service
+   navigation. 25px is what the live service leaves between the phase banner
+   and the heading (T12). Pages that join the navigation to the hero override
+   this with govuk-!-padding-0, so their flush edge is unaffected. */
 .govuk-main-wrapper {
     display: block;
-    padding: 0px;
+    padding: 25px 0 0;
 }
 
 .masthead {
@@ -262,16 +267,8 @@ main > :nth-last-child(1 of .section-cards-container) {
     max-width: 100%;
 }
 
-.search-result-breadcrumbs {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.35rem;
-    align-items: center;
-}
-
-.search-result-breadcrumbs__separator {
-    color: #505a5f;
-}
+/* Search results use the same card grid as the rest of the site, which is the
+   design the service ships today. */
 
 .listing-filters {
     display: flex;
@@ -345,4 +342,587 @@ main > :nth-last-child(1 of .section-cards-container) {
         text-align: right;
         flex: 1 0 auto;
     }
+}
+
+/* Search sitting in the service navigation bar rather than the GOV.UK header.
+   The header version is on a blue background and uses the inverse button; here
+   the background is light, so the input and button need ordinary GOV.UK ink. */
+.govuk-service-navigation .app-site-search__form {
+    border: 2px solid #0b0c0c;
+    background-color: #fff;
+}
+
+.govuk-service-navigation .app-site-search__input {
+    background-color: #fff;
+    color: #0b0c0c;
+}
+
+.govuk-service-navigation .app-site-search__button,
+.govuk-service-navigation .app-site-search__button:link,
+.govuk-service-navigation .app-site-search__button:visited {
+    background-color: #fff;
+    color: #0b0c0c;
+    border-left: 0;
+}
+
+.govuk-service-navigation .app-site-search__button:hover {
+    background-color: #f3f2f1;
+}
+
+.govuk-service-navigation .app-site-search__button:focus {
+    background-color: #fd0;
+}
+
+@media (min-width: 48.0625em) {
+    /* The bar holds three things on one row: the service name, the navigation
+       links, then the search box against the right edge. Frontend lets the
+       links wrapper grow into whatever space is left, which pushed the search
+       box down onto a second row; the free space belongs to the search box.
+       Only when the box is actually on the row: on a bar without it the
+       wrapper must keep growing, or the featured sign-in link that aligns
+       right inside it ends up at the bar's left edge. */
+    .govuk-service-navigation .govuk-service-navigation__container:has(.app-site-search) .govuk-service-navigation__wrapper {
+        flex-grow: 0;
+    }
+
+    /* Flex wraps on flex-basis before it shrinks, so a box asking for 20rem
+       drops to a row of its own rather than taking the 18rem that are going.
+       A smaller basis that grows into what is left keeps it on the row, and
+       the cap stops it stretching across the bar when it does wrap. */
+    .govuk-service-navigation .app-site-search {
+        flex: 1 1 16rem;
+        min-width: 16rem;
+        max-width: 20rem;
+        /* The box is shorter than the service name beside it and the bar aligns
+           its contents to the top, so without these it hangs off the bar's top
+           border. They also keep it clear of the bar's edges on the narrower
+           widths where it still wraps to a row of its own. */
+        margin-top: 7px;
+        margin-bottom: 7px;
+    }
+
+    /* The search box is pushed right by `margin-left: auto`, which collapses to
+       nothing once the row is full — leaving it touching "Sign in". A column
+       gap holds the two apart whatever the auto margin does. */
+    .govuk-service-navigation__container {
+        column-gap: 20px;
+    }
+}
+
+/* On a narrow screen the box has a row to itself, but the bar aligns its
+   contents to the start, so it takes only the width of its content and stops
+   short of the margin the rest of the page lines up with. A hair below the
+   breakpoint above, because a max-width query includes the width it names and
+   both would otherwise apply at exactly 48.0625em. */
+@media (max-width: 48.0525em) {
+    .govuk-service-navigation .app-site-search {
+        width: 100%;
+    }
+}
+
+/* Role page side navigation.
+   The DDaT Capability Framework borrows the MoJ Frontend side navigation for
+   this, but every colour in it is stock GOV.UK, so it is cheaper to keep the
+   twenty lines here than to take on another design system. */
+.role-nav {
+    display: none;
+    font-family: "GDS Transport", arial, sans-serif;
+    font-weight: 400;
+    /* A deliberate step away from the live service, which sets 14px here:
+       review round 1 (T18/T24) asked for the Design System sub-navigation
+       size instead. */
+    font-size: 1rem;
+    line-height: 1.25;
+}
+
+.role-nav__title {
+    font-size: 1rem;
+    line-height: 1.25;
+    color: #505a5f;
+    font-weight: 400;
+    margin: 0;
+    padding: 10px 10px 10px 14px;
+}
+
+.role-nav__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.role-nav__item {
+    display: flex;
+}
+
+.role-nav__item a,
+.role-nav__item a:link,
+.role-nav__item a:visited {
+    background-color: inherit;
+    color: var(--govuk-link-colour, #1d70b8);
+    display: block;
+    text-decoration: none;
+    border-left: 4px solid transparent;
+    padding: 10px;
+}
+
+.role-nav__item a:hover {
+    color: var(--govuk-link-hover-colour, #003078);
+    border-color: #5694ca;
+}
+
+.role-nav__item a:focus {
+    /* The Design System's link focus, asked for in review round 1 (T20/T24):
+       yellow behind, black text, and the black line along the bottom edge
+       that the yellow alone does not give. */
+    outline: 3px solid transparent;
+    color: #0b0c0c;
+    background-color: #fd0;
+    box-shadow: 0 -2px #fd0, 0 4px #0b0c0c;
+    border-color: #0b0c0c;
+    border-left-color: #fd0;
+    text-decoration: none;
+    position: relative;
+}
+
+.role-nav__item--active a:link,
+.role-nav__item--active a:visited {
+    background-color: #f3f2f1;
+    border-color: var(--govuk-link-colour, #1d70b8);
+    color: var(--govuk-link-colour, #1d70b8);
+    font-weight: 700;
+}
+
+.role-nav__item--active a:hover {
+    color: var(--govuk-link-hover-colour, #003078);
+    border-color: var(--govuk-link-hover-colour, #003078);
+}
+
+.role-nav__item--active a:focus {
+    color: #0b0c0c;
+    background-color: #fd0;
+    border-color: #0b0c0c;
+}
+
+/* Welcome page role lists, which stand in for the side navigation on a narrow
+   screen and are hidden once the navigation appears. */
+.mobile-homepage {
+    font-size: 1rem;
+    margin: 20px 0 15px 0;
+}
+
+.mobile-homepage h2 {
+    margin-top: 20px;
+}
+
+.mobile-homepage-roles li {
+    font-size: 1rem;
+    margin: 0 0 12px 0;
+}
+
+.mobile-homepage-roles a:link {
+    text-decoration: underline;
+}
+
+/* Skill level definitions on the welcome page: four bars, filled up to the
+   level being described. Hidden from assistive technology, which is given the
+   wording instead. */
+.skill-definitions__container > .progress-bar__container {
+    width: 50%;
+    height: 11px;
+}
+
+.skill-definitions__container > .progress-bar__container > .progress-bar__divider {
+    width: 5%;
+}
+
+/* The bar is an indicator, not a measure, so it takes a share of the column
+   rather than filling it. The percentages step up as the column narrows,
+   which is how the framework sizes them. */
+.progress-bar__container {
+    display: table;
+    table-layout: fixed;
+    width: 50%;
+    height: 10px;
+    border-spacing: 10px;
+    margin-top: -9px;
+    margin-bottom: 10px;
+}
+
+.progress-bar__grey,
+.progress-bar__white {
+    display: table-cell;
+    border: 1.5px solid #4f4f4f;
+}
+
+.progress-bar__grey {
+    background-color: #4f4f4f;
+}
+
+.progress-bar__white {
+    background-color: #efefef;
+}
+
+.progress-bar__divider {
+    display: table-cell;
+    width: 5%;
+    background-color: #fff;
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+/* Role page contents list and changelog. */
+.contents-list-links {
+    text-decoration-line: none;
+    list-style: none;
+    padding-left: 0;
+    margin-left: 5px;
+    margin-bottom: 8px;
+}
+
+.contents-list-links > li {
+    margin-bottom: 10px;
+}
+
+.contents-list-links.indented-list {
+    margin-left: 15px;
+}
+
+.role-level-header {
+    font-size: 1.2rem;
+}
+
+.publish-dates {
+    margin-bottom: 4px;
+}
+
+.changelog-content {
+    max-width: 38em;
+}
+
+/* "Back to top", revealed by main.js once the page has been scrolled. It stays
+   hidden without JavaScript, where the browser's own controls do the job. */
+#back-to-top {
+    display: none;
+    position: fixed;
+    bottom: 30px;
+    left: 15px;
+    z-index: 99;
+    padding: 0;
+    border: 0;
+    outline: 0;
+    background-color: #fff;
+    color: var(--govuk-link-colour, #1d70b8);
+    font-family: "GDS Transport", arial, sans-serif;
+    font-size: 1.125rem;
+    line-height: 1.25;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+#back-to-top:hover {
+    color: var(--govuk-link-hover-colour, #003078);
+    text-decoration-thickness: 3px;
+}
+
+#back-to-top:focus {
+    background-color: #fd0;
+    box-shadow: 0 -2px #fd0, 0 4px #0b0c0c;
+    color: #0b0c0c;
+    outline: 3px solid transparent;
+    text-decoration: none;
+}
+
+#back-to-top.back-to-top--visible {
+    display: block;
+}
+
+#back-to-top.back-to-top--docked {
+    position: absolute;
+    bottom: 20px;
+}
+
+.back-to-top__icon {
+    float: left;
+    width: 0.8em;
+    height: 0.968em;
+    margin-right: 0.3em;
+}
+
+/* The breadcrumb stands in for the side navigation once that is hidden, so it
+   only shows at the widths where the navigation does not. The class is ours
+   rather than a GOV.UK Frontend modifier, which ships only
+   govuk-breadcrumbs--collapse-on-mobile and govuk-breadcrumbs--inverse, so it
+   carries the app prefix the Design System asks bespoke classes to use. */
+@media (min-width: 40.0625em) {
+    .app-breadcrumbs--mobile-only {
+        display: none;
+    }
+}
+
+@media (max-width: 68.75em) {
+    .progress-bar__container {
+        width: 80%;
+    }
+
+    .skill-definitions__container > .progress-bar__container {
+        width: 60%;
+    }
+}
+
+@media (max-width: 48em) {
+    .progress-bar__container,
+    .skill-definitions__container > .progress-bar__container {
+        width: 100%;
+    }
+}
+
+@media (min-width: 40.0625em) {
+    .role-nav {
+        display: block;
+        float: left;
+    }
+
+    .mobile-homepage {
+        display: none;
+    }
+
+    .role-level-header {
+        font-size: 1.7rem;
+    }
+}
+
+/* A long unbroken string, such as the support email address in the welcome
+   content, otherwise pushes a horizontal scrollbar onto the page at 320px,
+   which fails WCAG 1.4.10 Reflow. Only a word that cannot fit is broken, so
+   ordinary copy is unaffected. */
+.govuk-body,
+.govuk-body-l,
+.govuk-body-m,
+.govuk-body-s,
+.govuk-heading-xl,
+.govuk-heading-l,
+.govuk-heading-m,
+.govuk-heading-s,
+.govuk-list,
+.govuk-table__cell,
+.govuk-link {
+    overflow-wrap: break-word;
+}
+
+/* The two-column skill tables still demand 324px at the 320px reflow width,
+   because `overflow-wrap` breaks a word only once the line is laid out — it
+   does not lower the table's intrinsic minimum. Hyphenation does, and it
+   breaks between syllables rather than mid-word, so the table fits without
+   the sideways scrolling that fails WCAG 1.4.10. Above this width the
+   columns have room and are left alone. A hair below the breakpoint the
+   min-width queries use, because a max-width query includes the width it
+   names and both would otherwise apply at exactly 40.0625em. */
+@media (max-width: 40.0525em) {
+    .govuk-table__header,
+    .govuk-table__cell {
+        -webkit-hyphens: auto;
+        hyphens: auto;
+    }
+}
+
+/* A skill table is one link per row, so the rows read as a list and the
+   underlines stack up into noise — which is why the live service leaves them
+   off (T31.2). The column heading and the link colour carry the meaning at
+   rest; hover and focus put the underline back, so a pointer or the keyboard
+   still marks out what is clickable. */
+.govuk-table a.skill-name {
+    text-decoration: none;
+}
+
+.govuk-table a.skill-name:hover,
+.govuk-table a.skill-name:focus {
+    text-decoration: underline;
+}
+
+/* Rich text has no table feature in Wagtail, so a table reaches a content
+   page as a raw HTML embed, and an editor pasting one from a document rarely
+   brings the Design System's classes with it. Style a bare table to match
+   govuk-table so both routes look the same (T56).
+
+   Every rule below excludes tables that already carry govuk-table. Matching
+   on the element makes these selectors heavier than the Design System's own
+   single-class ones, so without the guard they would quietly outrank the
+   modifiers an editor did remember to use - govuk-table__cell--numeric would
+   lose its right alignment to the text-align below. */
+.rich-text-content table:not(.govuk-table) {
+    width: 100%;
+    margin-bottom: 20px;
+    border-spacing: 0;
+    border-collapse: collapse;
+}
+
+.rich-text-content table:not(.govuk-table) caption {
+    margin-bottom: 15px;
+    font-weight: 700;
+    text-align: left;
+}
+
+.rich-text-content table:not(.govuk-table) th,
+.rich-text-content table:not(.govuk-table) td {
+    padding: 10px 20px 10px 0;
+    border-bottom: 1px solid var(--govuk-border-colour, #cecece);
+    text-align: left;
+    vertical-align: top;
+}
+
+.rich-text-content table:not(.govuk-table) th {
+    font-weight: 700;
+}
+
+/* That guard only reaches a table carrying govuk-table. One without it whose
+   cells still carry the modifiers - hand-written markup, or a paste that kept
+   the classes on the cells but lost the one on the table - would hand its
+   right alignment to the rule above, which the element in its selector makes
+   the heavier of the two. Name the modifiers to give it back. */
+.rich-text-content table:not(.govuk-table) th.govuk-table__header--numeric,
+.rich-text-content table:not(.govuk-table) td.govuk-table__cell--numeric {
+    text-align: right;
+}
+
+.rich-text-content table:not(.govuk-table) th:last-child,
+.rich-text-content table:not(.govuk-table) td:last-child {
+    padding-right: 0;
+}
+
+@media (min-width: 40.0625em) {
+    .rich-text-content table:not(.govuk-table) {
+        margin-bottom: 30px;
+    }
+}
+
+/* Hyphenation above lowers a two-column table's intrinsic minimum enough to
+   fit 320px. A table of four columns of full sentences — the contextual
+   challenge levels — cannot be made to fit, and left alone it drags the whole
+   document sideways, which fails WCAG 1.4.10. The criterion exempts content
+   that genuinely needs two dimensions, so the table keeps its shape and
+   scrolls inside this region while the page itself stops overflowing.
+
+   The region is given tabindex="0" and a name from the table's caption where
+   it is written, so a keyboard can reach and scroll it. */
+.table-scroll {
+    overflow-x: auto;
+    max-width: 100%;
+    /* Momentum scrolling on iOS, and a focus ring that is not clipped. */
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-scroll:focus-visible {
+    outline: 3px solid var(--govuk-focus-colour, #fd0);
+    outline-offset: 0;
+}
+
+/* The scrolled table should not also try to shrink to the viewport, or the
+   columns collapse into unreadable slivers instead of scrolling. */
+.table-scroll > table {
+    min-width: 100%;
+    width: auto;
+}
+
+/* The GOV.UK attachment component, for the framework's CSV downloads
+   (CS32-3313). Rules follow govuk_publishing_components' gem-c-attachment so
+   the card looks like the ones on GOV.UK, which is the point of the AC: a
+   reader who has downloaded a spreadsheet from a department before should
+   recognise this one without reading it.
+
+   The gem is not a dependency here -- it belongs to the Rails publishing
+   stack -- so the handful of rules the component needs are written out. The
+   font sizes and the thumbnail geometry are the gem's, and the colours come
+   from the Design System's own custom properties, which govuk-frontend 6
+   defines. */
+.gem-c-attachment {
+    position: relative;
+}
+
+/* The thumbnail floats, so the section has to contain it or the next
+   paragraph rides up alongside the spreadsheet icon. */
+.gem-c-attachment::after {
+    content: "";
+    display: block;
+    clear: both;
+}
+
+.gem-c-attachment__thumbnail {
+    position: relative;
+    float: left;
+    width: auto;
+    padding: 5px;
+}
+
+.gem-c-attachment__thumbnail-image {
+    display: block;
+    width: auto;
+    max-width: 66px;
+    height: 93px;
+    background: #fff;
+    box-shadow: 0 2px 2px #858686, 0 0 0 5px var(--govuk-border-colour, #cecece);
+    fill: #858686;
+    stroke: #858686;
+}
+
+.gem-c-attachment__details {
+    padding-left: 89px;
+}
+
+@media (min-width: 40.0625em) {
+    .gem-c-attachment__thumbnail-image {
+        max-width: 99px;
+        height: 140px;
+    }
+
+    .gem-c-attachment__details {
+        padding-left: 134px;
+    }
+}
+
+/* The title is a heading, so it inherits the heading font weight from the
+   Design System; the gem sets it back to normal weight and sizes it between
+   govuk-heading-s and govuk-heading-m. */
+.gem-c-attachment__title {
+    margin: 0 0 15px;
+    font-size: 1.3125rem;
+    font-weight: 400;
+    line-height: 1.1904761905;
+}
+
+@media (min-width: 40.0625em) {
+    .gem-c-attachment__title {
+        font-size: 1.6875rem;
+        line-height: 1.1111111111;
+    }
+}
+
+.gem-c-attachment__metadata {
+    margin: 0;
+    color: var(--govuk-secondary-text-colour, #484949);
+    font-size: 1.1875rem;
+    line-height: 1.3157894737;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* "CSV" is an abbreviation with a title, so the pointer says so rather than
+   underlining it as if it were a link. */
+.gem-c-attachment__abbr {
+    cursor: help;
+    text-decoration: none;
+}
+
+/* A download title is a filename-ish phrase and can be long, so it wraps
+   rather than pushing the card past the viewport at 320px. */
+.gem-c-attachment__link.govuk-link {
+    word-break: break-word;
 }

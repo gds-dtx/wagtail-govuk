@@ -4,13 +4,19 @@ from django.conf import settings
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.staticfiles.views import serve as staticfiles_serve
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseServerError,
+    JsonResponse,
+)
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_POST
-from django.views.decorators.http import require_http_methods
+from django.utils import timezone
+from django.views.decorators.http import require_http_methods, require_POST
 from wagtail.models import Site
 
+from govuk import framework_csv
 from govuk.forms import FeedbackForm
 from govuk.models import CustomiseSettings, EdDSAKeySettings, Feedback
 from govuk.oidc import (
@@ -52,7 +58,7 @@ def _eddsa_key_settings_for_request(request) -> EdDSAKeySettings:
     return EdDSAKeySettings.for_site(site)
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "HEAD"])
 def custom_css_view(request):
     custom_css = _customise_settings_for_request(request).render_custom_css()
     if not custom_css:
@@ -61,7 +67,7 @@ def custom_css_view(request):
     return HttpResponse(custom_css, content_type="text/css; charset=utf-8")
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "HEAD"])
 def jwks_view(request):
     jwks_keys = _eddsa_key_settings_for_request(request).build_jwks_keys()
     if not jwks_keys:
@@ -72,7 +78,52 @@ def jwks_view(request):
     )
 
 
-@require_http_methods(["GET"])
+def _page_numbers(results) -> list[dict]:
+    """The numbers the pagination offers, eliding a long run of pages.
+
+    The Design System's pagination shows the first and last page, the current
+    one and its neighbours, and an ellipsis for the rest.
+    """
+    paginator = getattr(results, "paginator", None)
+    if paginator is None or paginator.num_pages < 2:
+        return []
+
+    numbers = []
+    for entry in paginator.get_elided_page_range(
+        results.number, on_each_side=1, on_ends=1
+    ):
+        if isinstance(entry, int):
+            numbers.append(
+                {
+                    "number": entry,
+                    "is_current": entry == results.number,
+                    "is_ellipsis": False,
+                }
+            )
+        else:
+            numbers.append({"number": "", "is_current": False, "is_ellipsis": True})
+    return numbers
+
+
+def _pagination_query(query: str, tag: str, source: str) -> str:
+    """The query string a page link carries, so that paging keeps the search
+    and any filters the reader has chosen.
+
+    The filters the search settled on rather than the ones asked for: a tag
+    that matches nothing is dropped before the results are built, and carrying
+    it on into the page links would show a filtered URL over unfiltered
+    results.
+    """
+    return urlencode(
+        {
+            name: value
+            for name, value in (("query", query), ("tag", tag), ("source", source))
+            if value
+        }
+    )
+
+
+@require_http_methods(["GET", "HEAD"])
 def search_view(request):
     query = (request.GET.get("query") or "").strip()
     page_number = request.GET.get("page", 1)
@@ -98,6 +149,12 @@ def search_view(request):
         {
             "query": query,
             "results": results,
+            "page_numbers": _page_numbers(results),
+            "pagination_query": _pagination_query(
+                query,
+                (getattr(results, "selected_tag", None) or {}).get("key", ""),
+                getattr(results, "selected_source_id", ""),
+            ),
             "available_tags": getattr(results, "available_tags", []),
             "available_sources": getattr(results, "available_sources", []),
             "selected_tag": getattr(results, "selected_tag", None),
@@ -105,6 +162,54 @@ def search_view(request):
             "selected_source_label": getattr(results, "selected_source_label", ""),
         },
     )
+
+
+@require_http_methods(["GET", "HEAD"])
+def framework_csv_view(request, name):
+    """One of the framework's published CSVs, built from the content asked for.
+
+    Generated at request time rather than kept as a file, so the download is
+    the published content by construction -- the live service's copies were
+    regenerated on a schedule and drifted, and its links now answer
+    AccessDenied. The label and columns match the published downloads.
+    """
+    if not settings.FEATURE_FLAGS.get("SKILLS"):
+        raise Http404
+    try:
+        label, write = framework_csv.FRAMEWORK_CSV_DOWNLOADS[name]
+    except KeyError:
+        raise Http404
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    stamp = timezone.now().date().isoformat()
+    response["Content-Disposition"] = (
+        f'attachment; filename="{label} - {stamp}.csv"'
+    )
+    write(response)
+    return response
+
+
+BARE_SERVER_ERROR_HTML = (
+    "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+    "<title>Sorry, there is a problem with the service</title></head>"
+    "<body><h1>Sorry, there is a problem with the service</h1>"
+    "<p>Try again later.</p></body></html>"
+)
+
+
+def server_error(request):
+    """The GOV.UK problem-with-the-service page, as branded as the moment allows.
+
+    Django's own 500 handler renders the template without the request, so the
+    page could never carry the site's header or contact details. Rendering
+    with the request restores those -- and when the problem is deep enough
+    that even this template cannot render (the database gone, say), the bare
+    page below still answers rather than a blank error.
+    """
+    try:
+        return render(request, "500.html", status=500)
+    except Exception:
+        return HttpResponseServerError(BARE_SERVER_ERROR_HTML)
 
 
 def _normalised_referrer(value: str | None) -> str:

@@ -1,13 +1,12 @@
+from allauth.account.decorators import secure_admin_login
 from django.conf import settings
-from django.urls import include, path
+from django.conf.urls.static import static
 from django.contrib import admin
-
-from wagtail.admin import urls as wagtailadmin_urls
+from django.urls import include, path
 from wagtail import urls as wagtail_urls
+from wagtail.admin import urls as wagtailadmin_urls
 from wagtail.documents import urls as wagtaildocs_urls
 
-
-from allauth.account.decorators import secure_admin_login
 from govuk.api import (
     ExternalContentItemsAPIView,
     ExternalContentSourcesAPIView,
@@ -16,11 +15,14 @@ from govuk.api import (
     api_root_view,
     api_router,
 )
+from govuk.view_robots import robots_txt_view
+from govuk.view_securitytxt import security_txt_view
 from govuk.views import (
     account_logout_redirect,
     assets_alias_view,
     custom_css_view,
     feedback_view,
+    framework_csv_view,
     jwks_view,
     oidc_callback,
     oidc_login,
@@ -29,11 +31,14 @@ from govuk.views import (
     search_view,
     wagtail_logout_redirect,
 )
-from govuk.view_robots import robots_txt_view
-from govuk.view_securitytxt import security_txt_view
 
 admin.autodiscover()
 admin.site.login = secure_admin_login(admin.site.login)
+
+# Branded 500s: Django's default handler renders without the request, which
+# would strip the header and contact details off the one page that most needs
+# to look like the service.
+handler500 = "govuk.views.server_error"
 
 urlpatterns = [
     path("login/", oidc_login_redirect, name="account_login"),
@@ -75,6 +80,13 @@ urlpatterns = [
     path("accounts/logout/", account_logout_redirect, name="account_logout"),
     path("accounts/", include("allauth.urls")),
     path("search/", search_view, name="search"),
+    # Before the Wagtail catch-all: /download/ itself is a page, and these are
+    # the files it links to.
+    path(
+        "download/<slug:name>.csv",
+        framework_csv_view,
+        name="govuk_framework_csv",
+    ),
     path("robots.txt", robots_txt_view, name="govuk_robots_txt"),
 ]
 
@@ -83,9 +95,6 @@ if settings.FEATURE_FLAGS.get("FEEDBACK"):
         path("feedback", feedback_view),
         path("feedback/", feedback_view, name="feedback"),
     ]
-
-
-from django.conf.urls.static import static
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

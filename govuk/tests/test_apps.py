@@ -2,13 +2,24 @@ from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import call, patch
 
-from django.test import SimpleTestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
+from wagtail.models import Page, Site
 
 from govuk.apps import (
     GovukConfig,
     _sync_admin_users_after_migrate,
     _sync_default_site_after_migrate,
+    _warn_about_framework_across_sites,
 )
+
+
+def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
+    return {
+        "SKILLS": skills_enabled,
+        "ORGANISATIONS": False,
+        "PEOPLE_FINDER": False,
+        "FEEDBACK": False,
+    }
 
 
 class GovukConfigTests(SimpleTestCase):
@@ -43,6 +54,10 @@ class GovukConfigTests(SimpleTestCase):
                 call(
                     _sync_default_site_after_migrate,
                     dispatch_uid="govuk.sync_default_site_after_migrate",
+                ),
+                call(
+                    _warn_about_framework_across_sites,
+                    dispatch_uid="govuk.warn_about_framework_across_sites",
                 ),
             ]
         )
@@ -93,3 +108,59 @@ class GovukConfigTests(SimpleTestCase):
             _sync_default_site_after_migrate(app_config)
 
         mock_sync.assert_not_called()
+
+
+class FrameworkAcrossSitesWarningTests(TestCase):
+    """Capability Framework snippets carry no site, so two sites in one
+    database share them. The deployment gives each instance its own database,
+    which is why this has never bitten; say so at migrate time rather than
+    leaving it to be found by an editor seeing another service's roles."""
+
+    def setUp(self):
+        self.app_config = SimpleNamespace(label="wagtailcore")
+
+    def _add_second_site(self) -> Site:
+        root = Page.get_first_root_node()
+        second_root = root.add_child(
+            instance=Page(title="Second service", slug="second-service")
+        )
+        return Site.objects.create(
+            hostname="second.example.gov.uk",
+            root_page=second_root,
+            is_default_site=False,
+        )
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_two_sites_with_the_framework_on_are_warned_about(self):
+        self._add_second_site()
+
+        with self.assertLogs("govuk.apps", level="WARNING") as logs:
+            _warn_about_framework_across_sites(self.app_config)
+
+        self.assertIn("not site-scoped", logs.output[0])
+        self.assertIn("2 Wagtail sites", logs.output[0])
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_a_single_site_says_nothing(self):
+        with patch("govuk.apps.logger.warning") as mock_warning:
+            _warn_about_framework_across_sites(self.app_config)
+
+        mock_warning.assert_not_called()
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    def test_two_sites_without_the_framework_say_nothing(self):
+        self._add_second_site()
+
+        with patch("govuk.apps.logger.warning") as mock_warning:
+            _warn_about_framework_across_sites(self.app_config)
+
+        mock_warning.assert_not_called()
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_it_runs_once_rather_than_for_every_app(self):
+        self._add_second_site()
+
+        with patch("govuk.apps.logger.warning") as mock_warning:
+            _warn_about_framework_across_sites(SimpleNamespace(label="govuk"))
+
+        mock_warning.assert_not_called()

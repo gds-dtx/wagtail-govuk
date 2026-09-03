@@ -220,6 +220,10 @@ INSTALLED_APPS = [
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
     "wagtail.contrib.settings",
+    # The grid editor behind ContentPage.body_blocks. Without it a table
+    # reaches a content page only as hand-written HTML, which is not a
+    # formatting option a content designer has (CS32-3527).
+    "wagtail.contrib.table_block",
     "wagtail.embeds",
     "wagtail.sites",
     "wagtail.users",
@@ -256,6 +260,7 @@ MIDDLEWARE = [
     "govuk.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "govuk.middleware.MaintenanceModeMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -286,6 +291,12 @@ NOINDEX = _bool_env("NOINDEX", default=True)
 
 SESSION_COOKIE_SECURE = _bool_env("SESSION_COOKIE_SECURE", default=True)
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "sessionid")
+# Django defaults this to False, so without it the CSRF cookie is the one
+# credential on the site that would go out over plaintext HTTP. The site is
+# HTTPS-only and sends HSTS, so match the session cookie.
+# Note httpOnly is deliberately left off: Wagtail's admin JavaScript reads
+# this cookie to set the X-CSRFToken header.
+CSRF_COOKIE_SECURE = _bool_env("CSRF_COOKIE_SECURE", default=True)
 SESSION_COOKIE_AGE = int(
     os.getenv("SESSION_COOKIE_AGE", 60 * 60 * 12)
 )  # 12 hour default
@@ -414,6 +425,26 @@ FEATURE_FLAGS = {
     "PEOPLE_FINDER": _bool_env("FEATURE_PEOPLE_FINDER"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
 }
+
+# Wagtail's go-live and expiry dates only fire if something runs the
+# publish_scheduled management command on a schedule. Nothing does: there is no
+# cron, no worker and no scheduled task in any of the deployment repos, so a
+# date set in the admin is a promise the service cannot keep -- the page sits
+# there unpublished and nobody is told. Off, the publishing panel is hidden and
+# an editor publishes now or not at all. Turn it on the day the scheduled task
+# exists; nothing else has to change.
+SCHEDULED_PUBLISHING = _bool_env("SCHEDULED_PUBLISHING", default=False)
+
+# Closes the service behind the GOV.UK service-unavailable page for a cutover
+# or an outage, leaving the health check and the admin open. The resume text
+# names the moment the service comes back, in the pattern's own form:
+# "9am on Monday 19 November 2018".
+MAINTENANCE_MODE = _bool_env("MAINTENANCE_MODE", default=False)
+MAINTENANCE_RESUME_TEXT = os.getenv("MAINTENANCE_RESUME_TEXT", "")
+# Seconds, sent as the 503's Retry-After header. The resume text above is
+# prose for a reader ("9am on Monday 19 November 2018") and nothing can parse
+# it into a date, so the header takes its own number.
+MAINTENANCE_RETRY_AFTER = int(os.getenv("MAINTENANCE_RETRY_AFTER", 60 * 60))
 
 # When enabled, logs inbound Django requests (including headers) at INFO level.
 INCOMING_REQUEST_INFO_LOGGING = _bool_env("INCOMING_REQUEST_INFO_LOGGING")

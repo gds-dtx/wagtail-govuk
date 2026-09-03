@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% comment %}
+    The GOV.UK Design System's "service unavailable" page, served by the
+    maintenance middleware while MAINTENANCE_MODE is set. The resume line
+    names the day and time where MAINTENANCE_RESUME_TEXT gives one, and
+    stays general where it does not, which is what the pattern asks.
+{% endcomment %}
+{% block title %}Sorry, the service is unavailable{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
+        <div class="govuk-grid-row">
+            <div class="govuk-grid-column-two-thirds">
+                <h1 class="govuk-heading-l">Sorry, the service is unavailable</h1>
+                {% if maintenance_resume_text %}
+                    <p class="govuk-body">You will be able to use the service from {{ maintenance_resume_text }}.</p>
+                {% else %}
+                    <p class="govuk-body">You will be able to use the service later.</p>
+                {% endif %}
+                {% include "includes/error_contact.html" with contact_lead="Contact the" %}
+            </div>
+        </div>
+    </div>
+{% endblock %}

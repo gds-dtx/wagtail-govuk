@@ -7,6 +7,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.settings import base as base_settings
+from govuk.settings.runtime import own_ipv4_address
 
 
 class ResolveSimpleJwtAudienceTests(SimpleTestCase):
@@ -175,6 +176,83 @@ class DevSettingsTests(SimpleTestCase):
             sys.modules.pop(module_name, None)
             if original_module is not None:
                 sys.modules[module_name] = original_module
+
+
+class DevSecuritySettingsTests(SimpleTestCase):
+    """dev.py is the deployed settings module, so it must be secure by default."""
+
+    def _import_dev(self, env):
+        module_name = "govuk.settings.dev"
+        original_module = sys.modules.pop(module_name, None)
+        try:
+            with patch.dict(os.environ, env, clear=True):
+                return importlib.import_module(module_name)
+        finally:
+            sys.modules.pop(module_name, None)
+            if original_module is not None:
+                sys.modules[module_name] = original_module
+
+    _BASE_ENV = {"BASE_URL": "https://service.example.gov.uk/"}
+
+    def _with_own_address(self, hosts):
+        """The configured hosts, plus the address the health check arrives on.
+
+        The load balancer connects to the task by IP and sends that IP as the
+        Host header, so ``dev.py`` adds it -- see ``deployment_allowed_hosts``.
+        """
+        own_address = own_ipv4_address()
+        return [*hosts, own_address] if own_address else list(hosts)
+
+    def test_debug_defaults_to_false_when_unset(self):
+        dev = self._import_dev(self._BASE_ENV)
+
+        self.assertFalse(dev.DEBUG)
+
+    def test_debug_can_be_switched_on_explicitly(self):
+        dev = self._import_dev({**self._BASE_ENV, "DEBUG": "True"})
+
+        self.assertTrue(dev.DEBUG)
+
+    def test_allowed_hosts_never_contains_a_wildcard(self):
+        dev = self._import_dev(
+            {**self._BASE_ENV, "ALLOWED_HOSTS": "service.example.gov.uk"}
+        )
+
+        self.assertNotIn("*", dev.ALLOWED_HOSTS)
+
+    def test_allowed_hosts_reads_a_comma_separated_list(self):
+        dev = self._import_dev(
+            {
+                **self._BASE_ENV,
+                "ALLOWED_HOSTS": "service.example.gov.uk, health.internal",
+            }
+        )
+
+        self.assertEqual(
+            dev.ALLOWED_HOSTS,
+            self._with_own_address(["service.example.gov.uk", "health.internal"]),
+        )
+
+    def test_allowed_hosts_falls_back_to_domain_when_unset(self):
+        dev = self._import_dev(
+            {**self._BASE_ENV, "DOMAIN": "service.example.gov.uk"}
+        )
+
+        self.assertEqual(
+            dev.ALLOWED_HOSTS, self._with_own_address(["service.example.gov.uk"])
+        )
+
+    def test_the_load_balancer_health_check_host_is_allowed(self):
+        """It arrives as the task's own IP, and a 400 gets the task replaced."""
+        dev = self._import_dev(
+            {**self._BASE_ENV, "DOMAIN": "service.example.gov.uk"}
+        )
+
+        own_address = own_ipv4_address()
+        if own_address is None:
+            self.skipTest("No resolvable address on this machine")
+        self.assertIn(own_address, dev.ALLOWED_HOSTS)
+        self.assertNotIn("*", dev.ALLOWED_HOSTS)
 
 
 class SyncDefaultSiteFromEnvTests(TestCase):

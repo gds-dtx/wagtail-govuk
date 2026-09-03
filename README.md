@@ -1,5 +1,43 @@
 # wagtail-govuk
 
+A Wagtail content management system with a GOV.UK Design System front end. One
+codebase serves several government sites, each configured by environment
+variables and by site settings held in the CMS, so most of what makes an
+instance particular to a service lives in its configuration rather than in a
+fork.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to send a change back.
+
+## Documentation
+
+- [Platform boundaries](docs/platform-boundaries.md) — what every instance
+  gets, what belongs to the Capability Framework alone, the feature flags and
+  what they do and do not gate, and the one-site-per-database rule. Read this
+  before building the second service on this codebase.
+- [Accessibility](docs/accessibility.md) — the component baseline, the
+  guarantees under automated test, known deviations and audit status.
+- [Security](docs/security.md) — response headers, the authorisation model, the
+  dependency policy, and what has and has not been tested. Reporting a
+  vulnerability is in [SECURITY.md](SECURITY.md).
+- [Editorial workflow](docs/editorial-workflow.md) — how content is drafted,
+  moderated and published, who can do what, and where the audit trail is.
+- [Cutting a site over to Wagtail](docs/cutover.md) — the migration runbook.
+  Start with [where content comes from](docs/cutover.md#where-the-content-actually-comes-from):
+  none of it is in this repository. Also covers the three kinds of state that do
+  not travel in a content export, and how to refresh content before you go.
+- [Decommissioning the old service](docs/decommission.md) — what happens to the
+  system being replaced, and why not at cutover.
+- [The published downloads](docs/downloads.md) — the three CSVs and their
+  column schemas.
+- [Logging, monitoring and alerting](docs/monitoring.md) — what is emitted,
+  what is watched, and the alerts still to agree.
+- [Analytics](docs/analytics.md) — there is none; the options, and the decision
+  that has to be made before there is.
+- [User journeys](docs/user-journeys.md) — the journeys to test, written so
+  somebody who did not build it can run them.
+- [Delivery status](docs/delivery-status.md) — every Jira ticket, its evidence,
+  and what is genuinely left.
+
 ## Local Setup
 
 1. Create and activate a virtual environment
@@ -77,3 +115,11 @@ site_id,url,name,disable_tls_verification,default_tags
 1,https://example.gov.uk/feed.xml,Example feed,false,policy|news
 1,https://api.github.com/orgs/alphagov/repos,GOV.UK repos,false,open-source
 ```
+
+## Licence
+
+The code in this repository is published under the [MIT Licence](LICENCE).
+
+Documentation and content are © Crown copyright and available under the terms
+of the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/),
+except where otherwise stated.
