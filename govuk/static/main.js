@@ -32,6 +32,21 @@ function setHyperlinkClasses() {
   });
 }
 
+// The size a wrapper asks its contents to take, as the hero intro does with
+// govuk-body-l and the changelog does with govuk-body-s, or null if none does.
+// closest() includes the element itself, so something already sized keeps the
+// size it was given.
+function wrapperTextSize(el) {
+  const wrapper = el.closest("[class*='govuk-body-']");
+  return (
+    (wrapper &&
+      Array.from(wrapper.classList).find((name) =>
+        name.startsWith("govuk-body-"),
+      )) ||
+    null
+  );
+}
+
 function setListClasses() {
   // Paragraphs. GOV.UK Frontend styles the govuk-body class rather than the
   // element, so rich text paragraphs need it adding. Anything that already
@@ -43,32 +58,35 @@ function setListClasses() {
       return;
     }
 
-    // A wrapper can ask for the size instead, as the hero intro does with
-    // govuk-body-l. Adding govuk-body would override that size from the
-    // inside, and adding nothing leaves the paragraph on the browser's own
-    // 1em margins: the bundle styles the class rather than the element, so
-    // there is nothing else to give a paragraph GOV.UK's spacing, and the
-    // intro is pushed down by a margin the Design System does not put there.
-    // Repeating the wrapper's class carries the size and the spacing
-    // together.
-    const wrapper = el.closest("[class*='govuk-body-']");
-    const wrapperSize =
-      wrapper &&
-      Array.from(wrapper.classList).find((name) =>
-        name.startsWith("govuk-body-"),
-      );
-    el.classList.add(wrapperSize || "govuk-body");
+    // A wrapper can ask for the size instead. Adding govuk-body would override
+    // that size from the inside, and adding nothing leaves the paragraph on
+    // the browser's own 1em margins: the bundle styles the class rather than
+    // the element, so there is nothing else to give a paragraph GOV.UK's
+    // spacing, and the intro is pushed down by a margin the Design System does
+    // not put there. Repeating the wrapper's class carries the size and the
+    // spacing together.
+    el.classList.add(wrapperTextSize(el) || "govuk-body");
   });
 
-  // Unordered lists
-  document.querySelectorAll(".rich-text-content ul").forEach((el) => {
-    el.classList.add("govuk-list", "govuk-list--bullet");
-  });
+  // Lists. govuk-list carries the 19px body size of its own accord, so in a
+  // wrapper that asked for a smaller one the bullets came out larger than the
+  // paragraphs beside them -- reported on the home page, where the update
+  // history sits in a govuk-body-s block, and true of a role page whose
+  // changelog note has bullets. Repeating the wrapper's size puts the two back
+  // in step. govuk-body-s is defined after govuk-list in the Frontend bundle,
+  // so it wins on source order and needs no !important; the welcome page's
+  // contents list already carries both classes by hand for the same reason.
+  const listModifier = { UL: "govuk-list--bullet", OL: "govuk-list--number" };
+  document
+    .querySelectorAll(".rich-text-content ul, .rich-text-content ol")
+    .forEach((el) => {
+      el.classList.add("govuk-list", listModifier[el.tagName]);
 
-  // Ordered lists
-  document.querySelectorAll(".rich-text-content ol").forEach((el) => {
-    el.classList.add("govuk-list", "govuk-list--number");
-  });
+      const wrapperSize = wrapperTextSize(el);
+      if (wrapperSize) {
+        el.classList.add(wrapperSize);
+      }
+    });
 }
 
 function addStartButtonSVG() {
