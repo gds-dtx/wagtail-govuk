@@ -151,9 +151,19 @@ def _download_url(name: str) -> str | None:
 # form meant the cards silently reverted to plain links the next time anyone
 # edited the page -- which is what happened to the download page when the role
 # navigation was switched on for it. \b keeps this off <pre>.
+#
+# Every run in the pattern stops at the next "<". A tag interior written as
+# [^>]* keeps scanning across every later tag when the ">" it wants is missing,
+# and a title written as .*? does the same looking for its "</a>", so a body
+# made of thousands of unclosed "<p " -- which raw HTML in a content page can
+# carry -- had the scan restart from each of them and cost seconds per render.
+# Stopping at "<" makes each start position linear in the distance to the next
+# tag, which is the same shape #56 used for the other paragraph patterns. The
+# title also stops at the next <a> or <p>, so a paragraph holding a second link
+# is left as it is instead of the first link swallowing the second.
 _CSV_PARAGRAPH = re.compile(
-    r"<p\b[^>]*>\s*<a\b[^>]*\bhref=\"(?P<href>/download/(?P<name>[\w-]+)\.csv)\"[^>]*>"
-    r"(?P<title>.*?)</a>\s*</p>",
+    r"<p\b[^<>]*>\s*<a\b[^<>]*\bhref=\"(?P<href>/download/(?P<name>[\w-]+)\.csv)\"[^<>]*>"
+    r"(?P<title>[^<]*(?:<(?!/a>|/?[pa]\b)[^<]*)*)</a>\s*</p>",
     re.IGNORECASE | re.DOTALL,
 )
 

@@ -12,6 +12,8 @@ spreadsheet, and it is computed rather than stored -- so a test that it
 matches the bytes actually served is the one that keeps it honest.
 """
 
+import time
+
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -121,6 +123,43 @@ class AttachmentRewriteTests(TestCase):
         html = '<pre><a href="/download/roles.csv">Role content</a></pre>'
 
         self.assertEqual(rewrite_csv_download_links(html), html)
+
+    def test_a_paragraph_holding_a_second_link_is_left_as_it_is(self):
+        """The card is for a paragraph that is one download and nothing else.
+
+        The title used to run on to the last </a> in the paragraph, so a
+        second link was swallowed into the card's title.
+        """
+        html = (
+            '<p><a href="/download/roles.csv">Role content</a> '
+            '<a href="/skills">and the skills</a></p>'
+        )
+
+        self.assertEqual(rewrite_csv_download_links(html), html)
+
+    # Generous: the linear pattern takes a few milliseconds on these inputs,
+    # and the quadratic one took a second or more, so the budget separates the
+    # two on a slow CI runner without being tight enough to flake.
+    BUDGET_SECONDS = 0.5
+
+    def test_unclosed_paragraph_tags_are_scanned_in_linear_time(self):
+        """Raw HTML in a content page can carry anything, and this runs on
+        every render. A tag interior written as [^>]* restarted its scan from
+        every one of these and took a second at this size."""
+        html = "<p " * 80_000 + '<a href="/download/roles.csv">x</a></p>'
+
+        started = time.monotonic()
+        rewrite_csv_download_links(html)
+        self.assertLess(time.monotonic() - started, self.BUDGET_SECONDS)
+
+    def test_unclosed_download_links_are_scanned_in_linear_time(self):
+        """Same shape from the title's side: a title written as .*? looked
+        for its </a> from every one of these opening links."""
+        html = '<p><a href="/download/roles.csv">' * 20_000
+
+        started = time.monotonic()
+        rewrite_csv_download_links(html)
+        self.assertLess(time.monotonic() - started, self.BUDGET_SECONDS)
 
     def test_the_component_says_what_kind_of_file_and_how_big(self):
         html = rewrite_csv_download_links(
