@@ -82,6 +82,32 @@ class SkillsAZPageTests(TestCase):
         charlie_index = response_text.find("Charlie skill")
         self.assertTrue(alpha_index < beta_index < charlie_index)
 
+    def test_a_level_description_reads_on_from_the_same_sentence_as_a_role_page(self):
+        """It is one skill at one level in both places, so it reads the same.
+
+        Without the lead-in the points arrived as a bare list here and as a
+        sentence on a role page, which is what the live service does and what
+        the review asked for.
+        """
+        response = self.client.get(self.skills_page.url)
+        response_text = response.content.decode("utf-8")
+
+        intro_index = response_text.find(
+            '<p class="govuk-body">You can:</p>',
+        )
+        self.assertNotEqual(intro_index, -1)
+        points_index = response_text.find("Alpha awareness point.")
+        self.assertLess(intro_index, points_index)
+
+    def test_a_level_with_nothing_written_for_it_gets_no_lead_in(self):
+        """A lead-in with no points under it is a sentence that stops dead."""
+        GovukSkill.objects.all().delete()
+        GovukSkill.objects.create(title="Empty skill", body="<p>Empty body.</p>")
+
+        response = self.client.get(self.skills_page.url)
+
+        self.assertNotContains(response, '<p class="govuk-body">You can:</p>')
+
     def test_the_skills_index_carries_the_frameworks_side_navigation(self):
         """It sits alongside the roles, so it is navigated the same way."""
         role = GovukRole.objects.create(title="Data analyst", family="Data")
