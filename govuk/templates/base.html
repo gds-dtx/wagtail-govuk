@@ -234,9 +234,7 @@
             {% endblock %}
             {% block page_feedback %}
                 {% if customise_settings and customise_settings.show_page_feedback_prompt %}
-                    <div class="govuk-width-container">
-                        {% include "includes/page_feedback.html" %}
-                    </div>
+                    {% include "includes/page_feedback.html" %}
                 {% endif %}
             {% endblock %}
             {% comment %}

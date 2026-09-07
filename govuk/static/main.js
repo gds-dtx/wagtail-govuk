@@ -142,6 +142,10 @@ function setBackToTop() {
   }
 
   const footer = document.querySelector(".govuk-template__footer");
+  // The "Is this page useful?" band sits directly above the footer when a
+  // site has it switched on, so the button lifts clear of whichever of the
+  // two is higher, rather than floating beside the band.
+  const feedback = document.getElementById("page-feedback");
 
   function update() {
     const scrolled = window.pageYOffset || document.documentElement.scrollTop;
@@ -152,8 +156,9 @@ function setBackToTop() {
 
     // Lift the button clear of the footer rather than letting it sit on top.
     let bottom = 30;
-    if (footer) {
-      const overlap = window.innerHeight - footer.getBoundingClientRect().top;
+    const edge = feedback || footer;
+    if (edge) {
+      const overlap = window.innerHeight - edge.getBoundingClientRect().top;
       if (overlap > 0) {
         bottom = overlap + 30;
       }

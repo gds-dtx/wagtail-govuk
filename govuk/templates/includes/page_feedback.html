@@ -7,11 +7,16 @@
     in place. Either way the answer is one line in the server log.
 
     The class names are the ones govuk_publishing_components gives this
-    component, so a comparison with the live page is like for like.
+    component, so a comparison with the live page is like for like. One
+    deliberate difference: live's band stops at the edges of its 1100px
+    content column. Ours runs the full width of the page, as the footer
+    below it does, with the question and buttons aligned to the content
+    column -- inside a narrower column a boxed band sat as an island on
+    wide screens.
 {% endcomment %}
 {% with sent=request.GET.page_feedback %}
     <div class="gem-c-feedback" id="page-feedback" data-module="page-feedback">
-        <div class="gem-c-feedback__prompt">
+        <div class="gem-c-feedback__prompt govuk-width-container">
             <div class="gem-c-feedback__prompt-content">
                 <form class="gem-c-feedback__prompt-questions js-prompt-questions"
                       method="post"

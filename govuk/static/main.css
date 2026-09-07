@@ -942,31 +942,26 @@ main > :nth-last-child(1 of .section-cards-container) {
 /* "Is this page useful?" -- GOV.UK's feedback prompt, at the foot of every
    page as the live service shows it (CS32-3543). The rules are the
    component's own from govuk_publishing_components, cut down to the parts
-   this markup uses, so the band, the two bordered buttons and the thank-you
-   match the live page. The negative margins take the band to the edge of the
-   width container on small screens, as they do there. */
+   this markup uses, so the question, the two bordered buttons and the
+   thank-you match the live page.
+
+   The band itself runs the full width of the page, as the footer below it
+   does, with the content held to the page column by the width container
+   inside it. Live boxes the band to its 1100px column instead; inside our
+   narrower column that left it sitting as an island on wide screens. */
 .gem-c-feedback {
-    background: #fff;
-    margin-top: 30px;
+    background-color: #f4f8fb;
+    color: #0b0c0c;
+    border-top: 1px solid #b1b4b6;
+    margin-top: 20px;
 }
 
-@media (min-width: 48.0625em) {
+/* On live the gap above the prompt is the main wrapper's own bottom padding,
+   40px at tablet and up. Ours has none (see .govuk-main-wrapper at the top of
+   this file), so the same gap is carried here. */
+@media (min-width: 40.0625em) {
     .gem-c-feedback {
-        margin-top: 60px;
-    }
-}
-
-@media (max-width: 40.0525em) {
-    .gem-c-feedback {
-        margin-right: -15px;
-        margin-left: -15px;
-    }
-}
-
-@media (min-width: 40.0625em) and (max-width: 48.0525em) {
-    .gem-c-feedback {
-        margin-right: -30px;
-        margin-left: -30px;
+        margin-top: 40px;
     }
 }
 
@@ -975,9 +970,6 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 .gem-c-feedback__prompt {
-    background-color: #f4f8fb;
-    color: #0b0c0c;
-    border-top: 1px solid #b1b4b6;
     outline: 0;
 }
 
@@ -1033,6 +1025,9 @@ main > :nth-last-child(1 of .section-cards-container) {
 
 .gem-c-feedback__prompt-question {
     padding-bottom: 10px;
+    /* Never let the question touch the first button when the row does not
+       wrap: on a 375px screen the two fit on one line with 9px to spare. */
+    margin-right: 10px;
 }
 
 @media (min-width: 40.0625em) {
