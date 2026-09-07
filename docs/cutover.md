@@ -264,6 +264,14 @@ Capability Framework these match the live service exactly:
 contact name and email. Confirm the contact address with the service team
 before entering it; the address carried in the migration fixture is not
 necessarily the one the service wants published.
+Also `show_page_feedback_prompt` on, so every page ends with "Is this page
+useful?" as the live service's do; `page_feedback_more_url` is `/feedback`,
+and the two wording fields keep their defaults, which are the live copy.
+
+**The `/feedback` page itself is not in the export.** On the dev instance it
+was made by hand after the 20 August export, as a content page linking to the
+GOV.UK Forms survey, so it has to be either included in the next export or
+created again. The phase banner and the feedback prompt both point at it.
 
 **Phase banner settings** (`PhaseBannerSettings`) — `enabled`, the phase, and
 the three pieces of wording either side of the feedback link. The framework's

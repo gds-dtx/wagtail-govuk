@@ -1,3 +1,4 @@
+import logging
 from urllib.parse import urlencode
 
 from django.conf import settings
@@ -7,12 +8,15 @@ from django.contrib.staticfiles.views import serve as staticfiles_serve
 from django.http import (
     Http404,
     HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseRedirect,
     HttpResponseServerError,
     JsonResponse,
 )
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 from wagtail.models import Site
 
@@ -29,6 +33,15 @@ from govuk.oidc import (
     safe_oidc_next_url,
 )
 from govuk.search_backend import search_backend
+
+# Every "Is this page useful?" answer is one line on this logger, which the
+# JSON formatter carries to CloudWatch alongside every other request. That is
+# the server-side record CS32-3543 asks for: nothing is stored in the database
+# and nothing identifies the visitor, so there is no personal data to look
+# after -- only a count of yes and no against a path.
+page_feedback_logger = logging.getLogger("govuk.page_feedback")
+
+PAGE_FEEDBACK_ANSWERS = ("yes", "no")
 
 
 @login_required
@@ -210,6 +223,65 @@ def server_error(request):
         return render(request, "500.html", status=500)
     except Exception:
         return HttpResponseServerError(BARE_SERVER_ERROR_HTML)
+
+
+def _page_feedback_return_path(request, value: str | None) -> str:
+    """The page the answer came from, or the site root if it cannot be trusted.
+
+    The form posts the page's own path so the answer can be counted against
+    it and the reader sent back there without JavaScript. It is visitor input,
+    so only a local absolute path is accepted -- a scheme, a host, a
+    protocol-relative ``//`` or a control character all fall back to ``/``
+    rather than becoming an open redirect.
+    """
+    path = (value or "").strip()[:500]
+    if not path.startswith("/") or path.startswith("//"):
+        return "/"
+    if any(character in path for character in "\r\n\x00 \\"):
+        return "/"
+    if not url_has_allowed_host_and_scheme(
+        path, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return "/"
+    return path.split("?", 1)[0].split("#", 1)[0]
+
+
+@require_POST
+def page_feedback_view(request):
+    """Record a yes or no to "Is this page useful?" and send the reader back.
+
+    Answers the component in ``includes/page_feedback.html``. With JavaScript
+    the form is posted in the background and the page shows its thank-you
+    without moving; without it the browser posts here and is redirected back
+    to the same page with ``?page_feedback=sent`` so the template can show the
+    same thank-you. Only sites that have switched the prompt on answer at all.
+    """
+    site = Site.find_for_request(request)
+    customise_settings = (
+        CustomiseSettings.objects.filter(site=site).first() if site else None
+    )
+    if customise_settings is None or not customise_settings.show_page_feedback_prompt:
+        raise Http404
+
+    answer = (request.POST.get("answer") or "").strip().lower()
+    if answer not in PAGE_FEEDBACK_ANSWERS:
+        return HttpResponseBadRequest("answer must be yes or no")
+
+    path = _page_feedback_return_path(request, request.POST.get("page"))
+    page_feedback_logger.info(
+        "Page feedback",
+        extra={
+            "page_feedback_answer": answer,
+            "page_feedback_path": path,
+            "site_hostname": site.hostname,
+        },
+    )
+
+    if request.headers.get("X-Requested-With") == "fetch":
+        return HttpResponse(status=204)
+    response = HttpResponseRedirect(f"{path}?page_feedback=sent#page-feedback")
+    response.status_code = 303
+    return response
 
 
 def _normalised_referrer(value: str | None) -> str:

@@ -1,0 +1,59 @@
+{% comment %}
+    GOV.UK's "Is this page useful?" prompt, at the foot of every page as the
+    live service shows it (CS32-3543). Yes and No are real submit buttons in a
+    real form: without JavaScript the browser posts to page_feedback_view and
+    is sent back here with ?page_feedback=sent, and this template shows the
+    thank-you; with it, main.js posts in the background and swaps the panels
+    in place. Either way the answer is one line in the server log.
+
+    The class names are the ones govuk_publishing_components gives this
+    component, so a comparison with the live page is like for like.
+{% endcomment %}
+{% with sent=request.GET.page_feedback %}
+    <div class="gem-c-feedback" id="page-feedback" data-module="page-feedback">
+        <div class="gem-c-feedback__prompt">
+            <div class="gem-c-feedback__prompt-content">
+                <form class="gem-c-feedback__prompt-questions js-prompt-questions"
+                      method="post"
+                      action="{% url 'page_feedback' %}"
+                      {% if sent == "sent" %}hidden{% endif %}>
+                    {% csrf_token %}
+                    <input type="hidden" name="page" value="{{ request.path }}">
+                    <div class="gem-c-feedback__prompt-question-answer">
+                        <h2 class="gem-c-feedback__prompt-question">Is this page useful?</h2>
+                        <ul class="gem-c-feedback__option-list">
+                            <li class="gem-c-feedback__option-list-item">
+                                <button type="submit"
+                                        name="answer"
+                                        value="yes"
+                                        class="govuk-button gem-c-feedback__prompt-link js-page-is-useful"
+                                        data-module="govuk-button">Yes</button>
+                            </li>
+                            <li class="gem-c-feedback__option-list-item">
+                                <button type="submit"
+                                        name="answer"
+                                        value="no"
+                                        class="govuk-button gem-c-feedback__prompt-link js-page-is-not-useful"
+                                        data-module="govuk-button">No</button>
+                            </li>
+                        </ul>
+                    </div>
+                </form>
+                <div class="gem-c-feedback__prompt-questions gem-c-feedback__prompt-success js-prompt-success"
+                     role="status"
+                     tabindex="-1"
+                     {% if sent != "sent" %}hidden{% endif %}>
+                    <h2 class="gem-c-feedback__prompt-success-heading">Thank you for your feedback</h2>
+                    {% if customise_settings.page_feedback_more_intro %}
+                        <p class="govuk-body-m">{{ customise_settings.page_feedback_more_intro }}</p>
+                    {% endif %}
+                    {% if customise_settings.page_feedback_more_url and customise_settings.page_feedback_more_link_text %}
+                        <p class="govuk-body-m">
+                            <a href="{{ customise_settings.page_feedback_more_url }}" class="govuk-link">{{ customise_settings.page_feedback_more_link_text }}</a>.
+                        </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endwith %}
