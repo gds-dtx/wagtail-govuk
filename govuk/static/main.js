@@ -68,6 +68,31 @@ function setListClasses() {
     el.classList.add(wrapperTextSize(el) || "govuk-body");
   });
 
+  // Headings. Same reason as paragraphs: the bundle styles govuk-heading-*
+  // rather than h2/h3/h4, so a heading an editor typed into rich text drops to
+  // the browser's own bold-and-slightly-larger and stops standing off the 19px
+  // body beside it. The sizes are the ones the live service carries in its
+  // hand-written markup: h2 is govuk-heading-l, h3 is govuk-heading-m.
+  const headingSize = {
+    H2: "govuk-heading-l",
+    H3: "govuk-heading-m",
+    H4: "govuk-heading-s",
+  };
+  document
+    .querySelectorAll(
+      ".rich-text-content h2, .rich-text-content h3, .rich-text-content h4",
+    )
+    .forEach((el) => {
+      // Only headings the editor left plain. A component rendered into rich
+      // text brings its own -- the CSV attachment card's title is an h3 with
+      // gem-c-attachment__title -- and sizing those as body headings would
+      // pull them out of the component they belong to.
+      if (el.className.trim()) {
+        return;
+      }
+      el.classList.add(headingSize[el.tagName]);
+    });
+
   // Lists. govuk-list carries the 19px body size of its own accord, so in a
   // wrapper that asked for a smaller one the bullets came out larger than the
   // paragraphs beside them -- reported on the home page, where the update
