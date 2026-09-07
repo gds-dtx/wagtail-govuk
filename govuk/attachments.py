@@ -143,8 +143,16 @@ def _download_url(name: str) -> str | None:
 # tested. The link has to be the only thing in the paragraph -- a CSV link
 # mentioned mid-sentence stays a link, which is right, because a sentence with
 # a file card wedged into it reads as neither.
+#
+# The opening tag has to allow attributes. Wagtail stamps data-block-key onto
+# every rich text paragraph it re-saves, so a page that has been through the
+# editor since the download links were written serves
+# <p data-block-key="3a0kt"> rather than a bare <p>. Matching only the bare
+# form meant the cards silently reverted to plain links the next time anyone
+# edited the page -- which is what happened to the download page when the role
+# navigation was switched on for it. \b keeps this off <pre>.
 _CSV_PARAGRAPH = re.compile(
-    r"<p>\s*<a\b[^>]*\bhref=\"(?P<href>/download/(?P<name>[\w-]+)\.csv)\"[^>]*>"
+    r"<p\b[^>]*>\s*<a\b[^>]*\bhref=\"(?P<href>/download/(?P<name>[\w-]+)\.csv)\"[^>]*>"
     r"(?P<title>.*?)</a>\s*</p>",
     re.IGNORECASE | re.DOTALL,
 )
