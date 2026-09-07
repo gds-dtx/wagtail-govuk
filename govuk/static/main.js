@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
   setBackToTop();
   setChangelogToggle();
   openLinkedAccordionSection();
+  setPageFeedback();
 });
 
 function setHyperlinkClasses() {
@@ -141,6 +142,10 @@ function setBackToTop() {
   }
 
   const footer = document.querySelector(".govuk-template__footer");
+  // The "Is this page useful?" band sits directly above the footer when a
+  // site has it switched on, so the button lifts clear of whichever of the
+  // two is higher, rather than floating beside the band.
+  const feedback = document.getElementById("page-feedback");
 
   function update() {
     const scrolled = window.pageYOffset || document.documentElement.scrollTop;
@@ -151,8 +156,9 @@ function setBackToTop() {
 
     // Lift the button clear of the footer rather than letting it sit on top.
     let bottom = 30;
-    if (footer) {
-      const overlap = window.innerHeight - footer.getBoundingClientRect().top;
+    const edge = feedback || footer;
+    if (edge) {
+      const overlap = window.innerHeight - edge.getBoundingClientRect().top;
       if (overlap > 0) {
         bottom = overlap + 30;
       }
@@ -336,4 +342,53 @@ function getUniqueHeadingId(text, existingIds, fallbackIndex) {
 
   existingIds.add(candidate);
   return candidate;
+}
+
+function setPageFeedback() {
+  // "Is this page useful?" at the foot of the page. The form works on its own:
+  // the browser posts it and comes back to the same page with the thank-you
+  // showing. With JavaScript the answer is posted in the background and the
+  // panels swap in place, so the reader does not lose their position, and
+  // focus moves to the thank-you so it is announced.
+  const component = document.getElementById("page-feedback");
+  if (!component) {
+    return;
+  }
+  const form = component.querySelector(".js-prompt-questions");
+  const success = component.querySelector(".js-prompt-success");
+  if (!form || !success) {
+    return;
+  }
+
+  // event.submitter is what tells Yes from No; older browsers do not set it,
+  // so the last button pressed is remembered as well.
+  let pressed = null;
+  form.querySelectorAll("button[name='answer']").forEach((button) => {
+    button.addEventListener("click", () => {
+      pressed = button;
+    });
+  });
+
+  form.addEventListener("submit", (event) => {
+    const button = event.submitter || pressed;
+    if (!button || !button.value) {
+      return;
+    }
+    event.preventDefault();
+
+    const data = new FormData(form);
+    data.set("answer", button.value);
+    fetch(form.action, {
+      method: "POST",
+      body: data,
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "fetch" },
+    }).catch((error) => {
+      console.error(error);
+    });
+
+    form.hidden = true;
+    success.hidden = false;
+    success.focus();
+  });
 }

@@ -27,6 +27,7 @@ from govuk.views import (
     oidc_callback,
     oidc_login,
     oidc_login_redirect,
+    page_feedback_view,
     profile_view,
     search_view,
     wagtail_logout_redirect,
@@ -88,6 +89,9 @@ urlpatterns = [
         name="govuk_framework_csv",
     ),
     path("robots.txt", robots_txt_view, name="govuk_robots_txt"),
+    # The "Is this page useful?" answer. Registered on every site; the view
+    # answers 404 unless the site has the prompt switched on.
+    path("page-feedback/", page_feedback_view, name="page_feedback"),
 ]
 
 if settings.FEATURE_FLAGS.get("FEEDBACK"):

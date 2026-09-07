@@ -539,6 +539,34 @@ class CustomiseSettings(BaseSiteSetting):
         default="",
         help_text="Optional additional CSS appended after hero overrides.",
     )
+    show_page_feedback_prompt = models.BooleanField(
+        default=False,
+        help_text=(
+            "Ask \"Is this page useful?\" at the foot of every page, as GOV.UK "
+            "publications do. Answers are recorded in the server logs."
+        ),
+    )
+    page_feedback_more_url = models.CharField(
+        max_length=500,
+        blank=True,
+        default="/feedback",
+        help_text=(
+            "Where \"Give more feedback\" points after someone answers, for "
+            "example a survey. Defaults to /feedback."
+        ),
+    )
+    page_feedback_more_intro = models.CharField(
+        max_length=255,
+        blank=True,
+        default="To help improve the framework, we’d like to know more about your visit today.",
+        help_text="The sentence shown after someone answers, above the link.",
+    )
+    page_feedback_more_link_text = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Give more feedback on using the framework website",
+        help_text="The wording of the link shown after someone answers.",
+    )
 
     panels = [
         FieldPanel("header_logo"),
@@ -552,6 +580,10 @@ class CustomiseSettings(BaseSiteSetting):
         FieldPanel("hero_background_color"),
         FieldPanel("hero_text_color"),
         FieldPanel("extra_css"),
+        FieldPanel("show_page_feedback_prompt"),
+        FieldPanel("page_feedback_more_url"),
+        FieldPanel("page_feedback_more_intro"),
+        FieldPanel("page_feedback_more_link_text"),
     ]
 
     class Meta:
