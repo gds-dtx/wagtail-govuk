@@ -1,4 +1,5 @@
 import importlib
+import json
 from unittest.mock import ANY, Mock, patch
 
 from django.test import SimpleTestCase, override_settings
@@ -87,6 +88,66 @@ class WagtailRichTextHooksTests(SimpleTestCase):
             ],
             {"element": "div", "props": {"class": "govuk-inset-text"}},
         )
+
+    @override_settings(FEATURE_FLAGS=_feature_flags())
+    @patch("wagtail.snippets.models.register_snippet")
+    def test_registers_line_break_feature(self, _mock_register_snippet):
+        """Without it, a return inside a quote starts a second bordered box."""
+        hooks_module = _reload_wagtail_hooks()
+        features = Mock()
+        features.default_features = []
+
+        hooks_module.register_govuk_button_rich_text_features(features)
+
+        self.assertIn(hooks_module.LINE_BREAK_FEATURE, features.default_features)
+
+        line_break_call = next(
+            call
+            for call in features.register_editor_plugin.call_args_list
+            if call.args[1] == hooks_module.LINE_BREAK_FEATURE
+        )
+        plugin = line_break_call.args[2]
+        self.assertEqual(plugin.option_name, "enableLineBreak")
+
+    @override_settings(FEATURE_FLAGS=_feature_flags())
+    @patch("wagtail.snippets.models.register_snippet")
+    def test_a_line_break_survives_a_round_trip_through_inset_text(
+        self, _mock_register_snippet
+    ):
+        """One quote on two lines has to come back as one block, not two.
+
+        Wagtail carries the break both ways of its own accord, which is why
+        the feature registers no converter rule. This is the assertion that
+        says so, so that a Wagtail upgrade that changed it would be caught
+        here rather than by an editor.
+        """
+        from wagtail.admin.rich_text.converters.contentstate import (
+            ContentstateConverter,
+        )
+
+        hooks_module = _reload_wagtail_hooks()
+        converter = ContentstateConverter(
+            features=[
+                "bold",
+                "italic",
+                "link",
+                hooks_module.INSET_TEXT_FEATURE,
+                hooks_module.LINE_BREAK_FEATURE,
+            ]
+        )
+
+        contentstate = converter.from_database_format(
+            '<div class="govuk-inset-text">line one<br/>line two</div>'
+        )
+        blocks = json.loads(contentstate)["blocks"]
+
+        self.assertEqual(len(blocks), 1)
+        self.assertEqual(blocks[0]["type"], hooks_module.INSET_TEXT_BLOCK_TYPE)
+        self.assertEqual(blocks[0]["text"], "line one\nline two")
+
+        html = converter.to_database_format(contentstate)
+        self.assertEqual(html.count("govuk-inset-text"), 1)
+        self.assertIn("line one<br/>line two", html)
 
     @override_settings(FEATURE_FLAGS=_feature_flags())
     @patch("wagtail.snippets.models.register_snippet")

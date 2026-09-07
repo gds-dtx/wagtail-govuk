@@ -102,6 +102,26 @@ class AttachmentRewriteTests(TestCase):
         self.assertIn(">Role content</a>", html)
         self.assertNotIn("<p><a", html)
 
+    def test_a_paragraph_wagtail_has_stamped_still_becomes_the_component(self):
+        """Wagtail writes data-block-key onto every paragraph it re-saves.
+
+        Matching only a bare <p> meant the cards turned back into plain links
+        the first time anyone opened the download page in the editor, which is
+        what happened when the role navigation was switched on for it.
+        """
+        html = rewrite_csv_download_links(
+            '<p data-block-key="3a0kt">'
+            '<a href="/download/roles.csv">Role content</a></p>'
+        )
+
+        self.assertIn('<section class="gem-c-attachment', html)
+        self.assertNotIn("data-block-key", html)
+
+    def test_a_preformatted_block_is_not_mistaken_for_a_paragraph(self):
+        html = '<pre><a href="/download/roles.csv">Role content</a></pre>'
+
+        self.assertEqual(rewrite_csv_download_links(html), html)
+
     def test_the_component_says_what_kind_of_file_and_how_big(self):
         html = rewrite_csv_download_links(
             '<p><a href="/download/changelog.csv">Change notes</a></p>'

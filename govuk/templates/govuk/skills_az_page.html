@@ -50,7 +50,15 @@
                                 <div id="skills-accordion-content-{{ forloop.counter }}"
                                      class="govuk-accordion__section-content">
                                     {% if skill_section.skill.body %}
-                                        <div class="govuk-body">{{ skill_section.skill.body|richtext }}</div>
+                                        {% comment %}
+                                            rich-text-content is what main.js looks for to give
+                                            an editor's paragraphs, lists and headings their
+                                            GOV.UK classes. Without it the bullets in a skill's
+                                            description kept the browser's own 40px indent and
+                                            no space between them, where every other list on
+                                            the site is a govuk-list at 20px.
+                                        {% endcomment %}
+                                        <div class="govuk-body rich-text-content">{{ skill_section.skill.body|richtext }}</div>
                                     {% endif %}
                                     {% if skill_section.leadership_points %}
                                         <h3 class="govuk-heading-s govuk-!-margin-bottom-2">{{ framework_wording.skill_leadership_examples_heading }}</h3>
@@ -87,6 +95,14 @@
                                                         </td>
                                                         <td class="govuk-table__cell govuk-!-width-two-thirds">
                                                             {% if level_row.points %}
+                                                                {% comment %}
+                                                                    The same sentence the points read on from on a
+                                                                    role page. It is one skill at one level either
+                                                                    way, so leaving it off here made the same content
+                                                                    read as a bare list in one place and a sentence
+                                                                    in the other.
+                                                                {% endcomment %}
+                                                                <p class="govuk-body">{{ framework_wording.skill_points_intro }}</p>
                                                                 <ul class="govuk-list govuk-list--bullet">
                                                                     {% for point in level_row.points %}<li class="govuk-body">{{ point }}</li>{% endfor %}
                                                                 </ul>

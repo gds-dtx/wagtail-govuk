@@ -738,14 +738,21 @@ main > :nth-last-child(1 of .section-cards-container) {
    underlines stack up into noise — which is why the live service leaves them
    off (T31.2). The column heading and the link colour carry the meaning at
    rest; hover and focus put the underline back, so a pointer or the keyboard
-   still marks out what is clickable. */
+   still marks out what is clickable.
+
+   Both rules set text-decoration-line rather than the text-decoration
+   shorthand. The shorthand also resets text-decoration-thickness, and these
+   selectors outweigh govuk-link's, so writing it that way threw away the
+   Design System's thicker hover underline — max(3px, 0.1875rem, 0.12em) —
+   and left a hairline where the live service has a heavy one (T31.3). The
+   longhand leaves the thickness to govuk-link, which is where it belongs. */
 .govuk-table a.skill-name {
-    text-decoration: none;
+    text-decoration-line: none;
 }
 
 .govuk-table a.skill-name:hover,
 .govuk-table a.skill-name:focus {
-    text-decoration: underline;
+    text-decoration-line: underline;
 }
 
 /* Rich text has no table feature in Wagtail, so a table reaches a content
