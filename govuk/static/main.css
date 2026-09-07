@@ -428,15 +428,20 @@ main > :nth-last-child(1 of .section-cards-container) {
     display: none;
     font-family: "GDS Transport", arial, sans-serif;
     font-weight: 400;
-    /* A deliberate step away from the live service, which sets 14px here:
-       review round 1 (T18/T24) asked for the Design System sub-navigation
-       size instead. */
+    /* 1rem is what the live service and the Design System's own sub-navigation
+       both use for the items at desktop. Live's 14px, which an earlier version
+       of this comment cited, is its mobile value below 641px, where this
+       navigation is hidden altogether. */
     font-size: 1rem;
     line-height: 1.25;
 }
 
 .role-nav__title {
-    font-size: 1rem;
+    /* The group headings ("Architecture roles", "Data roles") are a size up
+       from the items, as they are on the live service and in the Design
+       System's sub-navigation: 1.1875rem against 1rem. Review round 2 (T24)
+       asked for exactly this. */
+    font-size: 1.1875rem;
     line-height: 1.25;
     color: #505a5f;
     font-weight: 400;
