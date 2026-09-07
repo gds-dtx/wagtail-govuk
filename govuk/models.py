@@ -100,6 +100,7 @@ SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES = [
     "ul",
     "ol",
     "inset-text",
+    "line-break",
 ]
 
 SigningPublicKey = Ed25519PublicKey | ec.EllipticCurvePublicKey
@@ -2672,7 +2673,16 @@ class TagListingsPageTag(TaggedItemBase):
     ]
 
 
-FRAMEWORK_WELCOME_RICH_TEXT_FEATURES = ["bold", "italic", "link", "ul", "ol"]
+FRAMEWORK_WELCOME_RICH_TEXT_FEATURES = [
+    "bold",
+    "italic",
+    "link",
+    "ul",
+    "ol",
+    # InsetTextBlock takes this list, and a quote that runs to two lines needs
+    # a line break rather than a second block: a new block is a second border.
+    "line-break",
+]
 
 
 class FrameworkWelcomeSectionValue(StructValue):

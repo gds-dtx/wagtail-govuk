@@ -83,6 +83,7 @@ RAW_HTML_ENTITY_TYPE = "RAW_HTML"
 RAW_HTML_EMBEDTYPE = "raw_html"
 INSET_TEXT_FEATURE = "inset-text"
 INSET_TEXT_BLOCK_TYPE = "inset-text"
+LINE_BREAK_FEATURE = "line-break"
 
 
 def _encode_raw_html(raw_html: str | None) -> str:
@@ -263,6 +264,7 @@ def register_govuk_button_rich_text_features(features):
         GOVUK_START_BUTTON_FEATURE,
         RAW_HTML_FEATURE,
         INSET_TEXT_FEATURE,
+        LINE_BREAK_FEATURE,
     ):
         if feature_name not in features.default_features:
             features.default_features.append(feature_name)
@@ -400,6 +402,20 @@ def register_govuk_button_rich_text_features(features):
                 }
             },
         },
+    )
+
+    # Inset text is a block, so pressing return inside a quote ends the quote
+    # and starts another one -- two bordered boxes where the editor wanted one
+    # quote on two lines. A line break stays inside the block, and Wagtail
+    # already carries it both ways of its own accord: the contentstate exporter
+    # turns "\n" into <br>, and LineBreakHandler turns it back. All that was
+    # missing was a way to type one, which is what enableLineBreak adds -- a
+    # toolbar control and shift+return. No converter rule to register, and
+    # nothing changes for text that has no line breaks in it.
+    features.register_editor_plugin(
+        "draftail",
+        LINE_BREAK_FEATURE,
+        draftail_features.BooleanFeature("enableLineBreak"),
     )
 
 
