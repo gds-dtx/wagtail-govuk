@@ -271,10 +271,16 @@ and the two wording fields keep their defaults, which are the live copy.
 **The role side menu's last group is chosen page by page.** "List in the role
 side menu", in a content page's settings, puts it under the group that closes
 the menu; Skills A to Z is always there. The flag travels in the export like
-any other page field. Migration `0069` ticks the five pages the live service
-lists (propose a change, download, job grades, context and challenges,
-roadmap) on a framework instance, so nothing needs doing at cutover unless the
-service wants a different list. Wagtail's own "Show in menus" is a different
+any other page field, **so take the export from the source instance after it
+has run migration `0069`** — that migration ticks the five pages the live
+service lists (propose a change, download, job grades, context and challenges,
+roadmap), but only for pages that exist when it runs. On a fresh instance the
+pages arrive by import after the migration, so an export taken before the
+source instance had the field leaves the group at Skills A to Z until someone
+ticks the pages by hand. The order of the group follows the page order in the
+explorer; drag the pages into the live service's order (Skills A to Z, Propose
+a change, Download, Job grades, Context and challenges, Roadmap) on the source
+instance before exporting, and the order travels too. Wagtail's own "Show in menus" is a different
 switch: it drives the header, which on this service lists only the site name.
 
 **The `/feedback` page itself is not in the export.** On the dev instance it

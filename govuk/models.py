@@ -542,6 +542,7 @@ class CustomiseSettings(BaseSiteSetting):
     )
     show_page_feedback_prompt = models.BooleanField(
         default=False,
+        verbose_name="Ask \"Is this page useful?\" on every page",
         help_text=(
             "Ask \"Is this page useful?\" at the foot of every page, as GOV.UK "
             "publications do. Answers are recorded in the server logs."
@@ -551,6 +552,7 @@ class CustomiseSettings(BaseSiteSetting):
         max_length=500,
         blank=True,
         default="/feedback",
+        verbose_name="Feedback follow-up link",
         help_text=(
             "Where \"Give more feedback\" points after someone answers, for "
             "example a survey. Defaults to /feedback."
@@ -560,12 +562,14 @@ class CustomiseSettings(BaseSiteSetting):
         max_length=255,
         blank=True,
         default="To help improve the framework, we’d like to know more about your visit today.",
+        verbose_name="Feedback follow-up sentence",
         help_text="The sentence shown after someone answers, above the link.",
     )
     page_feedback_more_link_text = models.CharField(
         max_length=255,
         blank=True,
         default="Give more feedback on using the framework website",
+        verbose_name="Feedback follow-up link text",
         help_text="The wording of the link shown after someone answers.",
     )
 
