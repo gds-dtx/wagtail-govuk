@@ -1,4 +1,3 @@
-from django.core.exceptions import ValidationError
 from django.test import TestCase
 from django.urls import reverse
 from wagtail.models import Site
@@ -14,9 +13,7 @@ class CustomiseAssetsTests(TestCase):
         self.site.save(update_fields=["hostname", "port"])
         self.customise_settings = CustomiseSettings.for_site(self.site)
 
-    def test_custom_css_view_renders_masthead_overrides_and_extra_css(self):
-        self.customise_settings.hero_background_color = "#112233"
-        self.customise_settings.hero_text_color = "#fefefe"
+    def test_custom_css_view_renders_extra_css(self):
         self.customise_settings.extra_css = (
             ".hero__title { text-transform: uppercase; }"
         )
@@ -27,19 +24,10 @@ class CustomiseAssetsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response["Content-Type"], "text/css; charset=utf-8")
         body = response.content.decode("utf-8")
-        self.assertIn(".masthead {", body)
-        self.assertIn("background: #112233;", body)
-        self.assertIn("color: #fefefe;", body)
         self.assertIn(".hero__title { text-transform: uppercase; }", body)
 
     def test_custom_asset_views_return_404_when_empty(self):
         self.assertEqual(self.client.get("/gen/custom.css").status_code, 404)
-
-    def test_hero_colours_require_hex_values(self):
-        self.customise_settings.hero_background_color = "green"
-
-        with self.assertRaises(ValidationError):
-            self.customise_settings.full_clean()
 
     def test_base_template_only_includes_custom_assets_when_present(self):
         search_url = reverse("search")
@@ -48,7 +36,7 @@ class CustomiseAssetsTests(TestCase):
         self.assertEqual(no_custom_response.status_code, 200)
         self.assertNotContains(no_custom_response, "/gen/custom.css")
 
-        self.customise_settings.hero_background_color = "#001122"
+        self.customise_settings.extra_css = ".hero__title { color: red; }"
         self.customise_settings.save()
 
         custom_response = self.client.get(search_url, data={"query": "service"})

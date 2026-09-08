@@ -447,7 +447,7 @@ def framework_content_settings_panels() -> list:
     ]
 
 
-@register_setting(icon="warning")
+@register_setting(icon="warning", order=3)
 class PhaseBannerSettings(BaseSiteSetting):
     enabled = models.BooleanField(
         default=False,
@@ -489,8 +489,11 @@ class PhaseBannerSettings(BaseSiteSetting):
         FieldPanel("phase_text_after"),
     ]
 
+    class Meta:
+        verbose_name = "Phase banner"
 
-@register_setting(icon="link")
+
+@register_setting(icon="link", order=2)
 class FooterSettings(BaseSiteSetting):
     footer_links = StreamField(
         [
@@ -508,7 +511,7 @@ class FooterSettings(BaseSiteSetting):
     ]
 
 
-@register_setting(icon="cog")
+@register_setting(icon="cog", order=1)
 class CustomiseSettings(BaseSiteSetting):
     header_logo = models.CharField(
         max_length=20,
@@ -564,20 +567,6 @@ class CustomiseSettings(BaseSiteSetting):
             "Wording shown in the header search box, for example "
             "Search for roles or skills. Defaults to Search."
         ),
-    )
-    hero_background_color = models.CharField(
-        max_length=7,
-        blank=True,
-        default="",
-        validators=[HEX_COLOR_VALIDATOR],
-        help_text="Optional hero background color in hex, for example #b5cd1e.",
-    )
-    hero_text_color = models.CharField(
-        max_length=7,
-        blank=True,
-        default="",
-        validators=[HEX_COLOR_VALIDATOR],
-        help_text="Optional hero text color in hex, for example #ffffff.",
     )
     error_contact_link_text = models.CharField(
         max_length=255,
@@ -652,16 +641,24 @@ class CustomiseSettings(BaseSiteSetting):
             ],
             heading="Search box",
         ),
-        FieldPanel("error_contact_link_text"),
-        FieldPanel("error_contact_email"),
-        FieldPanel("error_contact_about"),
-        FieldPanel("hero_background_color"),
-        FieldPanel("hero_text_color"),
-        FieldPanel("extra_css"),
-        FieldPanel("show_page_feedback_prompt"),
-        FieldPanel("page_feedback_more_url"),
-        FieldPanel("page_feedback_more_intro"),
-        FieldPanel("page_feedback_more_link_text"),
+        MultiFieldPanel(
+            [
+                FieldPanel("error_contact_link_text"),
+                FieldPanel("error_contact_email"),
+                FieldPanel("error_contact_about"),
+            ],
+            heading="Error contact",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("show_page_feedback_prompt"),
+                FieldPanel("page_feedback_more_intro", heading="Intro text"),
+                FieldPanel("page_feedback_more_link_text", heading="Follow up text"),
+                FieldPanel("page_feedback_more_url", heading="Follow up URL"),
+            ],
+            heading="Page feedback",
+        ),
+        FieldPanel("extra_css", heading="Extra CSS"),
     ]
 
     class Meta:
@@ -670,15 +667,6 @@ class CustomiseSettings(BaseSiteSetting):
 
     def render_custom_css(self) -> str:
         sections: list[str] = []
-
-        hero_background_color = (self.hero_background_color or "").strip()
-        hero_text_color = (self.hero_text_color or "").strip()
-
-        if hero_background_color:
-            sections.append(f".masthead {{ background: {hero_background_color}; }}")
-        if hero_text_color:
-            sections.append(f".masthead {{ color: {hero_text_color}; }}")
-            sections.append(f".hero__description {{ color: {hero_text_color}; }}")
 
         extra_css = (self.extra_css or "").strip()
         if extra_css:
