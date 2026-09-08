@@ -10,8 +10,8 @@ from govuk.models import (
     ContentPage,
     ExternalContentItem,
     ExternalContentItemTag,
+    FrameworkSkillsPage,
     GovukTag,
-    RolePage,
 )
 
 
@@ -221,9 +221,9 @@ class PagesApiWithoutTheFrameworkTests(TestCase):
 
     ``AuthenticatedAPIViewSetMixin`` would require a login, but ``AllowAny``
     overrides it, so anything this endpoint lists is published to anyone who
-    asks. A ``RolePage`` that reached a site without the framework through the
-    page import 404s when fetched, so listing it would publish a set of titles
-    and detail URLs that none of them open.
+    asks. A framework page such as ``FrameworkSkillsPage`` that reached a site without
+    the framework through the page import 404s when fetched, so listing it
+    would publish a set of titles and detail URLs that none of them open.
     """
 
     def setUp(self):
@@ -235,10 +235,10 @@ class PagesApiWithoutTheFrameworkTests(TestCase):
         )
         self.content_page.save_revision().publish()
 
-        self.role_page = self.root_page.add_child(
-            instance=RolePage(title="Data analyst", slug="data-analyst", body="")
+        self.framework_page = self.root_page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A-Z", slug="skills-az")
         )
-        self.role_page.save_revision().publish()
+        self.framework_page.save_revision().publish()
 
     def _listed_slugs(self, params=None):
         response = self.client.get("/api/pages/", params or {})
@@ -246,29 +246,29 @@ class PagesApiWithoutTheFrameworkTests(TestCase):
         return {item["meta"]["slug"] for item in response.json()["items"]}
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
-    def test_the_framework_site_still_lists_its_role_pages(self):
-        self.assertIn("data-analyst", self._listed_slugs())
+    def test_the_framework_site_still_lists_its_framework_pages(self):
+        self.assertIn("skills-az", self._listed_slugs())
         self.assertEqual(
-            self.client.get(f"/api/pages/{self.role_page.id}/").status_code, 200
+            self.client.get(f"/api/pages/{self.framework_page.id}/").status_code, 200
         )
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
-    def test_a_role_page_is_not_published_by_the_listing(self):
+    def test_a_framework_page_is_not_published_by_the_listing(self):
         slugs = self._listed_slugs()
 
-        self.assertNotIn("data-analyst", slugs)
+        self.assertNotIn("skills-az", slugs)
         self.assertIn("ordinary-page", slugs)
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_asking_for_the_type_by_name_returns_nothing_rather_than_the_pages(self):
         """The type filter is the obvious way to go looking for them."""
-        self.assertEqual(self._listed_slugs({"type": "govuk.RolePage"}), set())
+        self.assertEqual(self._listed_slugs({"type": "govuk.FrameworkSkillsPage"}), set())
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_the_detail_route_does_not_serve_one_either(self):
         """``get_queryset`` backs the detail view too, so this is one guard."""
         self.assertEqual(
-            self.client.get(f"/api/pages/{self.role_page.id}/").status_code, 404
+            self.client.get(f"/api/pages/{self.framework_page.id}/").status_code, 404
         )
 
 

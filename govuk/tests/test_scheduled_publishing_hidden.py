@@ -15,7 +15,7 @@ schedule" toggle that opens onto an empty panel would be the same bug again.
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
-from wagtail.models import Page, Site
+from wagtail.models import Page, Site, get_page_models
 from wagtail.test.utils.form_data import (
     nested_form_data,
     querydict_from_html,
@@ -25,16 +25,24 @@ from wagtail.test.utils.form_data import (
 
 from govuk.models import (
     ContentPage,
-    RolePage,
+    FrameworkContentPage,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
     SectionPage,
-    SkillsAZPage,
     TagListingsPage,
     page_settings_panels,
 )
 
 PUBLISHING_PANEL = "wagtail.admin.panels.PublishingPanel"
 
-PAGE_MODELS = (ContentPage, RolePage, SkillsAZPage, TagListingsPage, SectionPage)
+PAGE_MODELS = (
+    ContentPage,
+    FrameworkMainPage,
+    FrameworkContentPage,
+    FrameworkSkillsPage,
+    TagListingsPage,
+    SectionPage,
+)
 
 
 def _panel_paths(panels) -> list[str]:
@@ -76,14 +84,20 @@ class EveryPageModelTests(TestCase):
                 self.assertNotIn(PUBLISHING_PANEL, _panel_paths(model.settings_panels))
 
     def test_these_are_every_page_type_in_the_app(self):
-        """A sixth page model added later has to be handled too."""
-        subclasses = {
+        """A further page model added later has to be handled too.
+
+        The concrete page models come from Wagtail's registry rather than
+        ``Page.__subclasses__()``: the content-style types now inherit through
+        the abstract ``BaseContentPage``, so they are not direct subclasses of
+        ``Page`` and the abstract base itself is.
+        """
+        page_models = {
             model
-            for model in Page.__subclasses__()
+            for model in get_page_models()
             if model._meta.app_label == "govuk"
         }
 
-        self.assertEqual(subclasses, set(PAGE_MODELS))
+        self.assertEqual(page_models, set(PAGE_MODELS))
 
     def test_the_edit_form_has_no_go_live_or_expiry_field(self):
         for model in PAGE_MODELS:
@@ -142,14 +156,7 @@ class SchedulingControlsInTheAdminTests(TestCase):
         data = querydict_from_html(self._edit_page_html(), form_id="page-edit-form")
         # A StreamField's inputs are built by its JavaScript, so they are not
         # in the served HTML for the scrape above to find.
-        data.update(
-            nested_form_data(
-                {
-                    "framework_welcome_body": streamfield([]),
-                    "body_blocks": streamfield([]),
-                }
-            )
-        )
+        data.update(nested_form_data({"body_blocks": streamfield([])}))
         data["title"] = "A page, edited"
         data["body"] = rich_text("<p>New words.</p>")
         data["action-publish"] = "action-publish"

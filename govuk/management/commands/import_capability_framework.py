@@ -15,13 +15,12 @@ from govuk.capability_framework import (
     text_to_rich_html,
 )
 from govuk.models import (
-    ContentPage,
     CustomiseSettings,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    RolePage,
-    SkillsAZPage,
 )
 
 SITE_NAME = "Government Digital and Data Profession Capability Framework"
@@ -54,7 +53,7 @@ class Command(BaseCommand):
 
         skills_by_slug = self.import_skills(skills_csv)
         roles = self.import_roles(roles_csv, skills_by_slug)
-        self.create_pages(roles)
+        self.create_pages()
 
         changelog_csv = data_dir / "changelog.csv"
         if changelog_csv.exists():
@@ -110,14 +109,12 @@ class Command(BaseCommand):
                 f"In the CMS but not in this file: {counted}. Nothing was deleted."
             )
         )
-        live_pages = set(
-            RolePage.objects.live()
-            .filter(slug__in=retired_roles)
-            .values_list("slug", flat=True)
-        )
+        # Every role snippet still has a page -- a route on the framework main
+        # page -- and appears in the navigation, so a retired role is one still
+        # in the CMS but no longer in this file. Naming it is what prompts the
+        # content decision to unpublish it.
         for slug in retired_roles:
-            still_live = " (its page is still live)" if slug in live_pages else ""
-            self.stdout.write(f"  role : {slug}{still_live}")
+            self.stdout.write(f"  role : {slug}")
         for slug in retired_skills:
             self.stdout.write(f"  skill: {slug}")
 
@@ -288,34 +285,22 @@ class Command(BaseCommand):
         self.stdout.write(f"Roles: {created} created, {updated} updated")
         return results
 
-    def create_pages(self, roles: list[dict]):
+    def create_pages(self):
+        """Ensure the framework's pages exist: the main page and the A to Z.
+
+        Roles no longer have a page each -- the framework main page serves one
+        per role snippet at ``<role-slug>/`` -- so there is nothing to create
+        per role here. The navigation and the role URLs are built from the role
+        snippets at render time.
+        """
         home = self.ensure_home_page()
-        pages_created = pages_updated = 0
 
-        for entry in roles:
-            role = entry["role"]
-            page = RolePage.objects.filter(slug=role.slug).first()
-            if page is None:
-                page = RolePage(
-                    title=role.title,
-                    slug=role.slug,
-                    selected_roles=json.dumps([{"type": "role", "value": role.pk}]),
-                )
-                home.add_child(instance=page)
-                pages_created += 1
-            else:
-                page.title = role.title
-                page.selected_roles = json.dumps([{"type": "role", "value": role.pk}])
-                pages_updated += 1
-            page.save_revision().publish()
-
-        if not SkillsAZPage.objects.filter(slug="skills").exists():
-            skills_page = SkillsAZPage(title="Skills A to Z", slug="skills")
+        if not FrameworkSkillsPage.objects.filter(slug="skills").exists():
+            skills_page = FrameworkSkillsPage(title="Skills A to Z", slug="skills")
             home.add_child(instance=skills_page)
             skills_page.save_revision().publish()
             self.stdout.write("Created Skills A to Z page")
 
-        self.stdout.write(f"Role pages: {pages_created} created, {pages_updated} updated")
         self.write_home_page_content(home)
 
     def ensure_home_page(self) -> Page:
@@ -329,14 +314,15 @@ class Command(BaseCommand):
             site.save(update_fields=["site_name"])
 
         home = site.root_page.specific
-        if isinstance(home, ContentPage):
+        if isinstance(home, FrameworkMainPage):
             return home
 
         # The starter site ships a placeholder home page that cannot hold the
-        # framework's introduction, so swap it for a content page once. The
-        # placeholder already owns the "home" slug, so claim it after removal.
+        # framework's introduction or serve the role routes, so swap it for a
+        # framework main page once. The placeholder already owns the "home"
+        # slug, so claim it after removal.
         root = home.get_parent()
-        new_home = ContentPage(
+        new_home = FrameworkMainPage(
             title=SITE_NAME, slug="framework-home", show_last_updated_date=True
         )
         root.add_child(instance=new_home)
@@ -355,7 +341,7 @@ class Command(BaseCommand):
         new_home.save()
         new_home.save_revision().publish()
         self.stdout.write("Replaced the placeholder home page")
-        return ContentPage.objects.get(pk=new_home.pk)
+        return FrameworkMainPage.objects.get(pk=new_home.pk)
 
     def write_home_page_content(self, home: Page):
         """Set the framework home page up on first import only.
@@ -371,7 +357,7 @@ class Command(BaseCommand):
         toggles. These fields are therefore written only when the page has not
         yet been set up (its intro is still blank).
         """
-        if not isinstance(home, ContentPage):
+        if not isinstance(home, FrameworkMainPage):
             return
 
         if home.hero_intro:
@@ -382,6 +368,11 @@ class Command(BaseCommand):
         home.body = ""
         home.show_role_navigation = True
         home.show_framework_updates = True
+        # A new framework main page defaults the welcome layout on too, but the
+        # importer leaves it off: the welcome prose is CMS content the content
+        # team authors and imports separately, and an empty welcome layout on a
+        # fresh import would render scaffolding with nothing in it.
+        home.show_framework_welcome = False
         home.save()
         home.save_revision().publish()
         self.stdout.write("Home page: role navigation and updates switched on")

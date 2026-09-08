@@ -1,7 +1,8 @@
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import GovukRole, GovukSkill, GovukTag, RolePage
+from govuk.models import FrameworkMainPage, GovukRole, GovukSkill, GovukTag
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -85,16 +86,8 @@ class RolePageTests(TestCase):
             ],
         )
 
-        role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Roles",
-                slug="roles",
-                body="<p>Find role levels and required skills.</p>",
-                selected_roles=[{"type": "role", "value": self.digital_forensics_role.pk}],
-            )
-        )
-        role_page.save_revision().publish()
-        self.role_page = role_page.specific
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.digital_forensics_role)
 
     def test_skill_points_for_level_accepts_choice_value_or_label(self):
         self.assertEqual(
@@ -130,7 +123,7 @@ class RolePageTests(TestCase):
         )
 
     def test_role_page_renders_selected_roles_levels_and_skill_points(self):
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "digital forensics analyst")
@@ -147,40 +140,50 @@ class RolePageTests(TestCase):
 
     def test_skill_points_are_introduced_by_the_framework_wording(self):
         """The points are written as the ends of "You can:", so it is printed."""
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(response, "You can:")
 
+    def test_the_sidebar_home_link_names_the_framework_and_is_not_current(self):
+        """On a role's page the top link still names the framework and points at
+        it, but the role is the current thing, not the home."""
+        response = self.client.get(self.role_url)
+
+        home = response.context["framework_home"]
+        self.assertEqual(home["title"], "Home")
+        self.assertEqual(home["url"], self.main_page.url)
+        self.assertFalse(home["is_current"])
+
     def test_a_delegated_grade_role_has_none_of_the_senior_civil_service_wording(self):
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertNotContains(response, "A specific digital forensics analyst job")
         self.assertNotContains(response, "will need to use digital and data skills to")
 
-    def test_role_page_supports_tags(self):
+    def test_framework_main_page_supports_tags(self):
         policy_tag = GovukTag.objects.create(slug="policy", name="Policy")
         security_tag = GovukTag.objects.create(slug="security", name="Security")
 
-        self.role_page.tags.set([security_tag, policy_tag])
+        self.main_page.tags.set([security_tag, policy_tag])
 
         self.assertEqual(
-            list(self.role_page.tags.order_by("slug").values_list("slug", flat=True)),
+            list(self.main_page.tags.order_by("slug").values_list("slug", flat=True)),
             ["policy", "security"],
         )
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
-    def test_role_page_is_not_creatable_when_skills_feature_is_disabled(self):
-        self.assertFalse(RolePage.can_create_at(self.root_page))
+    def test_framework_main_page_is_not_creatable_when_skills_feature_is_disabled(self):
+        self.assertFalse(FrameworkMainPage.can_create_at(self.root_page))
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
-    def test_a_role_page_does_not_serve_without_the_framework(self):
+    def test_a_role_route_does_not_serve_without_the_framework(self):
         """Not creatable is not the same as not public.
 
-        Wagtail checks ``can_exist_under`` when a page is created or moved
-        through the admin and never again. The page import does not go through
-        the admin, so a Capability Framework export applied to another site
-        leaves live role pages routing on it.
+        A route cannot be guarded by ``can_exist_under``, and the page import
+        does not go through the admin, so a Capability Framework export applied
+        to another site could leave a framework main page routing roles on it.
+        The route 404s without the framework flag, as the role pages did.
         """
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertEqual(response.status_code, 404)

@@ -55,11 +55,12 @@ SKILL_POINT_FIELD_NAMES = (
 )
 SKILL_LEVEL_CHOICES = {"awareness", "working", "practitioner", "expert"}
 # A page's snippet chooser holds a primary key, which means nothing in another
-# database. Carry these as slugs so the reference survives the move, the way
-# role levels and Senior Civil Service skills already do.
-PAGE_SNIPPET_SLUG_STREAM_FIELDS = {
-    ("govuk.RolePage", "selected_roles"): ("role", GovukRole),
-}
+# database, so such fields are carried as slugs to survive the move -- the way
+# role levels and Senior Civil Service skills already are. There are none at
+# present: roles are served as routes on the framework main page rather than
+# chosen on a page, so no page carries a snippet chooser stream field. The
+# machinery stays for the next one.
+PAGE_SNIPPET_SLUG_STREAM_FIELDS: dict[tuple[str, str], tuple[str, type]] = {}
 JOB_GRADE_KEYS = {value for value, _ in JOB_GRADE_CHOICES}
 SCS_GRADE_KEYS = {value for value, _ in SCS_GRADE_CHOICES}
 # Read off the model rather than listed here, so that wording added to the form

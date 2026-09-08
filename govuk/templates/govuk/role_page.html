@@ -14,33 +14,17 @@
                 </div>
             {% endif %}
             <div class="{% if role_navigation %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-full{% endif %}">
-                <h1 class="govuk-heading-xl">{{ self.hero_title|default:self.title }}</h1>
-                {% if self.hero_intro %}
-                    <div class="govuk-body-l rich-text-content">{{ self.hero_intro|richtext }}</div>
-                {% elif self.search_description %}
-                    <p class="govuk-body-l">{{ self.search_description }}</p>
-                {% endif %}
-                {% if self.body or role_sections or self.author or self.show_last_updated_date %}
-                    <div class="govuk-!-margin-bottom-3">
-                        <div class="govuk-grid-row{% if self.enable_free_text_heading_navigation %} free-text-with-headings-layout{% endif %}"
-                             {% if self.enable_free_text_heading_navigation %}data-auto-heading-layout{% endif %}>
-                            {% if self.enable_free_text_heading_navigation %}
-                                <div class="govuk-grid-column-one-third" data-auto-heading-side-column>
-                                    <nav class="free-text-heading-nav"
-                                         aria-label="Page contents"
-                                         data-auto-heading-nav>
-                                        <h2 class="govuk-heading-s free-text-heading-nav__title">On this page</h2>
-                                    </nav>
-                                </div>
-                            {% endif %}
-                            <div class="{% if self.enable_free_text_heading_navigation %}govuk-grid-column-two-thirds{% else %}govuk-grid-column-full{% endif %}"
-                                 {% if self.enable_free_text_heading_navigation %}data-auto-heading-main-column{% endif %}>
-                                <div class="govuk-body rich-text-content"
-                                     {% if self.enable_free_text_heading_navigation %}data-auto-heading-source{% endif %}>
-                                    {% if self.show_page_content_metadata %}
-                                        {% include "includes/page_content_metadata.html" with page=self %}
-                                    {% endif %}
-                                    {% if self.body %}{{ self.body|richtext }}{% endif %}
+                {% comment %}
+                    Served on the framework main page's role route, so the
+                    heading and the content come from the role in context rather
+                    than from the page ("self", the framework main page). The
+                    role's own lead sentence and sections carry the copy.
+                {% endcomment %}
+                <h1 class="govuk-heading-xl">{{ page_heading|default:self.title }}</h1>
+                <div class="govuk-!-margin-bottom-3">
+                    <div class="govuk-grid-row">
+                        <div class="govuk-grid-column-full">
+                            <div class="govuk-body rich-text-content">
                                     {% for role_section in role_sections %}
                                         <section>
                                             {% if role_section.lead %}
@@ -306,13 +290,12 @@
                                             {% endif %}
                                         </section>
                                     {% empty %}
-                                        {% if not self.body %}<p class="govuk-body">{{ framework_wording.no_roles_message }}</p>{% endif %}
+                                        <p class="govuk-body">{{ framework_wording.no_roles_message }}</p>
                                     {% endfor %}
                                 </div>
                             </div>
                         </div>
                     </div>
-                {% endif %}
             </div>
         </div>
     </div>

@@ -7,18 +7,16 @@ literals in code and templates -- the role page introductions, the navigation
 headings, the breadcrumb, and the home page's updates block.
 """
 
-import json
-
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.models import (
     CapabilityFrameworkWordingSettings,
-    ContentPage,
+    FrameworkContentPage,
     GovukChangelogEntry,
     GovukRole,
-    RolePage,
 )
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags() -> dict[str, bool]:
@@ -35,6 +33,8 @@ class FrameworkLanguageEditableTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
+
+        self.main_page = make_framework_main_page(self.root_page)
 
         self.role = GovukRole.objects.create(
             title="Business architect",
@@ -59,24 +59,13 @@ class FrameworkLanguageEditableTests(TestCase):
                 },
             ],
         )
-        self.role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Business architect",
-                slug="business-architect",
-                selected_roles=json.dumps([{"type": "role", "value": self.role.pk}]),
-            )
-        )
-        self.role_page.save_revision().publish()
+        self.role_url = role_url(self.main_page, self.role)
 
         # A non-role page beside the roles, so the navigation has a further
-        # resources group to head.
-        self.roadmap_page = self.root_page.add_child(
-            # A page the framework lists at the foot of its side menu. Ticked,
-            # because since 0069 a page is listed by choice, not by position;
-            # a Privacy page beside the roles would no longer qualify.
-            instance=ContentPage(
-                title="Roadmap", slug="roadmap", body="", show_in_role_navigation=True
-            )
+        # resources group to head. The framework's further resources are the
+        # main page's own children.
+        self.privacy_page = self.main_page.add_child(
+            instance=FrameworkContentPage(title="Privacy", slug="privacy", body="")
         )
         self.roadmap_page.save_revision().publish()
 
@@ -88,7 +77,7 @@ class FrameworkLanguageEditableTests(TestCase):
         self.wording.save()
 
     def test_the_defaults_read_exactly_as_the_framework_writes_them(self):
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(response, "What a business architect does")
         self.assertContains(
@@ -107,7 +96,7 @@ class FrameworkLanguageEditableTests(TestCase):
     def test_the_overview_heading_is_the_editors_to_change(self):
         self._set(overview_heading_text="The {role} job, in short")
 
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(response, "The business architect job, in short")
         self.assertNotContains(response, "What a business architect does")
@@ -115,7 +104,7 @@ class FrameworkLanguageEditableTests(TestCase):
     def test_the_lead_sentence_is_the_editors_to_change(self):
         self._set(role_lead_text="Meet {article} {role} and their skills.")
 
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(response, "Meet a business architect and their skills.")
 
@@ -127,7 +116,7 @@ class FrameworkLanguageEditableTests(TestCase):
             role_levels_purpose_text="Use them to plan.",
         )
 
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(
             response,
@@ -142,7 +131,7 @@ class FrameworkLanguageEditableTests(TestCase):
             further_resources_heading="Everything else",
         )
 
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(response, "The Architecture family")
         # Kept in step: the narrow-screen breadcrumb links the family group to
@@ -152,7 +141,7 @@ class FrameworkLanguageEditableTests(TestCase):
     def test_the_breadcrumb_home_label_is_the_editors_to_change(self):
         self._set(breadcrumb_home_label="Start")
 
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(
             response,
@@ -161,15 +150,8 @@ class FrameworkLanguageEditableTests(TestCase):
         )
 
     def test_the_home_updates_block_reads_the_same_wording_as_a_role_page(self):
-        # The stock test root is a plain Page; the updates block belongs to
-        # the ContentPage the framework's home actually is.
-        home = self.root_page.add_child(
-            instance=ContentPage(
-                title="Framework home", slug="framework-home", body="",
-                show_framework_updates=True,
-            )
-        )
-        home.save_revision().publish()
+        # The updates block belongs to the framework main page, which shows it
+        # by default. A framework content page never carries it.
         GovukChangelogEntry.objects.create(
             date="2026-08-01", note="<p>Framework refreshed</p>"
         )
@@ -182,7 +164,7 @@ class FrameworkLanguageEditableTests(TestCase):
             hide_all_updates_link_text="close the history",
         )
 
-        response = self.client.get(home.url)
+        response = self.client.get(self.main_page.url)
 
         self.assertContains(response, ">What changed</h2>", html=False)
         self.assertContains(response, "First seen")

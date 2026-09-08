@@ -23,10 +23,14 @@
     margin-bottom: 0 !important;
 }
 
-.masthead--combined .hero__description {
+/* The white set on .masthead--combined is only inherited and loses
+   to govuk classes. White has to be set on those elements themselves — including the
+   description's descendants, since its text lives in child. */
+.masthead--combined .hero__title,
+.masthead--combined .hero__description,
+.masthead--combined .hero__description * {
     color: #fff !important;
 }
-
 .govuk-width-container, .hero {
     max-width: var(--govuk-content-width, 950px);
     margin-right: 15px;
@@ -427,13 +431,23 @@ main > :nth-last-child(1 of .section-cards-container) {
 .role-nav {
     display: none;
     font-family: "GDS Transport", arial, sans-serif;
-    font-weight: 400;
+    font-weight: normal;
     /* 1rem is what the live service and the Design System's own sub-navigation
        both use for the items at desktop. Live's 14px, which an earlier version
        of this comment cited, is its mobile value below 641px, where this
        navigation is hidden altogether. */
     font-size: 1rem;
     line-height: 1.25;
+}
+
+/* Space each group from the next so the family headings read as separate
+   sections rather than one run of links. The last group needs no trailing gap. */
+.role-nav__group {
+    margin-bottom: 20px;
+}
+
+.role-nav__group:last-child {
+    margin-bottom: 0;
 }
 
 .role-nav__title {
@@ -444,7 +458,7 @@ main > :nth-last-child(1 of .section-cards-container) {
     font-size: 1.1875rem;
     line-height: 1.25;
     color: #505a5f;
-    font-weight: 400;
+    font-weight: normal;
     margin: 0;
     padding: 10px 10px 10px 14px;
 }
@@ -465,6 +479,11 @@ main > :nth-last-child(1 of .section-cards-container) {
     background-color: inherit;
     color: var(--govuk-link-colour, #1d70b8);
     display: block;
+    /* Fill the row so the link -- with its background, hover and active
+       states -- spans the whole width of the navigation column rather than
+       just its text. */
+    flex: 1 1 auto;
+    box-sizing: border-box;
     text-decoration: none;
     border-left: 4px solid transparent;
     padding: 10px;
@@ -494,7 +513,7 @@ main > :nth-last-child(1 of .section-cards-container) {
     background-color: #f3f2f1;
     border-color: var(--govuk-link-colour, #1d70b8);
     color: var(--govuk-link-colour, #1d70b8);
-    font-weight: 700;
+    font-weight: bold;
 }
 
 .role-nav__item--active a:hover {
@@ -694,6 +713,10 @@ main > :nth-last-child(1 of .section-cards-container) {
     .role-nav {
         display: block;
         float: left;
+        /* Float shrink-wraps to the widest link; the navigation should take the
+           full width of its column so the links fill it. */
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .mobile-homepage {

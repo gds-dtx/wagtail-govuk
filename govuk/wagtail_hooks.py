@@ -31,6 +31,7 @@ from wagtail.admin.rich_text.converters.html_to_contentstate import (
 )
 from wagtail.admin.rich_text.editors.draftail import features as draftail_features
 from wagtail.contrib.settings.models import register_setting
+from wagtail.contrib.settings.registry import SettingMenuItem
 from wagtail.models import Page, Site
 from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import EmbedHandler
@@ -39,6 +40,7 @@ from wagtail.snippets.models import register_snippet
 from wagtail.snippets.views.snippets import (
     IndexView as SnippetIndexView,
     SnippetViewSet,
+    SnippetViewSetGroup,
 )
 from wagtail.whitelist import check_url
 
@@ -455,7 +457,7 @@ class ExternalContentItemViewSet(SnippetViewSet):
     add_to_admin_menu = True
     menu_label = "External content"
     menu_name = "external-content"
-    menu_order = 210
+    menu_order = 220
     list_display = [
         "title",
         "url",
@@ -471,10 +473,12 @@ class ExternalContentItemViewSet(SnippetViewSet):
 class GovukSkillViewSet(SnippetViewSet):
     model = GovukSkill
     icon = "pick"
-    add_to_admin_menu = True
+    # Placed on the admin menu by CapabilityFrameworkViewSetGroup, not on its
+    # own, so it appears under the "Capability framework" menu rather than at
+    # the top level.
+    add_to_admin_menu = False
     menu_label = "Skills"
     menu_name = "govuk-skills"
-    menu_order = 215
     list_display = ["title", "slug"]
     search_fields = ["title", "slug", "body"]
 
@@ -482,10 +486,9 @@ class GovukSkillViewSet(SnippetViewSet):
 class GovukRoleViewSet(SnippetViewSet):
     model = GovukRole
     icon = "user"
-    add_to_admin_menu = True
+    add_to_admin_menu = False
     menu_label = "Roles"
     menu_name = "govuk-roles"
-    menu_order = 216
     list_display = ["title", "family", "slug"]
     list_filter = ["family"]
     search_fields = ["title", "slug", "body", "family"]
@@ -494,14 +497,43 @@ class GovukRoleViewSet(SnippetViewSet):
 class GovukChangelogEntryViewSet(SnippetViewSet):
     model = GovukChangelogEntry
     icon = "history"
-    add_to_admin_menu = True
+    add_to_admin_menu = False
     menu_label = "Changelog"
     menu_name = "govuk-changelog"
-    menu_order = 217
     list_display = ["date", "role", "skill", "change_type", "live"]
     list_filter = ["live", "date"]
     search_fields = ["note", "change_type"]
     ordering = ["-date"]
+
+
+class CapabilityFrameworkViewSetGroup(SnippetViewSetGroup):
+    """Groups the framework's snippets under one "Capability framework" menu.
+
+    Skills, Roles and Changelog become submenu items of it rather than three
+    top-level items, and the "Capability framework wording" site setting is
+    added alongside them (and removed from the Settings menu -- see
+    ``hide_capability_framework_wording_from_settings_menu``) so everything the
+    framework offers an editor sits in one place.
+    """
+
+    menu_label = "Capability framework"
+    menu_name = "capability-framework"
+    menu_icon = "list-ol"
+    menu_order = 215
+    items = (GovukSkillViewSet, GovukRoleViewSet, GovukChangelogEntryViewSet)
+
+    def get_submenu_items(self):
+        menu_items = super().get_submenu_items()
+        # The wording is a site setting, not a snippet, so it is not one of the
+        # grouped viewsets; add its settings menu item by hand, after them.
+        menu_items.append(
+            SettingMenuItem(
+                CapabilityFrameworkWordingSettings,
+                icon="edit",
+                order=len(menu_items) + 1,
+            )
+        )
+        return menu_items
 
 
 class FeedbackIndexView(SnippetIndexView):
@@ -1309,9 +1341,22 @@ def _register_snippet_if_needed(viewset):
 _register_snippet_if_needed(GovukTagViewSet)
 _register_snippet_if_needed(ExternalContentItemViewSet)
 if settings.FEATURE_FLAGS.get("SKILLS"):
-    _register_snippet_if_needed(GovukSkillViewSet)
-    _register_snippet_if_needed(GovukRoleViewSet)
-    _register_snippet_if_needed(GovukChangelogEntryViewSet)
+    # One "Capability framework" menu with Skills, Roles and Changelog under it,
+    # rather than three top-level items. Registering the group registers all
+    # three viewsets (their models, views and URLs) too.
+    _register_snippet_if_needed(CapabilityFrameworkViewSetGroup)
+    # Still registered as a site setting so its edit view, permissions and URL
+    # exist; the group adds it to its own menu and the hook below takes it out
+    # of the Settings menu so it lives in one place.
     register_setting(CapabilityFrameworkWordingSettings, icon="edit")
+
+    @hooks.register("construct_settings_menu")
+    def hide_capability_framework_wording_from_settings_menu(request, menu_items):
+        menu_items[:] = [
+            item
+            for item in menu_items
+            if getattr(item, "model", None) is not CapabilityFrameworkWordingSettings
+        ]
+
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)

@@ -6,12 +6,13 @@ from wagtail.models import Page, Site
 from govuk.capability_framework import split_leadership_examples
 from govuk.models import (
     ContentPage,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    RolePage,
-    SkillsAZPage,
 )
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -61,15 +62,8 @@ class SeniorCivilServiceRoleTests(TestCase):
             ],
         )
 
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Chief technology officer",
-                slug="chief-technology-officer",
-                selected_roles=[{"type": "role", "value": self.cto.pk}],
-            )
-        )
-        page.save_revision().publish()
-        self.cto_page = page.specific
+        self.main_page = make_framework_main_page(self.root_page)
+        self.cto_url = role_url(self.main_page, self.cto)
 
     def test_scs_role_exposes_its_skills_with_leadership_examples(self):
         skills = self.cto.get_scs_skills()
@@ -110,7 +104,7 @@ class SeniorCivilServiceRoleTests(TestCase):
         )
 
     def test_role_page_renders_scs_skills_and_grades(self):
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Skills for chief technology officer")
@@ -124,7 +118,7 @@ class SeniorCivilServiceRoleTests(TestCase):
 
     def test_scs_role_page_carries_the_wording_every_scs_role_shares(self):
         """Two passages read the same on every Senior Civil Service page."""
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertContains(
             response,
@@ -143,13 +137,13 @@ class SeniorCivilServiceRoleTests(TestCase):
                     "Context and challenges for Senior Civil Service roles "
                     "in digital and data"
                 ),
-                slug=RolePage.SCS_CONTEXT_SLUG,
+                slug=FrameworkMainPage.SCS_CONTEXT_SLUG,
                 body="",
             )
         )
         context_page.save_revision().publish()
 
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertContains(
             response,
@@ -167,22 +161,22 @@ class SeniorCivilServiceRoleTests(TestCase):
     def test_the_wording_survives_the_context_page_not_existing(self):
         """That page has not been migrated across yet, and a link written out
         by hand would be a 404 on every Senior Civil Service role until it is."""
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertContains(response, "context and challenges in your organisation")
-        self.assertNotContains(response, RolePage.SCS_CONTEXT_SLUG)
+        self.assertNotContains(response, FrameworkMainPage.SCS_CONTEXT_SLUG)
 
     def test_the_grade_wording_links_to_the_job_grades_page(self):
         job_grades = self.root_page.add_child(
             instance=ContentPage(
                 title="Civil Service job grades",
-                slug=RolePage.JOB_GRADES_SLUG,
+                slug=FrameworkMainPage.JOB_GRADES_SLUG,
                 body="",
             )
         )
         job_grades.save_revision().publish()
 
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         # Wagtail's URL carries its trailing slash, so the reader is not sent
         # through a redirect on the way.
@@ -196,7 +190,7 @@ class SeniorCivilServiceRoleTests(TestCase):
     def test_the_grade_wording_survives_the_job_grades_page_not_existing(self):
         """Another profession's framework need not publish that page, and a
         link written out by hand would be a 404 on every role there."""
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertContains(response, "Civil Service job grade of:")
         self.assertNotContains(response, 'href="/job-grades"')
@@ -206,13 +200,13 @@ class SeniorCivilServiceRoleTests(TestCase):
         their_page = other_root.add_child(
             instance=ContentPage(
                 title="Civil Service job grades",
-                slug=RolePage.JOB_GRADES_SLUG,
+                slug=FrameworkMainPage.JOB_GRADES_SLUG,
                 body="",
             )
         )
         their_page.save_revision().publish()
 
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertContains(response, "Civil Service job grade of:")
         self.assertNotContains(response, "other.example.gov.uk")
@@ -235,13 +229,13 @@ class SeniorCivilServiceRoleTests(TestCase):
         their_page = other_root.add_child(
             instance=ContentPage(
                 title="Context and challenges",
-                slug=RolePage.SCS_CONTEXT_SLUG,
+                slug=FrameworkMainPage.SCS_CONTEXT_SLUG,
                 body="",
             )
         )
         their_page.save_revision().publish()
 
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertContains(response, "context and challenges in your organisation")
         self.assertNotContains(response, "other.example.gov.uk")
@@ -249,11 +243,11 @@ class SeniorCivilServiceRoleTests(TestCase):
     def test_another_sites_skills_index_is_not_linked_to(self):
         other_root = self._another_site()
         their_index = other_root.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         their_index.save_revision().publish()
 
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertContains(response, "Strategic technology planning")
         self.assertNotContains(response, "other.example.gov.uk")
@@ -282,7 +276,7 @@ class SeniorCivilServiceRoleTests(TestCase):
             date=date(2026, 5, 29), role=self.cto, note="<p>First published.</p>"
         )
 
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         for anchor in (
             "what-a-chief-technology-officer-does",
@@ -316,7 +310,7 @@ class SeniorCivilServiceRoleTests(TestCase):
         ]
         self.cto.save()
 
-        content = self.client.get(self.cto_page.url).content.decode()
+        content = self.client.get(self.cto_url).content.decode()
 
         self.assertEqual(content.count('id="role-levels"'), 1)
         self.assertEqual(content.count('id="skills"'), 1)
@@ -348,29 +342,22 @@ class SeniorCivilServiceRoleTests(TestCase):
 
         self.assertEqual(self.cto.get_roles_that_could_lead_here(), [data_engineer])
 
-    def test_the_progression_section_links_to_a_role_that_has_a_page(self):
+    def test_the_progression_section_links_to_the_route_of_a_role(self):
         data_engineer = GovukRole.objects.create(title="Data engineer", family="Data")
-        data_engineer_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data engineer",
-                slug="data-engineer",
-                selected_roles=[{"type": "role", "value": data_engineer.pk}],
-            )
-        )
-        data_engineer_page.save_revision().publish()
+        data_engineer_url = role_url(self.main_page, data_engineer)
         self.cto.roles_that_could_lead_here = [
             {"type": "role", "value": data_engineer.pk}
         ]
         self.cto.save()
 
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertContains(
             response, "Roles that could lead to chief technology officer"
         )
         self.assertContains(
             response,
-            f'<a href="{data_engineer_page.url}" class="govuk-link">Data engineer</a>',
+            f'<a href="{data_engineer_url}" class="govuk-link">Data engineer</a>',
             html=True,
         )
         # and again in the in-page contents, where every section is listed.
@@ -378,20 +365,27 @@ class SeniorCivilServiceRoleTests(TestCase):
         # spent that id differently on its senior pages.
         self.assertContains(response, 'href="#related-roles"')
 
-    def test_a_role_without_a_page_is_named_but_not_linked(self):
+    def test_every_progression_role_is_linked_to_its_own_route(self):
+        """Every role now has a route under the framework main page, so a role
+        that leads here is always linked -- there is no longer a role without a
+        page of its own to render as plain text."""
         data_ethicist = GovukRole.objects.create(title="Data ethicist", family="Data")
+        data_ethicist_url = role_url(self.main_page, data_ethicist)
         self.cto.roles_that_could_lead_here = [
             {"type": "role", "value": data_ethicist.pk}
         ]
         self.cto.save()
 
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
-        self.assertContains(response, "Data ethicist")
-        self.assertNotContains(response, ">Data ethicist</a>")
+        self.assertContains(
+            response,
+            f'<a href="{data_ethicist_url}" class="govuk-link">Data ethicist</a>',
+            html=True,
+        )
 
     def test_the_progression_section_is_left_out_when_no_roles_are_mapped(self):
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertNotContains(
             response, "Roles that could lead to chief technology officer"
@@ -401,26 +395,18 @@ class SeniorCivilServiceRoleTests(TestCase):
         """The framework's career path, as the content team authors it: on the
         senior role, as the roles that could lead into it."""
         data_engineer = GovukRole.objects.create(title="Data engineer", family="Data")
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data engineer",
-                slug="data-engineer",
-                selected_roles=[{"type": "role", "value": data_engineer.pk}],
-            )
-        )
-        page.save_revision().publish()
         self.cto.roles_that_could_lead_here = [
             {"type": "role", "value": data_engineer.pk}
         ]
         self.cto.save()
-        return data_engineer, page.specific
+        return data_engineer, role_url(self.main_page, data_engineer)
 
     def test_the_mapping_is_turned_around_for_the_role_it_leads_from(self):
         """The senior role names the ones that lead into it, but the framework
         also prints the path forwards, on the page of the role you start at."""
-        _, data_engineer_page = self._map_data_engineer_into_the_cto()
+        _, data_engineer_url = self._map_data_engineer_into_the_cto()
 
-        response = self.client.get(data_engineer_page.url)
+        response = self.client.get(data_engineer_url)
 
         self.assertContains(
             response,
@@ -428,7 +414,7 @@ class SeniorCivilServiceRoleTests(TestCase):
         )
         self.assertContains(
             response,
-            f'<a href="{self.cto_page.url}" class="govuk-link">'
+            f'<a href="{self.cto_url}" class="govuk-link">'
             "Chief technology officer</a>",
             html=True,
         )
@@ -436,23 +422,15 @@ class SeniorCivilServiceRoleTests(TestCase):
         self.assertContains(response, 'href="#related-scs-roles"')
 
     def test_the_senior_roles_a_role_leads_to_are_listed_by_title(self):
-        data_engineer, data_engineer_page = self._map_data_engineer_into_the_cto()
-        cdo = GovukRole.objects.create(
+        data_engineer, data_engineer_url = self._map_data_engineer_into_the_cto()
+        GovukRole.objects.create(
             title="Chief data officer",
             family="Chief digital and data",
             is_senior_civil_service=True,
             roles_that_could_lead_here=[{"type": "role", "value": data_engineer.pk}],
         )
-        cdo_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Chief data officer",
-                slug="chief-data-officer",
-                selected_roles=[{"type": "role", "value": cdo.pk}],
-            )
-        )
-        cdo_page.save_revision().publish()
 
-        body = self.client.get(data_engineer_page.url).content.decode()
+        body = self.client.get(data_engineer_url).content.decode()
         # Only within the section: the side navigation lists both roles too,
         # and searching the whole page would compare their order there.
         section = body[body.index('id="related-scs-roles"') :]
@@ -466,38 +444,35 @@ class SeniorCivilServiceRoleTests(TestCase):
     def test_only_senior_roles_are_listed_as_somewhere_a_role_leads_to(self):
         """The heading says Senior Civil Service, so a delegated-grade role
         mapping the same way does not belong in it."""
-        data_engineer, data_engineer_page = self._map_data_engineer_into_the_cto()
+        data_engineer, data_engineer_url = self._map_data_engineer_into_the_cto()
         GovukRole.objects.create(
             title="Lead data engineer",
             family="Data",
             roles_that_could_lead_here=[{"type": "role", "value": data_engineer.pk}],
         )
 
-        response = self.client.get(data_engineer_page.url)
+        body = self.client.get(data_engineer_url).content.decode()
+        # Only within the section: the side navigation now lists every role,
+        # "Lead data engineer" among them, so searching the whole page would
+        # find it there regardless of the section it heads.
+        section = body[body.index('id="related-scs-roles"') :]
+        section = section[: section.index("</ul>")]
 
-        self.assertContains(response, "Chief technology officer")
-        self.assertNotContains(response, "Lead data engineer")
+        self.assertIn("Chief technology officer", section)
+        self.assertNotIn("Lead data engineer", section)
 
     def test_a_senior_role_is_not_told_which_senior_roles_it_leads_to(self):
         """The framework prints the path forwards only on the way up to the
         Senior Civil Service, not between roles already in it."""
         self._map_data_engineer_into_the_cto()
-        cdio = GovukRole.objects.create(
+        GovukRole.objects.create(
             title="Chief digital and information officer",
             family="Chief digital and data",
             is_senior_civil_service=True,
             roles_that_could_lead_here=[{"type": "role", "value": self.cto.pk}],
         )
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Chief digital and information officer",
-                slug="chief-digital-and-information-officer",
-                selected_roles=[{"type": "role", "value": cdio.pk}],
-            )
-        )
-        page.save_revision().publish()
 
-        response = self.client.get(self.cto_page.url)
+        response = self.client.get(self.cto_url)
 
         self.assertNotContains(
             response,
@@ -507,22 +482,14 @@ class SeniorCivilServiceRoleTests(TestCase):
 
     def test_the_forward_section_is_left_out_when_nothing_leads_anywhere(self):
         data_engineer = GovukRole.objects.create(title="Data engineer", family="Data")
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data engineer",
-                slug="data-engineer",
-                selected_roles=[{"type": "role", "value": data_engineer.pk}],
-            )
-        )
-        page.save_revision().publish()
 
-        response = self.client.get(page.specific.url)
+        response = self.client.get(role_url(self.main_page, data_engineer))
 
         self.assertNotContains(response, "Senior Civil Service roles that")
 
     def test_skills_index_marks_scs_skills_and_omits_the_level_table(self):
         skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         skills_page.save_revision().publish()
 

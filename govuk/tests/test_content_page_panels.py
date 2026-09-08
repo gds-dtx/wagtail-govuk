@@ -1,10 +1,17 @@
-"""What a content page offers an editor, and what it writes while rendering.
+"""What each page type offers an editor, and what it writes while rendering.
 
-ContentPage is the page type every instance on this codebase builds with, so
-the Capability Framework's fields on it are offered to every site that runs
-this code, framework or not. The fields stay on the model -- removing a column
-from a shared page type is a migration and a conversation -- but the panels and
-the queries behind them belong to the framework only.
+The Capability Framework's fields and panels live on the framework page types
+only, and the two framework page types differ:
+
+* ``FrameworkMainPage`` carries the three framework switches and the welcome
+  content, all gated by the SKILLS flag;
+* ``FrameworkContentPage`` carries none of those -- it always shows the role
+  navigation and offers no switch for it, no welcome content, and no sidebar
+  heading navigation.
+
+Neither framework page offers the sidebar heading navigation (the role
+navigation takes that column). Plain ``ContentPage`` is offered none of the
+framework furniture and keeps the heading navigation.
 """
 
 from django.test import SimpleTestCase, TestCase, override_settings
@@ -13,10 +20,14 @@ from wagtail.models import Site
 from govuk.models import (
     CapabilityFrameworkWordingSettings,
     ContentPage,
-    GovukRole,
-    content_page_content_panels,
-    content_page_settings_panels,
+    FrameworkContentPage,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
+    framework_content_panels,
+    framework_content_settings_panels,
+    framework_main_settings_panels,
 )
+from govuk.tests.framework_helpers import make_framework_main_page
 
 FRAMEWORK_SETTINGS_FIELDS = {
     "show_role_navigation",
@@ -41,53 +52,156 @@ def _field_names(panels) -> list[str]:
     ]
 
 
-class ContentPagePanelTests(SimpleTestCase):
+class FrameworkMainPagePanelTests(SimpleTestCase):
+    """The framework main page carries the switches and the welcome content."""
+
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
-    def test_the_framework_gets_its_switches_and_its_welcome_content(self):
-        settings_fields = set(_field_names(content_page_settings_panels()))
-        content_fields = _field_names(content_page_content_panels())
+    def test_the_main_page_gets_its_switches_and_its_welcome_content(self):
+        settings_fields = set(_field_names(framework_main_settings_panels()))
+        content_fields = _field_names(framework_content_panels())
 
         self.assertTrue(FRAMEWORK_SETTINGS_FIELDS <= settings_fields)
         self.assertIn("framework_welcome_body", content_fields)
 
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_the_main_page_offers_no_sidebar_heading_navigation(self):
+        """The role navigation takes that side column."""
+        settings_fields = _field_names(framework_main_settings_panels())
+
+        self.assertNotIn("enable_free_text_heading_navigation", settings_fields)
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_the_main_page_offers_no_hero_styling_toggles(self):
+        """Hero styling is plain ContentPage's; the framework sets its own."""
+        settings_fields = _field_names(framework_main_settings_panels())
+
+        self.assertNotIn("enable_hero_styling", settings_fields)
+        self.assertNotIn(
+            "enable_combined_service_navigation_and_hero_styling", settings_fields
+        )
+
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
-    def test_a_site_without_the_framework_is_offered_none_of_it(self):
-        settings_fields = set(_field_names(content_page_settings_panels()))
-        content_fields = _field_names(content_page_content_panels())
+    def test_a_site_without_the_framework_is_offered_none_of_the_switches(self):
+        settings_fields = set(_field_names(framework_main_settings_panels()))
+        content_fields = _field_names(framework_content_panels())
 
         self.assertEqual(FRAMEWORK_SETTINGS_FIELDS & settings_fields, set())
         self.assertNotIn("framework_welcome_body", content_fields)
 
-    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
-    def test_the_rest_of_the_page_is_untouched_by_the_flag(self):
-        """The flag takes the framework away, not the page type."""
-        settings_fields = _field_names(content_page_settings_panels())
-        content_fields = _field_names(content_page_content_panels())
 
+class FrameworkContentPagePanelTests(SimpleTestCase):
+    """A framework content page offers none of the framework switches.
+
+    It always shows the role navigation, so there is no switch for it, and it
+    offers neither the updates block, the welcome content, nor the sidebar
+    heading navigation.
+    """
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_it_offers_no_switches_no_welcome_and_no_heading_navigation(self):
+        settings_fields = set(_field_names(framework_content_settings_panels()))
+        content_fields = _field_names(FrameworkContentPage.content_panels)
+
+        self.assertEqual(FRAMEWORK_SETTINGS_FIELDS & settings_fields, set())
+        self.assertNotIn("enable_free_text_heading_navigation", settings_fields)
+        self.assertNotIn("framework_welcome_body", content_fields)
+
+    def test_it_offers_the_page_settings_and_tags_but_no_hero_styling(self):
+        settings_panels = FrameworkContentPage.settings_panels
         self.assertEqual(
-            content_fields,
-            ["hero_title", "hero_intro", "author", "body", "body_blocks"],
+            _field_names(settings_panels),
+            ["show_last_updated_date", "show_page_content_metadata"],
         )
-        self.assertEqual(
-            settings_fields,
-            [
-                "enable_hero_styling",
-                "enable_combined_service_navigation_and_hero_styling",
-                "show_last_updated_date",
-                "show_page_content_metadata",
-                "enable_free_text_heading_navigation",
-            ],
-        )
-        # The tags panel is an InlinePanel with no field_name of its own, and
-        # it has to survive the framework panels being taken out around it.
         self.assertEqual(
             [
                 panel.relation_name
-                for panel in content_page_settings_panels()
+                for panel in settings_panels
                 if getattr(panel, "relation_name", None)
             ],
             ["tagged_items"],
         )
+
+
+class FrameworkSkillsPagePanelTests(SimpleTestCase):
+    def test_the_skills_page_offers_no_heading_navigation_or_hero_styling(self):
+        settings_fields = _field_names(FrameworkSkillsPage.settings_panels)
+
+        self.assertNotIn("enable_free_text_heading_navigation", settings_fields)
+        self.assertNotIn("enable_hero_styling", settings_fields)
+        self.assertNotIn(
+            "enable_combined_service_navigation_and_hero_styling", settings_fields
+        )
+
+
+class PlainContentPagePanelTests(SimpleTestCase):
+    """Plain ``ContentPage`` is never offered any of the framework furniture.
+
+    The switches and the welcome content are on the framework page types, so a
+    plain content page carries none of them whatever the flag says. It does keep
+    the sidebar heading navigation, which the framework pages give up.
+    """
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_no_framework_panels_even_with_the_flag_on(self):
+        settings_fields = set(_field_names(ContentPage.settings_panels))
+        content_fields = _field_names(ContentPage.content_panels)
+
+        self.assertEqual(FRAMEWORK_SETTINGS_FIELDS & settings_fields, set())
+        self.assertNotIn("framework_welcome_body", content_fields)
+
+    def test_it_keeps_the_sidebar_heading_navigation_and_hero_styling(self):
+        settings_fields = _field_names(ContentPage.settings_panels)
+
+        self.assertIn("enable_free_text_heading_navigation", settings_fields)
+        self.assertIn("enable_hero_styling", settings_fields)
+        self.assertIn(
+            "enable_combined_service_navigation_and_hero_styling", settings_fields
+        )
+
+
+class FrameworkMainPageDefaultsTests(SimpleTestCase):
+    """A new framework main page starts with all three switches on."""
+
+    def test_the_switches_default_on(self):
+        page = FrameworkMainPage(title="Framework", slug="framework")
+
+        self.assertTrue(page.show_role_navigation)
+        self.assertTrue(page.show_framework_updates)
+        self.assertTrue(page.show_framework_welcome)
+
+
+class FrameworkContentPageForcesItsBehaviourTests(TestCase):
+    """A framework content page shows the role navigation whatever is stored."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.main_page = make_framework_main_page(self.root_page)
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_role_navigation_is_on_even_when_stored_off(self):
+        child = self.main_page.add_child(
+            instance=FrameworkContentPage(
+                title="Further guidance",
+                slug="further-guidance",
+                body="<p>Guidance.</p>",
+                # Stored the wrong way round on purpose: an import could carry
+                # these, and the page must ignore them.
+                show_role_navigation=False,
+                show_framework_updates=True,
+                show_framework_welcome=True,
+                enable_free_text_heading_navigation=True,
+            )
+        )
+        child.save_revision().publish()
+
+        response = self.client.get(child.specific.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.context.get("role_navigation"))
+        self.assertIsNone(response.context.get("framework_changelog"))
+        self.assertNotIn("framework_sections", response.context)
+        self.assertFalse(response.context.get("heading_navigation"))
 
 
 class ContentPageRenderWriteTests(TestCase):
@@ -117,20 +231,26 @@ class ContentPageRenderWriteTests(TestCase):
         self.assertIsNone(response.context.get("framework_wording"))
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
-    def test_a_switch_stored_by_another_site_is_not_honoured(self):
-        """The switches are columns on a page type every instance shares.
+    def test_a_content_page_has_no_framework_columns_to_carry_a_switch(self):
+        """The framework switches are gone from the plain content page.
 
-        The page export carries all four framework fields, and the import
-        applies any field the model has, so importing a framework export onto
-        another site turns them on there. Hiding the panels alone would leave
-        an editor looking at a role navigation with no switch to find, filled
-        with whatever the page tree happens to hold -- the probe for this
-        rendered a "Further resources" group listing the content page itself.
+        They used to be columns every instance shared, so a framework export
+        could turn them on elsewhere: the import applies any field the model
+        has. They live only on the framework page types now, so a plain content
+        page has no column to import them onto, and rendering one carries no
+        framework furniture.
         """
-        GovukRole.objects.create(title="Leftover role", family="Data", slug="leftover")
-        self.page.show_role_navigation = True
-        self.page.show_framework_updates = True
-        self.page.save_revision().publish()
+        field_names = {field.name for field in ContentPage._meta.get_fields()}
+        self.assertEqual(
+            field_names
+            & {
+                "show_role_navigation",
+                "show_framework_updates",
+                "show_framework_welcome",
+                "framework_welcome_body",
+            },
+            set(),
+        )
 
         response = self.client.get(self.page.url)
 
@@ -140,11 +260,15 @@ class ContentPageRenderWriteTests(TestCase):
         self.assertEqual(CapabilityFrameworkWordingSettings.objects.count(), 0)
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
-    def test_a_page_that_asks_for_the_framework_still_gets_its_wording(self):
-        self.page.show_framework_updates = True
-        self.page.save_revision().publish()
+    def test_a_framework_page_that_asks_for_the_framework_gets_its_wording(self):
+        page = make_framework_main_page(
+            self.root_page,
+            title="Framework",
+            slug="framework",
+            show_framework_updates=True,
+        )
 
-        response = self.client.get(self.page.url)
+        response = self.client.get(page.url)
 
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.context["framework_wording"])

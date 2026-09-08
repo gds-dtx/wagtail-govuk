@@ -3,19 +3,18 @@ from datetime import date
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
-from django.utils.text import slugify
 from wagtail.models import Site
 
 from govuk.models import (
     ContentPage,
+    FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    RolePage,
-    SkillsAZPage,
     further_resources_group,
     role_navigation_groups,
 )
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -98,28 +97,14 @@ class RolePageLayoutTests(TestCase):
             note="<p>The data analyst role has been updated.</p>",
         )
 
-        self.data_analyst_page = self._add_role_page(
-            title="Data analyst", slug="data-analyst", role=self.data_analyst
+        self.main_page = make_framework_main_page(self.root_page)
+        self.data_analyst_url = role_url(self.main_page, self.data_analyst)
+        self.business_architect_url = role_url(
+            self.main_page, self.business_architect
         )
-        self.business_architect_page = self._add_role_page(
-            title="Business architect",
-            slug="business-architect",
-            role=self.business_architect,
-        )
-
-    def _add_role_page(self, *, title: str, slug: str, role: GovukRole) -> RolePage:
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title=title,
-                slug=slug,
-                selected_roles=[{"type": "role", "value": role.pk}],
-            )
-        )
-        page.save_revision().publish()
-        return page.specific
 
     def test_headings_carry_the_frameworks_anchors(self):
-        response = self.client.get(self.data_analyst_page.url)
+        response = self.client.get(self.data_analyst_url)
 
         self.assertContains(
             response,
@@ -145,7 +130,7 @@ class RolePageLayoutTests(TestCase):
         )
 
     def test_the_role_levels_heading_is_followed_by_the_frameworks_intro(self):
-        response = self.client.get(self.data_analyst_page.url)
+        response = self.client.get(self.data_analyst_url)
 
         self.assertContains(
             response,
@@ -159,7 +144,7 @@ class RolePageLayoutTests(TestCase):
         )
 
     def test_the_intro_reads_as_one_where_there_is_a_single_role_level(self):
-        response = self.client.get(self.business_architect_page.url)
+        response = self.client.get(self.business_architect_url)
 
         self.assertContains(response, "There is one business architect role level.")
         self.assertContains(
@@ -170,11 +155,11 @@ class RolePageLayoutTests(TestCase):
 
     def test_a_role_levels_skills_link_to_their_definitions(self):
         skills = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         skills.save_revision().publish()
 
-        response = self.client.get(self.data_analyst_page.url)
+        response = self.client.get(self.data_analyst_url)
 
         self.assertContains(
             response,
@@ -184,13 +169,13 @@ class RolePageLayoutTests(TestCase):
         )
 
     def test_a_skill_name_stays_plain_text_without_a_skills_page_to_link_to(self):
-        response = self.client.get(self.data_analyst_page.url)
+        response = self.client.get(self.data_analyst_url)
 
         self.assertNotContains(response, "skill-name")
         self.assertContains(response, "Data visualisation")
 
     def test_the_title_uses_the_standard_heading_rather_than_the_site_hero(self):
-        response = self.client.get(self.data_analyst_page.url)
+        response = self.client.get(self.data_analyst_url)
 
         self.assertContains(
             response, '<h1 class="govuk-heading-xl">Data analyst</h1>', html=True
@@ -198,7 +183,7 @@ class RolePageLayoutTests(TestCase):
         self.assertNotContains(response, "hero__title")
 
     def test_contents_list_links_to_every_section_and_role_level(self):
-        response = self.client.get(self.data_analyst_page.url)
+        response = self.client.get(self.data_analyst_url)
 
         self.assertContains(response, 'href="#what-a-data-analyst-does"')
         self.assertContains(response, 'href="#role-levels"')
@@ -209,7 +194,7 @@ class RolePageLayoutTests(TestCase):
         self.assertContains(response, "See all updates")
 
     def test_side_navigation_groups_every_role_by_family(self):
-        groups = role_navigation_groups(current_page_id=self.data_analyst_page.pk)
+        groups = role_navigation_groups(current_role_slug=self.data_analyst.slug)
 
         self.assertEqual(
             [group["title"] for group in groups],
@@ -220,7 +205,7 @@ class RolePageLayoutTests(TestCase):
             [
                 {
                     "title": "Data analyst",
-                    "url": self.data_analyst_page.url,
+                    "url": self.data_analyst_url,
                     "is_current": True,
                 }
             ],
@@ -228,20 +213,23 @@ class RolePageLayoutTests(TestCase):
         self.assertFalse(groups[0]["items"][0]["is_current"])
 
     def test_side_navigation_renders_with_the_current_role_marked(self):
-        response = self.client.get(self.data_analyst_page.url)
+        response = self.client.get(self.data_analyst_url)
 
         self.assertContains(response, 'aria-label="Data roles"')
         self.assertContains(response, "role-nav__item--active")
         self.assertContains(response, 'aria-current="page"')
 
     def test_the_navigation_closes_with_the_pages_about_the_framework(self):
-        """The live service lists these after the role families, on every page."""
-        skills = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+        """The live service lists these after the role families, on every page.
+
+        They are the framework main page's own children now, so the skills
+        index sits under it rather than at the site root."""
+        skills = self.main_page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         skills.save_revision().publish()
 
-        groups = role_navigation_groups(current_page_id=self.data_analyst_page.pk)
+        groups = role_navigation_groups(current_role_slug=self.data_analyst.slug)
 
         self.assertEqual(groups[-1]["title"], "Further resources")
         self.assertEqual(
@@ -293,8 +281,8 @@ class RolePageLayoutTests(TestCase):
 
     def test_further_resources_keeps_the_order_the_editors_chose(self):
         for title, slug in (("Roadmap", "roadmap"), ("Job grades", "job-grades")):
-            page = self.root_page.add_child(
-                instance=ContentPage(title=title, slug=slug, show_in_role_navigation=True)
+            page = self.main_page.add_child(
+                instance=ContentPage(title=title, slug=slug)
             )
             page.save_revision().publish()
 
@@ -303,8 +291,8 @@ class RolePageLayoutTests(TestCase):
         self.assertEqual([item["title"] for item in group["items"]], ["Roadmap", "Job grades"])
 
     def test_further_resources_marks_the_page_being_looked_at(self):
-        page = self.root_page.add_child(
-            instance=ContentPage(title="Roadmap", slug="roadmap", show_in_role_navigation=True)
+        page = self.main_page.add_child(
+            instance=ContentPage(title="Roadmap", slug="roadmap")
         )
         page.save_revision().publish()
 
@@ -320,58 +308,36 @@ class RolePageLayoutTests(TestCase):
         )
 
     def test_further_resources_does_not_cost_a_query_per_page(self):
-        """It runs on every page the navigation appears on."""
+        """It runs on every page the navigation appears on. The framework
+        content pages beside the roles are the main page's own children."""
         for index in range(6):
-            page = self.root_page.add_child(
-                instance=ContentPage(
-                    title=f"Page {index}", slug=f"page-{index}", show_in_role_navigation=True
-                )
+            page = self.main_page.add_child(
+                instance=ContentPage(title=f"Page {index}", slug=f"page-{index}")
             )
             page.save_revision().publish()
 
-        # A fixed cost: the site, its root page and one query for the children
-        # (the ticked pages and the skills index come back together, through
-        # the join to the content page table).
-        # Two more than the pages and roles: the default site and its
-        # wording, which names the group headings, read once per call.
-        with self.assertNumQueries(5):
+        # A fixed cost whatever the number of pages: finding the framework main
+        # page, one query for its children, and the default site and its
+        # wording, which names the group headings.
+        with self.assertNumQueries(4):
             further_resources_group()
 
-    def test_reading_the_chosen_role_ids_costs_no_query(self):
-        """The ids are in the page's own JSON.
-
-        Resolving the blocks instead fetches the roles, and the side navigation
-        asks every role page for its ids before fetching every role it was told
-        about in one: a query a page, for records it is about to fetch anyway.
-        """
-        page = RolePage.objects.get(pk=self.data_analyst_page.pk)
-
-        with self.assertNumQueries(0):
-            role_ids = page.get_selected_role_ids()
-
-        self.assertEqual(role_ids, [self.data_analyst.pk])
-
-    def test_the_navigation_costs_the_same_whatever_the_number_of_role_pages(self):
-        """It runs on all 52 role pages of the framework, and on each of them
-        it walks all 52."""
-        with CaptureQueriesContext(connection) as with_two_pages:
+    def test_the_navigation_costs_the_same_whatever_the_number_of_roles(self):
+        """It runs on every role page of the framework, listing every role, and
+        the roles come from the snippets in one query however many there are."""
+        with CaptureQueriesContext(connection) as with_two_roles:
             role_navigation_groups()
 
         for index in range(6):
-            role = GovukRole.objects.create(
-                title=f"Extra role {index}", family="Data"
-            )
-            self._add_role_page(
-                title=f"Extra role {index}", slug=f"extra-role-{index}", role=role
-            )
+            GovukRole.objects.create(title=f"Extra role {index}", family="Data")
 
-        with CaptureQueriesContext(connection) as with_eight_pages:
+        with CaptureQueriesContext(connection) as with_eight_roles:
             role_navigation_groups()
 
-        self.assertEqual(len(with_eight_pages), len(with_two_pages))
+        self.assertEqual(len(with_eight_roles), len(with_two_roles))
 
-    def test_draft_and_role_pages_stay_out_of_further_resources(self):
-        draft = self.root_page.add_child(
+    def test_draft_pages_stay_out_of_further_resources(self):
+        draft = self.main_page.add_child(
             instance=ContentPage(title="Not ready", slug="not-ready", live=False)
         )
         draft.save()
@@ -379,10 +345,7 @@ class RolePageLayoutTests(TestCase):
         self.assertIsNone(further_resources_group())
 
     def test_roles_without_a_family_are_left_out_of_the_navigation(self):
-        unfamilied = GovukRole.objects.create(title="Unfamilied role")
-        self._add_role_page(
-            title="Unfamilied role", slug="unfamilied-role", role=unfamilied
-        )
+        GovukRole.objects.create(title="Unfamilied role")
 
         titles = [
             item["title"]
@@ -394,7 +357,7 @@ class RolePageLayoutTests(TestCase):
 
     def test_a_role_page_carries_a_breadcrumb_for_narrow_screens(self):
         """It stands in for the side navigation, which a narrow screen hides."""
-        response = self.client.get(self.data_analyst_page.url)
+        response = self.client.get(self.data_analyst_url)
 
         self.assertContains(response, "app-breadcrumbs--mobile-only")
         self.assertContains(
@@ -415,27 +378,27 @@ class RolePageLayoutTests(TestCase):
 
     def test_the_breadcrumb_sits_outside_the_banner_landmark(self):
         """The Design System puts it between the header and the main content."""
-        response = self.client.get(self.data_analyst_page.url)
+        response = self.client.get(self.data_analyst_url)
         body = response.content.decode()
 
         self.assertLess(body.index("</header>"), body.index("govuk-breadcrumbs"))
         self.assertLess(body.index("govuk-breadcrumbs"), body.index('id="main-content"'))
 
     def test_the_breadcrumb_leaves_out_a_family_it_cannot_point_at(self):
-        """A page of roles from several families has no one place to go back to."""
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Every role",
-                slug="every-role",
-                selected_roles=[
-                    {"type": "role", "value": self.data_analyst.pk},
-                    {"type": "role", "value": self.business_architect.pk},
-                ],
-            )
+        """A role with no family has no family heading to send a reader back to,
+        so its breadcrumb drops the middle crumb and still names the role."""
+        homeless = GovukRole.objects.create(
+            title="Every role",
+            body="<p>A role with no family.</p>",
+            levels=[
+                {
+                    "type": "level",
+                    "value": {"title": "Every role", "skills": []},
+                }
+            ],
         )
-        page.save_revision().publish()
 
-        response = self.client.get(page.specific.url)
+        response = self.client.get(role_url(self.main_page, homeless))
 
         self.assertContains(response, "govuk-breadcrumbs")
         self.assertNotContains(response, ">Data roles</a>")
@@ -445,24 +408,23 @@ class RolePageLayoutTests(TestCase):
             html=True,
         )
 
-    def test_anchors_stay_unique_when_a_page_renders_several_roles(self):
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data roles",
-                slug="data-roles",
-                selected_roles=[
-                    {"type": "role", "value": self.data_analyst.pk},
-                    {"type": "role", "value": self.business_architect.pk},
-                ],
-            )
+    def test_each_role_route_carries_the_frameworks_bare_anchors(self):
+        """Each role is served on its own route now, so the anchors are the
+        framework's own ids with no per-role suffix; two roles served from the
+        same framework carry the same bare ids on their separate pages."""
+        analyst = self.client.get(self.data_analyst_url)
+        architect = self.client.get(self.business_architect_url)
+
+        for response in (analyst, architect):
+            self.assertContains(response, 'id="role-levels"')
+            self.assertNotContains(response, 'id="role-levels-')
+
+        self.assertContains(analyst, 'id="what-a-data-analyst-does"')
+        self.assertContains(analyst, 'id="associate-data-analyst"')
+        self.assertNotContains(analyst, 'id="associate-data-analyst-data-analyst"')
+        self.assertContains(
+            architect, 'id="what-a-business-architect-does"'
         )
-        page.save_revision().publish()
-
-        response = self.client.get(page.specific.url)
-
-        self.assertContains(response, 'id="role-levels-data-analyst"')
-        self.assertContains(response, 'id="role-levels-business-architect"')
-        self.assertContains(response, 'id="associate-data-analyst-data-analyst"')
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
@@ -472,6 +434,7 @@ class RoleLeadParagraphTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
+        self.main_page = make_framework_main_page(self.root_page)
 
     def _lead_for(self, title: str, *, is_scs: bool = False) -> str:
         role = GovukRole.objects.create(
@@ -490,15 +453,7 @@ class RoleLeadParagraphTests(TestCase):
                 ]
             ),
         )
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title=title,
-                slug=slugify(title),
-                selected_roles=[{"type": "role", "value": role.pk}],
-            )
-        )
-        page.save_revision().publish()
-        return self.client.get(page.specific.url).content.decode()
+        return self.client.get(role_url(self.main_page, role)).content.decode()
 
     def test_a_role_is_introduced_by_the_frameworks_sentence(self):
         self.assertIn(

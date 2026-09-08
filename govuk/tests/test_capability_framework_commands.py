@@ -10,13 +10,13 @@ from wagtail.models import Site
 
 from govuk.management.commands.import_capability_framework import SITE_NAME
 from govuk.models import (
-    ContentPage,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    RolePage,
-    SkillsAZPage,
 )
+from govuk.tests.framework_helpers import role_url
 
 ROLES_CSV = """Role Family,Role,Role Description,Role Level,Role Level Description,Skill Name,Skill Description,Skill Level,Skill Level Description,Role Type
 Data,Data engineer,"A data engineer builds data products.
@@ -110,13 +110,22 @@ class ImportCapabilityFrameworkTests(TestCase):
         self.assertEqual(levels[0]["skills"][0]["required_level"], "working")
         self.assertEqual(levels[1]["skills"][0]["required_level"], "practitioner")
 
-    def test_creates_a_published_page_per_role_and_a_skills_index(self):
+    def test_creates_a_framework_main_page_and_a_skills_index_but_no_role_pages(self):
+        """Roles no longer have a page each: the framework main page serves one
+        per role snippet at ``<role-slug>/``, so the import creates the main
+        page and the A to Z and nothing per role."""
         self._import()
 
-        self.assertEqual(RolePage.objects.live().count(), 3)
-        page = RolePage.objects.get(slug="data-engineer")
-        self.assertTrue(page.live)
-        self.assertEqual(SkillsAZPage.objects.live().count(), 1)
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        self.assertIsInstance(home, FrameworkMainPage)
+        self.assertTrue(home.live)
+        self.assertEqual(FrameworkMainPage.objects.live().count(), 1)
+        self.assertEqual(FrameworkSkillsPage.objects.live().count(), 1)
+
+        # Every role is reachable as a route under the main page, with no page
+        # of its own in the tree.
+        role = GovukRole.objects.get(slug="data-engineer")
+        self.assertEqual(self.client.get(role_url(home, role)).status_code, 200)
 
     def test_scs_role_is_flagged_with_flat_skills_and_no_levels(self):
         self._import()
@@ -178,7 +187,7 @@ class ImportCapabilityFrameworkTests(TestCase):
 
         self.assertEqual(GovukSkill.objects.count(), 2)
         self.assertEqual(GovukRole.objects.count(), 3)
-        self.assertEqual(RolePage.objects.count(), 3)
+        self.assertEqual(FrameworkMainPage.objects.count(), 1)
         self.assertEqual(GovukChangelogEntry.objects.count(), 3)
         self.assertIn("0 created", second_run)
 
@@ -227,18 +236,19 @@ class ImportCapabilityFrameworkTests(TestCase):
 
         site = Site.objects.get(is_default_site=True)
         home = site.root_page.specific
-        self.assertIsInstance(home, ContentPage)
+        self.assertIsInstance(home, FrameworkMainPage)
         self.assertEqual(home.slug, "home")
         self.assertEqual(site.site_name, SITE_NAME)
 
     def test_home_page_lists_every_role_grouped_by_family(self):
         self._import()
 
+        home = Site.objects.get(is_default_site=True).root_page.specific
         page = self.client.get("/").content.decode()
         self.assertIn("Data roles", page)
         self.assertIn("Chief digital and data roles", page)
         for slug in ("data-engineer", "data-architect", "chief-data-officer"):
-            self.assertIn(RolePage.objects.get(slug=slug).url, page)
+            self.assertIn(role_url(home, GovukRole.objects.get(slug=slug)), page)
         self.assertIn("Skills A to Z", page)
 
     def test_home_page_is_configured_but_seeds_no_welcome_prose(self):
@@ -310,7 +320,11 @@ class ImportCapabilityFrameworkTests(TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
         self.assertIn("Data engineer", body)
-        self.assertEqual(self.client.get("/data-engineer/").status_code, 200)
+        # The role is served on a route under the framework main page rather
+        # than on a page of its own, so its URL is derived from the page.
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        role = GovukRole.objects.get(slug="data-engineer")
+        self.assertEqual(self.client.get(role_url(home, role)).status_code, 200)
 
     def test_second_import_keeps_the_same_home_page(self):
         self._import()
@@ -318,7 +332,7 @@ class ImportCapabilityFrameworkTests(TestCase):
         self._import()
 
         self.assertEqual(Site.objects.get(is_default_site=True).root_page_id, first)
-        self.assertEqual(ContentPage.objects.filter(slug="home").count(), 1)
+        self.assertEqual(FrameworkMainPage.objects.filter(slug="home").count(), 1)
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
@@ -365,7 +379,7 @@ class RetiredContentReportTests(TestCase):
         output = self._import()
 
         self.assertIn("In the CMS but not in this file: 1 role and 1 skill.", output)
-        self.assertIn("role : data-architect (its page is still live)", output)
+        self.assertIn("role : data-architect", output)
         self.assertIn("skill: strategic-data-planning", output)
 
     def test_the_retired_content_is_reported_and_not_deleted(self):
@@ -375,26 +389,17 @@ class RetiredContentReportTests(TestCase):
 
         self.assertTrue(GovukRole.objects.filter(slug="data-architect").exists())
         self.assertTrue(GovukSkill.objects.filter(slug="strategic-data-planning").exists())
-        self.assertTrue(RolePage.objects.get(slug="data-architect").live)
-        # The old name and the new one both have a role and a live page now.
-        self.assertEqual(RolePage.objects.live().count(), 4)
+        # The rename arrives as an addition: the old role snippet and the new
+        # one both exist and both are served as routes under the main page.
+        self.assertTrue(
+            GovukRole.objects.filter(slug="data-and-platform-architect").exists()
+        )
+        self.assertEqual(GovukRole.objects.count(), 4)
 
     def test_a_source_that_still_publishes_everything_reports_nothing(self):
         output = self._import()
 
         self.assertNotIn("In the CMS but not in this file", output)
-
-    def test_a_page_that_has_been_unpublished_is_no_longer_flagged_as_live(self):
-        """Unpublishing is the work the warning is asking for, so doing it has
-        to change what the warning says. If a second run read identically to
-        the first there would be no way to tell the list had been dealt with.
-        """
-        self._rename_in_source()
-        RolePage.objects.get(slug="data-architect").unpublish()
-
-        output = self._import()
-
-        self.assertIn("role : data-architect\n", output)
 
     def test_a_skill_an_editor_added_by_hand_is_named_too(self):
         """The report says what is in the CMS and not in the file, which is

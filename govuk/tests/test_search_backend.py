@@ -15,16 +15,16 @@ from govuk.models import (
     ContentDiscoverySource,
     ContentPage,
     ExternalContentItem,
+    FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
     GovukTag,
-    RolePage,
     SectionPage,
-    SkillsAZPage,
     TagListingsPage,
 )
 from govuk.search_backend import UNMATCHED_RANK, search_backend
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 class SearchBackendExternalContentRankingTests(TestCase):
@@ -367,7 +367,7 @@ class SearchBackendSkillTests(TestCase):
 
     def _add_skills_index(self):
         skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A-Z", slug="skills-az")
+            instance=FrameworkSkillsPage(title="Skills A-Z", slug="skills-az")
         )
         skills_page.save_revision().publish()
         return skills_page.specific
@@ -389,6 +389,22 @@ class SearchBackendSkillTests(TestCase):
 
         self.assertIsNotNone(result)
         self.assertEqual(result.url, f"{skills_page.url}#{skill.slug}")
+
+    def test_a_skill_result_carries_no_description(self):
+        """The title and the "Skill" label are the whole result."""
+        self._add_skills_index()
+        GovukSkill.objects.create(
+            title="Prototyping",
+            body="<p>Building throwaway versions to test an idea.</p>",
+        )
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+        result = self._result_for_title(page.object_list, "Prototyping")
+
+        self.assertEqual(result.result_type, "Skill")
+        self.assertEqual(result.search_description, "")
 
     def test_a_skill_is_found_by_the_wording_of_its_level_points(self):
         """The level points hold most of a skill's text, and they are the part
@@ -925,12 +941,13 @@ class SearchBackendNulQueryTests(TestCase):
         "FEEDBACK": False,
     }
 )
-class SearchBackendRolePageDescriptionTests(TestCase):
-    """A role result should say what the role is, as a skill result does.
+class SearchBackendRolesAreResultsTests(TestCase):
+    """A role is a snippet served on a route, and search reaches it.
 
-    A RolePage has no hero intro and no search description -- the words are on
-    the GovukRole snippet it selects -- so a role came back from a search as a
-    bare title beside skills that carried full descriptions.
+    A role has no page of its own -- the single framework main page serves it
+    as a route -- but the search backend indexes the role snippets directly, so
+    a search for a role's name returns the role, links to its route, and labels
+    it a "Role" the way skill results are labelled "Skill".
     """
 
     def setUp(self):
@@ -940,106 +957,34 @@ class SearchBackendRolePageDescriptionTests(TestCase):
         self.role = GovukRole.objects.create(
             slug="product-manager",
             title="Product manager",
+            family="Digital",
             body="<p>A product manager is responsible for the quality of "
             "their products.</p>",
         )
-        self.page = self._role_page("product-manager", "Product manager", self.role)
-
-    def _role_page(self, slug: str, title: str, *roles) -> RolePage:
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title=title,
-                slug=slug,
-                selected_roles=[
-                    {"type": "role", "value": role.pk} for role in roles
-                ],
-            )
-        )
-        page.save_revision().publish()
-        return page.specific
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.role)
 
     def _result_for_url(self, query: str, url: str):
         page = search_backend.search(query, filters={"site": self.site}, page=1)
         return next((item for item in page.object_list if item.url == url), None)
 
-    def test_a_role_result_carries_the_roles_own_description(self):
-        result = self._result_for_url("product manager", self.page.url)
+    def test_a_role_is_returned_as_a_search_result_linking_to_its_route(self):
+        result = self._result_for_url("product manager", self.role_url)
 
         self.assertIsNotNone(result)
-        self.assertEqual(
-            result.search_description,
-            "A product manager is responsible for the quality of their products.",
-        )
+        self.assertEqual(result.title, "Product manager")
+        self.assertIn("responsible for the quality", result.search_description)
 
-    def test_the_description_is_plain_text(self):
-        """It is rendered into a <p>, so markup would show as markup."""
-        result = self._result_for_url("product manager", self.page.url)
+    def test_a_role_result_is_labelled_as_a_role(self):
+        result = self._result_for_url("product manager", self.role_url)
 
-        self.assertNotIn("<p>", result.search_description)
+        self.assertEqual(result.result_type, "Role")
 
-    def test_a_page_that_has_its_own_description_keeps_it(self):
-        self.page.search_description = "Set by an editor"
-        self.page.save_revision().publish()
-
-        result = self._result_for_url("product manager", self.page.url)
-
-        self.assertEqual(result.search_description, "Set by an editor")
-
-    def test_the_first_selected_role_is_the_one_that_describes_the_page(self):
-        """Role pages that group several roles lead with the first."""
-        second = GovukRole.objects.create(
-            slug="delivery-manager",
-            title="Delivery manager",
-            body="<p>Second role.</p>",
-        )
-        page = self._role_page("grouped", "Grouped roles", self.role, second)
-
-        result = self._result_for_url("grouped", page.url)
-
-        self.assertEqual(
-            result.search_description,
-            "A product manager is responsible for the quality of their products.",
-        )
-
-    def test_a_role_page_selecting_nothing_is_still_returned(self):
-        page = self._role_page("empty-role-page", "Empty role page")
-
-        result = self._result_for_url("empty role page", page.url)
+    def test_a_family_search_surfaces_its_roles(self):
+        """The family is a weak match, so a search for it finds the role."""
+        result = self._result_for_url("Digital", self.role_url)
 
         self.assertIsNotNone(result)
-        self.assertEqual(result.search_description, "")
-
-    def test_every_role_page_costs_one_query_between_them(self):
-        """Not one per page.
-
-        The framework has 52 role pages and a broad search can return many of
-        them at once, so a query apiece is the difference between a search
-        page and a slow one. get_selected_role_ids reads the stored JSON
-        rather than resolving the chooser, which is what allows the batch.
-        """
-        roles = [
-            GovukRole.objects.create(
-                slug=f"described-role-{index}",
-                title=f"Described role {index}",
-                body=f"<p>Body of described role {index}.</p>",
-            )
-            for index in range(5)
-        ]
-        for index, role in enumerate(roles):
-            self._role_page(f"described-role-{index}", f"Described role {index}", role)
-
-        with CaptureQueriesContext(connection) as queries:
-            results = search_backend.search(
-                "described role", filters={"site": self.site}, page=1
-            )
-            self.assertEqual(len(results.object_list), 5)
-
-        role_queries = [
-            query["sql"]
-            for query in queries.captured_queries
-            if "govuk_govukrole" in query["sql"] and "govuk_govukrole_tags" not in query["sql"]
-        ]
-        self.assertEqual(len(role_queries), 1, role_queries)
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -1067,7 +1012,7 @@ class SearchWithoutTheFrameworkTests(TestCase):
 
     def test_a_skill_is_not_returned(self):
         skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A-Z", slug="skills-az")
+            instance=FrameworkSkillsPage(title="Skills A-Z", slug="skills-az")
         )
         skills_page.save_revision().publish()
         GovukSkill.objects.create(
@@ -1084,50 +1029,38 @@ class SearchWithoutTheFrameworkTests(TestCase):
             [],
         )
 
-    def test_a_role_page_is_not_a_search_result(self):
-        """It 404s when fetched, so listing it would be a link that does not work.
+    def test_a_role_is_not_a_search_result(self):
+        """The role's route 404s here, so listing it would be a dead link.
 
-        The page can be in the tree without ever having been creatable here:
-        the import makes pages for any model it can resolve.
+        A framework main page can be in the tree without ever having been
+        creatable here: the import makes pages for any model it can resolve.
+        Its role routes 404 without the flag, as the old role pages did.
         """
         role = GovukRole.objects.create(
             slug="product-manager",
             title="Product manager",
             body="<p>A product manager is responsible for their products.</p>",
         )
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Product manager",
-                slug="product-manager",
-                selected_roles=[{"type": "role", "value": role.pk}],
-            )
-        )
-        page.save_revision().publish()
+        main_page = make_framework_main_page(self.root_page)
+        served_role_url = role_url(main_page, role)
 
         results = search_backend.search(
             "product manager", filters={"site": self.site}, page=1
         )
         result = next(
-            (item for item in results.object_list if item.url == page.specific.url),
+            (item for item in results.object_list if item.url == served_role_url),
             None,
         )
 
         self.assertIsNone(result)
-        self.assertEqual(self.client.get(page.specific.url).status_code, 404)
+        self.assertEqual(self.client.get(served_role_url).status_code, 404)
 
     def test_the_role_table_is_not_queried_at_all(self):
         """Not merely filtered out afterwards -- not read."""
-        role = GovukRole.objects.create(
+        GovukRole.objects.create(
             slug="delivery-manager", title="Delivery manager", body="<p>Body.</p>"
         )
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Delivery manager",
-                slug="delivery-manager",
-                selected_roles=[{"type": "role", "value": role.pk}],
-            )
-        )
-        page.save_revision().publish()
+        make_framework_main_page(self.root_page)
 
         with CaptureQueriesContext(connection) as queries:
             search_backend.search(

@@ -12,8 +12,6 @@ Rewriting at render time removes the dependency. The redirects stay, because
 bookmarks and inbound links still need them.
 """
 
-import json
-
 from django.template import Context, Template
 from django.test import RequestFactory, TestCase, override_settings
 from wagtail.models import Site
@@ -23,13 +21,12 @@ from govuk.live_service_links import (
     rewrite_live_service_links,
 )
 from govuk.models import (
-    ContentPage,
+    FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    RolePage,
-    SkillsAZPage,
 )
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags() -> dict[str, bool]:
@@ -48,25 +45,19 @@ class LiveServiceLinkMapTests(TestCase):
         self.root_page = self.site.root_page.specific
 
         self.role = GovukRole.objects.create(title="Data engineer")
-        self.role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data engineer",
-                slug="data-engineer",
-                selected_roles=json.dumps([{"type": "role", "value": self.role.pk}]),
-            )
-        )
-        self.role_page.save_revision().publish()
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.role)
 
         self.skill = GovukSkill.objects.create(title="Prototyping")
         self.skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         self.skills_page.save_revision().publish()
 
-    def test_a_role_maps_to_the_page_that_renders_it(self):
+    def test_a_role_maps_to_the_route_that_renders_it(self):
         link_map = live_service_link_map(self.site)
 
-        self.assertEqual(link_map["/role/data-engineer"], self.role_page.url)
+        self.assertEqual(link_map["/role/data-engineer"], self.role_url)
 
     def test_a_skill_maps_into_its_section_of_the_a_to_z(self):
         link_map = live_service_link_map(self.site)
@@ -75,11 +66,16 @@ class LiveServiceLinkMapTests(TestCase):
             link_map["/skill/prototyping"], f"{self.skills_page.url}#prototyping"
         )
 
-    def test_a_role_no_live_page_renders_is_not_in_the_map(self):
-        """A redirect is a better answer for it than a guess at a URL."""
-        GovukRole.objects.create(title="Unrendered role")
+    def test_every_role_is_in_the_map_now_the_main_page_serves_them_all(self):
+        """The framework main page serves a route for every role snippet, so a
+        role always has a URL to map its live-service path onto -- there is no
+        longer such a thing as a role no page renders."""
+        another = GovukRole.objects.create(title="Enterprise architect")
 
-        self.assertNotIn("/role/unrendered-role", live_service_link_map(self.site))
+        self.assertEqual(
+            live_service_link_map(self.site)["/role/enterprise-architect"],
+            role_url(self.main_page, another),
+        )
 
     def test_the_map_agrees_with_the_redirects_the_command_seeds(self):
         """The two read the same rule, so they cannot drift apart."""
@@ -175,14 +171,8 @@ class ChangelogNoteTagTests(TestCase):
         self.root_page = self.site.root_page.specific
 
         self.role = GovukRole.objects.create(title="Data engineer")
-        self.role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data engineer",
-                slug="data-engineer",
-                selected_roles=json.dumps([{"type": "role", "value": self.role.pk}]),
-            )
-        )
-        self.role_page.save_revision().publish()
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.role)
 
     def _render(self, note: str) -> str:
         entry = GovukChangelogEntry(date="2026-08-01", note=note)
@@ -195,7 +185,7 @@ class ChangelogNoteTagTests(TestCase):
             '<p><a href="/role/data-engineer">Data engineer</a> has changed.</p>'
         )
 
-        self.assertIn(f'href="{self.role_page.url}"', rendered)
+        self.assertIn(f'href="{self.role_url}"', rendered)
         self.assertNotIn("/role/data-engineer", rendered)
 
     def test_the_markup_of_a_note_survives(self):
@@ -206,8 +196,9 @@ class ChangelogNoteTagTests(TestCase):
     def test_the_map_is_built_once_however_many_notes_are_rendered(self):
         """The A to Z asks 185 skills for their changelog in one render.
 
-        Four queries build the map -- the site, the role slugs, the role pages,
-        the skills A to Z -- and 20 notes add none. Twenty maps would be 80.
+        A fixed handful of queries build the map -- the framework main page and
+        its role slugs, the skills A to Z and its skill slugs -- and 20 notes
+        add none. Twenty maps would be many times that.
         """
         entries = [
             GovukChangelogEntry(
@@ -227,7 +218,7 @@ class ChangelogNoteTagTests(TestCase):
                 Context({"entries": entries, "request": request})
             )
 
-        self.assertEqual(rendered.count(self.role_page.url), 20)
+        self.assertEqual(rendered.count(self.role_url), 20)
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
@@ -239,42 +230,32 @@ class ChangelogLinksOnAPageTests(TestCase):
         self.root_page = self.site.root_page.specific
 
         self.role = GovukRole.objects.create(title="Data engineer")
-        self.role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data engineer",
-                slug="data-engineer",
-                selected_roles=json.dumps([{"type": "role", "value": self.role.pk}]),
-            )
+        # The framework fields (show_framework_updates and the rest) moved off
+        # ContentPage onto the framework page types, so the page that renders
+        # the site-wide updates is the framework main page itself.
+        self.main_page = make_framework_main_page(
+            self.root_page, show_framework_updates=True
         )
-        self.role_page.save_revision().publish()
+        self.role_url = role_url(self.main_page, self.role)
 
-    def test_a_site_wide_note_on_a_content_page_links_into_this_site(self):
+    def test_a_site_wide_note_on_a_framework_page_links_into_this_site(self):
         GovukChangelogEntry.objects.create(
             date="2026-08-01",
             note='<p><a href="/role/data-engineer">Data engineer</a> was added.</p>',
         )
-        page = self.root_page.add_child(
-            instance=ContentPage(
-                title="Home",
-                slug="framework-home",
-                body="<p>The framework.</p>",
-                show_framework_updates=True,
-            )
-        )
-        page.save_revision().publish()
 
-        html = self.client.get(page.url).content.decode()
+        html = self.client.get(self.main_page.url).content.decode()
 
-        self.assertIn(f'href="{self.role_page.url}"', html)
+        self.assertIn(f'href="{self.role_url}"', html)
         self.assertNotIn('href="/role/data-engineer"', html)
 
-    def test_a_note_on_a_role_page_links_into_this_site(self):
+    def test_a_note_on_a_roles_route_links_into_this_site(self):
         GovukChangelogEntry.objects.create(
             date="2026-08-01",
             role=self.role,
             note='<p>See <a href="/role/data-engineer">Data engineer</a>.</p>',
         )
 
-        html = self.client.get(self.role_page.url).content.decode()
+        html = self.client.get(self.role_url).content.decode()
 
         self.assertNotIn('href="/role/data-engineer"', html)

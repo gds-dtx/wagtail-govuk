@@ -9,7 +9,6 @@ from govuk.models import (
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    RolePage,
     SectionPage,
 )
 from govuk.page_import_export import (
@@ -374,99 +373,29 @@ class RoleExportImportFieldTests(TestCase):
         self.assertEqual(self.site.site_name, "Capability Framework")
         self.assertEqual(self.site.hostname, "somewhere-else.example.com")
 
-    def test_export_carries_a_role_pages_role_as_a_slug(self):
-        page = self._add_role_page()
-
-        payload = build_page_export_payload(
-            site=self.site,
-            pages=[page],
-            skills=list(GovukSkill.objects.all()),
-            roles=list(GovukRole.objects.all()),
-        )
-
-        self.assertEqual(
-            [
-                block["value"]
-                for block in payload["pages"][0]["fields"]["selected_roles"]
-            ],
-            ["data-analyst"],
-        )
-
-    def test_a_role_page_follows_its_role_when_the_primary_keys_differ(self):
-        """The database being imported into numbers its rows its own way."""
-        page = self._add_role_page()
-        payload = build_page_export_payload(
-            site=self.site,
-            pages=[page],
-            skills=list(GovukSkill.objects.all()),
-            roles=list(GovukRole.objects.all()),
-        )
-
-        renumbered_pk = self.role.pk + 1000
-        self.role.delete()
-        GovukRole.objects.create(pk=renumbered_pk, title="Data analyst", family="Data")
-
-        result = import_pages_from_payload(
-            payload=payload, site=self.site, user=self.user
-        )
-        self.assertEqual(result.errors, [])
-
-        imported_page = RolePage.objects.get(slug="data-analyst")
-        self.assertEqual(
-            [role.pk for role in imported_page.get_selected_roles()], [renumbered_pk]
-        )
-
-    def test_a_role_page_reports_a_role_that_is_not_in_the_destination(self):
-        page = self._add_role_page()
-        payload = build_page_export_payload(
-            site=self.site,
-            pages=[page],
-            skills=list(GovukSkill.objects.all()),
-            roles=list(GovukRole.objects.all()),
-        )
-        payload["roles"] = []
-        self.role.delete()
-
-        result = import_pages_from_payload(
-            payload=payload, site=self.site, user=self.user
-        )
-
-        self.assertEqual(
-            result.errors,
-            [
-                "Page 'data-analyst' dropped role 'data-analyst' because no "
-                "Role has that slug."
-            ],
-        )
-        imported_page = RolePage.objects.get(slug="data-analyst")
-        self.assertEqual(imported_page.get_selected_roles(), [])
-
-    def test_a_payload_carrying_primary_keys_is_refused_rather_than_guessed_at(self):
-        """Keys from another database point at whichever role holds the number."""
-        page = self._add_role_page()
-        payload = build_page_export_payload(
-            site=self.site,
-            pages=[page],
-            skills=list(GovukSkill.objects.all()),
-            roles=list(GovukRole.objects.all()),
-        )
-        # An export taken before roles were carried as slugs.
-        payload["pages"][0]["fields"]["selected_roles"] = [
-            {"type": "role", "value": self.scs_role.pk}
-        ]
-
-        result = import_pages_from_payload(
-            payload=payload, site=self.site, user=self.user
-        )
-
-        self.assertEqual(len(result.errors), 1)
-        self.assertIn("dropped role", result.errors[0])
-        imported_page = RolePage.objects.get(slug="data-analyst")
-        self.assertEqual(imported_page.get_selected_roles(), [])
+    # NOTE: Four tests were removed here because the capability they covered no
+    # longer exists. They asserted that a ``RolePage``'s ``selected_roles``
+    # snippet-chooser field survived export and import by slug -- following its
+    # role across databases, reporting a role missing from the destination, and
+    # refusing a payload that carried raw primary keys. Roles are no longer
+    # pages: the single ``FrameworkMainPage`` serves each ``GovukRole`` snippet
+    # on a route, so no page carries a role chooser and
+    # ``PAGE_SNIPPET_SLUG_STREAM_FIELDS`` is now empty. The removed tests were:
+    #   - test_export_carries_a_role_pages_role_as_a_slug
+    #   - test_a_role_page_follows_its_role_when_the_primary_keys_differ
+    #   - test_a_role_page_reports_a_role_that_is_not_in_the_destination
+    #   - test_a_payload_carrying_primary_keys_is_refused_rather_than_guessed_at
+    # The role *snippet* round-trip (family, levels, SCS fields, progression,
+    # changelog) is unchanged and still covered by the tests above.
 
     def test_importing_a_whole_site_twice_does_not_nest_a_second_copy(self):
-        """Re-importing is how dev content gets refreshed."""
-        self._add_role_page()
+        """Re-importing is how dev content gets refreshed.
+
+        A role page used to stand in as the site's one child; roles are no
+        longer pages, so a plain content page stands in for it here -- the
+        behaviour under test is the page import's, not the role's.
+        """
+        self._add_child_content_page()
         home = self.site.root_page.specific
         payload = build_page_export_payload(
             site=self.site,
@@ -512,14 +441,15 @@ class RoleExportImportFieldTests(TestCase):
         placeholder = self.site.root_page.specific
         self.assertIsInstance(placeholder, SectionPage)
 
+        # Roles are no longer pages, so the child that used to be a role page is
+        # a plain content page here: the behaviour under test is the placeholder
+        # replacement, not the child's type.
         payload = self._framework_payload(
             children=[
                 {
-                    "model": "govuk.RolePage",
+                    "model": "govuk.ContentPage",
                     "settings": {"title": "Data analyst", "slug": "data-analyst"},
-                    "fields": {
-                        "selected_roles": [{"type": "role", "value": "data-analyst"}]
-                    },
+                    "fields": {"body": "<p>Body.</p>"},
                     "tags": [],
                     "privacy": [],
                     "children": [],
@@ -540,13 +470,13 @@ class RoleExportImportFieldTests(TestCase):
         self.assertEqual(new_root.depth, 2)
         # The framework sits at the top level, not under /home/.
         self.assertEqual([child.slug for child in new_root.get_children()], ["data-analyst"])
-        self.assertEqual(RolePage.objects.get(slug="data-analyst").url, "/data-analyst/")
+        self.assertEqual(ContentPage.objects.get(slug="data-analyst").url, "/data-analyst/")
         self.assertFalse(Page.objects.filter(pk=placeholder.pk).exists())
 
     def test_a_home_page_with_children_is_left_alone(self):
         """Only an empty placeholder is safe to throw away."""
         placeholder = self.site.root_page.specific
-        self._add_role_page()
+        self._add_child_content_page()
 
         result = import_pages_from_payload(
             payload=self._framework_payload(), site=self.site, user=self.user
@@ -556,12 +486,18 @@ class RoleExportImportFieldTests(TestCase):
         self.assertEqual(self.site.root_page.pk, placeholder.pk)
         self.assertEqual(_placeholder_notes(result), [])
 
-    def _add_role_page(self) -> RolePage:
+    def _add_child_content_page(self) -> ContentPage:
+        """A child under the site root so it is no longer an empty placeholder.
+
+        Roles are no longer pages, so this stands in for the role page these
+        tests used to add: they are about the page import's tree handling, for
+        which any child page serves.
+        """
         page = self.site.root_page.add_child(
-            instance=RolePage(
+            instance=ContentPage(
                 title="Data analyst",
                 slug="data-analyst",
-                selected_roles=[{"type": "role", "value": self.role.pk}],
+                body="<p>Body.</p>",
             )
         )
         page.save_revision().publish()
@@ -687,11 +623,13 @@ class ImportIntoASiteWithSkillsSwitchedOffTests(TestCase):
         GovukChangelogEntry.objects.create(
             date="2026-03-01", note="<p>Framework wide update.</p>"
         )
+        # Roles are no longer pages, so a framework export carries the roles as
+        # snippets and a plain content page stands in for the page tree.
         page = self.site.root_page.add_child(
-            instance=RolePage(
+            instance=ContentPage(
                 title="Data analyst",
                 slug="data-analyst",
-                selected_roles=[{"type": "role", "value": self.role.pk}],
+                body="<p>Body.</p>",
             )
         )
         page.save_revision().publish()
@@ -707,7 +645,6 @@ class ImportIntoASiteWithSkillsSwitchedOffTests(TestCase):
         GovukRole.objects.all().delete()
         GovukSkill.objects.all().delete()
         GovukChangelogEntry.objects.all().delete()
-        RolePage.objects.all().delete()
         with override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False)):
             return import_pages_from_payload(
                 payload=self.payload, site=self.site, user=self.user
@@ -726,11 +663,17 @@ class ImportIntoASiteWithSkillsSwitchedOffTests(TestCase):
         result = self._import_with_skills_off()
 
         self.assertEqual(result.skipped, 0)
-        self.assertTrue(RolePage.objects.filter(slug="data-analyst").exists())
+        self.assertTrue(ContentPage.objects.filter(slug="data-analyst").exists())
 
-    def test_each_page_does_not_repeat_the_same_cause(self):
-        """Every role page names a role, so left alone this drowns the one
-        message that explains the run in a page-by-page list of symptoms."""
+    def test_the_run_is_explained_by_the_one_flag_message_not_page_symptoms(self):
+        """The one message that explains the run -- the flag is off -- must not
+        be drowned in per-page symptoms.
+
+        A page used to name its roles through a chooser field, so with the
+        framework off each one reported its own reference as a missing slug.
+        No page carries a role reference now, so there is nothing to repeat;
+        this guards that the import stays quiet page by page and speaks once.
+        """
         result = self._import_with_skills_off()
 
         self.assertEqual(

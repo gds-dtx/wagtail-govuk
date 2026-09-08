@@ -4,7 +4,6 @@ breaks neither a bookmark nor the migrated content's own links -- the welcome
 copy links roles the live way.
 """
 
-import json
 from io import StringIO
 
 from django.core.management import call_command
@@ -14,7 +13,8 @@ from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Site
 
 from govuk.live_service_links import live_service_redirect_targets
-from govuk.models import GovukRole, GovukSkill, RolePage, SkillsAZPage
+from govuk.models import FrameworkSkillsPage, GovukRole, GovukSkill
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -27,25 +27,25 @@ def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
 
 
 class LiveServiceFixture(TestCase):
-    """One role with a page that renders it, one skill with an A to Z to sit in."""
+    """One role served on the framework main page's route, one skill with an
+    A to Z to sit in.
+
+    Roles no longer have a page each: the framework main page serves one per
+    role snippet at ``<role-slug>/``, so a live role resolves to its route URL
+    and its redirect is a link redirect pointing there.
+    """
 
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
 
         self.role = GovukRole.objects.create(title="Business architect")
-        self.role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Business architect",
-                slug="business-architect",
-                selected_roles=json.dumps([{"type": "role", "value": self.role.pk}]),
-            )
-        )
-        self.role_page.save_revision().publish()
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.role)
 
         self.skill = GovukSkill.objects.create(title="Prototyping")
-        self.skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+        self.skills_page = self.main_page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         self.skills_page.save_revision().publish()
 
@@ -57,13 +57,13 @@ class LiveServiceFixture(TestCase):
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
 class SeedLiveServiceRedirectsTests(LiveServiceFixture):
-    def test_a_live_role_url_reaches_the_page_that_renders_the_role(self):
+    def test_a_live_role_url_reaches_the_route_that_renders_the_role(self):
         self._run()
 
         response = self.client.get(f"/role/{self.role.slug}")
 
         self.assertEqual(response.status_code, 301)
-        self.assertEqual(response["Location"], self.role_page.url)
+        self.assertEqual(response["Location"], self.role_url)
 
     def test_a_live_skill_url_reaches_the_skills_section_it_names(self):
         self._run()
@@ -75,16 +75,19 @@ class SeedLiveServiceRedirectsTests(LiveServiceFixture):
             response["Location"], f"{self.skills_page.url}#{self.skill.slug}"
         )
 
-    def test_the_redirect_follows_the_page_not_the_address_it_had(self):
-        """redirect_page rather than a pasted URL: a page moved or reslugged
-        in the admin keeps its inbound redirect without the command rerunning."""
+    def test_a_role_redirect_is_a_link_to_its_route(self):
+        """A role has no page of its own now -- it is served on a route under
+        the framework main page -- so its redirect is a link redirect to that
+        URL rather than a page redirect, the same shape a skill's redirect has.
+        """
         self._run()
 
         redirect = Redirect.objects.get(
             old_path=Redirect.normalise_path(f"/role/{self.role.slug}")
         )
 
-        self.assertEqual(redirect.redirect_page_id, self.role_page.pk)
+        self.assertIsNone(redirect.redirect_page_id)
+        self.assertEqual(redirect.redirect_link, self.role_url)
         self.assertTrue(redirect.is_permanent)
         self.assertEqual(redirect.site_id, self.site.pk)
 
@@ -102,33 +105,18 @@ class SeedLiveServiceRedirectsTests(LiveServiceFixture):
         self.assertEqual(before, after)
         self.assertIn("0 created", output)
 
-    def test_a_role_no_live_page_renders_gets_no_redirect(self):
-        homeless = GovukRole.objects.create(title="Unpublished role")
-
-        self._run()
-
-        self.assertFalse(
-            Redirect.objects.filter(
-                old_path=Redirect.normalise_path(f"/role/{homeless.slug}")
-            ).exists()
-        )
-
-    def test_the_first_page_in_tree_order_keeps_a_role_two_pages_carry(self):
-        second_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Business architect again",
-                slug="business-architect-again",
-                selected_roles=json.dumps([{"type": "role", "value": self.role.pk}]),
-            )
-        )
-        second_page.save_revision().publish()
+    def test_every_role_gets_a_redirect_now_the_main_page_serves_them_all(self):
+        """The framework main page serves a route for every role snippet, so a
+        role now always has a URL to redirect to -- there is no longer such a
+        thing as a role no page renders."""
+        another = GovukRole.objects.create(title="Enterprise architect")
 
         self._run()
 
         redirect = Redirect.objects.get(
-            old_path=Redirect.normalise_path(f"/role/{self.role.slug}")
+            old_path=Redirect.normalise_path(f"/role/{another.slug}")
         )
-        self.assertEqual(redirect.redirect_page_id, self.role_page.pk)
+        self.assertEqual(redirect.redirect_link, role_url(self.main_page, another))
 
     def test_without_a_skills_page_the_skill_redirects_are_skipped_and_said(self):
         self.skills_page.unpublish()
@@ -205,14 +193,15 @@ class CheckLiveServiceRedirectsTests(LiveServiceFixture):
         with self.assertRaises(CommandError):
             self._check()
 
-    def test_a_role_with_no_page_fails_differently(self):
+    def test_roles_with_no_framework_main_page_fail_differently(self):
         """Seeding cannot fix this one, so the message does not suggest it.
 
-        The rule produces no target for a role no live page renders, so there
-        is nothing to create and nothing to report as missing -- and the URL is
-        one the live service publishes today.
+        A role is served on a route under the framework main page, so with no
+        live main page the rule produces no target for any role: there is
+        nothing to create and nothing to report as missing -- and the URLs are
+        ones the live service publishes today.
         """
-        GovukRole.objects.create(title="Unpublished role")
+        self.main_page.unpublish()
         self._run()
 
         with self.assertRaises(CommandError) as refusal:
