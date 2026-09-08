@@ -394,6 +394,7 @@ def content_page_settings_panels() -> list:
     if settings.FEATURE_FLAGS.get("SKILLS"):
         panels += [
             FieldPanel("show_role_navigation"),
+            FieldPanel("show_in_role_navigation"),
             FieldPanel("show_framework_updates"),
             FieldPanel("show_framework_welcome"),
         ]
@@ -2954,6 +2955,16 @@ class ContentPage(Page):
         verbose_name="Show role navigation",
         help_text="Show the list of roles grouped by family alongside the page, as the role pages do.",
     )
+    show_in_role_navigation = models.BooleanField(
+        default=False,
+        verbose_name="List in the role side menu",
+        help_text=(
+            "List this page under the last heading of the role side menu, "
+            "after the role families, on every page that shows the menu. "
+            "Skills A to Z is always listed. This is separate from Show in "
+            "menus on the Promote tab, which controls the header."
+        ),
+    )
     show_framework_updates = models.BooleanField(
         default=False,
         verbose_name="Show framework updates",
@@ -3138,22 +3149,41 @@ def role_page_urls_by_role_id(*, exclude_page_id: int | None = None) -> dict[int
 def further_resources_group(*, current_page_id: int | None = None, wording=None) -> dict | None:
     """The pages about the framework itself, for the side navigation.
 
-    The live service closes its navigation with these: the skills index and
-    the handful of pages that are about the framework rather than one role.
-    Anything the editors add beside the roles turns up here on its own.
+    The live service closes its navigation with a short list of these: the
+    skills index and a handful of pages about the framework rather than one
+    role. Skills A to Z is always in it. Every other page is in it only if an
+    editor ticked "List in the role side menu" on the page, in the explorer's
+    order.
+
+    Until September 2026 the group was every live page beside the roles. That
+    matched live while Skills A to Z was the only such page, and stopped
+    matching the day the content import brought Privacy, the Accessibility
+    statement and the project pages in as direct children of the home page.
+    The tick box is the page's own rather than Wagtail's "Show in menus"
+    because that box already drives the header navigation, and on this site
+    the header lists nothing but the site name.
     """
     site = Site.objects.filter(is_default_site=True).first()
     if site is None:
         return None
 
-    # Comparing content types rather than reading each page's specific record
-    # keeps this to one query, and it runs on every page that has the
-    # navigation.
-    role_page_type = ContentType.objects.get_for_model(RolePage)
+    # One query for the whole group: the skills index by content type, and
+    # any content page an editor ticked, through the join to its own table.
+    # It runs on every page that has the navigation.
+    skills_page_type = ContentType.objects.get_for_model(SkillsAZPage)
+    pages = (
+        site.root_page.get_children()
+        .live()
+        .filter(
+            models.Q(content_type=skills_page_type)
+            | models.Q(contentpage__show_in_role_navigation=True)
+        )
+        .order_by("path")
+    )
 
     items = []
-    for page in site.root_page.get_children().live().order_by("path"):
-        if page.content_type_id == role_page_type.pk or not page.url:
+    for page in pages:
+        if not page.url:
             continue
         items.append(
             {
