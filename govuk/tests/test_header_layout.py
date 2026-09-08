@@ -130,7 +130,8 @@ class ServiceNavigationTests(TestCase):
     The Design System's JavaScript un-hides the toggle below its breakpoint
     whatever the list holds, so a site with no menu pages and no sign-in link
     used to show a Menu button on every narrow-screen page that expanded to
-    nothing.
+    nothing. The guard now reads the sign in location rather than the removed
+    hide-sign-in flag.
     """
 
     def setUp(self):
@@ -146,13 +147,14 @@ class ServiceNavigationTests(TestCase):
         return self.client.get(self.page.url)
 
     def test_the_menu_renders_for_the_sign_in_link_alone(self):
+        # Sign in link in the navigation by default, so the menu has content.
         response = self._get()
 
         self.assertContains(response, "govuk-service-navigation__toggle")
         self.assertContains(response, 'id="navigation"')
 
     def test_the_menu_goes_away_when_it_would_be_empty(self):
-        self.settings.hide_sign_in_link = True
+        self.settings.sign_in_location = "hidden"
         self.settings.save()
 
         response = self._get()
@@ -160,21 +162,44 @@ class ServiceNavigationTests(TestCase):
         self.assertNotContains(response, "govuk-service-navigation__toggle")
         self.assertNotContains(response, 'id="navigation"')
 
+    def test_a_signed_in_user_keeps_the_menu_for_the_sign_out_link(self):
+        """Even hidden, a signed-in user has a sign out link, so the menu holds
+        something and renders."""
+        user = get_user_model().objects.create_user(username="staff", password="pw")
+        self.settings.sign_in_location = "hidden"
+        self.settings.save()
+        self.client.force_login(user)
+
+        response = self._get()
+
+        self.assertContains(response, "govuk-service-navigation__toggle")
+        self.assertContains(response, "Sign out")
+
     def test_a_page_in_the_menus_brings_it_back(self):
         menu_page = self.site.root_page.specific.add_child(
-            instance=ContentPage(
-                title="Guidance", slug="guidance", show_in_menus=True
-            )
+            instance=ContentPage(title="Guidance", slug="guidance", show_in_menus=True)
         )
         menu_page.save_revision().publish()
 
-        self.settings.hide_sign_in_link = True
+        self.settings.sign_in_location = "hidden"
         self.settings.save()
 
         response = self._get()
 
         self.assertContains(response, "govuk-service-navigation__toggle")
         self.assertContains(response, "Guidance")
+
+    def test_the_search_in_the_navigation_does_not_need_the_menu(self):
+        """The search sits in the navigation bar on its own, without dragging an
+        empty menu toggle in with it."""
+        self.settings.sign_in_location = "hidden"
+        self.settings.search_location = "navigation"
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertNotContains(response, "govuk-service-navigation__toggle")
+        self.assertContains(response, 'class="app-site-search"')
 
 
 class PhaseBannerWordingTests(TestCase):

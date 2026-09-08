@@ -141,7 +141,7 @@
                             Menu button that reported aria-expanded="true" and revealed
                             nothing. Only render the navigation when it would hold something.
                         {% endcomment %}
-                        {% if service_navigation_items or request.user.is_authenticated or not customise_settings.hide_sign_in_link %}
+                        {% if service_navigation_items or customise_settings.sign_in_location == "navigation" or customise_settings.sign_in_location == "hidden" and request.user.is_authenticated %}
                             <nav aria-label="Menu" class="govuk-service-navigation__wrapper">
                                 <button type="button"
                                         class="govuk-service-navigation__toggle govuk-js-service-navigation-toggle"
@@ -170,7 +170,12 @@
                                 </ul>
                             </nav>
                         {% endif %}
-                        {% if customise_settings.show_service_name_in_navigation %}
+                        {% comment %}
+                            The search is independent of the menu: it sits in the
+                            navigation bar whenever it is placed there, even on a
+                            site whose menu would otherwise be empty.
+                        {% endcomment %}
+                        {% if customise_settings.search_location == "navigation" %}
                             {% include "includes/site_search.html" %}
                         {% endif %}
                     </div>
