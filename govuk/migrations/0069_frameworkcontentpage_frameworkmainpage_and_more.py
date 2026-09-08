@@ -97,4 +97,14 @@ class Migration(migrations.Migration):
             name='tags',
             field=modelcluster.contrib.taggit.ClusterTaggableManager(blank=True, help_text='A comma-separated list of tags.', through='govuk.FrameworkMainPageTag', to='govuk.GovukTag', verbose_name='Tags'),
         ),
+        # Added here rather than in 0077 so that govuk_frameworkcontentpage
+        # already has this column when 0071 (delete_rolepages) runs. Without
+        # it, Django's ORM cascade collector queries FrameworkContentPage with
+        # all its current fields -- including this one -- but the column does
+        # not exist yet, which raises OperationalError.
+        migrations.AddField(
+            model_name='frameworkcontentpage',
+            name='show_in_framework_navigation',
+            field=models.BooleanField(default=True, help_text="List this page in the framework's sidebar navigation, under Further resources. On by default.", verbose_name='Show in sidebar navigation'),
+        ),
     ]

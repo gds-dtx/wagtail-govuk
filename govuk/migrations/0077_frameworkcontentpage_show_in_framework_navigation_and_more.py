@@ -10,11 +10,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name='frameworkcontentpage',
-            name='show_in_framework_navigation',
-            field=models.BooleanField(default=True, help_text="List this page in the framework's sidebar navigation, under Further resources. On by default.", verbose_name='Show in sidebar navigation'),
-        ),
+        # frameworkcontentpage.show_in_framework_navigation is added in 0069
+        # (alongside the CreateModel) so it exists before 0071 deletes role
+        # pages via the ORM collector, which would otherwise fail with
+        # "no such column" when the collector queries FrameworkContentPage.
         migrations.AddField(
             model_name='frameworkskillspage',
             name='show_in_framework_navigation',
