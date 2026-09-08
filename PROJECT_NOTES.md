@@ -6,21 +6,22 @@
 
 ## What it is
 
-A **Wagtail 7.4.1 / Django ≥6.0** CMS themed with the **GOV.UK Design System**
+A **Wagtail 7.4.3 / Django ≥6.0** CMS themed with the **GOV.UK Design System**
 (`govuk-frontend` 6.0.0). Single Django app named **`govuk`** — there is no
 `home` app despite Wagtail's default template leaving `home`-named fossils
 around (see "Gotchas"). Owned by `gds-dtx`, deployed as a container to GHCR.
 
 Content is authored in Wagtail admin and served with GOV.UK-styled templates.
 The site also exposes a **REST API**, **OIDC/SSO auth**, and a **content
-discovery** subsystem that ingests external feeds.
+discovery** subsystem that ingests external feeds. A major subsystem is the
+**Capability Framework** — see below.
 
 ## Runtime & environment
 
 - **Python ≥3.12** (local dev here is 3.14; CI uses 3.13). Prod image per Dockerfile.
 - **No global `python`** on this machine — always use `.venv/bin/python`.
 - Install: `pip install -e .` (deps live in `pyproject.toml`, not requirements.txt).
-- Package deps: Django, wagtail==7.4.1, gunicorn, whitenoise, django-allauth
+- Package deps: Django, wagtail==7.4.3, gunicorn, whitenoise, django-allauth
   (socialaccount+openid), djangorestframework-simplejwt[crypto], psycopg2-binary.
 
 ### Settings layout (`govuk/settings/`)
@@ -40,33 +41,69 @@ discovery** subsystem that ingests external feeds.
 .venv/bin/python manage.py check
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py runserver
-# Tests (SQLite, local settings) — 232 tests as of this writing:
-.venv/bin/python manage.py test govuk --settings=govuk.settings.local
+# Tests (SQLite, local settings) — ~838 tests as of this writing:
+.venv/bin/python manage.py test govuk
 # Narrow to one module:
-.venv/bin/python manage.py test govuk.tests.test_wagtail_rich_text_hooks --settings=govuk.settings.local
+.venv/bin/python manage.py test govuk.tests.test_role_page_layout
+# Seed framework content from the public CSV exports:
+.venv/bin/python manage.py import_capability_framework /path/to/csvs/
 ```
-
-Note: `manage.py test` prints 7 pre-existing `treebeard.E001` system-check
-warnings — harmless noise, unrelated to any change.
 
 ## Code map (`govuk/`)
 
 Big files first — these are where most work lands:
 
-- **`models.py`** (~2800 lines) — all content types + settings models. Key page
-  types: `ContentPage`, `RolePage`, `SkillsAZPage`, `TagListingsPage`,
-  `SectionPage` (each a Wagtail `Page`). Snippet/other models: `GovukSkill`,
-  `GovukRole`, `GovukTag`, `ExternalContentItem`, `ContentDiscoverySource`,
-  `Feedback`, `EdDSAKeyPair`. Site settings (BaseSiteSetting):
-  `PhaseBannerSettings`, `FooterSettings`, `CustomiseSettings`,
-  `ContentDiscoverySettings`, `AuthenticatedRedirectSettings`, `EdDSAKeySettings`.
-  Rich text: `LinkBlock` / `LinkStructValue` for StreamField links.
-- **`wagtail_hooks.py`** (~1170 lines) — Draftail rich-text customisations and
-  admin hooks. Home of the **unified GOV.UK button** rich-text feature
-  (`GOVUK_BUTTON_*` constants, `GovukButtonLinkHandler`,
-  `GovukButtonLinkElementHandler`, `govuk_button_entity`) and the **raw-HTML
-  embed** feature. Registers editor JS from `static/js/` (see Gotchas).
-- **`views.py`** (~270 lines) — custom views (search, profile, custom CSS, etc.).
+- **`models.py`** (~5 500 lines) — all content types + settings models.
+
+  **Page type hierarchy** (all subclass `Page` directly or via abstract bases):
+  - `BaseContentPage` (abstract) — the ~12 shared hero/body/settings fields.
+  - `FrameworkFieldsMixin` (abstract) — the 4 framework switches
+    (`show_role_navigation`, `show_framework_updates`, `show_framework_welcome`,
+    `framework_welcome_body`) plus the framework `get_context` logic.
+  - `FrameworkNavigableMixin` (abstract) — `show_in_framework_navigation` flag
+    for the "Further resources" sidebar listing.
+  - **`ContentPage(BaseContentPage)`** — plain content, no framework options.
+  - **`FrameworkMainPage(RoutablePageMixin, …, FrameworkFieldsMixin, BaseContentPage)`**
+    — framework root, `max_count = 1`. Serves each `GovukRole` as a virtual
+    page at `roles/<slug>/`. The sidebar's role navigation and further-resources
+    links are built from snippets at render time, not stored pages.
+  - **`FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage)`** — framework
+    content; can only be created under `FrameworkMainPage`; always shows the role
+    navigation (forced in `get_context`).
+  - **`FrameworkSkillsPage(FrameworkNavigableMixin, Page)`** — skills A–Z index,
+    `max_count = 1`.
+  - `TagListingsPage`, `SectionPage` — general-purpose; no framework fields in
+    their panels.
+
+  Snippets / other models: `GovukSkill`, `GovukRole` (slug, title, family,
+  levels, SCS fields, progression), `GovukTag`, `ExternalContentItem`,
+  `ContentDiscoverySource`, `Feedback`, `EdDSAKeyPair`.
+
+  Site settings (`BaseSiteSetting`): `PhaseBannerSettings` (order 3),
+  `FooterSettings` (order 2), `CustomiseSettings` (order 1 — leads the Settings
+  menu). `CustomiseSettings` holds **location dropdowns** for `service_name_location`,
+  `sign_in_location` (header / navigation / hidden — "hidden" still shows Sign Out
+  for authenticated users), `search_location`, and `header_logo`. Hero colour
+  fields were removed as inoperable. `CapabilityFrameworkWordingSettings`
+  (BaseSiteSetting, gated by `FEATURE_FLAGS["SKILLS"]`) lives in the Capability
+  Framework admin group, not Settings.
+
+  **Framework nav helpers** (module-level functions near the bottom of the file):
+  `framework_main_page()`, `role_route_url()`, `role_navigation_groups()`,
+  `further_resources_group()`, `framework_home_link()`, `without_framework_pages()`.
+
+- **`wagtail_hooks.py`** (~1 400 lines) — Draftail rich-text customisations and
+  admin hooks. `CapabilityFrameworkViewSetGroup` groups Skills, Roles and Changelog
+  snippets plus the Capability Framework Wording setting under one "Capability
+  framework" admin menu item. The wording setting is still registered via
+  `register_setting` (for its edit view/permissions) but removed from the Settings
+  submenu via `construct_settings_menu`.
+
+- **`search_backend.py`** — page search plus dedicated `_build_skill_results` and
+  `_build_role_results` (both return a `result_type` badge — "Skill"/"Role").
+  Skill results have no `search_description` (title + badge is enough).
+
+- **`views.py`** (~450 lines) — custom views (search, profile, custom CSS, etc.).
 
 Subsystem modules (smaller, single-purpose):
 
@@ -77,8 +114,10 @@ Subsystem modules (smaller, single-purpose):
 - **Content discovery:** `content_discovery.py`, `content_discovery_import.py`
   (CSV upsert by `(site_id, url)`), management command
   `sync_external_content.py`. Ingests external feeds into `ExternalContentItem`.
-- **Search:** `search_backend.py`, search view + template.
-- **Import/export:** `page_import_export.py` (admin views for page import/export).
+- **Import/export:** `page_import_export.py` (admin views for page import/export);
+  `import_capability_framework.py` (management command — seeds skills, roles,
+  `FrameworkMainPage` home, `FrameworkSkillsPage`, and on first run sets
+  customise settings and home-page switches).
 - **Misc:** `context_processors.py`, `middleware.py` (security headers, CSP,
   CORS), `logging_utils.py`, `utils.py`, `forms.py`, `view_robots.py`,
   `view_securitytxt.py`, `templatetags/{govuk_admin,govuk_filters}.py`.
@@ -97,6 +136,36 @@ OIDC login routes → `/login/`, `/accounts/…`; Wagtail admin → `/admin/`;
 `security.txt`; `/gen/custom.css`; `/search/`; `/robots.txt`;
 `/feedback` (flag-gated); Wagtail page serving at `/`.
 
+## Capability Framework subsystem
+
+The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
+
+- **Roles are snippets, not pages.** `GovukRole` (slug, title, family, levels,
+  SCS fields) is the data model. Each role is served at
+  `/<FrameworkMainPage-url>/roles/<slug>/` by `FrameworkMainPage.serve_role` —
+  a `RoutablePageMixin` route. There is no `RolePage` model.
+- **Sidebar nav** is fully data-driven. `role_navigation_groups()` enumerates all
+  live `GovukRole` snippets grouped by `family`. The "Further resources" group
+  lists live children of the `FrameworkMainPage` (i.e. `FrameworkContentPage`s
+  and the `FrameworkSkillsPage`) unless their `show_in_framework_navigation` flag
+  is off. The sidebar's top link reads "Home" and points at the `FrameworkMainPage`,
+  highlighted when that page is the current one.
+- **FrameworkContentPage** always shows the role navigation (forced in
+  `get_context` regardless of stored field values) and highlights itself in the
+  "Further resources" group. It offers no welcome layout, no updates block, and no
+  hero-styling toggles in its settings panels.
+- **Admin group:** Skills, Roles, Changelog and Capability Framework Wording
+  snippets/settings are under one "Capability framework" admin menu item (see
+  `CapabilityFrameworkViewSetGroup` in `wagtail_hooks.py`).
+- **Import command:** `import_capability_framework <dir>` seeds roles, skills,
+  the `FrameworkMainPage` (replacing the Wagtail placeholder home), a
+  `FrameworkSkillsPage`, and on first run writes customise settings (service name
+  in navigation, search in navigation, sign-in hidden, GOV.UK logo) and sets the
+  three framework switches on the home page. Re-runnable safely.
+- **Live-service redirects:** `/role/<slug>` and `/skill/<slug>` — seed with
+  `seed_live_service_redirects` after import.
+- **Role grades (SCS):** not in the public CSV; need `import_role_grades` separately.
+
 ## Feature flags (env-driven, `base.py`)
 
 `FEATURE_SKILLS`, `FEATURE_ORGANISATIONS`, `FEATURE_PEOPLE_FINDER`,
@@ -111,13 +180,15 @@ OIDC login routes → `/login/`, `/accounts/…`; Wagtail admin → `/admin/`;
   `draftail-raw-html.js`).
 - **`govuk/templates/`** — `base.html` plus subdirs: `govuk/`, `includes/`,
   `accounts/`, `feedback/`, `search/`, `wagtailcore/`, `wagtailsettings/`.
+  Key framework templates: `govuk/role_page.html` (served by the role route),
+  `govuk/framework_skills_page.html`, `govuk/content_page.html` (shared by
+  framework page types), `includes/role_navigation.html`.
 
 ## Tests
 
-~40 test modules under `govuk/tests/`, all `test_*.py`, 232 tests total. Rich-text
-hook tests (`test_wagtail_rich_text_hooks.py`) reload the hooks module in `setUp`
-and use `SimpleTestCase`. Heavy coverage of auth/OIDC/JWT, content discovery,
-each page type, middleware, and settings.
+~838 tests across ~45 test modules under `govuk/tests/`, all `test_*.py`. A shared
+test helper (`govuk/tests/framework_helpers.py`) provides `make_framework_main_page`
+and `role_url` for the framework-specific tests.
 
 ## CI / Deploy (`.github/workflows/`)
 
@@ -132,21 +203,23 @@ each page type, middleware, and settings.
 
 - **`.venv/bin/python`, never `python`** — bare `python` is not on PATH here.
 - **Static JS lives at `static/js/`, un-namespaced** — matching `main.css`/
-  `main.js`/`cyber.css`. It was recently moved out of the old
-  `static/govuk/js/` sub-namespace, and a dead duplicate under `static/home/`
-  (a Wagtail-default-template fossil — there is no `home` app in INSTALLED_APPS)
-  was deleted. Reference editor JS as e.g. `"js/draftail-govuk-button.js"`.
+  `main.js`/`cyber.css`. Reference editor JS as e.g. `"js/draftail-govuk-button.js"`.
   Static changes need `collectstatic` + hard refresh to show in a running admin.
-- **Unified GOV.UK button** rich-text entity: variant (default/start/secondary/
-  warning) + open-in-new-tab are stored as `data-govuk-button-*` attributes on
-  the `<a>`; one Draftail toolbar entry, not several. Legacy
-  `linktype="govuk-start-button"` markup was converted to the new format by data
-  migration `0050_*` and the back-compat shims removed. (Historical migrations
-  hardcode marker strings rather than importing from `wagtail_hooks.py`, since
-  those symbols get deleted.)
-- **Migrations:** 46 numbered migrations; latest is `0050_*`. Data migrations
-  here walk RichTextField/JSONField content and `bulk_update` (no signals/
-  revisions), with fail-loud post-checks.
+- **Migrations:** ~79 numbered migrations; latest in the `0079_*` range. Data
+  migrations walk RichTextField/JSONField content and `bulk_update` (no
+  signals/revisions), with fail-loud post-checks.
+- **`wagtail.contrib.routable_page` is in `INSTALLED_APPS`** — required for
+  `FrameworkMainPage.serve_role`. The route is at `roles/<slug>/` (NOT bare
+  `<slug>/` — that would shadow the main page's child pages).
+- **`FrameworkMainPage` and `FrameworkSkillsPage` are each limited to one per
+  site** (`max_count = 1`). `FrameworkContentPage` may only be a child of
+  `FrameworkMainPage` (`parent_page_types`).
+- **No `RolePage` or `SkillsAZPage`** — these were removed. The former
+  `SkillsAZPage` is `FrameworkSkillsPage`; the former `RolePage` is gone entirely.
+  Historical migrations still name them; do not delete those migrations.
+- **`HEX_COLOR_VALIDATOR`** is defined in `models.py` and appears unused now that
+  the hero-colour fields were removed, but it is referenced by historical
+  migrations — leave it.
 - **Auth is OIDC/SSO-first** — default `account_login` redirects to OIDC
   (`oidc_login_redirect`). SSO defaults point at
   `sso.service.security.gov.uk`.

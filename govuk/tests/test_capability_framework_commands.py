@@ -252,17 +252,31 @@ class ImportCapabilityFrameworkTests(TestCase):
         self.assertIn("Skills A to Z", page)
 
     def test_home_page_is_configured_but_seeds_no_welcome_prose(self):
-        """The importer sets the framework home page up, but the welcome prose is
-        CMS content: it belongs to the content team, not this command."""
+        """The importer sets the framework home page up. The welcome switch is
+        on so the page renders as the framework home from the first import, but
+        the prose (framework_welcome_body) is left empty -- it is CMS content
+        the content team authors and imports separately."""
         self._import()
 
         home = Site.objects.get(is_default_site=True).root_page.specific
         self.assertIn("Learn about the digital, data", home.hero_intro)
         self.assertTrue(home.show_role_navigation)
         self.assertTrue(home.show_framework_updates)
-        # The welcome content is never written by the importer.
-        self.assertFalse(home.show_framework_welcome)
+        self.assertTrue(home.show_framework_welcome)
+        # The welcome prose is never written by the importer.
         self.assertEqual(len(home.framework_welcome_body), 0)
+
+    def test_site_settings_are_configured_on_first_import(self):
+        from govuk.models import CustomiseSettings
+
+        self._import()
+
+        site = Site.objects.get(is_default_site=True)
+        customise = CustomiseSettings.for_site(site)
+        self.assertEqual(customise.header_logo, "govuk")
+        self.assertEqual(customise.service_name_location, "navigation")
+        self.assertEqual(customise.search_location, "navigation")
+        self.assertEqual(customise.sign_in_location, "hidden")
 
     def test_a_second_import_leaves_editor_welcome_content_alone(self):
         """Because the importer never writes the welcome prose, an editor's own

@@ -368,27 +368,31 @@ class Command(BaseCommand):
         home.body = ""
         home.show_role_navigation = True
         home.show_framework_updates = True
-        # A new framework main page defaults the welcome layout on too, but the
-        # importer leaves it off: the welcome prose is CMS content the content
-        # team authors and imports separately, and an empty welcome layout on a
-        # fresh import would render scaffolding with nothing in it.
-        home.show_framework_welcome = False
+        # The welcome layout is on; the welcome prose (framework_welcome_body)
+        # is CMS content that the content team authors and imports separately,
+        # so it is not written here -- but the switch is set so the page
+        # renders as the framework home from the first import.
+        home.show_framework_welcome = True
         home.save()
         home.save_revision().publish()
-        self.stdout.write("Home page: role navigation and updates switched on")
+        self.stdout.write("Home page: role navigation, updates and welcome switched on")
         self.write_site_settings()
 
     def write_site_settings(self):
-        """Put the site name and search where a GOV.UK service puts them.
+        """Configure the site presentation on first import only.
 
-        Written alongside the home page on first import only, so an editor's
-        later choice is not reverted by a re-run.
+        Written alongside the home page so a fresh instance looks right from
+        the moment it has content. An editor's later choices are not reverted
+        by a re-run because this method is only reached on first import.
         """
         site = Site.objects.filter(is_default_site=True).first()
         if site is None:
             return
 
         customise = CustomiseSettings.for_site(site)
+        customise.header_logo = "govuk"
         customise.service_name_location = "navigation"
+        customise.search_location = "navigation"
+        customise.sign_in_location = "hidden"
         customise.save()
-        self.stdout.write("Site settings: service name moved to the navigation")
+        self.stdout.write("Site settings: configured for the framework")
