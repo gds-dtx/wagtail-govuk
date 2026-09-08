@@ -31,7 +31,6 @@ from govuk.tests.framework_helpers import make_framework_main_page
 
 FRAMEWORK_SETTINGS_FIELDS = {
     "show_role_navigation",
-    "show_in_role_navigation",
     "show_framework_updates",
     "show_framework_welcome",
 }

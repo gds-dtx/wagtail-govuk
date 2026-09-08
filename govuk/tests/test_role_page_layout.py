@@ -238,48 +238,6 @@ class RolePageLayoutTests(TestCase):
             [{"title": "Skills A to Z", "url": skills.url, "is_current": False}],
         )
 
-    def test_further_resources_lists_only_the_pages_an_editor_ticked(self):
-        """Privacy sits beside the roles in the tree but not in live's menu.
-
-        Every page beside the roles used to qualify, which is how Privacy and
-        the Accessibility statement got into the role menu after the content
-        import. Now a page is listed because someone ticked it, and Skills A
-        to Z because it is the framework's own index.
-        """
-        for title, slug, ticked in (
-            ("Privacy", "privacy", False),
-            ("Roadmap", "roadmap", True),
-        ):
-            page = self.root_page.add_child(
-                instance=ContentPage(
-                    title=title, slug=slug, show_in_role_navigation=ticked
-                )
-            )
-            page.save_revision().publish()
-        skills = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
-        )
-        skills.save_revision().publish()
-
-        group = further_resources_group()
-
-        self.assertEqual(
-            [item["title"] for item in group["items"]], ["Roadmap", "Skills A to Z"]
-        )
-
-    def test_further_resources_is_not_the_header_menu(self):
-        """"Show in menus" drives the header, which lists nothing on this site.
-
-        The two switches are separate on purpose: ticking a page for the side
-        menu must not put it in the header, and vice versa.
-        """
-        header_only = self.root_page.add_child(
-            instance=ContentPage(title="Header only", slug="header-only", show_in_menus=True)
-        )
-        header_only.save_revision().publish()
-
-        self.assertIsNone(further_resources_group())
-
     def test_further_resources_keeps_the_order_the_editors_chose(self):
         for title, slug in (("Roadmap", "roadmap"), ("Job grades", "job-grades")):
             page = self.main_page.add_child(

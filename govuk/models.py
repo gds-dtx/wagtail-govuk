@@ -423,7 +423,6 @@ def framework_main_settings_panels() -> list:
     if settings.FEATURE_FLAGS.get("SKILLS"):
         panels += [
             FieldPanel("show_role_navigation"),
-            FieldPanel("show_in_role_navigation"),
             FieldPanel("show_framework_updates"),
             FieldPanel("show_framework_welcome"),
         ]
@@ -3051,16 +3050,6 @@ class FrameworkFieldsMixin(models.Model):
         default=True,
         verbose_name="Show role navigation",
         help_text="Show the list of roles grouped by family alongside the page, as the role pages do.",
-    )
-    show_in_role_navigation = models.BooleanField(
-        default=False,
-        verbose_name="List in the role side menu",
-        help_text=(
-            "List this page under the last heading of the role side menu, "
-            "after the role families, on every page that shows the menu. "
-            "Skills A to Z is always listed. This is separate from Show in "
-            "menus on the Promote tab, which controls the header."
-        ),
     )
     show_framework_updates = models.BooleanField(
         default=True,

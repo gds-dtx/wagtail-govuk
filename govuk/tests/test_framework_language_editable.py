@@ -67,7 +67,7 @@ class FrameworkLanguageEditableTests(TestCase):
         self.privacy_page = self.main_page.add_child(
             instance=FrameworkContentPage(title="Privacy", slug="privacy", body="")
         )
-        self.roadmap_page.save_revision().publish()
+        self.privacy_page.save_revision().publish()
 
         self.wording = CapabilityFrameworkWordingSettings.for_site(self.site)
 

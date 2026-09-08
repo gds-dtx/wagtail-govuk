@@ -207,10 +207,10 @@ level down and every URL gains a `/home/` prefix.
 ## 4. Check the redirects
 
 The live service publishes roles at `/role/<slug>` and skills at
-`/skill/<slug>`. Wagtail serves a role at `/<slug>` and every skill as a section
-of the Skills A to Z. Without redirects, every bookmark, every search result and
-every link inside the migrated content itself answers 404 — the welcome copy
-alone links 37 roles the old way.
+`/skill/<slug>`. Wagtail serves a role at `/<framework-main-page>/roles/<slug>/`
+and every skill as a section of the Framework Skills page. Without redirects,
+every bookmark, every search result and every link inside the migrated content
+itself answers 404 — the welcome copy alone links 37 roles the old way.
 
 **The import in step 3 seeds these itself**, so on a clean run there is nothing
 to do here but confirm it. The import report says how many it wrote. If the
@@ -258,30 +258,34 @@ Capability Framework these match the live service exactly:
 | Terms and conditions | `https://www.gov.uk/help/terms-conditions` |
 | Privacy | `/privacy/` |
 
-**Customise settings** (`CustomiseSettings`) — for the Capability Framework:
-`show_service_name_in_navigation` on, `search_placeholder` set to
-"Search for roles and skills", `hide_sign_in_link` on, and the error-page
-contact name and email. Confirm the contact address with the service team
-before entering it; the address carried in the migration fixture is not
-necessarily the one the service wants published.
-Also `show_page_feedback_prompt` on, so every page ends with "Is this page
-useful?" as the live service's do; `page_feedback_more_url` is `/feedback`,
-and the two wording fields keep their defaults, which are the live copy.
+**Customise settings** (`CustomiseSettings`) — the `import_capability_framework`
+command sets most of these automatically on first run. Confirm they are correct
+in the CMS afterwards, and fill in anything the import does not cover:
 
-**The role side menu's last group is chosen page by page.** "List in the role
-side menu", in a content page's settings, puts it under the group that closes
-the menu; Skills A to Z is always there. The flag travels in the export like
-any other page field, **so take the export from the source instance after it
-has run migration `0069`** — that migration ticks the five pages the live
-service lists (propose a change, download, job grades, context and challenges,
-roadmap), but only for pages that exist when it runs. On a fresh instance the
-pages arrive by import after the migration, so an export taken before the
-source instance had the field leaves the group at Skills A to Z until someone
-ticks the pages by hand. The order of the group follows the page order in the
-explorer; drag the pages into the live service's order (Skills A to Z, Propose
-a change, Download, Job grades, Context and challenges, Roadmap) on the source
-instance before exporting, and the order travels too. Wagtail's own "Show in menus" is a different
-switch: it drives the header, which on this service lists only the site name.
+| Setting | Value |
+| --- | --- |
+| Service name location | Navigation |
+| Sign in location | Hidden |
+| Search box location | Navigation |
+| Header logo | GOV.UK |
+| Search placeholder | "Search for roles and skills" |
+| Show page feedback prompt | On |
+| Page feedback — Follow up URL | `/feedback` |
+
+Also set the error-page contact name and email. Confirm the contact address
+with the service team before entering it; the address carried in the migration
+fixture is not necessarily the one the service wants published. The page
+feedback wording fields (`Intro text`, `Follow up text`) keep their defaults,
+which are the live copy.
+
+**The sidebar's "Further resources" group is chosen page by page.** The
+"Show in sidebar navigation" switch, in a `FrameworkContentPage` or the
+Framework Skills page's settings, controls whether that page appears under
+the last heading of the role navigation. The switch is on by default for new
+pages, and it travels in the export with the page. Drag the pages into the
+live service's order (Skills A to Z, Propose a change, Download, Job grades,
+Context and challenges, Roadmap) in the explorer on the source instance
+before exporting, so the order travels too.
 
 **The `/feedback` page itself is not in the export.** On the dev instance it
 was made by hand after the 20 August export, as a content page linking to the
