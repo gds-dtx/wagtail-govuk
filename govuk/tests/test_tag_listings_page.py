@@ -3,6 +3,7 @@ from django.test import RequestFactory, TestCase, override_settings
 from wagtail.models import PageViewRestriction, Site
 
 from govuk.models import (
+    THIS_SITE_SOURCE_FILTER,
     ContentDiscoverySettings,
     ContentDiscoverySource,
     ContentPage,
@@ -11,7 +12,6 @@ from govuk.models import (
     GovukTag,
     RolePage,
     SectionPage,
-    THIS_SITE_SOURCE_FILTER,
     TagListingsPage,
 )
 
@@ -524,3 +524,70 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertIn(alpha_gamma_external.url, urls)
         self.assertNotIn(self.external_gamma.url, urls)
         self.assertNotIn(self.gamma_page.url, urls)
+
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+class TagListingsWithoutTheFrameworkTests(TestCase):
+    """A tag listing is a platform page type; role pages are not.
+
+    A ``RolePage`` can be in the tree on a site with the flag off because the
+    page import creates pages for any model it can resolve. It 404s when
+    fetched, so listing it here would offer a card that does not open.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+        self.alpha_tag = GovukTag.objects.create(slug="alpha", name="Alpha")
+
+        self.listings_page = self.root_page.add_child(
+            instance=TagListingsPage(title="Tagged listings", slug="tagged-listings")
+        )
+        self.listings_page.tags.add(self.alpha_tag)
+        self.listings_page.save_revision().publish()
+        self.listings_page = self.listings_page.specific
+
+        self.content_page = self.root_page.add_child(
+            instance=ContentPage(title="Alpha page", slug="alpha-page", body="")
+        )
+        self.content_page.tags.add(self.alpha_tag)
+        self.content_page.save_revision().publish()
+
+        self.role_page = self.root_page.add_child(
+            instance=RolePage(title="Alpha role page", slug="alpha-role-page", body="")
+        )
+        self.role_page.tags.add(self.alpha_tag)
+        self.role_page.save_revision().publish()
+
+    def test_a_role_page_is_not_listed_and_the_rest_of_the_listing_is(self):
+        urls = {item["url"] for item in self.listings_page.get_listing_queryset()}
+
+        self.assertNotIn(self.role_page.url, urls)
+        self.assertIn(self.content_page.url, urls)
+
+    def test_filtering_by_tag_does_not_bring_it_back(self):
+        urls = {
+            item["url"]
+            for item in self.listings_page.get_listing_queryset(
+                selected_tag_id=self.alpha_tag.id
+            )
+        }
+
+        self.assertNotIn(self.role_page.url, urls)
+        self.assertIn(self.content_page.url, urls)
+
+    def test_the_page_still_renders_with_the_role_queryset_absent(self):
+        """The queryset is absent here, not empty.
+
+        ``_available_filter_tags`` used to reach for it by position, so a
+        shorter list was an IndexError: a 500 on every tag listing page on a
+        site without the framework, rather than a listing without role pages.
+        """
+        available_tags = self.listings_page._available_filter_tags(
+            tag_ids=self.listings_page._configured_tag_ids(),
+        )
+
+        self.assertIn(self.alpha_tag, available_tags)
+        self.assertEqual(self.client.get(self.listings_page.url).status_code, 200)

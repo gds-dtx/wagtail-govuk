@@ -8,16 +8,31 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.core.exceptions import FieldDoesNotExist, ValidationError
-from django.db import transaction
-from django.db import models as django_models
+from django.db import models as django_models, transaction
+from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime, parse_time
 from django.utils.text import slugify
-from django.utils import timezone
+from wagtail.contrib.redirects.models import Redirect
 from wagtail.fields import StreamField
 from wagtail.models import Page, PageViewRestriction, Site
+from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import RichText
 
-from govuk.models import GovukRole, GovukSkill, GovukTag
+from govuk.capability_framework import repair_changelog_html
+from govuk.live_service_links import (
+    seed_live_service_redirects,
+    unseeded_live_service_redirects,
+)
+from govuk.models import (
+    JOB_GRADE_CHOICES,
+    SCS_GRADE_CHOICES,
+    CapabilityFrameworkWordingSettings,
+    GovukChangelogEntry,
+    GovukRole,
+    GovukSkill,
+    GovukTag,
+)
+from govuk.utils import row_id_from_text
 
 PAGE_EXPORT_FORMAT = "govuk-page-import-export/v1"
 BASE_PAGE_LOCAL_FIELD_NAMES = {field.name for field in Page._meta.local_fields}
@@ -36,8 +51,26 @@ SKILL_POINT_FIELD_NAMES = (
     "working_points",
     "practitioner_points",
     "expert_points",
+    "leadership_points",
 )
 SKILL_LEVEL_CHOICES = {"awareness", "working", "practitioner", "expert"}
+# A page's snippet chooser holds a primary key, which means nothing in another
+# database. Carry these as slugs so the reference survives the move, the way
+# role levels and Senior Civil Service skills already do.
+PAGE_SNIPPET_SLUG_STREAM_FIELDS = {
+    ("govuk.RolePage", "selected_roles"): ("role", GovukRole),
+}
+JOB_GRADE_KEYS = {value for value, _ in JOB_GRADE_CHOICES}
+SCS_GRADE_KEYS = {value for value, _ in SCS_GRADE_CHOICES}
+# Read off the model rather than listed here, so that wording added to the form
+# travels with the next export instead of waiting for someone to notice it.
+# Text of either length: a longer piece of wording would reach for a TextField,
+# which is not a CharField, and would otherwise be left behind in silence.
+FRAMEWORK_WORDING_FIELD_NAMES = tuple(
+    field.name
+    for field in CapabilityFrameworkWordingSettings._meta.concrete_fields
+    if isinstance(field, (django_models.CharField, django_models.TextField))
+)
 
 
 @dataclass
@@ -46,7 +79,11 @@ class PageImportResult:
     created: int = 0
     updated: int = 0
     skipped: int = 0
+    # Written to a revision for a publisher to review, rather than made live,
+    # because the account running the import may not publish.
+    drafted: int = 0
     errors: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
 
 
 def build_page_export_payload(
@@ -55,6 +92,7 @@ def build_page_export_payload(
     pages: list[Page],
     skills: list[GovukSkill] | None = None,
     roles: list[GovukRole] | None = None,
+    user=None,
 ) -> dict:
     selected_roots = _deduplicate_selected_roots(pages)
     payload = {
@@ -64,9 +102,10 @@ def build_page_export_payload(
             "id": site.id,
             "hostname": site.hostname,
             "port": site.port,
+            "site_name": site.site_name,
             "is_default_site": site.is_default_site,
         },
-        "pages": [_serialise_page_tree(page) for page in selected_roots],
+        "pages": [_serialise_page_tree(page, user=user) for page in selected_roots],
     }
     if settings.FEATURE_FLAGS.get("SKILLS"):
         payload["skills"] = [
@@ -91,7 +130,27 @@ def build_page_export_payload(
                 ),
             )
         ]
+        # Entries attached to no role or skill are framework-wide and belong
+        # to the home page rather than to any one exported snippet.
+        payload["changelog"] = _serialise_changelog(
+            GovukChangelogEntry.objects.filter(role__isnull=True, skill__isnull=True)
+        )
+        payload["wording"] = _serialise_framework_wording(site)
     return payload
+
+
+def _serialise_framework_wording(site: Site) -> dict[str, str]:
+    """The wording a role or skill page prints but no editor typed.
+
+    It lives in a site setting rather than on any page, so nothing selected for
+    export carries it and an edit to it would stay in the environment it was
+    made in: retyped by hand in staging and again in production, with the two
+    free to drift. Carried whole, every field named, so that importing an
+    export reproduces the wording exactly rather than the parts that happen to
+    differ from the defaults.
+    """
+    wording = CapabilityFrameworkWordingSettings.for_site(site)
+    return {name: getattr(wording, name) for name in FRAMEWORK_WORDING_FIELD_NAMES}
 
 
 def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportResult:
@@ -119,9 +178,12 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
 
     raw_skills: list = []
     raw_roles: list = []
-    if settings.FEATURE_FLAGS.get("SKILLS"):
+    raw_wording = None
+    skills_enabled = bool(settings.FEATURE_FLAGS.get("SKILLS"))
+    if skills_enabled:
         raw_skills = payload.get("skills", []) or []
         raw_roles = payload.get("roles", []) or []
+        raw_wording = payload.get("wording")
         if not isinstance(raw_skills, list):
             result.skipped += 1
             result.errors.append("Payload 'skills' value must be an array when provided.")
@@ -130,24 +192,41 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
             result.skipped += 1
             result.errors.append("Payload 'roles' value must be an array when provided.")
             return result
+    else:
+        _report_skills_feature_is_off(payload, result=result)
 
-    if not raw_pages and not raw_skills and not raw_roles and not raw_tags:
+    if not raw_pages and not raw_skills and not raw_roles and not raw_tags and not raw_wording:
         result.skipped += 1
-        if settings.FEATURE_FLAGS.get("SKILLS"):
+        if skills_enabled:
             result.errors.append(
-                "Payload must contain at least one entry in 'tags', 'pages', 'skills' or 'roles'."
+                "Payload must contain at least one entry in 'tags', 'pages', 'skills', "
+                "'roles' or 'wording'."
             )
         else:
             result.errors.append("Payload must contain at least one entry in 'tags' or 'pages'.")
         return result
 
-    tag_lookup = _import_tags_from_payload(raw_tags=raw_tags, raw_pages=raw_pages)
+    _import_site_name(payload.get("site"), site=site)
 
-    if settings.FEATURE_FLAGS.get("SKILLS"):
-        _import_skills(raw_skills, result=result)
-        _import_roles(raw_roles, result=result)
+    tag_lookup = _import_tags_from_payload(
+        raw_tags=raw_tags, raw_pages=raw_pages, user=user, result=result
+    )
 
-    site_root = site.root_page.specific
+    if skills_enabled:
+        _import_framework_wording(raw_wording, site=site, user=user, result=result)
+        _import_skills(raw_skills, user=user, result=result)
+        _import_roles(raw_roles, user=user, result=result)
+        _import_site_wide_changelog(
+            payload.get("changelog"), user=user, result=result
+        )
+
+    site_root = _replace_placeholder_home_page(
+        raw_pages,
+        site=site,
+        site_root=site.root_page.specific,
+        user=user,
+        result=result,
+    )
     for node in raw_pages:
         _import_page_node(
             node=node,
@@ -157,6 +236,9 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
             result=result,
             tag_lookup=tag_lookup,
         )
+
+    if skills_enabled:
+        _seed_live_service_redirects(site=site, user=user, result=result)
     return result
 
 
@@ -164,7 +246,370 @@ def dump_payload_as_json(payload: dict) -> str:
     return json.dumps(payload, indent=2, ensure_ascii=False)
 
 
-def _import_tags_from_payload(*, raw_tags: list, raw_pages: list) -> dict[str, dict[str, int]]:
+def user_may(user, model, action: str) -> bool:
+    """Whether the user could do this to a snippet through its own admin.
+
+    Snippets are governed by Django's model permissions, which is what the
+    snippet views ask for. The pages in a file are already checked one by one
+    against the page permissions, so a file was the way round the snippet
+    permissions and only the snippet permissions: an account with nothing but
+    access to the admin could rewrite every skill and role in the framework by
+    uploading one, while the snippet menu it would have used stayed shut.
+    """
+    if user is None:
+        return False
+    return ModelPermissionPolicy(model).user_has_permission(user, action)
+
+
+def _permission_error(model, action: str, subject: str) -> str:
+    """Why an entry was left alone, and the permission that would allow it.
+
+    Named in full because the person who ran the import is rarely the person
+    who administers groups, and "you do not have permission" on its own leaves
+    them nothing to ask for.
+    """
+    codename = f"{model._meta.app_label}.{action}_{model._meta.model_name}"
+    return (
+        f"Skipped {subject} because you do not have permission to {action} "
+        f"{model._meta.verbose_name_plural} ({codename})."
+    )
+
+
+def _seed_live_service_redirects(*, site: Site, user, result: PageImportResult):
+    """Point the live service's URLs at the pages this import just brought in.
+
+    The redirects are not in the export file -- they are rows in Wagtail's own
+    redirects app, and they name pages by primary key, which means nothing in
+    another database. So the runbook had a step for them, run by hand over
+    `aws ecs execute-command` on a task with `enable_execute_command` turned on
+    for the occasion, after the import and before DNS. Miss it and the site
+    launches looking complete: every page is there, and every bookmark, every
+    search result and every GovSearch link into the old service answers 404
+    (CS32-1579).
+
+    The import is the moment the pages those redirects point at come into
+    existence, so it is the moment to write them. The rule is the same one the
+    command uses and the changelog notes are rewritten through, and it creates
+    or corrects and never deletes, so running it here does not take the step
+    away from the runbook -- it stops the step being the only thing standing
+    between an import and a working site.
+
+    Nothing is said when there is nothing to do, which is the ordinary case: an
+    editor importing a page into a site whose redirects are already right
+    should not be told about redirects at all.
+    """
+    if not unseeded_live_service_redirects(site):
+        return
+
+    for action in ("add", "change"):
+        if not user_may(user, Redirect, action):
+            # Reported rather than passed over. The paths are missing whether
+            # or not this account could have written them, and the person who
+            # ran the import is the one who still has time to say so.
+            result.errors.append(
+                _permission_error(
+                    Redirect, action, "seeding the live service's redirects"
+                )
+            )
+            return
+
+    seeded = seed_live_service_redirects(site)
+    if seeded.written:
+        result.notes.append(
+            f"Redirected {seeded.written} of the live service's URLs to the "
+            f"pages this site serves them on ({seeded.created} new, "
+            f"{seeded.updated} repointed)."
+        )
+    if seeded.skills_have_nowhere_to_go:
+        # A note, not an error: nothing in the file was skipped, which is what
+        # this import's errors mean and what the admin says they mean. The
+        # loud version is `seed_live_service_redirects --check`, which the
+        # cutover runs before DNS moves and which fails on exactly this.
+        result.notes.append(
+            "The live service's /skill/ URLs were not redirected: this site "
+            "has no live skills A to Z page for them to point into."
+        )
+
+
+def _report_skills_feature_is_off(payload: dict, *, result: PageImportResult):
+    """Say once that the capability framework is switched off on this instance.
+
+    Without this the import looks as though it half worked: the pages arrive,
+    every skill and role in the file is dropped in silence, and each role page
+    then reports its own reference as a missing slug. That reads as a corrupt
+    export rather than as an environment missing FEATURE_SKILLS, and the admin
+    banner shows only the first few messages, so the real cause never reaches
+    whoever ran the import. Naming the flag here is what makes the rest of the
+    run legible, so the per-page reports are dropped as its consequences.
+    """
+    carried = [
+        name
+        for name in ("skills", "roles", "changelog", "wording")
+        if payload.get(name)
+    ]
+    if not carried:
+        return
+
+    result.errors.append(
+        f"This site has the capability framework switched off, so the "
+        f"{_readable_list(carried)} in this file "
+        f"{'were' if len(carried) > 1 else 'was'} not imported and role pages "
+        "have lost the roles they listed. Set the FEATURE_SKILLS environment "
+        "variable on this instance and import the file again."
+    )
+
+
+def _readable_list(names: list[str]) -> str:
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _import_site_name(raw_site, *, site: Site):
+    """Carry the site name over.
+
+    The name is content: it is the product name in the header and the suffix
+    on every page title. The hostname and port belong to the environment being
+    imported into, so they are left alone.
+    """
+    if not isinstance(raw_site, dict):
+        return
+
+    site_name = str(raw_site.get("site_name") or "").strip()[:255]
+    if site_name and site_name != site.site_name:
+        site.site_name = site_name
+        site.save(update_fields=["site_name"])
+
+
+def _user_can_change_framework_wording(user, site: Site) -> bool:
+    """The same permission the wording's own settings form asks for.
+
+    Wagtail refuses to open that form without it, so the import must not be the
+    way round it.
+    """
+    if user is None:
+        return False
+
+    permission_policy = CapabilityFrameworkWordingSettings.get_permission_policy()
+    return permission_policy.user_has_permission_for_instance(user, "change", site)
+
+
+def _import_framework_wording(
+    raw_wording, *, site: Site, user, result: PageImportResult
+):
+    """Carry the editable wording over.
+
+    Only the fields the file names are set. An export written before the
+    wording left the templates says nothing about it, and saying nothing is not
+    the same as asking for the defaults back: a file kept for staging or
+    production would otherwise undo every wording edit made since, with nothing
+    in the report to show it had happened.
+
+    Each field is checked the way the form checks it, so a heading too long for
+    the column or blanked out is reported and the wording already in place is
+    kept, rather than one bad entry costing the other thirty-seven.
+    """
+    if not raw_wording:
+        return
+
+    result.processed += 1
+    if not isinstance(raw_wording, dict):
+        result.skipped += 1
+        result.errors.append("Payload 'wording' value must be an object when provided.")
+        return
+
+    if not _user_can_change_framework_wording(user, site):
+        # Reported and skipped rather than refused outright: every export file
+        # carries the wording, so refusing the file would leave an editor who
+        # may import pages unable to import anything at all.
+        result.skipped += 1
+        result.errors.append(
+            "Wording was left as it was because you do not have permission to "
+            "change the capability framework wording."
+        )
+        return
+
+    wording = CapabilityFrameworkWordingSettings.for_site(site)
+    accepted: list[str] = []
+    for field_name in FRAMEWORK_WORDING_FIELD_NAMES:
+        if field_name not in raw_wording:
+            continue
+
+        raw_value = raw_wording[field_name]
+        if not isinstance(raw_value, str):
+            result.errors.append(
+                f"Wording '{field_name}' was left as it was because the file "
+                "gives it as something other than text."
+            )
+            continue
+
+        try:
+            value = wording._meta.get_field(field_name).clean(raw_value, wording)
+        except ValidationError as exc:
+            result.errors.append(
+                f"Wording '{field_name}' was left as it was: {' '.join(exc.messages)}"
+            )
+            continue
+
+        setattr(wording, field_name, value)
+        accepted.append(field_name)
+
+    if not accepted:
+        result.skipped += 1
+        return
+
+    wording.save(update_fields=accepted)
+    result.updated += 1
+
+
+def _placeholder_replacement_refusal(user, *, site_root: Page) -> str | None:
+    """Why this user may not swap the home page, or None if they may.
+
+    Replacing the placeholder is the one write in this module that reaches
+    above the site root: it adds a page beside the site root, repoints the
+    Site at it, and deletes the page that was there, cascading to anything
+    beneath. Everything else here is checked -- snippets against their model
+    permissions, pages against can_add_subpage, can_edit and can_move, the
+    wording against its own settings policy -- so without this an account with
+    nothing but access to the import form could delete a site's home page,
+    while the explorer it would have used offered it no delete button.
+
+    Two permissions for the two writes.
+
+    The Site record, because repointing site.root_page is what the Sites area
+    of the admin exists to do, and wagtailcore.change_site is the permission
+    it asks for. Note it is *not* can_add_subpage on the tree root: Wagtail
+    refuses that to everyone, superusers included, because no page model
+    declares itself creatable directly under Root. The replacement is put
+    there anyway -- deliberately, since a site root has to live at depth 2 --
+    so that test would refuse the feature to the administrators it was built
+    for rather than restrict it.
+
+    The page itself, because a delete that cascades should ask what a delete
+    asks. can_delete is the same test the explorer's delete button uses.
+    """
+    if user is None:
+        return (
+            "Skipped replacing the placeholder home page because the import "
+            "was run without a user."
+        )
+    if not user_may(user, Site, "change"):
+        return _permission_error(Site, "change", "replacing the placeholder home page")
+    if not site_root.permissions_for_user(user).can_delete():
+        return (
+            "Skipped replacing the placeholder home page because you do not "
+            f"have permission to delete '{site_root.title}'."
+        )
+    return None
+
+
+def _replace_placeholder_home_page(raw_pages: list, *, site: Site, site_root: Page, user, result: PageImportResult) -> Page:
+    """Swap a new instance's placeholder home page for the one being imported.
+
+    A fresh instance ships an empty home page of whatever type the starter site
+    uses, and Wagtail cannot change a page's type in place. The page therefore
+    has to be rebuilt and the site repointed at it. Without this the import has
+    nowhere to put its own home page, so it nests the whole site a level down
+    and every URL gains a /home/ prefix.
+
+    Only an empty placeholder is replaced. A home page that already has children
+    belongs to someone, and is left alone for _find_or_create_page to deal with.
+    """
+    if not raw_pages or not isinstance(raw_pages[0], dict):
+        return site_root
+
+    node = raw_pages[0]
+    raw_settings = node.get("settings")
+    if not isinstance(raw_settings, dict):
+        raw_settings = {}
+
+    slug = _normalised_slug(raw_settings.get("slug"))
+    model_class = _resolve_model_class(str(node.get("model") or "").strip())
+    if (
+        model_class is None
+        or not slug
+        or slug != site_root.slug
+        or site_root.specific_class is model_class
+        # Page.objects, not site_root.get_children(): called on a specific page
+        # that narrows to the same subclass, and would miss children of any
+        # other type.
+        or Page.objects.child_of(site_root).exists()
+    ):
+        return site_root
+
+    tree_root = site_root.get_parent()
+    if tree_root is None:
+        return site_root
+
+    refusal = _placeholder_replacement_refusal(user, site_root=site_root)
+    if refusal is not None:
+        result.errors.append(refusal)
+        return site_root
+
+    placeholder_label = site_root._meta.label
+    title = str(raw_settings.get("title") or "").strip() or slug.replace("-", " ").title()
+
+    try:
+        with transaction.atomic():
+            # Build the replacement alongside the placeholder, which still owns
+            # the slug, then take the slug over once the placeholder is gone.
+            replacement = model_class(
+                title=title,
+                draft_title=title,
+                slug=f"{slug}-import",
+            )
+            tree_root.add_child(instance=replacement)
+            replacement.save_revision().publish()
+
+            # Repoint the site before the delete: a page that is still a site
+            # root cannot be removed, and the delete cascades to descendants.
+            site.root_page = replacement
+            site.save(update_fields=["root_page"])
+
+            site_root.refresh_from_db()
+            site_root.delete()
+
+            replacement.refresh_from_db()
+            replacement.slug = slug
+            replacement.save()
+            replacement.save_revision().publish()
+    except (ValidationError, ValueError) as exc:
+        result.errors.append(f"Could not replace the placeholder home page: {exc}")
+        return site_root
+
+    result.notes.append(
+        f"Replaced the empty placeholder home page ({placeholder_label}) with "
+        f"{model_class._meta.label} so the site imports at the top level."
+    )
+    return replacement.specific
+
+
+def _import_tags_from_payload(
+    *, raw_tags: list, raw_pages: list, user=None, result: PageImportResult = None
+) -> dict[str, dict[str, int]]:
+    """Create the tags this file needs, as far as the file's owner may.
+
+    Tags come from two places and the two are not the same permission.
+
+    A tag named on a page is the page editor's free-tagging field: taggit has
+    no user in scope and asks nothing, so anyone who may edit the page may
+    already coin the tag by typing it. Those follow the page, which is checked
+    on its own further down.
+
+    The 'tags' list at the top of the file belongs to no page. It is an edit to
+    the tag dictionary and nothing else, which is what the tag snippet menu is
+    for, so it is asked for the permission that menu asks for.
+    """
+    if not user_may(user, GovukTag, "add"):
+        dropped = _dictionary_only_new_tags(raw_tags=raw_tags, raw_pages=raw_pages)
+        if dropped and result is not None:
+            result.errors.append(
+                _permission_error(
+                    GovukTag, "add", f"{len(dropped)} tag(s) named only in 'tags'"
+                )
+            )
+        raw_tags = []
+
     tag_candidates = _collect_tag_candidates(raw_tags=raw_tags, raw_pages=raw_pages)
     ordered_candidates: dict[str, str] = {}
     for tag_slug, tag_name in tag_candidates:
@@ -228,6 +673,28 @@ def _collect_page_node_tag_candidates(*, node, candidates: list[tuple[str, str]]
         return
     for child_node in child_entries:
         _collect_page_node_tag_candidates(node=child_node, candidates=candidates)
+
+
+def _dictionary_only_new_tags(*, raw_tags, raw_pages) -> set[str]:
+    """Slugs the 'tags' list alone would coin.
+
+    Only what is actually lost is worth a message: a tag the file also puts on
+    a page arrives by that route anyway, and one that already exists is not
+    being created by anybody.
+    """
+    from_list = {slug for slug, _ in _extract_tag_candidates_from_tag_list(raw_tags)}
+    if not from_list:
+        return set()
+
+    from_pages: list[tuple[str, str]] = []
+    if isinstance(raw_pages, list):
+        for node in raw_pages:
+            _collect_page_node_tag_candidates(node=node, candidates=from_pages)
+
+    only_in_list = from_list - {slug for slug, _ in from_pages}
+    return only_in_list - set(
+        GovukTag.objects.filter(slug__in=only_in_list).values_list("slug", flat=True)
+    )
 
 
 def _extract_tag_candidates_from_tag_list(raw_tags) -> list[tuple[str, str]]:
@@ -315,43 +782,87 @@ def _deduplicate_selected_roots(pages: list[Page]) -> list[Page]:
     return roots
 
 
-def _serialise_page_tree(page: Page) -> dict:
+def _serialise_page_tree(page: Page, *, user=None) -> dict:
     specific_page = page.specific
     return {
         "model": specific_page._meta.label,
         "settings": _serialise_page_settings(specific_page),
         "fields": _serialise_page_fields(specific_page),
         "tags": _serialise_tags(specific_page),
-        "privacy": _serialise_privacy(specific_page),
+        "privacy": _serialise_privacy(specific_page, user=user),
         "children": [
-            _serialise_page_tree(child.specific)
+            _serialise_page_tree(child.specific, user=user)
             for child in specific_page.get_children().order_by("path")
         ],
     }
 
 
 def _serialise_skill(skill: GovukSkill) -> dict:
-    return {
+    payload = {
         "slug": skill.slug,
         "title": skill.title,
         "body": _serialise_value(skill.body),
-        "awareness_points": _serialise_stream_field(skill, "awareness_points"),
-        "working_points": _serialise_stream_field(skill, "working_points"),
-        "practitioner_points": _serialise_stream_field(
-            skill,
-            "practitioner_points",
-        ),
-        "expert_points": _serialise_stream_field(skill, "expert_points"),
+        "is_senior_civil_service": skill.is_senior_civil_service,
     }
+    for field_name in SKILL_POINT_FIELD_NAMES:
+        payload[field_name] = _serialise_stream_field(skill, field_name)
+    payload["changelog"] = _serialise_changelog(skill.changelog_entries.all())
+    return payload
 
 
 def _serialise_role(role: GovukRole) -> dict:
     return {
         "slug": role.slug,
         "title": role.title,
+        "family": role.family,
         "body": _serialise_value(role.body),
         "levels": _serialise_role_levels(role),
+        "is_senior_civil_service": role.is_senior_civil_service,
+        "scs_grades": _serialise_choice_stream(role.scs_grades, "grade"),
+        "scs_skills": _serialise_scs_skills(role),
+        "roles_that_could_lead_here": _serialise_role_references(role),
+        "changelog": _serialise_changelog(role.changelog_entries.all()),
     }
+
+
+def _serialise_choice_stream(stream_value, block_type: str) -> list[str]:
+    """Choice keys from a StreamField of single-choice blocks."""
+    return [
+        str(block.value).strip()
+        for block in stream_value
+        if block.block_type == block_type and str(block.value or "").strip()
+    ]
+
+
+def _serialise_scs_skills(role: GovukRole) -> list[str]:
+    """Slugs of the skills a Senior Civil Service role requires."""
+    return [
+        block.value.slug
+        for block in role.scs_skills
+        if block.block_type == "skill" and block.value is not None
+    ]
+
+
+def _serialise_role_references(role: GovukRole) -> list[str]:
+    """Slugs of the roles that could lead to this one, in the order given."""
+    return [
+        block.value.slug
+        for block in role.roles_that_could_lead_here
+        if block.block_type == "role" and block.value is not None
+    ]
+
+
+def _serialise_changelog(entries) -> list[dict]:
+    """Changelog entries belonging to one role, skill, or the framework."""
+    return [
+        {
+            "date": _serialise_value(entry.date),
+            "change_type": entry.change_type,
+            "note": _serialise_value(entry.note),
+            "live": entry.live,
+        }
+        for entry in entries.order_by("-date", "pk")
+    ]
 
 
 def _serialise_stream_field(instance, field_name: str):
@@ -384,6 +895,11 @@ def _serialise_role_levels(role: GovukRole) -> list[dict]:
             {
                 "title": str(level_value.get("title") or "").strip(),
                 "description": _serialise_value(level_value.get("description")),
+                "grades": [
+                    str(getattr(raw_grade, "value", raw_grade) or "").strip()
+                    for raw_grade in (level_value.get("grades") or [])
+                    if str(getattr(raw_grade, "value", raw_grade) or "").strip()
+                ],
                 "skills": skill_requirements_payload,
             }
         )
@@ -399,19 +915,58 @@ def _serialise_page_settings(page: Page) -> dict:
 
 def _serialise_page_fields(page: Page) -> dict:
     values: dict[str, object] = {}
-    for field in page._meta.local_fields:
-        if field.name in BASE_PAGE_LOCAL_FIELD_NAMES or field.name == "page_ptr":
+    # Named model_field, not field: dataclasses.field is imported at the top of
+    # this module and a loop variable would shadow it.
+    for model_field in page._meta.local_fields:
+        name = model_field.name
+        if name in BASE_PAGE_LOCAL_FIELD_NAMES or name == "page_ptr":
             continue
-        if field.auto_created:
+        if model_field.auto_created:
             continue
 
-        raw_value = field.value_from_object(page)
-        if isinstance(field, StreamField):
-            serialisable = field.get_prep_value(raw_value)
-        else:
-            serialisable = field.get_prep_value(raw_value)
-        values[field.name] = _serialise_value(serialisable)
+        raw_value = model_field.value_from_object(page)
+        serialisable = model_field.get_prep_value(raw_value)
+
+        snippet_stream = PAGE_SNIPPET_SLUG_STREAM_FIELDS.get((page._meta.label, name))
+        if snippet_stream is not None:
+            block_type, snippet_model = snippet_stream
+            serialisable = _serialise_snippet_chooser_stream(
+                serialisable,
+                block_type=block_type,
+                snippet_model=snippet_model,
+            )
+
+        values[name] = _serialise_value(serialisable)
     return values
+
+
+def _serialise_snippet_chooser_stream(raw_blocks, *, block_type: str, snippet_model) -> list:
+    """Swap the primary keys in a page's chooser stream for slugs."""
+    if not isinstance(raw_blocks, list):
+        return raw_blocks
+
+    chosen_keys = [
+        block.get("value")
+        for block in raw_blocks
+        if isinstance(block, dict) and block.get("type") == block_type
+    ]
+    slugs_by_key = dict(
+        snippet_model.objects.filter(
+            pk__in=[key for key in chosen_keys if isinstance(key, int)]
+        ).values_list("pk", "slug")
+    )
+
+    blocks_payload: list = []
+    for block in raw_blocks:
+        if not isinstance(block, dict) or block.get("type") != block_type:
+            blocks_payload.append(block)
+            continue
+
+        slug = slugs_by_key.get(block.get("value"))
+        if not slug:
+            continue
+        blocks_payload.append({**block, "value": slug})
+    return blocks_payload
 
 
 def _serialise_tags(page: Page) -> list[dict[str, str]]:
@@ -433,11 +988,23 @@ def _serialise_tags(page: Page) -> list[dict[str, str]]:
     return tags_payload
 
 
-def _serialise_privacy(page: Page) -> list[dict]:
+def _serialise_privacy(page: Page, *, user=None) -> list[dict]:
+    """A page's view restrictions, and its shared password where it has one.
+
+    The password is the only thing an export carries that is not otherwise
+    readable somewhere in the admin, and Wagtail keeps it behind the same
+    permission it keeps the privacy dialog behind. Asking that permission here
+    stops the download being the way round the dialog. The restriction itself
+    is still named, so what the page's privacy is remains legible and an export
+    taken by someone who may set it still round-trips whole.
+    """
     restrictions_payload: list[dict] = []
     for restriction in page.view_restrictions.all():
         row: dict[str, object] = {"type": restriction.restriction_type}
-        if restriction.restriction_type == PageViewRestriction.PASSWORD:
+        if restriction.restriction_type == PageViewRestriction.PASSWORD and (
+            user is not None
+            and page.permissions_for_user(user).can_set_view_restrictions()
+        ):
             row["password"] = restriction.password
         if restriction.restriction_type == PageViewRestriction.GROUPS:
             row["groups"] = list(
@@ -465,12 +1032,12 @@ def _serialise_value(value):
     return value
 
 
-def _import_skills(raw_skills: list, *, result: PageImportResult):
+def _import_skills(raw_skills: list, *, user, result: PageImportResult):
     for node in raw_skills:
-        _import_skill_node(node=node, result=result)
+        _import_skill_node(node=node, user=user, result=result)
 
 
-def _import_skill_node(*, node, result: PageImportResult):
+def _import_skill_node(*, node, user, result: PageImportResult):
     result.processed += 1
     if not isinstance(node, dict):
         result.skipped += 1
@@ -491,10 +1058,17 @@ def _import_skill_node(*, node, result: PageImportResult):
         action = "update"
         skill = existing_skill
 
+    required = "add" if action == "create" else "change"
+    if not user_may(user, GovukSkill, required):
+        result.skipped += 1
+        result.errors.append(_permission_error(GovukSkill, required, f"skill '{slug}'"))
+        return
+
     default_title = slug.replace("-", " ").strip().title() or slug
     skill.slug = slug
     skill.title = str(node.get("title") or skill.title or default_title).strip() or default_title
     skill.body = str(node.get("body") or "")
+    skill.is_senior_civil_service = _coerce_bool(node.get("is_senior_civil_service"))
     for field_name in SKILL_POINT_FIELD_NAMES:
         setattr(skill, field_name, _deserialise_skill_points(node.get(field_name)))
 
@@ -505,6 +1079,10 @@ def _import_skill_node(*, node, result: PageImportResult):
         result.skipped += 1
         result.errors.append(f"Skipped skill '{slug}': {exc}")
         return
+
+    _import_changelog(
+        node.get("changelog"), subject=skill, field_name="skill", user=user, result=result
+    )
 
     if action == "create":
         result.created += 1
@@ -538,23 +1116,104 @@ def _deserialise_skill_points(raw_points) -> list[dict[str, str]]:
     return points_payload
 
 
-def _import_roles(raw_roles: list, *, result: PageImportResult):
+def _import_roles(raw_roles: list, *, user, result: PageImportResult):
+    imported_slugs: set[str] = set()
     for node in raw_roles:
-        _import_role_node(node=node, result=result)
+        slug = _import_role_node(node=node, user=user, result=result)
+        if slug:
+            imported_slugs.add(slug)
+    if not imported_slugs:
+        return
+
+    # A role can name one that appears later in the payload, so the role to
+    # role references are resolved once every role in it exists. Only the roles
+    # the first pass saved take part: a role it rejected keeps the references
+    # it already had rather than gaining them from a payload judged invalid.
+    # One read serves the whole pass, which both names roles and looks them up.
+    roles_by_slug = {role.slug: role for role in GovukRole.objects.all()}
+    for node in raw_roles:
+        _import_role_references(
+            node=node,
+            imported_slugs=imported_slugs,
+            roles_by_slug=roles_by_slug,
+            result=result,
+        )
 
 
-def _import_role_node(*, node, result: PageImportResult):
+def _import_role_references(
+    *,
+    node,
+    imported_slugs: set[str],
+    roles_by_slug: dict[str, GovukRole],
+    result: PageImportResult,
+):
+    if not isinstance(node, dict):
+        return
+
+    slug = _normalised_slug(node.get("slug") or node.get("title"))
+    if not slug or slug not in imported_slugs:
+        return
+
+    role = roles_by_slug.get(slug)
+    if role is None:
+        return
+
+    raw_references = node.get("roles_that_could_lead_here")
+    # An export written before the field existed says nothing about a role's
+    # progression, and saying nothing is not the same as asking for it to be
+    # emptied: importing one of the known-good files kept for staging and
+    # production would otherwise clear the curated path off every senior role,
+    # with nothing in the report to show it had gone. An explicit empty list
+    # still empties it.
+    if raw_references is None:
+        return
+    if not isinstance(raw_references, list):
+        result.errors.append(
+            f"Role '{slug}' kept its existing progression roles because "
+            "'roles_that_could_lead_here' is not an array."
+        )
+        return
+
+    references = _deserialise_role_references(
+        raw_references,
+        role_slug=slug,
+        roles_by_slug=roles_by_slug,
+        result=result,
+    )
+    # Most roles name no progression at all, and rewriting an unchanged field
+    # would cost a write apiece across the whole framework.
+    if not references and not role.roles_that_could_lead_here:
+        return
+
+    role.roles_that_could_lead_here = references
+    # Saved on its own so the counts stay with the pass that created or
+    # updated the role, and failing here is reported like any other bad entry
+    # rather than abandoning the rest of the import. A StreamField raises
+    # ValueError over a block it cannot store; save() does not validate, so
+    # there is no ValidationError to catch here.
+    try:
+        role.save(update_fields=["roles_that_could_lead_here"])
+    except ValueError as exc:
+        result.errors.append(
+            f"Role '{slug}' kept its existing progression roles: {exc}"
+        )
+
+
+def _import_role_node(*, node, user, result: PageImportResult) -> str:
+    """Import one role, returning the slug it saved under, or "" if it was
+    skipped, so that the reference pass leaves rejected roles alone."""
+
     result.processed += 1
     if not isinstance(node, dict):
         result.skipped += 1
         result.errors.append("Skipped role entry because it is not an object.")
-        return
+        return ""
 
     slug = _normalised_slug(node.get("slug") or node.get("title"))
     if not slug:
         result.skipped += 1
         result.errors.append("Skipped role entry because the slug is missing.")
-        return
+        return ""
 
     existing_role = GovukRole.objects.filter(slug=slug).first()
     if existing_role is None:
@@ -564,12 +1223,30 @@ def _import_role_node(*, node, result: PageImportResult):
         action = "update"
         role = existing_role
 
+    required = "add" if action == "create" else "change"
+    if not user_may(user, GovukRole, required):
+        result.skipped += 1
+        result.errors.append(_permission_error(GovukRole, required, f"role '{slug}'"))
+        return ""
+
     default_title = slug.replace("-", " ").strip().title() or slug
     role.slug = slug
     role.title = str(node.get("title") or role.title or default_title).strip() or default_title
+    role.family = str(node.get("family") or "").strip()
     role.body = str(node.get("body") or "")
     role.levels = _deserialise_role_levels(
         node.get("levels"),
+        role_slug=slug,
+        result=result,
+    )
+    role.is_senior_civil_service = _coerce_bool(node.get("is_senior_civil_service"))
+    role.scs_grades = _deserialise_choice_stream(
+        node.get("scs_grades"),
+        block_type="grade",
+        valid_keys=SCS_GRADE_KEYS,
+    )
+    role.scs_skills = _deserialise_scs_skills(
+        node.get("scs_skills"),
         role_slug=slug,
         result=result,
     )
@@ -580,12 +1257,177 @@ def _import_role_node(*, node, result: PageImportResult):
     except (ValidationError, ValueError) as exc:
         result.skipped += 1
         result.errors.append(f"Skipped role '{slug}': {exc}")
-        return
+        return ""
+
+    _import_changelog(
+        node.get("changelog"), subject=role, field_name="role", user=user, result=result
+    )
 
     if action == "create":
         result.created += 1
     else:
         result.updated += 1
+    return slug
+
+
+def _deserialise_choice_stream(raw_values, *, block_type: str, valid_keys: set) -> list[dict]:
+    """Stream blocks for choice keys, dropping anything not in the vocabulary."""
+    if not isinstance(raw_values, list):
+        return []
+
+    blocks_payload: list[dict] = []
+    seen: set[str] = set()
+    for raw_value in raw_values:
+        key = str(
+            raw_value.get("value") if isinstance(raw_value, dict) else raw_value or ""
+        ).strip()
+        if key in valid_keys and key not in seen:
+            seen.add(key)
+            blocks_payload.append({"type": block_type, "value": key})
+    return blocks_payload
+
+
+def _deserialise_scs_skills(raw_skills, *, role_slug: str, result: PageImportResult) -> list[dict]:
+    if not isinstance(raw_skills, list):
+        return []
+
+    blocks_payload: list[dict] = []
+    for raw_skill in raw_skills:
+        raw_value = raw_skill.get("value") if isinstance(raw_skill, dict) else raw_skill
+        skill_slug = _normalised_slug(raw_value)
+        skill = (
+            GovukSkill.objects.filter(slug=skill_slug).only("pk").first()
+            if skill_slug
+            else None
+        )
+        if skill is None:
+            result.errors.append(
+                f"Role '{role_slug}' skipped Senior Civil Service skill "
+                f"for missing skill '{raw_value}'."
+            )
+            continue
+        blocks_payload.append({"type": "skill", "value": skill.pk})
+    return blocks_payload
+
+
+def _deserialise_role_references(
+    raw_roles: list,
+    *,
+    role_slug: str,
+    roles_by_slug: dict[str, GovukRole],
+    result: PageImportResult,
+) -> list[dict]:
+    blocks_payload: list[dict] = []
+    for raw_role in raw_roles:
+        raw_value = raw_role.get("value") if isinstance(raw_role, dict) else raw_role
+        referenced_slug = _normalised_slug(raw_value)
+        if referenced_slug == role_slug:
+            continue
+        if not referenced_slug:
+            result.errors.append(
+                f"Role '{role_slug}' skipped a role that could lead to it "
+                "because the entry is blank."
+            )
+            continue
+        referenced = roles_by_slug.get(referenced_slug)
+        if referenced is None:
+            result.errors.append(
+                f"Role '{role_slug}' skipped a role that could lead to it "
+                f"for missing role '{raw_value}'."
+            )
+            continue
+        blocks_payload.append({"type": "role", "value": referenced.pk})
+    return blocks_payload
+
+
+def _import_changelog(
+    raw_entries, *, subject, field_name: str, user, result: PageImportResult
+):
+
+    """Replace the changelog entries attached to one role or skill."""
+    _replace_changelog(
+        raw_entries,
+        owner={field_name: subject},
+        label=str(subject),
+        user=user,
+        result=result,
+    )
+
+
+def _import_site_wide_changelog(raw_entries, *, user, result: PageImportResult):
+    """Replace the framework-wide entries, which belong to no role or skill."""
+    _replace_changelog(
+        raw_entries,
+        owner={"role": None, "skill": None},
+        label="the framework",
+        user=user,
+        result=result,
+    )
+
+
+def _replace_changelog(
+    raw_entries, *, owner: dict, label: str, user, result: PageImportResult
+):
+    """Swap a set of changelog entries for the imported ones.
+
+    Entries carry no stable identifier of their own, so the imported set
+    replaces whatever is there rather than trying to match entry by entry.
+
+    A changelog is its own snippet rather than a panel on the role, so the
+    permission to rewrite one is its own too: a file naming entries is checked
+    the way the changelog menu is. Reported and skipped rather than refused,
+    so the role or skill it came with still arrives.
+    """
+    if not isinstance(raw_entries, list):
+        return
+
+    # A replace is a delete and then an add, so both are asked for: holding one
+    # without the other would empty the changelog and then fail to refill it.
+    for required in ("delete", "add"):
+        if not user_may(user, GovukChangelogEntry, required):
+            result.errors.append(
+                _permission_error(
+                    GovukChangelogEntry, required, f"the changelog for {label}"
+                )
+            )
+            return
+
+    filters = {}
+    for name, value in owner.items():
+        if value is None:
+            filters[f"{name}__isnull"] = True
+        else:
+            filters[name] = value
+    GovukChangelogEntry.objects.filter(**filters).delete()
+
+    for raw_entry in raw_entries:
+        if not isinstance(raw_entry, dict):
+            continue
+
+        entry_date = parse_date(str(raw_entry.get("date") or "").strip()[:10])
+        # Repaired on the way in: exports written before the bullets were
+        # understood carry a paragraph per hyphen line, and migration 0058
+        # only fixed the rows that existed when it ran -- an import would
+        # put the dashes straight back.
+        note = repair_changelog_html(str(raw_entry.get("note") or "").strip())
+        if entry_date is None or not note:
+            result.errors.append(
+                f"Skipped a changelog entry for {label} with no date or note."
+            )
+            continue
+
+        entry = GovukChangelogEntry(
+            date=entry_date,
+            change_type=str(raw_entry.get("change_type") or "").strip(),
+            note=note,
+            live=_coerce_bool(raw_entry.get("live", True)),
+            **owner,
+        )
+        try:
+            entry.full_clean()
+            entry.save()
+        except (ValidationError, ValueError) as exc:
+            result.errors.append(f"Skipped a changelog entry for {label}: {exc}")
 
 
 def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportResult) -> list[dict]:
@@ -611,16 +1453,18 @@ def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportRe
                 continue
 
             raw_skill_value = raw_skill_requirement.get("skill")
+            skill_named_by_id = row_id_from_text(raw_skill_value) is not None
             skill_slug = _normalised_slug(
                 raw_skill_requirement.get("skill_slug")
-                or ("" if str(raw_skill_value or "").isdigit() else raw_skill_value)
+                or ("" if skill_named_by_id else raw_skill_value)
             )
-            skill_id = raw_skill_requirement.get("skill_id") or raw_skill_value
+            raw_skill_id = raw_skill_requirement.get("skill_id") or raw_skill_value
+            skill_id = row_id_from_text(raw_skill_id)
             skill = None
             if skill_slug:
                 skill = GovukSkill.objects.filter(slug=skill_slug).only("pk").first()
-            if skill is None and str(skill_id or "").isdigit():
-                skill = GovukSkill.objects.filter(pk=int(skill_id)).only("pk", "slug").first()
+            if skill is None and skill_id is not None:
+                skill = GovukSkill.objects.filter(pk=skill_id).only("pk", "slug").first()
                 if skill is not None and not skill_slug:
                     skill_slug = skill.slug
 
@@ -628,7 +1472,7 @@ def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportRe
                 result.errors.append(
                     (
                         f"Role '{role_slug}' skipped skill requirement "
-                        f"for missing skill '{skill_slug or skill_id}'."
+                        f"for missing skill '{skill_slug or raw_skill_id}'."
                     )
                 )
                 continue
@@ -640,12 +1484,21 @@ def _deserialise_role_levels(raw_levels, *, role_slug: str, result: PageImportRe
                 }
             )
 
+        grade_keys = [
+            key
+            for key in (
+                str(raw_grade or "").strip() for raw_grade in (raw_level.get("grades") or [])
+            )
+            if key in JOB_GRADE_KEYS
+        ]
+
         levels_payload.append(
             {
                 "type": "level",
                 "value": {
                     "title": str(raw_level.get("title") or "").strip(),
                     "description": raw_level.get("description") or "",
+                    "grades": grade_keys,
                     "skills": skill_requirements_payload,
                 },
             }
@@ -687,6 +1540,42 @@ def _import_page_node(
         )
         return
 
+    if (
+        parent_page.pk == site_root.pk
+        and slug == site_root.slug
+        and site_root.specific_class is not model_class
+        and Page.objects.child_of(site_root).exists()
+    ):
+        # The file starts at the home page, but this site's home page is of a
+        # different type and already holds pages: it can be neither updated in
+        # place, a page's type being fixed, nor replaced, which is reserved
+        # for the empty placeholder a fresh instance ships. Falling through
+        # would create a second home page beside the pages this one holds and
+        # pull every slug-matched page in the file under it -- the whole site
+        # restructured, every URL gaining a /home/ prefix, behind a green
+        # report. The home page's own content is refused with the reason, and
+        # what the file holds inside it still imports where it is.
+        result.skipped += 1
+        result.errors.append(
+            f"The home page was left as it is: the file's home page is a "
+            f"{model_class._meta.label} but this site's is a "
+            f"{site_root.specific_class._meta.label} with pages under it, so "
+            "it can be neither updated in place nor replaced. The pages "
+            "inside it were still imported."
+        )
+        child_entries = node.get("children")
+        if isinstance(child_entries, list):
+            for child_node in child_entries:
+                _import_page_node(
+                    node=child_node,
+                    parent_page=site_root,
+                    site_root=site_root,
+                    user=user,
+                    result=result,
+                    tag_lookup=tag_lookup,
+                )
+        return
+
     try:
         with transaction.atomic():
             page, action = _find_or_create_page(
@@ -697,12 +1586,21 @@ def _import_page_node(
                 user=user,
             )
             _apply_page_settings(page, raw_settings)
-            _apply_page_fields(page, node.get("fields"), tag_lookup=tag_lookup)
+            _apply_page_fields(
+                page,
+                node.get("fields"),
+                tag_lookup=tag_lookup,
+                result=result,
+            )
             page.full_clean()
-            page.save()
-            _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
-            page.save()
-            _apply_privacy(page, node.get("privacy"), user=user)
+            _write_page(
+                page,
+                node=node,
+                action=action,
+                user=user,
+                result=result,
+                tag_lookup=tag_lookup,
+            )
 
             if action == "create":
                 result.created += 1
@@ -726,19 +1624,91 @@ def _import_page_node(
         result.errors.append(f"Skipped '{slug}': {exc}")
 
 
+def _write_page(page: Page, *, node: dict, action: str, user, result, tag_lookup):
+    """Commit an imported page through Wagtail's own publishing route.
+
+    The import used to call ``page.save()`` twice and stop. That wrote straight
+    over the live row, which meant two things. Any account that could reach the
+    Import / Export screen could publish -- an editor with no publish
+    permission changed 67 live pages in a rehearsal against a copy of the
+    database. And because no revision and no log entry were written, the page's
+    history showed nothing: no author, no date, nothing to revert to. Ordinary
+    editing in the admin has always recorded all of that.
+
+    So: a revision every time, published only if this account may publish, and
+    an entry in the log either way.
+
+    A page this import creates is not live until the publish below, so writing
+    to its row shows the public nothing. An existing page is different -- if
+    the account cannot publish, its row, its tags and its view restrictions are
+    all left exactly as they were and the new values wait in a draft.
+    """
+    can_publish = page.permissions_for_user(user).can_publish()
+    is_new = action == "create"
+
+    if can_publish or is_new:
+        page.save()
+        _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
+        page.save()
+        _apply_privacy(page, node.get("privacy"), user=user, result=result)
+    else:
+        # ClusterTaggableManager holds the tags in memory until save(), which
+        # is not called here, so they reach the revision without touching the
+        # live page.
+        _apply_tags(page, node.get("tags"), tag_lookup=tag_lookup)
+
+    revision = page.save_revision(
+        user=user,
+        clean=False,
+        log_action="wagtail.create" if is_new else True,
+    )
+
+    if can_publish:
+        revision.publish(user=user)
+        return
+
+    result.drafted += 1
+    result.errors.append(
+        f"'{page.slug}' was saved as a draft rather than published, because "
+        "you do not have permission to publish it. Somebody who does can "
+        "review and publish it from the page's history."
+    )
+
+
 def _find_or_create_page(*, slug: str, model_class, parent_page: Page, site_root: Page, user):
     existing_page = _find_page_by_slug(
         slug=slug,
         site_root=site_root,
         preferred_parent=parent_page,
     )
+    if (
+        existing_page is None
+        and slug == site_root.slug
+        and site_root.specific_class is model_class
+    ):
+        # A payload that starts at the home page is the whole site. Update the
+        # home page in place; the search above cannot find it because it looks
+        # below the root, so without this every import nests another copy of
+        # the site one level deeper.
+        existing_page = site_root
+
     if existing_page is None:
         if not parent_page.permissions_for_user(user).can_add_subpage():
             raise PermissionError(
                 f"You do not have permission to create pages under '{parent_page.title}'."
             )
         new_title = slug.replace("-", " ").strip().title() or slug
-        new_page = model_class(title=new_title, slug=slug, draft_title=new_title)
+        # Not live yet. Wagtail's default is live=True the moment a page is
+        # added to the tree, which would put a half-populated page in front of
+        # the public between here and the publish at the end of the import --
+        # and would leave it there permanently if the account cannot publish.
+        new_page = model_class(
+            title=new_title,
+            slug=slug,
+            draft_title=new_title,
+            live=False,
+            has_unpublished_changes=True,
+        )
         parent_page.add_child(instance=new_page)
         return new_page.specific, "create"
 
@@ -752,7 +1722,7 @@ def _find_or_create_page(*, slug: str, model_class, parent_page: Page, site_root
         raise PermissionError(f"You do not have permission to edit '{slug}'.")
 
     current_parent = specific_existing.get_parent()
-    if current_parent.pk != parent_page.pk:
+    if specific_existing.pk != site_root.pk and current_parent.pk != parent_page.pk:
         if not specific_existing.permissions_for_user(user).can_move():
             raise PermissionError(f"You do not have permission to move '{slug}'.")
         if parent_page.is_descendant_of(specific_existing):
@@ -800,7 +1770,13 @@ def _apply_page_settings(page: Page, settings_data: dict):
     page.draft_title = page.draft_title or page.title
 
 
-def _apply_page_fields(page: Page, fields_data, *, tag_lookup: dict[str, dict[str, int]] | None = None):
+def _apply_page_fields(
+    page: Page,
+    fields_data,
+    *,
+    tag_lookup: dict[str, dict[str, int]] | None = None,
+    result: PageImportResult | None = None,
+):
     if not isinstance(fields_data, dict):
         return
 
@@ -824,8 +1800,72 @@ def _apply_page_fields(page: Page, fields_data, *, tag_lookup: dict[str, dict[st
         ):
             raw_value = _normalise_section_row_card_tags(raw_value, tag_lookup=tag_lookup)
 
+        snippet_stream = PAGE_SNIPPET_SLUG_STREAM_FIELDS.get(
+            (page._meta.label, field_name)
+        )
+        if snippet_stream is not None:
+            block_type, snippet_model = snippet_stream
+            raw_value = _deserialise_snippet_chooser_stream(
+                raw_value,
+                block_type=block_type,
+                snippet_model=snippet_model,
+                page_slug=page.slug,
+                # With the framework switched off no snippet was imported, so
+                # every page would report the same cause again. It has been
+                # stated once already, naming the flag that explains it.
+                result=result if settings.FEATURE_FLAGS.get("SKILLS") else None,
+            )
+
         python_value = _deserialise_model_field_value(model_field, raw_value)
         setattr(page, field_name, python_value)
+
+
+def _deserialise_snippet_chooser_stream(
+    raw_blocks,
+    *,
+    block_type: str,
+    snippet_model,
+    page_slug: str,
+    result: PageImportResult | None = None,
+) -> list:
+    """Resolve the slugs in a page's chooser stream to local primary keys.
+
+    A reference that matches no slug is dropped and reported. It is not worth
+    falling back to a primary key carried in an older payload: keys are not
+    the same between databases, so that silently points the page at whichever
+    snippet happens to hold the number.
+    """
+    if not isinstance(raw_blocks, list):
+        return raw_blocks
+
+    chosen_slugs = [
+        _normalised_slug(block.get("value"))
+        for block in raw_blocks
+        if isinstance(block, dict) and block.get("type") == block_type
+    ]
+    keys_by_slug = dict(
+        snippet_model.objects.filter(
+            slug__in=[slug for slug in chosen_slugs if slug]
+        ).values_list("slug", "pk")
+    )
+
+    blocks_payload: list = []
+    for block in raw_blocks:
+        if not isinstance(block, dict) or block.get("type") != block_type:
+            blocks_payload.append(block)
+            continue
+
+        raw_reference = block.get("value")
+        chosen_key = keys_by_slug.get(_normalised_slug(raw_reference))
+        if chosen_key is None:
+            if result is not None:
+                result.errors.append(
+                    f"Page '{page_slug}' dropped {block_type} '{raw_reference}' "
+                    f"because no {snippet_model._meta.verbose_name} has that slug."
+                )
+            continue
+        blocks_payload.append({**block, "value": chosen_key})
+    return blocks_payload
 
 
 def _apply_tags(page: Page, tags_data, *, tag_lookup: dict[str, dict[str, int]] | None = None):
@@ -955,8 +1995,8 @@ def _resolve_tag_id(raw_tag_value, *, tag_lookup: dict[str, dict[str, int]] | No
         raw_text = raw_tag_value.strip()
         if not raw_text:
             return None
-        if raw_text.isdigit():
-            numeric_id = int(raw_text)
+        numeric_id = row_id_from_text(raw_text)
+        if numeric_id is not None:
             if GovukTag.objects.filter(pk=numeric_id).exists():
                 return numeric_id
         return _resolve_tag_id_from_slug_and_name(
@@ -970,8 +2010,8 @@ def _resolve_tag_id(raw_tag_value, *, tag_lookup: dict[str, dict[str, int]] | No
         raw_tag_id = raw_tag_value.get("id") or raw_tag_value.get("pk") or raw_tag_value.get(
             "value_id"
         )
-        if str(raw_tag_id or "").isdigit():
-            numeric_id = int(raw_tag_id)
+        numeric_id = row_id_from_text(raw_tag_id)
+        if numeric_id is not None:
             if GovukTag.objects.filter(pk=numeric_id).exists():
                 return numeric_id
 
@@ -1057,7 +2097,19 @@ def _update_tag_lookup(tag_lookup, *, tag_id: int, tag_slug: str, tag_name: str)
         by_name.setdefault(name_key, tag_id)
 
 
-def _apply_privacy(page: Page, privacy_data, *, user):
+def _apply_privacy(page: Page, privacy_data, *, user, result: PageImportResult = None):
+    # Read before the delete below. A file can name a password restriction
+    # without naming the password: that is what an export taken by someone who
+    # may not read passwords carries, and it was becoming a restriction whose
+    # password is the empty string, which anybody gets past by submitting the
+    # form. The page's own password stands in where there is one, and where
+    # there is not the restriction is reported rather than applied, because an
+    # unrestricted page is at least a visible mistake.
+    existing_password = ""
+    for restriction in page.view_restrictions.all():
+        if restriction.restriction_type == PageViewRestriction.PASSWORD:
+            existing_password = restriction.password or ""
+
     page.view_restrictions.all().delete()
     if not isinstance(privacy_data, list):
         return
@@ -1079,7 +2131,15 @@ def _apply_privacy(page: Page, privacy_data, *, user):
             password="",
         )
         if restriction_type == PageViewRestriction.PASSWORD:
-            restriction.password = str(raw_restriction.get("password") or "")
+            password = str(raw_restriction.get("password") or "") or existing_password
+            if not password:
+                if result is not None:
+                    result.errors.append(
+                        f"Page '{page.slug}' was left without its password "
+                        "restriction because the file gives no password for it."
+                    )
+                continue
+            restriction.password = password
         restriction.save(user=user)
 
         if restriction_type == PageViewRestriction.GROUPS:
@@ -1153,8 +2213,9 @@ def _skill_slug_from_value(raw_skill_value) -> str:
     if isinstance(raw_skill_value, dict):
         raw_skill_value = raw_skill_value.get("slug") or raw_skill_value.get("skill_slug")
 
-    if str(raw_skill_value or "").isdigit():
-        matching_skill = GovukSkill.objects.filter(pk=int(raw_skill_value)).only("slug").first()
+    skill_id = row_id_from_text(raw_skill_value)
+    if skill_id is not None:
+        matching_skill = GovukSkill.objects.filter(pk=skill_id).only("slug").first()
         if matching_skill is not None:
             return _normalised_slug(matching_skill.slug)
 

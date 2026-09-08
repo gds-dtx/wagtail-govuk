@@ -5,135 +5,169 @@
 {% block content %}
     <div class="section-cards-container">
         <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
-            <h1 class="govuk-heading-l">Search result{{ results.paginator.count|pluralize }}</h1>
-            {% if query %}
-                {% if available_tags or available_sources %}
-                    <details class="govuk-details govuk-!-margin-bottom-2"
-                             data-module="govuk-details"
-                             {% if selected_tag or selected_source_id %}open{% endif %}>
-                        <summary class="govuk-details__summary">
-                            <span class="govuk-details__summary-text">Filters</span>
-                        </summary>
-                        <div class="govuk-details__text">
-                            {% if selected_tag or selected_source_label %}
-                                <p class="govuk-body-s govuk-!-margin-top-0 govuk-!-margin-bottom-3">
-                                    Showing results
-                                    {% if selected_tag and selected_source_label %}
-                                        for <strong>{{ selected_tag.value }}</strong> from <strong>{{ selected_source_label }}</strong>.
-                                    {% elif selected_tag %}
-                                        for <strong>{{ selected_tag.value }}</strong>.
-                                    {% elif selected_source_label %}
-                                        from <strong>{{ selected_source_label }}</strong>.
-                                    {% endif %}
-                                </p>
-                            {% endif %}
-                            <form method="get" class="govuk-!-margin-bottom-0">
-                                <input type="hidden" name="query" value="{{ query }}">
-                                <div class="listing-filters">
-                                    {% if available_tags %}
-                                        <div class="listing-filters__group">
-                                            <div class="govuk-form-group">
-                                                <label class="govuk-label" for="search-tag-filter">Filter by tag</label>
-                                                <select class="govuk-select" id="search-tag-filter" name="tag">
-                                                    <option value="">All tags</option>
-                                                    {% for tag in available_tags %}
-                                                        <option value="{{ tag.key|urlencode }}"
-                                                                {% if selected_tag and selected_tag.key == tag.key %}selected{% endif %}>
-                                                            {{ tag.value }}
-                                                        </option>
-                                                    {% endfor %}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    {% endif %}
-                                    {% if available_sources %}
-                                        <div class="listing-filters__group">
-                                            <div class="govuk-form-group">
-                                                <label class="govuk-label" for="search-source-filter">Filter by source</label>
-                                                <select class="govuk-select" id="search-source-filter" name="source">
-                                                    <option value="">All sources</option>
-                                                    {% for source in available_sources %}
-                                                        <option value="{{ source.id|urlencode }}"
-                                                                {% if selected_source_id == source.id %}selected{% endif %}>
-                                                            {{ source.label }}
-                                                        </option>
-                                                    {% endfor %}
-                                                </select>
-                                            </div>
-                                        </div>
-                                    {% endif %}
-                                </div>
-                                <div class="govuk-button-group govuk-!-margin-bottom-0">
-                                    <button type="submit" class="govuk-button">Apply filters</button>
-                                    {% if selected_tag or selected_source_id %}
-                                        <a href="?query={{ query|urlencode }}"
-                                           role="button"
-                                           draggable="false"
-                                           class="govuk-button govuk-button--secondary">Clear filters</a>
-                                    {% endif %}
-                                </div>
-                            </form>
-                        </div>
-                    </details>
-                {% endif %}
-                <p class="govuk-body">
-                    {{ results.paginator.count|default:0|comma_number }} result{{ results.paginator.count|pluralize }}
-                </p>
-                {% if results %}
-                    <div class="section-cards">
-                        {% for result in results %}
-                            <article class="section-card">
-                                {% if False and result.breadcrumbs %}
-                                    <!--p class="govuk-body-s govuk-!-margin-bottom-1 search-result-breadcrumbs">
-                                        {% for breadcrumb in result.breadcrumbs %}
-                                            <a class="govuk-link govuk-link--no-visited-state" href="{{ breadcrumb.url }}">{{ breadcrumb.title }}</a>{% if not forloop.last %}<span class="search-result-breadcrumbs__separator">/</span>{% endif %}
-                                        {% endfor %}
-                                    </p -->
-                                {% endif %}
-                                <h2 class="govuk-heading-s govuk-!-margin-bottom-2">
-                                    <a class="govuk-link govuk-link--no-visited-state section-card__link--stretched"
-                                       href="{{ result.url }}">{{ result.title }}</a>
-                                </h2>
-                                {% if result.source_name or result.tags or not result.is_external %}
-                                    <p class="govuk-body-s govuk-!-margin-bottom-2 tags-container">
-                                        {% if result.source_name %}
-                                            <strong class="govuk-tag">{{ result.source_name }}</strong>
-                                        {% elif not result.is_external %}
-                                            <strong class="govuk-tag">{{ current_site.site_name|default:"This site" }}</strong>
-                                        {% endif %}
-                                        {% if result.tags %}
-                                            {% for tag in result.tags %}<strong class="govuk-tag govuk-tag--grey">{{ tag }}</strong>{% endfor %}
+                <h1 class="govuk-heading-l">Search result{{ results.paginator.count|pluralize }}</h1>
+                {% if query %}
+                    {% if available_tags or available_sources %}
+                        <details class="govuk-details govuk-!-margin-bottom-2"
+                                 data-module="govuk-details"
+                                 {% if selected_tag or selected_source_id %}open{% endif %}>
+                            <summary class="govuk-details__summary">
+                                <span class="govuk-details__summary-text">Filters</span>
+                            </summary>
+                            <div class="govuk-details__text">
+                                {% if selected_tag or selected_source_label %}
+                                    <p class="govuk-body-s govuk-!-margin-top-0 govuk-!-margin-bottom-3">
+                                        Showing results
+                                        {% if selected_tag and selected_source_label %}
+                                            for <strong>{{ selected_tag.value }}</strong> from <strong>{{ selected_source_label }}</strong>.
+                                        {% elif selected_tag %}
+                                            for <strong>{{ selected_tag.value }}</strong>.
+                                        {% elif selected_source_label %}
+                                            from <strong>{{ selected_source_label }}</strong>.
                                         {% endif %}
                                     </p>
                                 {% endif %}
-                                {% if result.search_description and result.search_description != "None" %}
-                                    <p class="govuk-body section-card__text">{{ result.search_description }}</p>
+                                <form method="get" class="govuk-!-margin-bottom-0">
+                                    <input type="hidden" name="query" value="{{ query }}">
+                                    <div class="listing-filters">
+                                        {% if available_tags %}
+                                            <div class="listing-filters__group">
+                                                <div class="govuk-form-group">
+                                                    <label class="govuk-label" for="search-tag-filter">Filter by tag</label>
+                                                    <select class="govuk-select" id="search-tag-filter" name="tag">
+                                                        <option value="">All tags</option>
+                                                        {% for tag in available_tags %}
+                                                            <option value="{{ tag.key|urlencode }}"
+                                                                    {% if selected_tag and selected_tag.key == tag.key %}selected{% endif %}>
+                                                                {{ tag.value }}
+                                                            </option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                        {% if available_sources %}
+                                            <div class="listing-filters__group">
+                                                <div class="govuk-form-group">
+                                                    <label class="govuk-label" for="search-source-filter">Filter by source</label>
+                                                    <select class="govuk-select" id="search-source-filter" name="source">
+                                                        <option value="">All sources</option>
+                                                        {% for source in available_sources %}
+                                                            <option value="{{ source.id|urlencode }}"
+                                                                    {% if selected_source_id == source.id %}selected{% endif %}>
+                                                                {{ source.label }}
+                                                            </option>
+                                                        {% endfor %}
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="govuk-button-group govuk-!-margin-bottom-0">
+                                        <button type="submit" class="govuk-button">Apply filters</button>
+                                        {% if selected_tag or selected_source_id %}
+                                            <a href="?query={{ query|urlencode }}"
+                                               role="button"
+                                               draggable="false"
+                                               class="govuk-button govuk-button--secondary">Clear filters</a>
+                                        {% endif %}
+                                    </div>
+                                </form>
+                            </div>
+                        </details>
+                    {% endif %}
+                    <p class="govuk-body">
+                        {{ results.paginator.count|default:0|comma_number }} result{{ results.paginator.count|pluralize }}
+                    </p>
+                    {% if results %}
+                        <div class="section-cards">
+                            {% for result in results %}
+                                <article class="section-card">
+                                    <h2 class="govuk-heading-s govuk-!-margin-bottom-2">
+                                        <a class="govuk-link govuk-link--no-visited-state section-card__link--stretched"
+                                           href="{{ result.url }}">{{ result.title }}</a>
+                                    </h2>
+                                    {% if result.source_name or result.tags or not result.is_external %}
+                                        <p class="govuk-body-s govuk-!-margin-bottom-2 tags-container">
+                                            {% if result.source_name %}
+                                                <strong class="govuk-tag">{{ result.source_name }}</strong>
+                                            {% elif not result.is_external %}
+                                                <strong class="govuk-tag">{{ current_site.site_name|default:"This site" }}</strong>
+                                            {% endif %}
+                                            {% if result.tags %}
+                                                {% for tag in result.tags %}<strong class="govuk-tag govuk-tag--grey">{{ tag }}</strong>{% endfor %}
+                                            {% endif %}
+                                        </p>
+                                    {% endif %}
+                                    {% if result.search_description and result.search_description != "None" %}
+                                        <p class="govuk-body section-card__text">{{ result.search_description }}</p>
+                                    {% endif %}
+                                    {% if result.last_updated %}
+                                        <p class="govuk-body-s govuk-!-margin-bottom-0">Last updated: {{ result.last_updated|date:"j F Y" }}</p>
+                                    {% endif %}
+                                </article>
+                            {% endfor %}
+                        </div>
+                        {% if page_numbers %}
+                            <nav class="govuk-pagination" aria-label="Search results">
+                                {% if results.has_previous %}
+                                    <div class="govuk-pagination__prev">
+                                        <a class="govuk-link govuk-pagination__link"
+                                           href="?{{ pagination_query }}&amp;page={{ results.previous_page_number }}"
+                                           rel="prev">
+                                            <svg class="govuk-pagination__icon govuk-pagination__icon--prev"
+                                                 xmlns="http://www.w3.org/2000/svg"
+                                                 height="13"
+                                                 width="15"
+                                                 aria-hidden="true"
+                                                 focusable="false"
+                                                 viewBox="0 0 15 13">
+                                                <path d="m6.5938-0.0078125-6.7266 6.7266 6.7441 6.4062 1.377-1.449-4.1856-3.9768h12.896v-2h-12.984l4.2931-4.293-1.414-1.414z"></path>
+                                            </svg>
+                                            <span class="govuk-pagination__link-title">Previous<span class="govuk-visually-hidden"> page</span></span>
+                                        </a>
+                                    </div>
                                 {% endif %}
-                                {% if result.last_updated %}
-                                    <p class="govuk-body-s govuk-!-margin-bottom-0">Last updated: {{ result.last_updated|date:"j F Y" }}</p>
+                                <ul class="govuk-pagination__list">
+                                    {% for page in page_numbers %}
+                                        {% if page.is_ellipsis %}
+                                            <li class="govuk-pagination__item govuk-pagination__item--ellipses">&ctdot;</li>
+                                        {% else %}
+                                            <li class="govuk-pagination__item {% if page.is_current %}govuk-pagination__item--current{% endif %}">
+                                                <a class="govuk-link govuk-pagination__link"
+                                                   href="?{{ pagination_query }}&amp;page={{ page.number }}"
+                                                   aria-label="Page {{ page.number }}"
+                                                   {% if page.is_current %}aria-current="page"{% endif %}>{{ page.number }}</a>
+                                            </li>
+                                        {% endif %}
+                                    {% endfor %}
+                                </ul>
+                                {% if results.has_next %}
+                                    <div class="govuk-pagination__next">
+                                        <a class="govuk-link govuk-pagination__link"
+                                           href="?{{ pagination_query }}&amp;page={{ results.next_page_number }}"
+                                           rel="next">
+                                            <span class="govuk-pagination__link-title">Next<span class="govuk-visually-hidden"> page</span></span>
+                                            <svg class="govuk-pagination__icon govuk-pagination__icon--next"
+                                                 xmlns="http://www.w3.org/2000/svg"
+                                                 height="13"
+                                                 width="15"
+                                                 aria-hidden="true"
+                                                 focusable="false"
+                                                 viewBox="0 0 15 13">
+                                                <path d="m8.107-0.0078125-1.4136 1.414 4.2926 4.293h-12.986v2h12.896l-4.1855 3.9766 1.377 1.4492 6.7441-6.4062-6.7246-6.7266z"></path>
+                                            </svg>
+                                        </a>
+                                    </div>
                                 {% endif %}
-                            </article>
-                        {% endfor %}
-                    </div>
-                    {% if results.has_previous or results.has_next %}
-                        <p class="govuk-body govuk-!-margin-top-4 govuk-!-margin-bottom-0">
-                            {% if results.has_previous %}
-                                <a class="govuk-link govuk-!-margin-right-4"
-                                   href="?query={{ query|urlencode }}{% if selected_tag %}&tag={{ selected_tag.key|urlencode }}{% endif %}{% if selected_source_id %}&source={{ selected_source_id|urlencode }}{% endif %}&page={{ results.previous_page_number }}">Previous</a>
-                            {% endif %}
-                            Page {{ results.number }} of {{ results.paginator.num_pages }}
-                            {% if results.has_next %}
-                                <a class="govuk-link govuk-!-margin-left-4"
-                                   href="?query={{ query|urlencode }}{% if selected_tag %}&tag={{ selected_tag.key|urlencode }}{% endif %}{% if selected_source_id %}&source={{ selected_source_id|urlencode }}{% endif %}&page={{ results.next_page_number }}">Next</a>
-                            {% endif %}
-                        </p>
+                            </nav>
+                        {% endif %}
+                    {% else %}
+                        <p class="govuk-body">No results found.</p>
                     {% endif %}
                 {% else %}
-                    <p class="govuk-body">No results found.</p>
+                    <p class="govuk-body">Enter a search term to find pages.</p>
                 {% endif %}
-            {% else %}
-                <p class="govuk-body">Enter a search term to find pages.</p>
-            {% endif %}
         </div>
     </div>
 {% endblock %}

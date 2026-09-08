@@ -408,14 +408,14 @@ class PageImportExportAdminViewTests(TestCase):
 
         call_order: list[str] = []
 
-        def _record_tags(*, raw_tags, raw_pages):
+        def _record_tags(*, raw_tags, raw_pages, user, result):
             call_order.append("tags")
             return {"by_slug": {}, "by_name": {}}
 
-        def _record_skills(raw_skills, *, result):
+        def _record_skills(raw_skills, *, user, result):
             call_order.append("skills")
 
-        def _record_roles(raw_roles, *, result):
+        def _record_roles(raw_roles, *, user, result):
             call_order.append("roles")
 
         def _record_pages(*args, **kwargs):
@@ -434,6 +434,62 @@ class PageImportExportAdminViewTests(TestCase):
             )
 
         self.assertEqual(call_order, ["tags", "skills", "roles", "pages"])
+
+    def test_a_home_page_of_another_type_is_refused_not_rebuilt_around(self):
+        """A with-root file against a worked-on site whose home is another type.
+
+        Neither guard can act: the type cannot change in place, and only an
+        empty placeholder is replaced. Falling through built a second home
+        page and moved every slug-matched page in the file under it -- the
+        whole site restructured, every URL gaining a /home/ prefix, behind a
+        green report. Seen for real importing a with-root export into the
+        dev rehearsal, whose home page is a SectionPage.
+        """
+        payload = {
+            "format": PAGE_EXPORT_FORMAT,
+            "pages": [
+                {
+                    "model": "govuk.ContentPage",
+                    "settings": {"title": "The framework", "slug": self.root_page.slug},
+                    "fields": {"body": "<p>Welcome</p>"},
+                    "children": [
+                        {
+                            "model": "govuk.SectionPage",
+                            "settings": {"title": "Benefits changed", "slug": "benefits"},
+                            "fields": {},
+                        },
+                        {
+                            "model": "govuk.ContentPage",
+                            "settings": {"title": "Brand new", "slug": "brand-new"},
+                            "fields": {"body": "<p>New</p>"},
+                        },
+                    ],
+                }
+            ],
+        }
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.admin_user
+        )
+
+        # The site keeps its shape: one home page, and nothing moved under a
+        # second one.
+        self.assertEqual(Page.objects.filter(slug=self.root_page.slug).count(), 1)
+        self.section_page.refresh_from_db()
+        self.assertEqual(self.section_page.get_parent().pk, self.root_page.pk)
+        # What the file holds inside its home page still arrives, in place:
+        # the slug match updated where it stands, the new page was created
+        # under the root the site already has.
+        self.assertEqual(
+            Page.objects.get(pk=self.section_page.pk).title, "Benefits changed"
+        )
+        brand_new = Page.objects.get(slug="brand-new")
+        self.assertEqual(brand_new.get_parent().pk, self.root_page.pk)
+        # And the report says what was refused and why.
+        self.assertTrue(
+            any("home page was left as it is" in error for error in result.errors),
+            result.errors,
+        )
 
     def test_import_creates_only_new_tags_and_sets_page_and_card_tags(self):
         existing_tag = GovukTag.objects.create(slug="existing-tag", name="Existing tag")
@@ -538,3 +594,132 @@ class PageImportExportAdminViewTests(TestCase):
         ]
         self.assertIsInstance(raw_card_tag_value, int)
         self.assertEqual(GovukTag.objects.get(pk=raw_card_tag_value).slug, "new-tag")
+
+    def _import(self, payload):
+        upload = SimpleUploadedFile(
+            "pages.json",
+            json.dumps(payload).encode("utf-8"),
+            content_type="application/json",
+        )
+        return self.client.post(
+            self.import_url,
+            data={"site_id": self.site.pk, "json_file": upload},
+            follow=True,
+        )
+
+    def test_a_file_holding_nothing_to_import_is_not_reported_as_complete(self):
+        """A green "Import complete" over a file that was never an export.
+
+        Cutover is a sequence of exports and imports checked by reading the
+        banner, so a success message for a file that moved nothing is the one
+        message that must not appear. Every one of these left the site as it
+        was and still said the import had finished.
+        """
+        for label, payload in (
+            ("an empty object", {}),
+            ("nothing but a format", {"format": PAGE_EXPORT_FORMAT}),
+            ("an empty pages list", {"format": PAGE_EXPORT_FORMAT, "pages": []}),
+            ("pages that are not a list", {"pages": "not a list"}),
+            ("somebody else's file", {"users": [{"name": "someone"}]}),
+        ):
+            with self.subTest(label=label):
+                pages_before = Page.objects.count()
+                response = self._import(payload)
+                messages = [str(message) for message in response.context["messages"]]
+
+                self.assertEqual(Page.objects.count(), pages_before)
+                self.assertTrue(messages)
+                self.assertNotIn(
+                    "Import complete",
+                    " ".join(messages),
+                    msg=f"{label} was reported as a completed import",
+                )
+                self.assertIn("Nothing was imported.", messages[0])
+
+    def test_every_reason_nothing_was_imported_is_given_not_just_the_first(self):
+        """A file can be refused for several reasons at once.
+
+        Showing only the first turns them into a queue: fix one, upload again,
+        meet the next. The banner names them together, the way the skipped-items
+        warning under a completed import already does.
+        """
+        response = self._import(
+            {
+                "format": PAGE_EXPORT_FORMAT,
+                "changelog": [
+                    {"note": "An entry with no date"},
+                    {"date": "2026-08-19", "note": ""},
+                ],
+                "tags": [{"slug": "carried-tag", "name": "Carried tag"}],
+            }
+        )
+        messages = [str(message) for message in response.context["messages"]]
+
+        self.assertIn("Nothing was imported.", messages[0])
+        self.assertEqual(
+            messages[0].count("Skipped a changelog entry for the framework"),
+            2,
+            messages[0],
+        )
+
+    def test_a_file_holding_one_page_is_still_reported_as_complete(self):
+        response = self._import(
+            {
+                "format": PAGE_EXPORT_FORMAT,
+                "pages": [
+                    {
+                        "model": "govuk.ContentPage",
+                        "settings": {"title": "Apply", "slug": "apply"},
+                        "fields": {"body": "<p>New body</p>"},
+                    }
+                ],
+            }
+        )
+        messages = [str(message) for message in response.context["messages"]]
+
+        self.assertIn("Import complete", " ".join(messages))
+        self.content_page.refresh_from_db()
+        self.assertEqual(self.content_page.body, "<p>New body</p>")
+
+    def test_the_home_page_can_be_exported_and_comes_back_in_place(self):
+        """The front page is content, and export used to leave it behind.
+
+        A cutover that exported everything offered and imported it into a new
+        instance still opened on "Welcome to your new Wagtail site!", because
+        the site root was the one page the export list never showed. The
+        import side has always known what to do with a home page node.
+        """
+        home_page = self.site.root_page.specific
+        home_page.title = "Capability Framework"
+        home_page.hero_title = "Find your role"
+        home_page.save_revision().publish()
+
+        index = self.client.get(self.index_url)
+        self.assertContains(index, "Capability Framework")
+
+        response = self.client.post(
+            self.export_url,
+            data={"site_id": self.site.pk, "page_ids": [home_page.pk]},
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(payload["pages"][0]["settings"]["slug"], home_page.slug)
+        self.assertEqual(payload["pages"][0]["fields"]["hero_title"], "Find your role")
+        exported_children = [
+            child["settings"]["slug"] for child in payload["pages"][0]["children"]
+        ]
+        self.assertIn("benefits", exported_children)
+
+        home_page.title = "Overwritten by hand"
+        home_page.hero_title = ""
+        home_page.save_revision().publish()
+        pages_before = Page.objects.count()
+
+        self._import(payload)
+
+        home_page.refresh_from_db()
+        self.assertEqual(Page.objects.count(), pages_before)
+        self.assertEqual(self.site.root_page_id, home_page.pk)
+        self.assertEqual(home_page.specific.title, "Capability Framework")
+        self.assertEqual(home_page.specific.hero_title, "Find your role")

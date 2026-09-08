@@ -5,7 +5,6 @@ import json
 import logging
 import socket
 import ssl
-
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime

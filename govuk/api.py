@@ -6,7 +6,6 @@ from django.db.models import Count, Q
 from django.db.models.functions import Coalesce
 from django.http import JsonResponse
 from django.urls import reverse
-from django.utils.html import strip_tags
 from rest_framework import generics, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -18,8 +17,13 @@ from wagtail.documents.api.v2.views import DocumentsAPIViewSet
 from wagtail.images.api.v2.views import ImagesAPIViewSet
 
 from govuk.authentication import InternalAccessJWTAuthentication
-from govuk.models import ContentDiscoverySource, ExternalContentItem, GovukTag
-from govuk.utils import normalised_text
+from govuk.models import (
+    ContentDiscoverySource,
+    ExternalContentItem,
+    GovukTag,
+    without_framework_pages,
+)
+from govuk.utils import normalised_text, row_id_from_text
 
 DEFAULT_API_REPOSITORY_URL = "https://github.com/govuk-digital-backbone/wagtail-govuk"
 
@@ -184,7 +188,12 @@ class WagtailPages(AuthenticatedAPIViewSetMixin, PagesAPIViewSet):
     ]
 
     def get_queryset(self):
-        return super().get_queryset().prefetch_related("view_restrictions__groups")
+        # AllowAny above, so this listing is public. Framework pages that
+        # reached a non-framework site through the import 404 when fetched;
+        # naming them here would publish a list of titles that all 404.
+        return without_framework_pages(
+            super().get_queryset().prefetch_related("view_restrictions__groups")
+        )
 
 
 class WagtailImages(AuthenticatedAPIViewSetMixin, ImagesAPIViewSet):
@@ -264,6 +273,16 @@ class ExternalContentPagination(PageNumberPagination):
         )
 
 
+def _filter_parameter(request, name: str) -> str:
+    """A filter from the query string, in the form the database can be asked for.
+
+    A NUL is dropped: PostgreSQL refuses a string literal carrying one, so
+    "?tag=%00" was a 500 rather than a filter matching nothing. SQLite takes
+    it, which is why the tests and CI were quiet about it.
+    """
+    return (request.query_params.get(name) or "").replace("\x00", "").strip()
+
+
 class ExternalContentSourcesAPIView(AuthenticatedAPIViewSetMixin, generics.ListAPIView):
     permission_classes = [AllowAny]
     serializer_class = ExternalContentSourceSerializer
@@ -272,22 +291,22 @@ class ExternalContentSourcesAPIView(AuthenticatedAPIViewSetMixin, generics.ListA
     def get_queryset(self):
         queryset = ContentDiscoverySource.objects.all()
 
-        raw_tag_filter = (self.request.query_params.get("tag") or "").strip().lower()
+        raw_tag_filter = _filter_parameter(self.request, "tag").lower()
         if raw_tag_filter:
             queryset = queryset.filter(external_content_items__hidden=False)
-            if raw_tag_filter.isdigit():
-                queryset = queryset.filter(
-                    external_content_items__tags__id=int(raw_tag_filter)
-                )
+            tag_id = row_id_from_text(raw_tag_filter)
+            if tag_id is not None:
+                queryset = queryset.filter(external_content_items__tags__id=tag_id)
             else:
                 queryset = queryset.filter(
                     external_content_items__tags__slug__iexact=raw_tag_filter
                 )
 
-        raw_source_filter = (self.request.query_params.get("source") or "").strip()
+        raw_source_filter = _filter_parameter(self.request, "source")
         if raw_source_filter:
-            if raw_source_filter.isdigit():
-                queryset = queryset.filter(id=int(raw_source_filter))
+            source_id = row_id_from_text(raw_source_filter)
+            if source_id is not None:
+                queryset = queryset.filter(id=source_id)
             else:
                 queryset = queryset.filter(
                     Q(name__iexact=raw_source_filter) | Q(url__iexact=raw_source_filter)
@@ -314,17 +333,19 @@ class ExternalContentItemsAPIView(AuthenticatedAPIViewSetMixin, generics.ListAPI
     def get_queryset(self):
         queryset = ExternalContentItem.objects.filter(hidden=False)
 
-        raw_tag_filter = (self.request.query_params.get("tag") or "").strip().lower()
+        raw_tag_filter = _filter_parameter(self.request, "tag").lower()
         if raw_tag_filter:
-            if raw_tag_filter.isdigit():
-                queryset = queryset.filter(tags__id=int(raw_tag_filter))
+            tag_id = row_id_from_text(raw_tag_filter)
+            if tag_id is not None:
+                queryset = queryset.filter(tags__id=tag_id)
             else:
                 queryset = queryset.filter(tags__slug__iexact=raw_tag_filter)
 
-        raw_source_filter = (self.request.query_params.get("source") or "").strip()
+        raw_source_filter = _filter_parameter(self.request, "source")
         if raw_source_filter:
-            if raw_source_filter.isdigit():
-                queryset = queryset.filter(source_id=int(raw_source_filter))
+            source_id = row_id_from_text(raw_source_filter)
+            if source_id is not None:
+                queryset = queryset.filter(source_id=source_id)
             else:
                 queryset = queryset.filter(
                     Q(source__name__iexact=raw_source_filter)

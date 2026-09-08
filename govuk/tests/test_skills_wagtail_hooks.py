@@ -33,9 +33,10 @@ class SkillsWagtailHooksTests(SimpleTestCase):
                 call(hooks_module.ExternalContentItemViewSet),
                 call(hooks_module.GovukSkillViewSet),
                 call(hooks_module.GovukRoleViewSet),
+                call(hooks_module.GovukChangelogEntryViewSet),
             ]
         )
-        self.assertEqual(mock_register_snippet.call_count, 4)
+        self.assertEqual(mock_register_snippet.call_count, 5)
 
         _reload_hooks()
 
@@ -61,6 +62,38 @@ class SkillsWagtailHooksTests(SimpleTestCase):
             call(hooks_module.GovukRoleViewSet),
             mock_register_snippet.mock_calls,
         )
+        self.assertNotIn(
+            call(hooks_module.GovukChangelogEntryViewSet),
+            mock_register_snippet.mock_calls,
+        )
+
+        _reload_hooks()
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    @patch("wagtail.contrib.settings.models.register_setting")
+    def test_registers_the_framework_wording_setting_when_enabled(
+        self, mock_register_setting
+    ):
+        hooks_module = _reload_hooks()
+
+        mock_register_setting.assert_called_once_with(
+            hooks_module.CapabilityFrameworkWordingSettings, icon="edit"
+        )
+
+        _reload_hooks()
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    @patch("wagtail.contrib.settings.models.register_setting")
+    def test_does_not_register_the_framework_wording_setting_when_disabled(
+        self, mock_register_setting
+    ):
+        hooks_module = _reload_hooks()
+
+        self.assertNotIn(
+            call(hooks_module.CapabilityFrameworkWordingSettings, icon="edit"),
+            mock_register_setting.mock_calls,
+        )
+        self.assertEqual(mock_register_setting.call_count, 0)
 
         _reload_hooks()
 
@@ -73,4 +106,6 @@ class SkillsWagtailHooksTests(SimpleTestCase):
 
         self.assertTrue(hooks_module.GovukRoleViewSet.add_to_admin_menu)
         self.assertEqual(hooks_module.GovukRoleViewSet.menu_label, "Roles")
-        self.assertEqual(hooks_module.GovukRoleViewSet.list_display, ["title", "slug"])
+        self.assertEqual(
+            hooks_module.GovukRoleViewSet.list_display, ["title", "family", "slug"]
+        )

@@ -1,16 +1,26 @@
+import logging
 from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib.auth import logout as django_logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.staticfiles.views import serve as staticfiles_serve
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import (
+    Http404,
+    HttpResponse,
+    HttpResponseBadRequest,
+    HttpResponseRedirect,
+    HttpResponseServerError,
+    JsonResponse,
+)
 from django.shortcuts import redirect, render
 from django.urls import reverse
-from django.views.decorators.http import require_POST
-from django.views.decorators.http import require_http_methods
+from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_http_methods, require_POST
 from wagtail.models import Site
 
+from govuk import framework_csv
 from govuk.forms import FeedbackForm
 from govuk.models import CustomiseSettings, EdDSAKeySettings, Feedback
 from govuk.oidc import (
@@ -23,6 +33,15 @@ from govuk.oidc import (
     safe_oidc_next_url,
 )
 from govuk.search_backend import search_backend
+
+# Every "Is this page useful?" answer is one line on this logger, which the
+# JSON formatter carries to CloudWatch alongside every other request. That is
+# the server-side record CS32-3543 asks for: nothing is stored in the database
+# and nothing identifies the visitor, so there is no personal data to look
+# after -- only a count of yes and no against a path.
+page_feedback_logger = logging.getLogger("govuk.page_feedback")
+
+PAGE_FEEDBACK_ANSWERS = ("yes", "no")
 
 
 @login_required
@@ -52,7 +71,7 @@ def _eddsa_key_settings_for_request(request) -> EdDSAKeySettings:
     return EdDSAKeySettings.for_site(site)
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "HEAD"])
 def custom_css_view(request):
     custom_css = _customise_settings_for_request(request).render_custom_css()
     if not custom_css:
@@ -61,7 +80,7 @@ def custom_css_view(request):
     return HttpResponse(custom_css, content_type="text/css; charset=utf-8")
 
 
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "HEAD"])
 def jwks_view(request):
     jwks_keys = _eddsa_key_settings_for_request(request).build_jwks_keys()
     if not jwks_keys:
@@ -72,7 +91,52 @@ def jwks_view(request):
     )
 
 
-@require_http_methods(["GET"])
+def _page_numbers(results) -> list[dict]:
+    """The numbers the pagination offers, eliding a long run of pages.
+
+    The Design System's pagination shows the first and last page, the current
+    one and its neighbours, and an ellipsis for the rest.
+    """
+    paginator = getattr(results, "paginator", None)
+    if paginator is None or paginator.num_pages < 2:
+        return []
+
+    numbers = []
+    for entry in paginator.get_elided_page_range(
+        results.number, on_each_side=1, on_ends=1
+    ):
+        if isinstance(entry, int):
+            numbers.append(
+                {
+                    "number": entry,
+                    "is_current": entry == results.number,
+                    "is_ellipsis": False,
+                }
+            )
+        else:
+            numbers.append({"number": "", "is_current": False, "is_ellipsis": True})
+    return numbers
+
+
+def _pagination_query(query: str, tag: str, source: str) -> str:
+    """The query string a page link carries, so that paging keeps the search
+    and any filters the reader has chosen.
+
+    The filters the search settled on rather than the ones asked for: a tag
+    that matches nothing is dropped before the results are built, and carrying
+    it on into the page links would show a filtered URL over unfiltered
+    results.
+    """
+    return urlencode(
+        {
+            name: value
+            for name, value in (("query", query), ("tag", tag), ("source", source))
+            if value
+        }
+    )
+
+
+@require_http_methods(["GET", "HEAD"])
 def search_view(request):
     query = (request.GET.get("query") or "").strip()
     page_number = request.GET.get("page", 1)
@@ -98,6 +162,12 @@ def search_view(request):
         {
             "query": query,
             "results": results,
+            "page_numbers": _page_numbers(results),
+            "pagination_query": _pagination_query(
+                query,
+                (getattr(results, "selected_tag", None) or {}).get("key", ""),
+                getattr(results, "selected_source_id", ""),
+            ),
             "available_tags": getattr(results, "available_tags", []),
             "available_sources": getattr(results, "available_sources", []),
             "selected_tag": getattr(results, "selected_tag", None),
@@ -105,6 +175,113 @@ def search_view(request):
             "selected_source_label": getattr(results, "selected_source_label", ""),
         },
     )
+
+
+@require_http_methods(["GET", "HEAD"])
+def framework_csv_view(request, name):
+    """One of the framework's published CSVs, built from the content asked for.
+
+    Generated at request time rather than kept as a file, so the download is
+    the published content by construction -- the live service's copies were
+    regenerated on a schedule and drifted, and its links now answer
+    AccessDenied. The label and columns match the published downloads.
+    """
+    if not settings.FEATURE_FLAGS.get("SKILLS"):
+        raise Http404
+    try:
+        label, write = framework_csv.FRAMEWORK_CSV_DOWNLOADS[name]
+    except KeyError:
+        raise Http404
+
+    response = HttpResponse(content_type="text/csv; charset=utf-8")
+    stamp = timezone.now().date().isoformat()
+    response["Content-Disposition"] = (
+        f'attachment; filename="{label} - {stamp}.csv"'
+    )
+    write(response)
+    return response
+
+
+BARE_SERVER_ERROR_HTML = (
+    "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+    "<title>Sorry, there is a problem with the service</title></head>"
+    "<body><h1>Sorry, there is a problem with the service</h1>"
+    "<p>Try again later.</p></body></html>"
+)
+
+
+def server_error(request):
+    """The GOV.UK problem-with-the-service page, as branded as the moment allows.
+
+    Django's own 500 handler renders the template without the request, so the
+    page could never carry the site's header or contact details. Rendering
+    with the request restores those -- and when the problem is deep enough
+    that even this template cannot render (the database gone, say), the bare
+    page below still answers rather than a blank error.
+    """
+    try:
+        return render(request, "500.html", status=500)
+    except Exception:
+        return HttpResponseServerError(BARE_SERVER_ERROR_HTML)
+
+
+def _page_feedback_return_path(request, value: str | None) -> str:
+    """The page the answer came from, or the site root if it cannot be trusted.
+
+    The form posts the page's own path so the answer can be counted against
+    it and the reader sent back there without JavaScript. It is visitor input,
+    so only a local absolute path is accepted -- a scheme, a host, a
+    protocol-relative ``//`` or a control character all fall back to ``/``
+    rather than becoming an open redirect.
+    """
+    path = (value or "").strip()[:500]
+    if not path.startswith("/") or path.startswith("//"):
+        return "/"
+    if any(character in path for character in "\r\n\x00 \\"):
+        return "/"
+    if not url_has_allowed_host_and_scheme(
+        path, allowed_hosts={request.get_host()}, require_https=request.is_secure()
+    ):
+        return "/"
+    return path.split("?", 1)[0].split("#", 1)[0]
+
+
+@require_POST
+def page_feedback_view(request):
+    """Record a yes or no to "Is this page useful?" and send the reader back.
+
+    Answers the component in ``includes/page_feedback.html``. With JavaScript
+    the form is posted in the background and the page shows its thank-you
+    without moving; without it the browser posts here and is redirected back
+    to the same page with ``?page_feedback=sent`` so the template can show the
+    same thank-you. Only sites that have switched the prompt on answer at all.
+    """
+    site = Site.find_for_request(request)
+    customise_settings = (
+        CustomiseSettings.objects.filter(site=site).first() if site else None
+    )
+    if customise_settings is None or not customise_settings.show_page_feedback_prompt:
+        raise Http404
+
+    answer = (request.POST.get("answer") or "").strip().lower()
+    if answer not in PAGE_FEEDBACK_ANSWERS:
+        return HttpResponseBadRequest("answer must be yes or no")
+
+    path = _page_feedback_return_path(request, request.POST.get("page"))
+    page_feedback_logger.info(
+        "Page feedback",
+        extra={
+            "page_feedback_answer": answer,
+            "page_feedback_path": path,
+            "site_hostname": site.hostname,
+        },
+    )
+
+    if request.headers.get("X-Requested-With") == "fetch":
+        return HttpResponse(status=204)
+    response = HttpResponseRedirect(f"{path}?page_feedback=sent#page-feedback")
+    response.status_code = 303
+    return response
 
 
 def _normalised_referrer(value: str | None) -> str:

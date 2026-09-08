@@ -4,7 +4,12 @@ from django.conf import settings
 from django.http import Http404
 from wagtail.models import Page, Site
 
-from govuk.models import CustomiseSettings, FooterSettings, PhaseBannerSettings
+from govuk.models import (
+    CustomiseSettings,
+    FooterSettings,
+    PhaseBannerSettings,
+    without_framework_pages,
+)
 
 
 def navigation_and_breadcrumbs(request):
@@ -44,7 +49,11 @@ def navigation_and_breadcrumbs(request):
         current_page = None
 
     service_navigation_items = []
-    menu_pages = site_root.get_children().live().in_menu().specific().order_by("path")
+    menu_pages = (
+        without_framework_pages(site_root.get_children().live().in_menu())
+        .specific()
+        .order_by("path")
+    )
     for menu_page in menu_pages:
         service_navigation_items.append(
             {

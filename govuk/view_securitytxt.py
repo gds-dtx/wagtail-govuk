@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.http import HttpResponsePermanentRedirect, HttpResponseNotFound
+from django.http import HttpResponseNotFound, HttpResponsePermanentRedirect
 from django.views.decorators.http import require_http_methods
 
 
