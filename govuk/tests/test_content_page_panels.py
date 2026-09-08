@@ -20,6 +20,7 @@ from govuk.models import (
 
 FRAMEWORK_SETTINGS_FIELDS = {
     "show_role_navigation",
+    "show_in_role_navigation",
     "show_framework_updates",
     "show_framework_welcome",
 }

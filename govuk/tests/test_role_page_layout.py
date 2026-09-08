@@ -249,10 +249,52 @@ class RolePageLayoutTests(TestCase):
             [{"title": "Skills A to Z", "url": skills.url, "is_current": False}],
         )
 
+    def test_further_resources_lists_only_the_pages_an_editor_ticked(self):
+        """Privacy sits beside the roles in the tree but not in live's menu.
+
+        Every page beside the roles used to qualify, which is how Privacy and
+        the Accessibility statement got into the role menu after the content
+        import. Now a page is listed because someone ticked it, and Skills A
+        to Z because it is the framework's own index.
+        """
+        for title, slug, ticked in (
+            ("Privacy", "privacy", False),
+            ("Roadmap", "roadmap", True),
+        ):
+            page = self.root_page.add_child(
+                instance=ContentPage(
+                    title=title, slug=slug, show_in_role_navigation=ticked
+                )
+            )
+            page.save_revision().publish()
+        skills = self.root_page.add_child(
+            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+        )
+        skills.save_revision().publish()
+
+        group = further_resources_group()
+
+        self.assertEqual(
+            [item["title"] for item in group["items"]], ["Roadmap", "Skills A to Z"]
+        )
+
+    def test_further_resources_is_not_the_header_menu(self):
+        """"Show in menus" drives the header, which lists nothing on this site.
+
+        The two switches are separate on purpose: ticking a page for the side
+        menu must not put it in the header, and vice versa.
+        """
+        header_only = self.root_page.add_child(
+            instance=ContentPage(title="Header only", slug="header-only", show_in_menus=True)
+        )
+        header_only.save_revision().publish()
+
+        self.assertIsNone(further_resources_group())
+
     def test_further_resources_keeps_the_order_the_editors_chose(self):
         for title, slug in (("Roadmap", "roadmap"), ("Job grades", "job-grades")):
             page = self.root_page.add_child(
-                instance=ContentPage(title=title, slug=slug)
+                instance=ContentPage(title=title, slug=slug, show_in_role_navigation=True)
             )
             page.save_revision().publish()
 
@@ -262,7 +304,7 @@ class RolePageLayoutTests(TestCase):
 
     def test_further_resources_marks_the_page_being_looked_at(self):
         page = self.root_page.add_child(
-            instance=ContentPage(title="Roadmap", slug="roadmap")
+            instance=ContentPage(title="Roadmap", slug="roadmap", show_in_role_navigation=True)
         )
         page.save_revision().publish()
 
@@ -281,11 +323,15 @@ class RolePageLayoutTests(TestCase):
         """It runs on every page the navigation appears on."""
         for index in range(6):
             page = self.root_page.add_child(
-                instance=ContentPage(title=f"Page {index}", slug=f"page-{index}")
+                instance=ContentPage(
+                    title=f"Page {index}", slug=f"page-{index}", show_in_role_navigation=True
+                )
             )
             page.save_revision().publish()
 
-        # A fixed cost: the site, its root page and one query for the children.
+        # A fixed cost: the site, its root page and one query for the children
+        # (the ticked pages and the skills index come back together, through
+        # the join to the content page table).
         # Two more than the pages and roles: the default site and its
         # wording, which names the group headings, read once per call.
         with self.assertNumQueries(5):

@@ -70,10 +70,15 @@ class FrameworkLanguageEditableTests(TestCase):
 
         # A non-role page beside the roles, so the navigation has a further
         # resources group to head.
-        self.privacy_page = self.root_page.add_child(
-            instance=ContentPage(title="Privacy", slug="privacy", body="")
+        self.roadmap_page = self.root_page.add_child(
+            # A page the framework lists at the foot of its side menu. Ticked,
+            # because since 0069 a page is listed by choice, not by position;
+            # a Privacy page beside the roles would no longer qualify.
+            instance=ContentPage(
+                title="Roadmap", slug="roadmap", body="", show_in_role_navigation=True
+            )
         )
-        self.privacy_page.save_revision().publish()
+        self.roadmap_page.save_revision().publish()
 
         self.wording = CapabilityFrameworkWordingSettings.for_site(self.site)
 

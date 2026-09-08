@@ -268,6 +268,15 @@ Also `show_page_feedback_prompt` on, so every page ends with "Is this page
 useful?" as the live service's do; `page_feedback_more_url` is `/feedback`,
 and the two wording fields keep their defaults, which are the live copy.
 
+**The role side menu's last group is chosen page by page.** "List in the role
+side menu", in a content page's settings, puts it under the group that closes
+the menu; Skills A to Z is always there. The flag travels in the export like
+any other page field. Migration `0069` ticks the five pages the live service
+lists (propose a change, download, job grades, context and challenges,
+roadmap) on a framework instance, so nothing needs doing at cutover unless the
+service wants a different list. Wagtail's own "Show in menus" is a different
+switch: it drives the header, which on this service lists only the site name.
+
 **The `/feedback` page itself is not in the export.** On the dev instance it
 was made by hand after the 20 August export, as a content page linking to the
 GOV.UK Forms survey, so it has to be either included in the next export or
