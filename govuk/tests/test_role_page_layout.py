@@ -7,6 +7,7 @@ from wagtail.models import Site
 
 from govuk.models import (
     ContentPage,
+    FrameworkContentPage,
     FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
@@ -317,9 +318,10 @@ class RolePageLayoutTests(TestCase):
             page.save_revision().publish()
 
         # A fixed cost whatever the number of pages: finding the framework main
-        # page, one query for its children, and the default site and its
+        # page, one query for its children, two for the ids of the framework
+        # pages hidden from the navigation, and the default site and its
         # wording, which names the group headings.
-        with self.assertNumQueries(4):
+        with self.assertNumQueries(6):
             further_resources_group()
 
     def test_the_navigation_costs_the_same_whatever_the_number_of_roles(self):
@@ -341,6 +343,47 @@ class RolePageLayoutTests(TestCase):
             instance=ContentPage(title="Not ready", slug="not-ready", live=False)
         )
         draft.save()
+
+        self.assertIsNone(further_resources_group())
+
+    def test_a_framework_content_page_lists_itself_in_the_sidebar_by_default(self):
+        page = self.main_page.add_child(
+            instance=FrameworkContentPage(title="Guidance", slug="guidance", body="")
+        )
+        page.save_revision().publish()
+
+        self.assertTrue(page.specific.show_in_framework_navigation)
+        group = further_resources_group()
+        self.assertEqual([item["title"] for item in group["items"]], ["Guidance"])
+
+    def test_a_page_switched_off_is_left_out_of_the_sidebar(self):
+        shown = self.main_page.add_child(
+            instance=FrameworkContentPage(title="Shown", slug="shown", body="")
+        )
+        shown.save_revision().publish()
+        hidden = self.main_page.add_child(
+            instance=FrameworkContentPage(
+                title="Hidden",
+                slug="hidden",
+                body="",
+                show_in_framework_navigation=False,
+            )
+        )
+        hidden.save_revision().publish()
+
+        group = further_resources_group()
+
+        self.assertEqual([item["title"] for item in group["items"]], ["Shown"])
+
+    def test_a_skills_page_switched_off_is_left_out_of_the_sidebar(self):
+        skills = self.main_page.add_child(
+            instance=FrameworkSkillsPage(
+                title="Skills A to Z",
+                slug="skills",
+                show_in_framework_navigation=False,
+            )
+        )
+        skills.save_revision().publish()
 
         self.assertIsNone(further_resources_group())
 

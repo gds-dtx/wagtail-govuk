@@ -438,9 +438,11 @@ def framework_content_settings_panels() -> list:
     switch for it; it offers neither the framework updates, the welcome layout,
     the sidebar heading navigation, nor the hero-styling toggles. The framework
     behaviours are forced in ``FrameworkContentPage.get_context`` regardless of
-    what is stored.
+    what is stored. It does offer the switch for whether the page itself is
+    listed in that sidebar navigation.
     """
     return base_settings_panels() + [
+        FieldPanel("show_in_framework_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
 
@@ -3107,7 +3109,12 @@ class FrameworkFieldsMixin(models.Model):
         if wants_framework:
             framework_wording = CapabilityFrameworkWordingSettings.for_request(request)
             if self.show_role_navigation or self.show_framework_welcome:
-                groups = role_navigation_groups(wording=framework_wording)
+                # current_page_id marks this page current in the "Further
+                # resources" group when it is one of them -- a framework content
+                # page highlights itself there, the way a role does on its route.
+                groups = role_navigation_groups(
+                    current_page_id=self.pk, wording=framework_wording
+                )
                 if self.show_role_navigation:
                     context["role_navigation"] = groups
                     # The navigation's top link is the framework main page,
@@ -3164,6 +3171,28 @@ class FrameworkFieldsMixin(models.Model):
             for group in role_groups or []
         ]
         return sections[:1] + groups + sections[1:]
+
+
+class FrameworkNavigableMixin(models.Model):
+    """A per-page switch for the sidebar's "Further resources" listing.
+
+    A framework content page and the skills index appear in the framework
+    sidebar by default (they are the pages beside the roles). This lets an
+    editor take an individual page out of that listing without unpublishing it.
+    ``further_resources_group`` reads it.
+    """
+
+    show_in_framework_navigation = models.BooleanField(
+        default=True,
+        verbose_name="Show in sidebar navigation",
+        help_text=(
+            "List this page in the framework's sidebar navigation, under "
+            "Further resources. On by default."
+        ),
+    )
+
+    class Meta:
+        abstract = True
 
 
 class ContentPage(BaseContentPage):
@@ -3286,15 +3315,30 @@ def further_resources_group(*, current_page_id: int | None = None, wording=None)
     handful of pages that are about the framework rather than one role. They are
     the framework main page's own children -- the framework content pages an
     editor adds beside the roles -- so anything added there turns up here on its
-    own.
+    own, unless an editor has switched off ``show_in_framework_navigation`` for
+    that page.
     """
     main_page = framework_main_page()
     if main_page is None:
         return None
 
+    # The switch lives on the two framework page types. Gathering the ids that
+    # have it off keeps this to two queries rather than fetching each child's
+    # specific record in the loop below.
+    hidden_ids = set(
+        FrameworkContentPage.objects.filter(
+            show_in_framework_navigation=False
+        ).values_list("pk", flat=True)
+    )
+    hidden_ids.update(
+        FrameworkSkillsPage.objects.filter(
+            show_in_framework_navigation=False
+        ).values_list("pk", flat=True)
+    )
+
     items = []
     for page in main_page.get_children().live().order_by("path"):
-        if not page.url:
+        if not page.url or page.pk in hidden_ids:
             continue
         items.append(
             {
@@ -3892,7 +3936,9 @@ class FrameworkMainPage(
         )
 
 
-class FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage):
+class FrameworkContentPage(
+    FrameworkNavigableMixin, FrameworkFieldsMixin, BaseContentPage
+):
     """A framework content page: a page about the framework beside the roles.
 
     Only ever a child of the single ``FrameworkMainPage``. It always carries the
@@ -3944,7 +3990,7 @@ class FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage):
         return super().get_context(request, *args, **kwargs)
 
 
-class FrameworkSkillsPage(Page):
+class FrameworkSkillsPage(FrameworkNavigableMixin, Page):
     # One skills index per site, like the framework main page. The skill search
     # results, the role pages and the live-service redirects all resolve "the"
     # skills page, so a second one would make which page they point at arbitrary.
@@ -4012,8 +4058,11 @@ class FrameworkSkillsPage(Page):
 
     # No hero-styling toggles and no sidebar heading navigation, like the other
     # framework pages: the skills index carries the role navigation in that
-    # column and sets its own header treatment.
-    settings_panels = base_settings_panels()
+    # column and sets its own header treatment. It does offer the switch for
+    # whether it is itself listed in that sidebar navigation.
+    settings_panels = base_settings_panels() + [
+        FieldPanel("show_in_framework_navigation"),
+    ]
 
     @classmethod
     def can_create_at(cls, parent):

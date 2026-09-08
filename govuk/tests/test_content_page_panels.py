@@ -110,7 +110,11 @@ class FrameworkContentPagePanelTests(SimpleTestCase):
         settings_panels = FrameworkContentPage.settings_panels
         self.assertEqual(
             _field_names(settings_panels),
-            ["show_last_updated_date", "show_page_content_metadata"],
+            [
+                "show_last_updated_date",
+                "show_page_content_metadata",
+                "show_in_framework_navigation",
+            ],
         )
         self.assertEqual(
             [
@@ -131,6 +135,24 @@ class FrameworkSkillsPagePanelTests(SimpleTestCase):
         self.assertNotIn(
             "enable_combined_service_navigation_and_hero_styling", settings_fields
         )
+
+
+class SidebarListingToggleTests(SimpleTestCase):
+    """Both framework page types offer a "show in sidebar" switch, default on."""
+
+    def test_the_switch_is_offered_on_both_framework_page_types(self):
+        self.assertIn(
+            "show_in_framework_navigation",
+            _field_names(FrameworkContentPage.settings_panels),
+        )
+        self.assertIn(
+            "show_in_framework_navigation",
+            _field_names(FrameworkSkillsPage.settings_panels),
+        )
+
+    def test_the_switch_defaults_on(self):
+        self.assertTrue(FrameworkContentPage().show_in_framework_navigation)
+        self.assertTrue(FrameworkSkillsPage().show_in_framework_navigation)
 
 
 class PlainContentPagePanelTests(SimpleTestCase):
@@ -202,6 +224,27 @@ class FrameworkContentPageForcesItsBehaviourTests(TestCase):
         self.assertIsNone(response.context.get("framework_changelog"))
         self.assertNotIn("framework_sections", response.context)
         self.assertFalse(response.context.get("heading_navigation"))
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_it_marks_itself_current_in_the_sidebar(self):
+        """A framework content page highlights itself in the "Further
+        resources" group, the way a role does on its route."""
+        child = self.main_page.add_child(
+            instance=FrameworkContentPage(
+                title="Guidance", slug="guidance", body="<p>Guidance.</p>"
+            )
+        )
+        child.save_revision().publish()
+
+        response = self.client.get(child.specific.url)
+
+        further_resources = next(
+            group
+            for group in response.context["role_navigation"]
+            if group["title"] == "Further resources"
+        )
+        current = [item for item in further_resources["items"] if item["is_current"]]
+        self.assertEqual([item["title"] for item in current], ["Guidance"])
 
 
 class ContentPageRenderWriteTests(TestCase):
