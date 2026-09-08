@@ -20,7 +20,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 from wagtail.models import Site
 
-from govuk import framework_csv
+from govuk import capability_framework_csv
 from govuk.forms import FeedbackForm
 from govuk.models import CustomiseSettings, EdDSAKeySettings, Feedback
 from govuk.oidc import (
@@ -189,7 +189,7 @@ def framework_csv_view(request, name):
     if not settings.FEATURE_FLAGS.get("SKILLS"):
         raise Http404
     try:
-        label, write = framework_csv.FRAMEWORK_CSV_DOWNLOADS[name]
+        label, write = capability_framework_csv.FRAMEWORK_CSV_DOWNLOADS[name]
     except KeyError:
         raise Http404
 
