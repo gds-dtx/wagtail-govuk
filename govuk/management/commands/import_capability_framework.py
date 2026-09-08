@@ -389,6 +389,6 @@ class Command(BaseCommand):
             return
 
         customise = CustomiseSettings.for_site(site)
-        customise.show_service_name_in_navigation = True
+        customise.service_name_location = "navigation"
         customise.save()
         self.stdout.write("Site settings: service name moved to the navigation")

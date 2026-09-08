@@ -157,11 +157,21 @@
                                         </li>
                                     {% endfor %}
                                     {% if request.user.is_authenticated %}
-                                        <li class="govuk-service-navigation__item app-service-navigation__item--featured">
-                                            <a class="govuk-service-navigation__link"
-                                               href="{% url 'account_logout' %}">Sign out</a>
-                                        </li>
-                                    {% elif not customise_settings.hide_sign_in_link %}
+                                        {% comment %}
+                                            "Hidden" hides the sign in link for
+                                            visitors who never sign in, but a
+                                            signed-in user must still be able to
+                                            sign out, so the sign out link stays
+                                            here in that case as well as in the
+                                            navigation location.
+                                        {% endcomment %}
+                                        {% if customise_settings.sign_in_location == "navigation" or customise_settings.sign_in_location == "hidden" %}
+                                            <li class="govuk-service-navigation__item app-service-navigation__item--featured">
+                                                <a class="govuk-service-navigation__link"
+                                                   href="{% url 'account_logout' %}">Sign out</a>
+                                            </li>
+                                        {% endif %}
+                                    {% elif customise_settings.sign_in_location == "navigation" %}
                                         <li class="govuk-service-navigation__item app-service-navigation__item--featured">
                                             <a class="govuk-service-navigation__link"
                                                href="{% url 'account_login' %}">Sign in</a>

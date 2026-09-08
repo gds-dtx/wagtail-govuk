@@ -538,7 +538,8 @@ class CustomiseSettings(BaseSiteSetting):
         default="navigation",
         help_text=(
             "Where the sign in and sign out links appear. Choose Hidden for "
-            "sites where visitors never sign in."
+            "sites where visitors never sign in -- the sign in link is hidden, "
+            "but a signed-in user can still sign out."
         ),
     )
     search_location = models.CharField(
@@ -641,10 +642,16 @@ class CustomiseSettings(BaseSiteSetting):
 
     panels = [
         FieldPanel("header_logo"),
-        FieldPanel("show_site_name_in_search_box"),
-        FieldPanel("show_service_name_in_navigation"),
-        FieldPanel("hide_sign_in_link"),
-        FieldPanel("search_placeholder"),
+        FieldPanel("service_name_location"),
+        FieldPanel("sign_in_location"),
+        MultiFieldPanel(
+            [
+                FieldPanel("search_location"),
+                FieldPanel("show_site_name_in_search_box"),
+                FieldPanel("search_placeholder"),
+            ],
+            heading="Search box",
+        ),
         FieldPanel("error_contact_link_text"),
         FieldPanel("error_contact_email"),
         FieldPanel("error_contact_about"),
