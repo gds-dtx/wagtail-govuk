@@ -278,14 +278,15 @@ fixture is not necessarily the one the service wants published. The page
 feedback wording fields (`Intro text`, `Follow up text`) keep their defaults,
 which are the live copy.
 
-**The sidebar's "Further resources" group is chosen page by page.** The
-"Show in sidebar navigation" switch, in a `FrameworkContentPage` or the
-Framework Skills page's settings, controls whether that page appears under
-the last heading of the role navigation. The switch is on by default for new
-pages, and it travels in the export with the page. Drag the pages into the
-live service's order (Skills A to Z, Propose a change, Download, Job grades,
-Context and challenges, Roadmap) in the explorer on the source instance
-before exporting, so the order travels too.
+**The sidebar's "Further resources" group is managed in "Sidebar settings".**
+Under **Capability framework → Sidebar settings**, add the framework content
+pages (and Skills A to Z), drag them into the order the live service uses
+(Skills A to Z, Propose a change, Download, Job grades, Context and challenges,
+Roadmap), and untick any you want hidden. A framework page not listed there is
+shown anyway, appended after the configured ones in page-tree order, so nothing
+disappears just because it was not added. These are `SidebarSettings`
+(`BaseSiteSetting`) — like the other site settings they are **not** in the page
+export and must be re-entered in the CMS on production.
 
 **The `/feedback` page itself is not in the export.** On the dev instance it
 was made by hand after the 20 August export, as a content page linking to the

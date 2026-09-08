@@ -60,8 +60,6 @@ Big files first — these are where most work lands:
   - `FrameworkFieldsMixin` (abstract) — the 4 framework switches
     (`show_role_navigation`, `show_framework_updates`, `show_framework_welcome`,
     `framework_welcome_body`) plus the framework `get_context` logic.
-  - `FrameworkNavigableMixin` (abstract) — `show_in_framework_navigation` flag
-    for the "Further resources" sidebar listing.
   - **`ContentPage(BaseContentPage)`** — plain content, no framework options.
   - **`FrameworkMainPage(RoutablePageMixin, …, FrameworkFieldsMixin, BaseContentPage)`**
     — framework root, `max_count = 1`. Serves each `GovukRole` as a virtual
@@ -70,8 +68,7 @@ Big files first — these are where most work lands:
   - **`FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage)`** — framework
     content; can only be created under `FrameworkMainPage`; always shows the role
     navigation (forced in `get_context`).
-  - **`FrameworkSkillsPage(FrameworkNavigableMixin, Page)`** — skills A–Z index,
-    `max_count = 1`.
+  - **`FrameworkSkillsPage(Page)`** — skills A–Z index, `max_count = 1`.
   - `TagListingsPage`, `SectionPage` — general-purpose; no framework fields in
     their panels.
 
@@ -84,9 +81,12 @@ Big files first — these are where most work lands:
   menu). `CustomiseSettings` holds **location dropdowns** for `service_name_location`,
   `sign_in_location` (header / navigation / hidden — "hidden" still shows Sign Out
   for authenticated users), `search_location`, and `header_logo`. Hero colour
-  fields were removed as inoperable. `CapabilityFrameworkWordingSettings`
-  (BaseSiteSetting, gated by `FEATURE_FLAGS["SKILLS"]`) lives in the Capability
-  Framework admin group, not Settings.
+  fields were removed as inoperable. `CapabilityFrameworkWordingSettings` and
+  `SidebarSettings` (both BaseSiteSetting, gated by `FEATURE_FLAGS["SKILLS"]`)
+  live in the Capability Framework admin group, not Settings. `SidebarSettings`
+  (ClusterableModel + `SidebarNavigationItem` Orderable rows) is the editor's
+  control of the sidebar "Further resources" list — which framework pages show,
+  in what order; an unlisted framework child is shown by default, appended after.
 
   **Framework nav helpers** (module-level functions near the bottom of the file):
   `framework_main_page()`, `role_route_url()`, `role_navigation_groups()`,
@@ -147,9 +147,10 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
 - **Sidebar nav** is fully data-driven. `role_navigation_groups()` enumerates all
   live `GovukRole` snippets grouped by `family`. The "Further resources" group
   lists live children of the `FrameworkMainPage` (i.e. `FrameworkContentPage`s
-  and the `FrameworkSkillsPage`) unless their `show_in_framework_navigation` flag
-  is off. The sidebar's top link reads "Home" and points at the `FrameworkMainPage`,
-  highlighted when that page is the current one.
+  and the `FrameworkSkillsPage`); which show and in what order is set in
+  `SidebarSettings` (Capability framework → Sidebar settings), with unlisted
+  children shown by default, appended in tree order. The sidebar's top link reads
+  "Home" and points at the `FrameworkMainPage`, highlighted when it is current.
 - **FrameworkContentPage** always shows the role navigation (forced in
   `get_context` regardless of stored field values) and highlights itself in the
   "Further resources" group. It offers no welcome layout, no updates block, and no

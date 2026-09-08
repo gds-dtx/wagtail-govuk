@@ -62,6 +62,7 @@ from govuk.models import (
     GovukSkill,
     GovukTag,
     JWTGenerationError,
+    SidebarSettings,
 )
 from govuk.page_import_export import (
     PAGE_EXPORT_FORMAT,
@@ -524,8 +525,15 @@ class CapabilityFrameworkViewSetGroup(SnippetViewSetGroup):
 
     def get_submenu_items(self):
         menu_items = super().get_submenu_items()
-        # The wording is a site setting, not a snippet, so it is not one of the
-        # grouped viewsets; add its settings menu item by hand, after them.
+        # These are site settings, not snippets, so they are not among the
+        # grouped viewsets; add their settings menu items by hand, after them.
+        menu_items.append(
+            SettingMenuItem(
+                SidebarSettings,
+                icon="list-ul",
+                order=len(menu_items) + 1,
+            )
+        )
         menu_items.append(
             SettingMenuItem(
                 CapabilityFrameworkWordingSettings,
@@ -1349,13 +1357,16 @@ if settings.FEATURE_FLAGS.get("SKILLS"):
     # exist; the group adds it to its own menu and the hook below takes it out
     # of the Settings menu so it lives in one place.
     register_setting(CapabilityFrameworkWordingSettings, icon="edit")
+    register_setting(SidebarSettings, icon="list-ul")
+
+    _framework_settings_models = (CapabilityFrameworkWordingSettings, SidebarSettings)
 
     @hooks.register("construct_settings_menu")
-    def hide_capability_framework_wording_from_settings_menu(request, menu_items):
+    def hide_framework_settings_from_settings_menu(request, menu_items):
         menu_items[:] = [
             item
             for item in menu_items
-            if getattr(item, "model", None) is not CapabilityFrameworkWordingSettings
+            if getattr(item, "model", None) not in _framework_settings_models
         ]
 
 if settings.FEATURE_FLAGS.get("FEEDBACK"):

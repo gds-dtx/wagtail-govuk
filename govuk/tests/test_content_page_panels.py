@@ -112,7 +112,6 @@ class FrameworkContentPagePanelTests(SimpleTestCase):
             [
                 "show_last_updated_date",
                 "show_page_content_metadata",
-                "show_in_framework_navigation",
             ],
         )
         self.assertEqual(
@@ -136,22 +135,22 @@ class FrameworkSkillsPagePanelTests(SimpleTestCase):
         )
 
 
-class SidebarListingToggleTests(SimpleTestCase):
-    """Both framework page types offer a "show in sidebar" switch, default on."""
+class SidebarListingIsCentralisedTests(SimpleTestCase):
+    """Sidebar membership is managed in Sidebar settings, not per page.
 
-    def test_the_switch_is_offered_on_both_framework_page_types(self):
-        self.assertIn(
+    The framework page types no longer carry a per-page sidebar toggle; which
+    pages appear (and their order) lives in SidebarSettings.
+    """
+
+    def test_no_per_page_sidebar_toggle_on_the_framework_pages(self):
+        self.assertNotIn(
             "show_in_framework_navigation",
             _field_names(FrameworkContentPage.settings_panels),
         )
-        self.assertIn(
+        self.assertNotIn(
             "show_in_framework_navigation",
             _field_names(FrameworkSkillsPage.settings_panels),
         )
-
-    def test_the_switch_defaults_on(self):
-        self.assertTrue(FrameworkContentPage().show_in_framework_navigation)
-        self.assertTrue(FrameworkSkillsPage().show_in_framework_navigation)
 
 
 class PlainContentPagePanelTests(SimpleTestCase):

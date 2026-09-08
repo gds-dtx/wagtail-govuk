@@ -437,11 +437,10 @@ def framework_content_settings_panels() -> list:
     switch for it; it offers neither the framework updates, the welcome layout,
     the sidebar heading navigation, nor the hero-styling toggles. The framework
     behaviours are forced in ``FrameworkContentPage.get_context`` regardless of
-    what is stored. It does offer the switch for whether the page itself is
-    listed in that sidebar navigation.
+    what is stored. Whether the page is listed in the sidebar, and in what order,
+    is managed centrally in Sidebar settings rather than per page.
     """
     return base_settings_panels() + [
-        FieldPanel("show_in_framework_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
 
@@ -3178,26 +3177,65 @@ class FrameworkFieldsMixin(models.Model):
         return sections[:1] + groups + sections[1:]
 
 
-class FrameworkNavigableMixin(models.Model):
-    """A per-page switch for the sidebar's "Further resources" listing.
+class SidebarSettings(ClusterableModel, BaseSiteSetting):
+    """Editor control of the framework sidebar's "Further resources" listing.
 
-    A framework content page and the skills index appear in the framework
-    sidebar by default (they are the pages beside the roles). This lets an
-    editor take an individual page out of that listing without unpublishing it.
-    ``further_resources_group`` reads it.
+    Each row picks a framework content page (or the skills index), says whether
+    it is visible, and -- through its position in the list -- sets the order.
+    A framework child not listed here is still shown, appended after the
+    configured ones in tree order, so a new page never silently vanishes;
+    ``further_resources_group`` reads all of this.
     """
 
-    show_in_framework_navigation = models.BooleanField(
-        default=True,
-        verbose_name="Show in sidebar navigation",
-        help_text=(
-            "List this page in the framework's sidebar navigation, under "
-            "Further resources. On by default."
+    panels = [
+        InlinePanel(
+            "items",
+            heading="Sidebar pages",
+            label="Page",
+            help_text=(
+                "Choose the pages shown in the framework sidebar's further "
+                "resources, drag to reorder, and untick any to hide. Pages not "
+                "listed here are shown after these, in page-tree order."
+            ),
         ),
-    )
+    ]
 
     class Meta:
-        abstract = True
+        verbose_name = "Sidebar settings"
+        verbose_name_plural = "Sidebar settings"
+
+
+class SidebarNavigationItem(Orderable):
+    setting = ParentalKey(
+        SidebarSettings, on_delete=models.CASCADE, related_name="items"
+    )
+    page = models.ForeignKey(
+        "wagtailcore.Page", on_delete=models.CASCADE, related_name="+"
+    )
+    visible = models.BooleanField(
+        default=True,
+        help_text="Untick to hide this page from the sidebar without removing it.",
+    )
+
+    panels = [
+        FieldPanel("page"),
+        FieldPanel("visible"),
+    ]
+
+    ALLOWED_PAGE_TYPES = {"FrameworkContentPage", "FrameworkSkillsPage"}
+
+    def clean(self):
+        super().clean()
+        # Only framework content pages and the skills index belong in the
+        # sidebar list; anything else is ignored by ``further_resources_group``
+        # anyway, so guide the editor here rather than let it silently do
+        # nothing.
+        if self.page_id:
+            specific_class = self.page.specific_class
+            if specific_class is None or specific_class.__name__ not in self.ALLOWED_PAGE_TYPES:
+                raise ValidationError(
+                    {"page": "Choose a framework content page or the skills index."}
+                )
 
 
 class ContentPage(BaseContentPage):
@@ -3318,40 +3356,43 @@ def further_resources_group(*, current_page_id: int | None = None, wording=None)
 
     The live service closes its navigation with these: the skills index and the
     handful of pages that are about the framework rather than one role. They are
-    the framework main page's own children -- the framework content pages an
-    editor adds beside the roles -- so anything added there turns up here on its
-    own, unless an editor has switched off ``show_in_framework_navigation`` for
-    that page.
+    the framework main page's own children. Sidebar settings decides which are
+    shown and in what order; a child not listed there is shown after the
+    configured ones, in tree order, so a new page never silently vanishes.
     """
     main_page = framework_main_page()
     if main_page is None:
         return None
 
-    # The switch lives on the two framework page types. Gathering the ids that
-    # have it off keeps this to two queries rather than fetching each child's
-    # specific record in the loop below.
-    hidden_ids = set(
-        FrameworkContentPage.objects.filter(
-            show_in_framework_navigation=False
-        ).values_list("pk", flat=True)
-    )
-    hidden_ids.update(
-        FrameworkSkillsPage.objects.filter(
-            show_in_framework_navigation=False
-        ).values_list("pk", flat=True)
-    )
+    children = list(main_page.get_children().live().order_by("path"))
+    child_by_id = {page.pk: page for page in children}
 
-    items = []
-    for page in main_page.get_children().live().order_by("path"):
-        if not page.url or page.pk in hidden_ids:
-            continue
-        items.append(
-            {
-                "title": page.title,
-                "url": page.url,
-                "is_current": page.pk == current_page_id,
-            }
-        )
+    # The configured order/visibility, from Sidebar settings for the default
+    # site (the navigation helpers have no request; the site is the same one
+    # _default_site_wording reads).
+    site = Site.objects.filter(is_default_site=True).first()
+    setting = SidebarSettings.objects.filter(site=site).first() if site else None
+    configured = list(setting.items.all()) if setting else []
+
+    ordered: list = []
+    seen: set = set()
+    for item in configured:
+        if item.page_id in child_by_id:
+            seen.add(item.page_id)
+            if item.visible:
+                ordered.append(child_by_id[item.page_id])
+    # Children not configured are shown after, keeping their tree order.
+    ordered.extend(page for page in children if page.pk not in seen)
+
+    items = [
+        {
+            "title": page.title,
+            "url": page.url,
+            "is_current": page.pk == current_page_id,
+        }
+        for page in ordered
+        if page.url
+    ]
 
     if not items:
         return None
@@ -3941,9 +3982,7 @@ class FrameworkMainPage(
         )
 
 
-class FrameworkContentPage(
-    FrameworkNavigableMixin, FrameworkFieldsMixin, BaseContentPage
-):
+class FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage):
     """A framework content page: a page about the framework beside the roles.
 
     Only ever a child of the single ``FrameworkMainPage``. It always carries the
@@ -3995,7 +4034,7 @@ class FrameworkContentPage(
         return super().get_context(request, *args, **kwargs)
 
 
-class FrameworkSkillsPage(FrameworkNavigableMixin, Page):
+class FrameworkSkillsPage(Page):
     # One skills index per site, like the framework main page. The skill search
     # results, the role pages and the live-service redirects all resolve "the"
     # skills page, so a second one would make which page they point at arbitrary.
@@ -4063,11 +4102,9 @@ class FrameworkSkillsPage(FrameworkNavigableMixin, Page):
 
     # No hero-styling toggles and no sidebar heading navigation, like the other
     # framework pages: the skills index carries the role navigation in that
-    # column and sets its own header treatment. It does offer the switch for
-    # whether it is itself listed in that sidebar navigation.
-    settings_panels = base_settings_panels() + [
-        FieldPanel("show_in_framework_navigation"),
-    ]
+    # column and sets its own header treatment. Whether it is listed in the
+    # sidebar is managed centrally in Sidebar settings.
+    settings_panels = base_settings_panels()
 
     @classmethod
     def can_create_at(cls, parent):
@@ -4960,6 +4997,8 @@ __all__ = [
     "FrameworkSkillsPage",
     "SectionPage",
     "SectionPageTag",
+    "SidebarSettings",
+    "SidebarNavigationItem",
     "TagListingsPage",
     "TagListingsPageTag",
 ]

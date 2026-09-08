@@ -79,13 +79,16 @@ class SkillsWagtailHooksTests(SimpleTestCase):
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
     @patch("wagtail.contrib.settings.models.register_setting")
-    def test_registers_the_framework_wording_setting_when_enabled(
+    def test_registers_the_framework_settings_when_enabled(
         self, mock_register_setting
     ):
         hooks_module = _reload_hooks()
 
-        mock_register_setting.assert_called_once_with(
+        mock_register_setting.assert_any_call(
             hooks_module.CapabilityFrameworkWordingSettings, icon="edit"
+        )
+        mock_register_setting.assert_any_call(
+            hooks_module.SidebarSettings, icon="list-ul"
         )
 
         _reload_hooks()
@@ -135,9 +138,16 @@ class SkillsWagtailHooksTests(SimpleTestCase):
                 hooks_module.GovukChangelogEntryViewSet,
             ),
         )
-        # The wording site setting is added to the group's submenu alongside the
+        # The two site settings are added to the group's submenu alongside the
         # three snippets.
         labels = [item.label for item in group().get_submenu_items()]
         self.assertEqual(
-            labels, ["Skills", "Roles", "Changelog", "Capability framework wording"]
+            labels,
+            [
+                "Skills",
+                "Roles",
+                "Changelog",
+                "Sidebar settings",
+                "Capability framework wording",
+            ],
         )

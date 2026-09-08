@@ -12,6 +12,8 @@ from govuk.models import (
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
+    SidebarNavigationItem,
+    SidebarSettings,
     further_resources_group,
     role_navigation_groups,
 )
@@ -276,9 +278,9 @@ class RolePageLayoutTests(TestCase):
             page.save_revision().publish()
 
         # A fixed cost whatever the number of pages: finding the framework main
-        # page, one query for its children, two for the ids of the framework
-        # pages hidden from the navigation, and the default site and its
-        # wording, which names the group headings.
+        # page, one query for its children, the default site and the Sidebar
+        # settings that order them, and the default site and its wording, which
+        # names the group headings.
         with self.assertNumQueries(6):
             further_resources_group()
 
@@ -304,46 +306,62 @@ class RolePageLayoutTests(TestCase):
 
         self.assertIsNone(further_resources_group())
 
-    def test_a_framework_content_page_lists_itself_in_the_sidebar_by_default(self):
+    def test_a_framework_content_page_is_listed_in_the_sidebar_by_default(self):
+        # No Sidebar settings configured -> the page still shows.
         page = self.main_page.add_child(
             instance=FrameworkContentPage(title="Guidance", slug="guidance", body="")
         )
         page.save_revision().publish()
 
-        self.assertTrue(page.specific.show_in_framework_navigation)
         group = further_resources_group()
         self.assertEqual([item["title"] for item in group["items"]], ["Guidance"])
 
-    def test_a_page_switched_off_is_left_out_of_the_sidebar(self):
+    def test_a_page_hidden_in_sidebar_settings_is_left_out(self):
         shown = self.main_page.add_child(
             instance=FrameworkContentPage(title="Shown", slug="shown", body="")
         )
         shown.save_revision().publish()
         hidden = self.main_page.add_child(
-            instance=FrameworkContentPage(
-                title="Hidden",
-                slug="hidden",
-                body="",
-                show_in_framework_navigation=False,
-            )
+            instance=FrameworkContentPage(title="Hidden", slug="hidden", body="")
         )
         hidden.save_revision().publish()
+
+        setting = SidebarSettings.objects.create(site=self.site)
+        SidebarNavigationItem.objects.create(setting=setting, page=hidden, visible=False, sort_order=0)
 
         group = further_resources_group()
 
         self.assertEqual([item["title"] for item in group["items"]], ["Shown"])
 
-    def test_a_skills_page_switched_off_is_left_out_of_the_sidebar(self):
+    def test_a_skills_page_hidden_in_sidebar_settings_is_left_out(self):
         skills = self.main_page.add_child(
-            instance=FrameworkSkillsPage(
-                title="Skills A to Z",
-                slug="skills",
-                show_in_framework_navigation=False,
-            )
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         skills.save_revision().publish()
 
+        setting = SidebarSettings.objects.create(site=self.site)
+        SidebarNavigationItem.objects.create(setting=setting, page=skills, visible=False, sort_order=0)
+
         self.assertIsNone(further_resources_group())
+
+    def test_sidebar_settings_set_the_order_and_unlisted_pages_follow(self):
+        for title, slug in (("Alpha", "alpha"), ("Beta", "beta"), ("Gamma", "gamma")):
+            page = self.main_page.add_child(
+                instance=FrameworkContentPage(title=title, slug=slug, body="")
+            )
+            page.save_revision().publish()
+
+        # Configure Gamma first, then Beta; Alpha is unlisted and follows.
+        setting = SidebarSettings.objects.create(site=self.site)
+        SidebarNavigationItem.objects.create(setting=setting, page=FrameworkContentPage.objects.get(slug="gamma"), sort_order=0)
+        SidebarNavigationItem.objects.create(setting=setting, page=FrameworkContentPage.objects.get(slug="beta"), sort_order=1)
+
+        group = further_resources_group()
+
+        self.assertEqual(
+            [item["title"] for item in group["items"]],
+            ["Gamma", "Beta", "Alpha"],
+        )
 
     def test_roles_without_a_family_are_left_out_of_the_navigation(self):
         GovukRole.objects.create(title="Unfamilied role")
