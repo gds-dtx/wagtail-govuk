@@ -3247,6 +3247,7 @@ class ContentPage(BaseContentPage):
     ]
     subpage_types = [
         "govuk.ContentPage",
+        "govuk.FrameworkMainPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
@@ -3917,17 +3918,18 @@ class RoleRenderingMixin:
 class FrameworkMainPage(
     RoutablePageMixin, RoleRenderingMixin, FrameworkFieldsMixin, BaseContentPage
 ):
-    """The single root page of the Capability Framework.
+    """The single Capability Framework page for the site.
 
     It carries the framework welcome content and the framework switches, and it
     serves a page for every role snippet at ``roles/<role-slug>/``. The roles
     have no page of their own, so the navigation and the role URLs are built
     from the ``GovukRole`` snippets rather than from hand-made pages.
-    ``max_count`` keeps the framework to a single root.
+
+    It can sit anywhere in the tree (no ``parent_page_types`` restriction), and
+    ``max_count`` keeps the framework to a single instance per site.
     """
 
     max_count = 1
-    parent_page_types = ["wagtailcore.Page"]
     subpage_types = [
         "govuk.FrameworkContentPage",
         "govuk.SectionPage",
@@ -4280,6 +4282,7 @@ class TagListingsPage(Page):
     ]
     subpage_types = [
         "govuk.ContentPage",
+        "govuk.FrameworkMainPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
@@ -4809,6 +4812,7 @@ class SectionPage(Page):
     ]
     subpage_types = [
         "govuk.ContentPage",
+        "govuk.FrameworkMainPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",

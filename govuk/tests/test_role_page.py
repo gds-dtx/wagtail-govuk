@@ -1,7 +1,7 @@
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import FrameworkMainPage, GovukRole, GovukSkill, GovukTag
+from govuk.models import ContentPage, FrameworkMainPage, GovukRole, GovukSkill, GovukTag
 from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
@@ -187,3 +187,32 @@ class RolePageTests(TestCase):
         response = self.client.get(self.role_url)
 
         self.assertEqual(response.status_code, 404)
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+class FrameworkMainPagePlacementTests(TestCase):
+    """The framework main page can sit anywhere, but only one per site."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+    def test_it_can_be_created_below_another_page(self):
+        content = self.root_page.add_child(
+            instance=ContentPage(title="Guidance", slug="guidance")
+        )
+        content.save_revision().publish()
+
+        self.assertTrue(FrameworkMainPage.can_create_at(content))
+
+    def test_only_one_is_allowed_per_site(self):
+        make_framework_main_page(self.root_page)
+
+        # max_count reached, so no second one anywhere.
+        content = self.root_page.add_child(
+            instance=ContentPage(title="Guidance", slug="guidance")
+        )
+        content.save_revision().publish()
+
+        self.assertFalse(FrameworkMainPage.can_create_at(self.root_page))
+        self.assertFalse(FrameworkMainPage.can_create_at(content))

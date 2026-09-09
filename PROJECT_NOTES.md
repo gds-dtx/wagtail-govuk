@@ -213,8 +213,10 @@ and `role_url` for the framework-specific tests.
   `FrameworkMainPage.serve_role`. The route is at `roles/<slug>/` (NOT bare
   `<slug>/` — that would shadow the main page's child pages).
 - **`FrameworkMainPage` and `FrameworkSkillsPage` are each limited to one per
-  site** (`max_count = 1`). `FrameworkContentPage` may only be a child of
-  `FrameworkMainPage` (`parent_page_types`).
+  site** (`max_count = 1`). `FrameworkMainPage` has no `parent_page_types`
+  restriction — it can be created anywhere in the tree (the general container
+  types list it in their `subpage_types`); `max_count` keeps it to one.
+  `FrameworkContentPage` may only be a child of `FrameworkMainPage`.
 - **No `RolePage` or `SkillsAZPage`** — these were removed. The former
   `SkillsAZPage` is `FrameworkSkillsPage`; the former `RolePage` is gone entirely.
   Historical migrations still name them; do not delete those migrations.
