@@ -61,6 +61,31 @@ SKILL_LEVEL_CHOICES = {"awareness", "working", "practitioner", "expert"}
 # chosen on a page, so no page carries a snippet chooser stream field. The
 # machinery stays for the next one.
 PAGE_SNIPPET_SLUG_STREAM_FIELDS: dict[tuple[str, str], tuple[str, type]] = {}
+# The names a framework export gave its pages before the page types were
+# reshaped: one ContentPage type carrying the framework switches, a page per
+# role, and a skills index called SkillsAZPage. Every export taken from an
+# instance running that code -- the development instance's, the rehearsal's,
+# the one the cutover was verified against -- still names them, and a page
+# whose model cannot be found is skipped. So they are read as what they are
+# now. The skills index is a rename. A role page is not imported at all: a role
+# is served from its snippet in the file's ``roles`` key and needs no page. A
+# ContentPage is read as the framework type its switches describe, which
+# ``_modernise_legacy_page_types`` decides from the whole tree.
+LEGACY_PAGE_MODEL_LABELS = {
+    "govuk.skillsazpage": "govuk.FrameworkSkillsPage",
+}
+LEGACY_ROLE_PAGE_LABEL = "govuk.rolepage"
+LEGACY_CONTENT_PAGE_LABEL = "govuk.contentpage"
+FRAMEWORK_MAIN_PAGE_LABEL = "govuk.FrameworkMainPage"
+FRAMEWORK_CONTENT_PAGE_LABEL = "govuk.FrameworkContentPage"
+# The switches that made a ContentPage a framework page, and the tick that put
+# one in the role side menu. Both mean "this page is the framework's".
+FRAMEWORK_SWITCH_FIELD_NAMES = (
+    "show_role_navigation",
+    "show_framework_updates",
+    "show_framework_welcome",
+)
+LEGACY_SIDE_MENU_FIELD_NAME = "show_in_role_navigation"
 JOB_GRADE_KEYS = {value for value, _ in JOB_GRADE_CHOICES}
 SCS_GRADE_KEYS = {value for value, _ in SCS_GRADE_CHOICES}
 # Read off the model rather than listed here, so that wording added to the form
@@ -176,6 +201,7 @@ def import_pages_from_payload(*, payload: dict, site: Site, user) -> PageImportR
         result.skipped += 1
         result.errors.append("Payload must contain a 'pages' array.")
         return result
+    raw_pages = _modernise_legacy_page_types(raw_pages, result=result)
 
     raw_skills: list = []
     raw_roles: list = []
@@ -364,6 +390,135 @@ def _readable_list(names: list[str]) -> str:
     if len(names) == 1:
         return names[0]
     return f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _carries_framework_switches(node: dict) -> bool:
+    fields = node.get("fields")
+    if not isinstance(fields, dict):
+        return False
+    return any(_coerce_bool(fields.get(name)) for name in FRAMEWORK_SWITCH_FIELD_NAMES)
+
+
+def _ticked_for_side_menu(node: dict) -> bool:
+    fields = node.get("fields")
+    if not isinstance(fields, dict):
+        return False
+    return _coerce_bool(fields.get(LEGACY_SIDE_MENU_FIELD_NAME))
+
+
+def _modernise_legacy_page_types(raw_pages: list, *, result: PageImportResult) -> list:
+    """Read a file written before the framework page types as if it named them.
+
+    The framework used to be one ContentPage type with switches on it, a page
+    per role, and a skills index called SkillsAZPage. It is now a single
+    FrameworkMainPage serving every role from its snippet, FrameworkContentPage
+    for the pages beside the roles, and FrameworkSkillsPage. Every export taken
+    before the change still describes the old shape, and importing one as it
+    stands produces a site that looks complete and is not: the home page
+    arrives as a plain ContentPage with its switches silently dropped, the
+    role pages and the skills index are skipped as unknown models, and with no
+    framework main page to point at, not one of the live service's redirects
+    is written. That is what happened to the first import of the rehearsal
+    export onto this code.
+
+    So the tree is re-read before anything is written, by the same rule the
+    schema migration applies to an instance upgraded in place, so that the two
+    paths agree on what the site should look like:
+
+    - the shallowest ContentPage with a framework switch on becomes the
+      FrameworkMainPage; every other ContentPage with a switch on, or ticked for
+      the role side menu, becomes a FrameworkContentPage; the rest stay plain;
+    - SkillsAZPage is FrameworkSkillsPage under its old name;
+    - a role page is not imported. The role itself is in the file's ``roles``
+      key and is served from there. Anything filed under a role page is kept,
+      one level up.
+
+    A file that already names the present types passes through untouched, and
+    nothing is said. Mutates the nodes it re-reads, which are the caller's
+    parsed copy of the upload.
+    """
+    switch_nodes: list[tuple[int, int, dict]] = []
+    menu_nodes: list[dict] = []
+    counts = {"role_pages": 0, "skills_pages": 0}
+    order = 0
+
+    def walk(nodes: list, depth: int) -> list:
+        nonlocal order
+        kept: list = []
+        for node in nodes:
+            if not isinstance(node, dict):
+                kept.append(node)
+                continue
+            label = str(node.get("model") or "").strip().lower()
+            children = node.get("children")
+            if not isinstance(children, list):
+                children = []
+            if label == LEGACY_ROLE_PAGE_LABEL:
+                counts["role_pages"] += 1
+                kept.extend(walk(children, depth))
+                continue
+            if label in LEGACY_PAGE_MODEL_LABELS:
+                node["model"] = LEGACY_PAGE_MODEL_LABELS[label]
+                counts["skills_pages"] += 1
+            elif label == LEGACY_CONTENT_PAGE_LABEL:
+                if _carries_framework_switches(node):
+                    order += 1
+                    switch_nodes.append((depth, order, node))
+                elif _ticked_for_side_menu(node):
+                    menu_nodes.append(node)
+            node["children"] = walk(children, depth + 1)
+            kept.append(node)
+        return kept
+
+    pages = walk(raw_pages, 0)
+
+    main_slug = None
+    content_pages = 0
+    if switch_nodes:
+        switch_nodes.sort(key=lambda entry: entry[:2])
+        main_node = switch_nodes[0][2]
+        main_node["model"] = FRAMEWORK_MAIN_PAGE_LABEL
+        main_settings = main_node.get("settings")
+        if isinstance(main_settings, dict):
+            main_slug = _normalised_slug(main_settings.get("slug")) or None
+        for _depth, _order, node in switch_nodes[1:]:
+            node["model"] = FRAMEWORK_CONTENT_PAGE_LABEL
+            content_pages += 1
+    for node in menu_nodes:
+        node["model"] = FRAMEWORK_CONTENT_PAGE_LABEL
+        content_pages += 1
+
+    read_as = []
+    if switch_nodes:
+        read_as.append(
+            f"'{main_slug}' as the framework main page"
+            if main_slug
+            else "the first framework page as the framework main page"
+        )
+    if content_pages:
+        read_as.append(
+            f"{content_pages} page{'s' if content_pages != 1 else ''} beside the "
+            "roles as framework content pages"
+        )
+    if counts["skills_pages"]:
+        read_as.append("the skills index as a framework skills page")
+    if read_as or counts["role_pages"]:
+        sentence = (
+            "This file was written before the framework page types changed, so "
+            "it was read as one that names them"
+        )
+        if read_as:
+            sentence += f": {_readable_list(read_as)}"
+        sentence += "."
+        if counts["role_pages"]:
+            role_pages = counts["role_pages"]
+            sentence += (
+                f" Its {role_pages} role page{'s were' if role_pages != 1 else ' was'} "
+                "not imported as pages: a role is served from the roles in the "
+                "file, on the framework main page."
+            )
+        result.notes.append(sentence)
+    return pages
 
 
 def _import_site_name(raw_site, *, site: Site):
@@ -2186,6 +2341,9 @@ def _deserialise_model_field_value(field: django_models.Field, raw_value):
 def _resolve_model_class(model_label: str):
     if not model_label:
         return None
+    # A file from before the page types were reshaped names a type by its old
+    # name; the present name is the same page under a different label.
+    model_label = LEGACY_PAGE_MODEL_LABELS.get(model_label.lower(), model_label)
     try:
         model_class = apps.get_model(model_label)
     except (LookupError, ValueError):
