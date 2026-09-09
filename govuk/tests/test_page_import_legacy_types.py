@@ -166,15 +166,24 @@ class LegacyExportImportTests(TestCase):
     def test_the_live_services_redirects_are_seeded_because_the_targets_now_exist(self):
         result = self._import(self._legacy_payload())
 
-        self.site.refresh_from_db()
-        main_page = self.site.root_page.specific
         skills_page = FrameworkSkillsPage.objects.get(slug="skills")
 
-        role_redirect = Redirect.objects.get(old_path="/role/data-analyst")
-        self.assertEqual(role_redirect.link, role_url(main_page, self.role))
         skill_redirect = Redirect.objects.get(old_path=f"/skill/{self.skill.slug}")
         self.assertEqual(skill_redirect.link, f"{skills_page.url}#{self.skill.slug}")
-        self.assertTrue(any("Redirected 2" in note for note in result.notes), result.notes)
+        self.assertTrue(any("Redirected 1" in note for note in result.notes), result.notes)
+        # The home page became the framework main page, so a role is served at
+        # the live service's own URL and needs no redirect.
+        self.assertFalse(Redirect.objects.filter(old_path__startswith="/role/").exists())
+
+    def test_a_live_role_url_is_answered_by_the_route_itself(self):
+        self._import(self._legacy_payload())
+
+        self.site.refresh_from_db()
+        main_page = self.site.root_page.specific
+        self.assertEqual(role_url(main_page, self.role), "/role/data-analyst/")
+        self.assertEqual(self.client.get("/role/data-analyst/").status_code, 200)
+        bare = self.client.get("/role/data-analyst")
+        self.assertEqual((bare.status_code, bare["Location"]), (301, "/role/data-analyst/"))
 
     def test_every_role_in_the_file_is_served_on_the_main_page(self):
         self._import(self._legacy_payload())

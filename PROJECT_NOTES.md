@@ -63,7 +63,9 @@ Big files first — these are where most work lands:
   - **`ContentPage(BaseContentPage)`** — plain content, no framework options.
   - **`FrameworkMainPage(RoutablePageMixin, …, FrameworkFieldsMixin, BaseContentPage)`**
     — framework root, `max_count = 1`. Serves each `GovukRole` as a virtual
-    page at `roles/<slug>/`. The sidebar's role navigation and further-resources
+    page at `role/<slug>/` (the live service's own URL shape, so with the main
+    page as the site's home page a role is served at `/role/<slug>/` and needs
+    no redirect). The sidebar's role navigation and further-resources
     links are built from snippets at render time, not stored pages.
   - **`FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage)`** — framework
     content; can only be created under `FrameworkMainPage`; always shows the role
@@ -145,7 +147,7 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
 
 - **Roles are snippets, not pages.** `GovukRole` (slug, title, family, levels,
   SCS fields) is the data model. Each role is served at
-  `/<FrameworkMainPage-url>/roles/<slug>/` by `FrameworkMainPage.serve_role` —
+  `/<FrameworkMainPage-url>/role/<slug>/` by `FrameworkMainPage.serve_role` —
   a `RoutablePageMixin` route. There is no `RolePage` model.
 - **Sidebar nav** is fully data-driven. `role_navigation_groups()` enumerates all
   live `GovukRole` snippets grouped by `family`. The "Further resources" group
@@ -213,8 +215,11 @@ and `role_url` for the framework-specific tests.
   migrations walk RichTextField/JSONField content and `bulk_update` (no
   signals/revisions), with fail-loud post-checks.
 - **`wagtail.contrib.routable_page` is in `INSTALLED_APPS`** — required for
-  `FrameworkMainPage.serve_role`. The route is at `roles/<slug>/` (NOT bare
-  `<slug>/` — that would shadow the main page's child pages).
+  `FrameworkMainPage.serve_role`. The route is at `role/<slug>/` (NOT bare
+  `<slug>/` — that would shadow the main page's child pages; the one slug it
+  does shadow is a child page called `role`). Singular `role` because that is
+  the live service's URL: `govuk.live_service_links` writes no redirect for a
+  role whose route URL already is its live path.
 - **`FrameworkMainPage` and `FrameworkSkillsPage` are each limited to one per
   site** (`max_count = 1`). `FrameworkMainPage` has no `parent_page_types`
   restriction — it can be created anywhere in the tree (the general container

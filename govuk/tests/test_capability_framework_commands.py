@@ -112,7 +112,7 @@ class ImportCapabilityFrameworkTests(TestCase):
 
     def test_creates_a_framework_main_page_and_a_skills_index_but_no_role_pages(self):
         """Roles no longer have a page each: the framework main page serves one
-        per role snippet at ``<role-slug>/``, so the import creates the main
+        per role snippet at ``role/<role-slug>/``, so the import creates the main
         page and the A to Z and nothing per role."""
         self._import()
 

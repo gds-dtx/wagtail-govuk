@@ -186,7 +186,9 @@ class ChangelogNoteTagTests(TestCase):
         )
 
         self.assertIn(f'href="{self.role_url}"', rendered)
-        self.assertNotIn("/role/data-engineer", rendered)
+        # The live form is gone; the route URL that replaced it ends in
+        # "role/data-engineer/" too, so the check is on the whole href.
+        self.assertNotIn('href="/role/data-engineer"', rendered)
 
     def test_the_markup_of_a_note_survives(self):
         rendered = self._render("<p>Something <b>changed</b>.</p>")
