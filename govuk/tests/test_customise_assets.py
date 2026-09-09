@@ -29,6 +29,37 @@ class CustomiseAssetsTests(TestCase):
     def test_custom_asset_views_return_404_when_empty(self):
         self.assertEqual(self.client.get("/gen/custom.css").status_code, 404)
 
+    def test_content_max_width_sets_the_variable_and_shifts_the_breakpoint(self):
+        self.customise_settings.content_max_width = 1200
+        self.customise_settings.save()
+
+        body = self.client.get("/gen/custom.css").content.decode("utf-8")
+
+        self.assertIn(":root { --govuk-content-width: 1200px; }", body)
+        # Centring breakpoint moves to width + 80 = 1280px, with the fixed
+        # margins kept in the gap above the old 1030px breakpoint.
+        self.assertIn("@media (min-width: 1030px) and (max-width: 1279px)", body)
+        self.assertIn("@media (min-width: 1280px)", body)
+
+    def test_a_narrower_content_width_centres_earlier(self):
+        self.customise_settings.content_max_width = 800
+        self.customise_settings.save()
+
+        body = self.client.get("/gen/custom.css").content.decode("utf-8")
+
+        self.assertIn(":root { --govuk-content-width: 800px; }", body)
+        self.assertIn("@media (min-width: 880px)", body)
+        # Narrower than the default: no gap to bridge above 1030px.
+        self.assertNotIn("max-width: 879px", body)
+
+    def test_no_width_css_when_left_blank(self):
+        self.customise_settings.extra_css = ".x { color: red; }"
+        self.customise_settings.save()
+
+        body = self.client.get("/gen/custom.css").content.decode("utf-8")
+
+        self.assertNotIn("--govuk-content-width", body)
+
     def test_base_template_only_includes_custom_assets_when_present(self):
         search_url = reverse("search")
 

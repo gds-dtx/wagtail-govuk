@@ -81,7 +81,10 @@ Big files first — these are where most work lands:
   menu). `CustomiseSettings` holds **location dropdowns** for `service_name_location`,
   `sign_in_location` (header / navigation / hidden — "hidden" still shows Sign Out
   for authenticated users), `search_location`, and `header_logo`. Hero colour
-  fields were removed as inoperable. `CapabilityFrameworkWordingSettings` and
+  fields were removed as inoperable. `content_max_width` (optional px) feeds
+  `render_custom_css`, which sets `--govuk-content-width` and shifts main.css's
+  1030px centring breakpoint to width + 80. `render_custom_css` (served at
+  `/gen/custom.css`, gated by `has_custom_css`) also passes through `extra_css`. `CapabilityFrameworkWordingSettings` and
   `SidebarSettings` (both BaseSiteSetting, gated by `FEATURE_FLAGS["SKILLS"]`)
   live in the Capability Framework admin group, not Settings. `SidebarSettings`
   (ClusterableModel + `SidebarNavigationItem` Orderable rows) is the editor's

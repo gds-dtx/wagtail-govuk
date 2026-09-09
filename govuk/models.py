@@ -17,7 +17,7 @@ from django import forms
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.paginator import Paginator
-from django.core.validators import RegexValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models, transaction
 from django.db.models import Q
 from django.db.models.functions import Coalesce
@@ -589,10 +589,20 @@ class CustomiseSettings(BaseSiteSetting):
             "contact sentence: 'if you need to speak to someone about the …'."
         ),
     )
+    content_max_width = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(320), MaxValueValidator(2560)],
+        verbose_name="Maximum content width (pixels)",
+        help_text=(
+            "How wide the page content grows on large screens, in pixels. "
+            "Leave blank for the default of 950."
+        ),
+    )
     extra_css = models.TextField(
         blank=True,
         default="",
-        help_text="Optional additional CSS appended after hero overrides.",
+        help_text="Optional additional CSS appended after other overrides.",
     )
     show_page_feedback_prompt = models.BooleanField(
         default=False,
@@ -656,6 +666,7 @@ class CustomiseSettings(BaseSiteSetting):
             ],
             heading="Page feedback",
         ),
+        FieldPanel("content_max_width"),
         FieldPanel("extra_css", heading="Extra CSS"),
     ]
 
@@ -665,6 +676,28 @@ class CustomiseSettings(BaseSiteSetting):
 
     def render_custom_css(self) -> str:
         sections: list[str] = []
+
+        if self.content_max_width:
+            width = self.content_max_width
+            # main.css reads the content width from this variable (default 950)
+            # and centres the container at a hard-wired 1030px (= 950 + 80).
+            # Media queries cannot read the variable, so move that breakpoint to
+            # width + 80: keep the fixed side margins up to it, centre above it.
+            breakpoint_px = width + 80
+            sections.append(f":root {{ --govuk-content-width: {width}px; }}")
+            if breakpoint_px > 1030:
+                # Undo main.css's 1030px centring in the gap up to the new,
+                # wider breakpoint.
+                sections.append(
+                    f"@media (min-width: 1030px) and (max-width: {breakpoint_px - 1}px) {{\n"
+                    "    .govuk-width-container, .hero { margin-left: 30px !important; margin-right: 30px !important; }\n"
+                    "}"
+                )
+            sections.append(
+                f"@media (min-width: {breakpoint_px}px) {{\n"
+                "    .govuk-width-container, .hero { margin-left: auto !important; margin-right: auto !important; }\n"
+                "}"
+            )
 
         extra_css = (self.extra_css or "").strip()
         if extra_css:
