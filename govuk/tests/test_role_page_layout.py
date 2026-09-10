@@ -402,8 +402,11 @@ class RolePageLayoutTests(TestCase):
         )
         hidden.save_revision().publish()
 
+        # The list is the menu, so both pages are listed and one is unticked.
+        # Unticking keeps the row and its place while hiding the page.
         setting = SidebarSettings.objects.create(site=self.site)
-        SidebarNavigationItem.objects.create(setting=setting, page=hidden, visible=False, sort_order=0)
+        SidebarNavigationItem.objects.create(setting=setting, page=shown, visible=True, sort_order=0)
+        SidebarNavigationItem.objects.create(setting=setting, page=hidden, visible=False, sort_order=1)
 
         group = further_resources_group()
 
@@ -420,24 +423,45 @@ class RolePageLayoutTests(TestCase):
 
         self.assertIsNone(further_resources_group())
 
-    def test_sidebar_settings_set_the_order_and_unlisted_pages_follow(self):
-        for title, slug in (("Alpha", "alpha"), ("Beta", "beta"), ("Gamma", "gamma")):
+    def _add_framework_children(self, *names):
+        for title in names:
             page = self.main_page.add_child(
-                instance=FrameworkContentPage(title=title, slug=slug, body="")
+                instance=FrameworkContentPage(title=title, slug=title.lower(), body="")
             )
             page.save_revision().publish()
 
-        # Configure Gamma first, then Beta; Alpha is unlisted and follows.
+    def test_sidebar_settings_set_the_order_and_leave_out_what_is_not_listed(self):
+        """Choosing pages means choosing pages.
+
+        Antony configured the six pages the live service shows on 10 Sep 2026
+        and still saw all fourteen framework children, because the unlisted ones
+        used to be appended. The list an editor writes is the menu.
+        """
+        self._add_framework_children("Alpha", "Beta", "Gamma")
+
         setting = SidebarSettings.objects.create(site=self.site)
         SidebarNavigationItem.objects.create(setting=setting, page=FrameworkContentPage.objects.get(slug="gamma"), sort_order=0)
         SidebarNavigationItem.objects.create(setting=setting, page=FrameworkContentPage.objects.get(slug="beta"), sort_order=1)
 
         group = further_resources_group()
 
-        self.assertEqual(
-            [item["title"] for item in group["items"]],
-            ["Gamma", "Beta", "Alpha"],
-        )
+        self.assertEqual([item["title"] for item in group["items"]], ["Gamma", "Beta"])
+
+    def test_an_empty_sidebar_setting_shows_every_framework_child(self):
+        """A site nobody has configured yet still has a full menu."""
+        self._add_framework_children("Alpha", "Beta", "Gamma")
+        SidebarSettings.objects.create(site=self.site)
+
+        group = further_resources_group()
+
+        self.assertEqual([item["title"] for item in group["items"]], ["Alpha", "Beta", "Gamma"])
+
+    def test_no_sidebar_setting_at_all_shows_every_framework_child(self):
+        self._add_framework_children("Alpha", "Beta", "Gamma")
+
+        group = further_resources_group()
+
+        self.assertEqual([item["title"] for item in group["items"]], ["Alpha", "Beta", "Gamma"])
 
     def test_roles_without_a_family_are_left_out_of_the_navigation(self):
         GovukRole.objects.create(title="Unfamilied role")
