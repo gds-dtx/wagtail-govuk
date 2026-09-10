@@ -335,7 +335,7 @@ in the CMS afterwards, and fill in anything the import does not cover:
 | Sign in location | Hidden |
 | Search box location | Navigation |
 | Header logo | GOV.UK |
-| Search placeholder | "Search for roles and skills" |
+| Search placeholder | "Search for roles or skills" (the live service's wording, per the search box specification) |
 | Show page feedback prompt | On |
 | Page feedback — Follow up URL | `/feedback` |
 

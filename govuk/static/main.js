@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", function () {
   setChangelogToggle();
   openLinkedAccordionSection();
   setPageFeedback();
+  setSiteSearchAutocomplete();
 });
 
 function setHyperlinkClasses() {
@@ -390,5 +391,104 @@ function setPageFeedback() {
     form.hidden = true;
     success.hidden = false;
     success.focus();
+  });
+}
+
+function setSiteSearchAutocomplete() {
+  // The header search box suggests roles, skills and pages as the reader
+  // types, the way the live service's box does, using GOV.UK's accessible
+  // autocomplete (CS32-3458). Without JavaScript, or if the library did not
+  // load, the box is the plain form it started as and Enter goes to the
+  // results page. With it, Enter takes the highlighted suggestion; when
+  // there are no suggestions the list is not shown, so Enter still submits
+  // the form and the results page says so.
+  const container = document.querySelector(".app-site-search[data-suggest-url]");
+  if (!container || typeof window.accessibleAutocomplete !== "function") {
+    return;
+  }
+  const input = container.querySelector("input[type='search']");
+  if (!input) {
+    return;
+  }
+  const suggestUrl = container.dataset.suggestUrl;
+  const minLength = parseInt(container.dataset.minLength || "2", 10);
+
+  // The library renders its own input, so the original gives up its place,
+  // id, name, value and placeholder. The label keeps pointing at the id.
+  const mount = document.createElement("div");
+  mount.className = "app-site-search__autocomplete";
+  input.parentNode.insertBefore(mount, input);
+  const inputId = input.id;
+  const inputName = input.name;
+  const placeholder = input.placeholder;
+  const defaultValue = input.value;
+  input.remove();
+
+  let controller = null;
+  function source(query, populate) {
+    // A keystroke cancels the request the last one started, so a slow reply
+    // cannot arrive after a faster one and put stale suggestions on top.
+    if (controller) {
+      controller.abort();
+    }
+    controller = new AbortController();
+    fetch(suggestUrl + "?q=" + encodeURIComponent(query), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((items) => populate(Array.isArray(items) ? items : []))
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          populate([]);
+        }
+      });
+  }
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    })[character]);
+  }
+
+  window.accessibleAutocomplete({
+    element: mount,
+    id: inputId,
+    name: inputName,
+    defaultValue: defaultValue,
+    placeholder: placeholder,
+    minLength: minLength,
+    cssNamespace: "app-site-search",
+    inputClasses: "govuk-input app-site-search__input",
+    displayMenu: "overlay",
+    autoselect: true,
+    confirmOnBlur: false,
+    showNoOptionsFound: false,
+    tStatusQueryTooShort: (count) => "Type " + count + " or more characters for suggestions",
+    source: source,
+    templates: {
+      inputValue: (item) => (item ? item.text : ""),
+      suggestion: (item) => {
+        if (!item) {
+          return "";
+        }
+        // The kind is shown for a role or a skill; a page is just its name.
+        const type =
+          item.type === "Role" || item.type === "Skill"
+            ? '<span class="app-site-search__option-type">' + escapeHtml(item.type) + "</span>"
+            : "";
+        return '<span class="app-site-search__option-text">' + escapeHtml(item.text) + "</span>" + type;
+      },
+    },
+    onConfirm: (item) => {
+      if (item && item.link) {
+        window.location.assign(item.link);
+      }
+    },
   });
 }
