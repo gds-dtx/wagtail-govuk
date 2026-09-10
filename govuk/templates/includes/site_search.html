@@ -1,4 +1,11 @@
-<div class="app-site-search">
+{% comment %}
+    A plain search form. main.js turns the input into GOV.UK's accessible
+    autocomplete, fed from data-suggest-url, when it and the library are
+    present; without them the form submits to the results page as it is.
+{% endcomment %}
+<div class="app-site-search"
+     data-suggest-url="{% url 'search_suggest' %}"
+     data-min-length="2">
     <form action="{% url 'search' %}"
           method="get"
           role="search"

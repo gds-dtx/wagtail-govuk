@@ -108,6 +108,10 @@ Big files first — these are where most work lands:
 - **`search_backend.py`** — page search plus dedicated `_build_skill_results` and
   `_build_role_results` (both return a `result_type` badge — "Skill"/"Role").
   Skill results have no `search_description` (title + badge is enough).
+  `views.search_suggest_view` (`/search/suggest/?q=`) regroups the same results
+  as `{text, link, type}` JSON, roles then skills then pages, for the header
+  box's accessible-autocomplete (`setSiteSearchAutocomplete` in `main.js`;
+  library vendored as `accessible-autocomplete-3.0.1.min.js`).
 
 - **`views.py`** (~450 lines) — custom views (search, profile, custom CSS, etc.).
 

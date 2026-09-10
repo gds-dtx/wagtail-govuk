@@ -1168,3 +1168,105 @@ main > :nth-last-child(1 of .section-cards-container) {
 .gem-c-feedback__prompt-link:active {
     color: #0b0c0c;
 }
+
+/* Suggestions under the header search box. accessible-autocomplete 3.0.1
+   (MIT, Crown Copyright) is vendored as accessible-autocomplete-3.0.1.min.js
+   and mounted with cssNamespace "app-site-search", so its default stylesheet
+   does not apply and these rules are the whole of its styling. The look
+   follows the Design System site's own search: name in link blue, kind in
+   smaller grey beneath it, colours reversed on the focused or hovered option
+   (CS32-3458's spec). */
+.app-site-search__autocomplete {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.app-site-search__wrapper {
+    position: relative;
+}
+.app-site-search__autocomplete .app-site-search__input {
+    width: 100%;
+}
+.app-site-search__hint {
+    display: none;
+}
+.app-site-search__menu {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    z-index: 200;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 100%;
+    max-height: 342px;
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 2px solid #0b0c0c;
+    border-top: 0;
+    background-color: #ffffff;
+    color: #0b0c0c;
+    list-style: none;
+    text-align: left;
+}
+.app-site-search__menu--hidden {
+    display: none;
+}
+.app-site-search__option {
+    display: block;
+    position: relative;
+    margin: 0;
+    padding: 10px 15px;
+    border-bottom: 1px solid #b1b4b6;
+    cursor: pointer;
+    font-family: "GDS Transport", arial, sans-serif;
+    font-size: 1.1875rem;
+    line-height: 1.3;
+}
+.app-site-search__option:last-child {
+    border-bottom: 0;
+}
+.app-site-search__option-text {
+    color: #1d70b8;
+    text-decoration: underline;
+    text-decoration-thickness: max(1px, 0.0625rem);
+    text-underline-offset: 0.1578em;
+}
+.app-site-search__option-type {
+    display: block;
+    margin-top: 2px;
+    color: #505a5f;
+    font-size: 1rem;
+}
+.app-site-search__option--focused,
+.app-site-search__option:hover {
+    background-color: #1d70b8;
+    color: #ffffff;
+    outline: none;
+}
+.app-site-search__option--focused .app-site-search__option-text,
+.app-site-search__option:hover .app-site-search__option-text,
+.app-site-search__option--focused .app-site-search__option-type,
+.app-site-search__option:hover .app-site-search__option-type {
+    color: #ffffff;
+}
+.app-site-search__option--no-results {
+    color: #505a5f;
+    cursor: not-allowed;
+}
+.app-site-search__option--no-results:hover {
+    background-color: transparent;
+    color: #505a5f;
+}
+.app-site-search__status {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    border: 0 !important;
+    white-space: nowrap !important;
+}
