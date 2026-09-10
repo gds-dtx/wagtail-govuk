@@ -364,7 +364,10 @@ change propagates quickly and so a reversal does too.
 Production starts empty and takes its content from the export, so the above is
 the whole story there. The development instance is different: it already holds
 the content, in the shape the code had before the framework page types were
-reshaped, and migration `0071` converts it in place at container start:
+reshaped, and migrations `0071` and `0072` convert it in place at container
+start (`0071` creates the new types and moves the content, `0072` removes what
+they replaced -- two migrations because Postgres will not alter a table in the
+same transaction that changed its rows):
 
 - the home page (the shallowest page with a framework switch on) becomes the
   Framework main page;
