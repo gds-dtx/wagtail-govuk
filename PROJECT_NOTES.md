@@ -83,7 +83,8 @@ Big files first — these are where most work lands:
   menu). `CustomiseSettings` holds **location dropdowns** for `service_name_location`,
   `sign_in_location` (header / navigation / hidden — "hidden" still shows Sign Out
   for authenticated users), `search_location`, and `header_logo`. Hero colour
-  fields were removed as inoperable. `content_max_width` (optional px) feeds
+  fields were removed; migration 0072 carries a site's colours into `extra_css`
+  as the CSS they produced. `content_max_width` (optional px) feeds
   `render_custom_css`, which sets `--govuk-content-width` and shifts main.css's
   1030px centring breakpoint to width + 80. `render_custom_css` (served at
   `/gen/custom.css`, gated by `has_custom_css`) also passes through `extra_css`. `CapabilityFrameworkWordingSettings` and
@@ -219,7 +220,9 @@ and `role_url` for the framework-specific tests.
   in place and delete its role pages (two migrations because Postgres will not
   alter a table in the same transaction that changed its rows) — see `docs/cutover.md`, "Upgrading an instance
   that already has content". Data migrations walk RichTextField/JSONField
-  content and `bulk_update` (no signals/revisions), with fail-loud post-checks.
+  content and `bulk_update` (no signals/revisions), with fail-loud post-checks;
+  0071 is the exception (raw SQL and `page.move()`) and stops rather than
+  guesses when a role page has children.
 - **`wagtail.contrib.routable_page` is in `INSTALLED_APPS`** — required for
   `FrameworkMainPage.serve_role`. The route is at `role/<slug>/` (NOT bare
   `<slug>/` — that would shadow the main page's child pages; the one slug it
@@ -227,7 +230,9 @@ and `role_url` for the framework-specific tests.
   the live service's URL: `govuk.live_service_links` writes no redirect for a
   role whose route URL already is its live path.
 - **`FrameworkMainPage` and `FrameworkSkillsPage` are each limited to one per
-  site** (`max_count = 1`). `FrameworkMainPage` has no `parent_page_types`
+  instance** (`max_count = 1`, which Wagtail counts across the whole tree, not
+  per site; the admin enforces it through `can_create_at` and the page import
+  refuses to create a second). `FrameworkMainPage` has no `parent_page_types`
   restriction — it can be created anywhere in the tree (the general container
   types list it in their `subpage_types`); `max_count` keeps it to one.
   `FrameworkContentPage` may only be a child of `FrameworkMainPage`.

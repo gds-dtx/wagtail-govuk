@@ -202,8 +202,9 @@ def delete_rolepages(apps, schema_editor):
     """Delete every RolePage row without using the ORM cascade collector.
 
     The cascade collector queries ALL MTI child models in the current registry —
-    including FrameworkSkillsPage whose table doesn't exist yet — so raw SQL is
-    used throughout.
+    and mid-migration the registry and the tables disagree (RolePage is on its
+    way out, FrameworkMainPage has just appeared) — so raw SQL is used
+    throughout.
     """
     ContentType = apps.get_model("contenttypes", "ContentType")
     RolePage = apps.get_model("govuk", "RolePage")

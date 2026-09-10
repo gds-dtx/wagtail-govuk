@@ -660,9 +660,12 @@ class CustomiseSettings(BaseSiteSetting):
         MultiFieldPanel(
             [
                 FieldPanel("show_page_feedback_prompt"),
-                FieldPanel("page_feedback_more_intro", heading="Intro text"),
-                FieldPanel("page_feedback_more_link_text", heading="Follow up text"),
-                FieldPanel("page_feedback_more_url", heading="Follow up URL"),
+                # No heading overrides: the fields' own labels ("Feedback
+                # follow-up sentence" and so on) are what the revision-compare
+                # view shows, and the form should read the same.
+                FieldPanel("page_feedback_more_intro"),
+                FieldPanel("page_feedback_more_link_text"),
+                FieldPanel("page_feedback_more_url"),
             ],
             heading="Page feedback",
         ),
@@ -3279,6 +3282,7 @@ class ContentPage(BaseContentPage):
         # pages that are not about the framework live under it too. They are
         # plain content pages: no role navigation, and not in the side menu.
         "govuk.FrameworkMainPage",
+        "govuk.FrameworkContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
@@ -3368,7 +3372,7 @@ def without_framework_pages(queryset):
     """
     if settings.FEATURE_FLAGS.get("SKILLS"):
         return queryset
-    return queryset.not_type(FrameworkSkillsPage)
+    return queryset.not_type(FrameworkMainPage, FrameworkContentPage, FrameworkSkillsPage)
 
 
 def role_page_urls_by_role_id() -> dict[int, str]:
@@ -4017,6 +4021,19 @@ class FrameworkMainPage(
             return False
         return super().can_exist_under(parent)
 
+    def serve(self, request, *args, **kwargs):
+        """Not a page on a site without the framework.
+
+        ``can_create_at`` and ``can_exist_under`` stop an editor making one,
+        but the page import is not the admin and creates any page whose model
+        it can resolve, so a framework export landed on another service leaves
+        this page in its tree. It 404s there, as the skills index does, rather
+        than serve the framework's welcome page on a site that has no framework.
+        """
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            raise Http404
+        return super().serve(request, *args, **kwargs)
+
     @path("role/<slug:role_slug>/")
     def serve_role(self, request, role_slug):
         """Serve a role's page from its snippet, or 404.
@@ -4065,12 +4082,21 @@ class FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage):
 
     parent_page_types = ["govuk.FrameworkMainPage"]
     subpage_types = [
+        # A plain page may sit under a framework page, as under the main page:
+        # the development instance holds project pages that way.
+        "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
     ]
     template = "govuk/content_page.html"
     tags = ClusterTaggableManager(through="govuk.FrameworkContentPageTag", blank=True)
+
+    def serve(self, request, *args, **kwargs):
+        """Not a page on a site without the framework -- see FrameworkMainPage."""
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            raise Http404
+        return super().serve(request, *args, **kwargs)
 
     # No framework welcome content in the editor; the welcome layout is the
     # main page's.

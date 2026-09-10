@@ -276,3 +276,60 @@ class FilesThatNeedNoReadingTests(TestCase):
         self.assertFalse(FrameworkMainPage.objects.exists())
         self.assertFalse(FrameworkContentPage.objects.exists())
         self.assertTrue(ContentPage.objects.filter(slug="about").exists())
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class OnlyOneFrameworkMainPageTests(TestCase):
+    """max_count is the admin's rule; the import has to keep it too.
+
+    Two framework main pages would leave the navigation, the role routes and
+    the redirects each free to pick a different one.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.user = get_user_model().objects.create_superuser(
+            username="importer",
+            email="importer@example.gov.uk",
+            password="unused-password",
+        )
+        from govuk.tests.framework_helpers import make_framework_main_page
+
+        self.main_page = make_framework_main_page(self.site.root_page.specific)
+
+    def test_a_second_main_page_under_another_slug_is_refused_and_named(self):
+        result = import_pages_from_payload(
+            payload={
+                "format": PAGE_EXPORT_FORMAT,
+                "pages": [_node("govuk.FrameworkMainPage", "another-framework")],
+            },
+            site=self.site,
+            user=self.user,
+        )
+
+        self.assertEqual(FrameworkMainPage.objects.count(), 1)
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("only 1", result.errors[0])
+        self.assertIn(self.main_page.slug, result.errors[0])
+        self.assertFalse(Page.objects.filter(slug="another-framework").exists())
+
+    def test_the_existing_main_page_can_still_be_updated_under_its_own_slug(self):
+        result = import_pages_from_payload(
+            payload={
+                "format": PAGE_EXPORT_FORMAT,
+                "pages": [
+                    _node(
+                        "govuk.FrameworkMainPage",
+                        self.main_page.slug,
+                        title="Renamed framework",
+                        fields={"body": "<p>Updated.</p>"},
+                    )
+                ],
+            },
+            site=self.site,
+            user=self.user,
+        )
+
+        self.assertEqual(result.errors, [])
+        self.assertEqual(FrameworkMainPage.objects.count(), 1)
+        self.assertEqual(FrameworkMainPage.objects.get().title, "Renamed framework")
