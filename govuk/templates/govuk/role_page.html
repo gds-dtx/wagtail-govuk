@@ -3,7 +3,14 @@
 {% comment %}
     The heading sits beside the side navigation rather than in the site hero,
     which is how the DDaT Capability Framework lays a role page out.
+
+    The browser title is the role's, not the page's. "self" here is the
+    framework main page, whose title is the whole service name, so without
+    this every one of the fifty-odd roles shares one tab title, one history
+    entry and one search-engine result title -- and a screen reader announces
+    the same page name for all of them.
 {% endcomment %}
+{% block title %}{{ page_heading|default:self.title }}{% endblock %}
 {% block page_hero %}{% endblock %}
 {% block content %}
     <div class="govuk-width-container govuk-!-margin-bottom-6">

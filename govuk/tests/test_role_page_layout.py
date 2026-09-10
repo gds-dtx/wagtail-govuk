@@ -178,6 +178,19 @@ class RolePageLayoutTests(TestCase):
         self.assertNotContains(response, "skill-name")
         self.assertContains(response, "Data visualisation")
 
+    def test_the_browser_title_is_the_roles_not_the_service_name(self):
+        """The role is served on the framework main page's route, so "self" in
+        the template is the main page, whose title is the whole service name.
+        Every role shared one tab title until the template said otherwise."""
+        self.site.site_name = "Capability Framework"
+        self.site.save()
+
+        response = self.client.get(self.data_analyst_url)
+
+        html = response.content.decode()
+        title = " ".join(html.split("<title>", 1)[1].split("</title>", 1)[0].split())
+        self.assertEqual(title, "Data analyst | Capability Framework")
+
     def test_the_title_uses_the_standard_heading_rather_than_the_site_hero(self):
         response = self.client.get(self.data_analyst_url)
 
