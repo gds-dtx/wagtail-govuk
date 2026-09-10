@@ -10,12 +10,12 @@ from wagtail.models import Site
 
 from govuk.models import (
     CapabilityFrameworkWordingSettings,
+    FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    RolePage,
-    SkillsAZPage,
 )
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -33,6 +33,9 @@ class FrameworkWordingTestCase(TestCase):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
         self.wording = CapabilityFrameworkWordingSettings.for_site(self.site)
+        # Roles are served as routes under the single framework main page, so
+        # every role page these tests read lives under this one.
+        self.main_page = make_framework_main_page(self.root_page)
 
     def _set(self, **fields):
         for name, value in fields.items():
@@ -93,21 +96,8 @@ class DefaultWordingTests(FrameworkWordingTestCase):
             date="2026-04-01", role=self.analyst, note="<p>First published.</p>"
         )
 
-    def _publish(self, role: GovukRole) -> RolePage:
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title=role.title,
-                slug=role.slug,
-                selected_roles=[{"type": "role", "value": role.pk}],
-            )
-        )
-        page.save_revision().publish()
-        return page.specific
-
     def test_a_role_level_page_reads_as_it_did_before(self):
-        page = self._publish(self.analyst)
-
-        response = self.client.get(page.url)
+        response = self.client.get(role_url(self.main_page, self.analyst))
 
         for wording in (
             "Contents",
@@ -123,9 +113,7 @@ class DefaultWordingTests(FrameworkWordingTestCase):
                 self.assertContains(response, wording)
 
     def test_a_senior_role_page_reads_as_it_did_before(self):
-        page = self._publish(self.cto)
-
-        response = self.client.get(page.url)
+        response = self.client.get(role_url(self.main_page, self.cto))
 
         for wording in (
             "A specific chief technology officer job can vary depending on the",
@@ -145,9 +133,8 @@ class DefaultWordingTests(FrameworkWordingTestCase):
                 self.assertContains(response, wording)
 
     def test_the_skills_page_reads_as_it_did_before(self):
-        self._publish(self.analyst)
         page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills", slug="skills")
         )
         page.save_revision().publish()
 
@@ -164,22 +151,10 @@ class DefaultWordingTests(FrameworkWordingTestCase):
             with self.subTest(wording=wording):
                 self.assertContains(response, wording)
 
-    def test_a_role_page_with_no_role_chosen_reads_as_it_did_before(self):
-        # An author is what brings the content column into the page at all,
-        # so a page with nothing whatever on it never reaches this message.
-        page = self.root_page.add_child(
-            instance=RolePage(title="Empty", slug="empty", author="Someone")
-        )
-        page.save_revision().publish()
-
-        response = self.client.get(page.specific.url)
-
-        self.assertContains(response, "No roles selected.")
-
     def test_the_skills_page_with_no_skills_reads_as_it_did_before(self):
         GovukSkill.objects.all().delete()
         page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills", slug="skills")
         )
         page.save_revision().publish()
 
@@ -210,20 +185,12 @@ class EditedWordingTests(FrameworkWordingTestCase):
                 }
             ],
         )
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title=self.role.title,
-                slug="devops-engineer",
-                selected_roles=[{"type": "role", "value": self.role.pk}],
-            )
-        )
-        page.save_revision().publish()
-        self.page = page.specific
+        self.role_url = role_url(self.main_page, self.role)
 
     def test_an_edited_heading_reaches_the_page(self):
         self._set(role_levels_heading="Levels of {role}")
 
-        response = self.client.get(self.page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(
             response, "Levels of Development operations (DevOps) engineer"
@@ -236,12 +203,12 @@ class EditedWordingTests(FrameworkWordingTestCase):
         under a different name."""
         self._set(role_levels_heading="Levels of {role}")
 
-        response = self.client.get(self.page.url)
+        response = self.client.get(self.role_url)
         body = response.content.decode()
 
-        anchor = self.page.get_context(response.wsgi_request)["role_sections"][0][
-            "anchors"
-        ]["levels"]
+        anchor = self.main_page.build_role_context(response.wsgi_request, self.role)[
+            "role_sections"
+        ][0]["anchors"]["levels"]
         self.assertIn(
             f'href="#{anchor}" class="contents-list-links govuk-link">'
             "Levels of Development operations (DevOps) engineer",
@@ -251,7 +218,7 @@ class EditedWordingTests(FrameworkWordingTestCase):
     def test_a_heading_keeps_the_capitals_inside_a_role_title(self):
         """"Development operations (DevOps) engineer" opens a heading, so it
         is not lowercased the way the mid-sentence form is."""
-        response = self.client.get(self.page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(
             response, "Development operations (DevOps) engineer role levels"
@@ -268,23 +235,15 @@ class EditedWordingTests(FrameworkWordingTestCase):
             is_senior_civil_service=True,
             roles_that_could_lead_here=[{"type": "role", "value": manager.pk}],
         )
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title=manager.title,
-                slug="it-service-manager",
-                selected_roles=[{"type": "role", "value": manager.pk}],
-            )
-        )
-        page.save_revision().publish()
 
-        response = self.client.get(page.specific.url)
+        response = self.client.get(role_url(self.main_page, manager))
 
         self.assertContains(response, "Where IT service manager leads")
 
     def test_the_screen_reader_wording_for_a_skill_level_is_editable(self):
         self._set(skill_level_scale_text="{level}, {ordinal} of four")
 
-        response = self.client.get(self.page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(response, "Expert, fourth of four")
         self.assertNotContains(response, "ascending skill levels")
@@ -298,7 +257,7 @@ class EditedWordingTests(FrameworkWordingTestCase):
             scs_skills_table_skill_heading="Leadership skill",
         )
 
-        response = self.client.get(self.page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(response, "Capability")
         self.assertNotContains(response, "Leadership skill")
@@ -312,7 +271,7 @@ class EditedWordingTests(FrameworkWordingTestCase):
         other_wording.role_levels_heading = "Grades of {role}"
         other_wording.save()
 
-        response = self.client.get(self.page.url)
+        response = self.client.get(self.role_url)
 
         self.assertContains(
             response, "Development operations (DevOps) engineer role levels"
@@ -326,7 +285,7 @@ class SkillsPageEditedWordingTests(FrameworkWordingTestCase):
             title="Data modelling",
             working_points=[{"type": "point", "value": "produce data models"}],
         )
-        role = GovukRole.objects.create(
+        GovukRole.objects.create(
             title="Data analyst",
             family="Data",
             levels=[
@@ -341,16 +300,8 @@ class SkillsPageEditedWordingTests(FrameworkWordingTestCase):
                 }
             ],
         )
-        role_page = self.root_page.add_child(
-            instance=RolePage(
-                title=role.title,
-                slug="data-analyst",
-                selected_roles=[{"type": "role", "value": role.pk}],
-            )
-        )
-        role_page.save_revision().publish()
         page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills", slug="skills")
         )
         page.save_revision().publish()
         self.page = page.specific

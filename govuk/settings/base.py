@@ -219,6 +219,10 @@ INSTALLED_APPS = [
     # "search",
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
+    # Serves a page per role snippet as a route under the Framework Main Page
+    # (govuk.models.FrameworkMainPage.serve_role); roles have no page of their
+    # own.
+    "wagtail.contrib.routable_page",
     "wagtail.contrib.settings",
     # The grid editor behind ContentPage.body_blocks. Without it a table
     # reaches a content page only as hand-written HTML, which is not a

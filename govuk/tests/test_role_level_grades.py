@@ -1,7 +1,8 @@
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import GovukRole, GovukSkill, RolePage
+from govuk.models import GovukRole, GovukSkill
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -50,15 +51,8 @@ class RoleLevelGradeTests(TestCase):
             ],
         )
 
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data analyst",
-                slug="data-analyst",
-                selected_roles=[{"type": "role", "value": self.role.pk}],
-            )
-        )
-        page.save_revision().publish()
-        self.role_page = page.specific
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.role)
 
     def test_level_grades_render_as_labels(self):
         levels = self.role.get_levels_with_skills()
@@ -91,7 +85,7 @@ class RoleLevelGradeTests(TestCase):
         self.assertEqual(self.role.get_levels_with_skills()[1]["grades"], [])
 
     def test_role_page_renders_the_grade_sentence_for_graded_levels_only(self):
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "EO (Executive Officer)")

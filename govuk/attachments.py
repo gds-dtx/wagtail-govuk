@@ -34,7 +34,7 @@ from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import mark_safe
 
-from govuk.framework_csv import FRAMEWORK_CSV_DOWNLOADS
+from govuk.capability_framework_csv import FRAMEWORK_CSV_DOWNLOADS
 
 # Long enough that the download page is not regenerating three CSVs for every
 # reader, short enough that an afternoon's editing is reflected the same day.

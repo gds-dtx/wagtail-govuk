@@ -1,7 +1,8 @@
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import GovukRole, GovukSkill, RolePage, SkillsAZPage
+from govuk.models import FrameworkSkillsPage, GovukRole, GovukSkill
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -48,18 +49,13 @@ class SkillRolesTests(TestCase):
             levels=[_level("Data architect", [(self.modelling, "expert")])],
         )
 
-        engineer_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data engineer",
-                slug="data-engineer",
-                selected_roles=[{"type": "role", "value": self.data_engineer.pk}],
-            )
-        )
-        engineer_page.save_revision().publish()
-        self.engineer_page = engineer_page.specific
+        self.main_page = make_framework_main_page(self.root_page)
+        # Every role is now served on a route under the framework main page.
+        self.engineer_url = role_url(self.main_page, self.data_engineer)
+        self.architect_url = role_url(self.main_page, self.data_architect)
 
         skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         skills_page.save_revision().publish()
         self.skills_page = skills_page.specific
@@ -86,8 +82,10 @@ class SkillRolesTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Roles that require this skill")
-        self.assertContains(response, self.engineer_page.url)
-        # data architect has no page of its own, so renders as plain text
+        # Every role now has a route under the framework main page, so both
+        # roles requiring the skill link to their own page.
+        self.assertContains(response, self.engineer_url)
+        self.assertContains(response, self.architect_url)
         self.assertContains(response, "Data architect")
 
     def test_skills_page_omits_heading_for_skills_without_roles(self):

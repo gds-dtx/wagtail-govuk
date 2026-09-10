@@ -98,6 +98,26 @@ are deleted with it. Before deleting a skill, open its usage listing and check
 what refers to it; if the intention is to withdraw it rather than erase it,
 change the content instead of deleting the record.
 
+## The role side menu
+
+Every framework page carries the side menu: the roles grouped by family, then
+**Further resources**, the handful of pages about the framework itself. What
+goes in that last group is decided by **page type**, not by a tick box:
+
+- A **Framework content page** is listed. Create one under the framework home
+  page for anything that belongs beside the roles: the live service lists
+  Skills A to Z, Propose a change, Download, Job grades, Context and challenges
+  and Roadmap.
+- A **Content page** is not. Use it for the pages that are not about the
+  framework — the privacy notice, the cookie statement, the accessibility
+  statement — which live under the same home page but stay out of the menu.
+
+A page's type is fixed when it is created, so choose it then. To change the
+**order** of the group, or to hide a framework page without unpublishing it,
+use **Capability framework → Sidebar settings**: add the pages in the order you
+want and untick any to hide. A framework page not listed there is still shown,
+after the listed ones, so nothing disappears just because it was not added.
+
 ## Settings, which are neither
 
 The footer links, the phase banner, the search placeholder and the error-page

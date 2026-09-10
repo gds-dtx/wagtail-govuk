@@ -1,7 +1,8 @@
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import GovukRole, GovukSkill, RolePage, SkillsAZPage
+from govuk.models import FrameworkMainPage, FrameworkSkillsPage, GovukRole, GovukSkill
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -73,25 +74,9 @@ class RelatedRolesTests(TestCase):
             levels=[],
         )
 
-        role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data engineer",
-                slug="data-engineer",
-                selected_roles=[{"type": "role", "value": self.data_engineer.pk}],
-            )
-        )
-        role_page.save_revision().publish()
-        self.role_page = role_page.specific
-
-        architect_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data architect",
-                slug="data-architect",
-                selected_roles=[{"type": "role", "value": self.data_architect.pk}],
-            )
-        )
-        architect_page.save_revision().publish()
-        self.architect_page = architect_page.specific
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.data_engineer)
+        self.architect_url = role_url(self.main_page, self.data_architect)
 
     def test_get_skill_ids_returns_distinct_skills_across_levels(self):
         self.assertEqual(
@@ -129,31 +114,31 @@ class RelatedRolesTests(TestCase):
         self.assertEqual(self.unrelated_role.get_related_roles(), [])
 
     def test_role_page_renders_related_roles_with_link_to_role_page(self):
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Roles that share data engineer skills")
-        self.assertContains(response, self.architect_page.url)
-        # incident manager has no page, so it renders as plain text
+        self.assertContains(response, self.architect_url)
+        # Every role now has a route, so the incident manager links to its own.
         self.assertContains(response, "Incident manager")
 
     def test_related_role_heading_preserves_acronyms(self):
         self.assertEqual(
-            RolePage._display_role_name("IT service manager"),
+            FrameworkMainPage._display_role_name("IT service manager"),
             "IT service manager",
         )
         self.assertEqual(
-            RolePage._display_role_name("Data engineer"),
+            FrameworkMainPage._display_role_name("Data engineer"),
             "data engineer",
         )
 
     def test_shared_skills_link_to_skills_index_when_present(self):
         skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         skills_page.save_revision().publish()
 
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
         self.assertContains(
             response, f"{skills_page.url}#{self.modelling.slug}"
         )

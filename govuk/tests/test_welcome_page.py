@@ -3,26 +3,25 @@ import re
 from datetime import date
 
 from django.test import TestCase
-from django.utils.text import slugify
 from wagtail.models import Site
 
 from govuk.models import (
     CapabilityFrameworkWordingSettings,
-    ContentPage,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
-    RolePage,
-    SkillsAZPage,
     site_wide_changelog,
 )
 from govuk.page_import_export import _serialise_page_fields
+from govuk.tests.framework_helpers import make_framework_main_page
 
 
 class ContentPageRoleNavigationTests(TestCase):
-    """A content page can carry the role navigation, as the welcome page does.
+    """A framework page can carry the role navigation, as the welcome page does.
 
-    Every other wagtail-govuk site has content pages that know nothing about
-    roles, so it is off unless asked for.
+    The role navigation is the Capability Framework's own, so it lives on the
+    framework page types now; the roles come straight from the role snippets.
     """
 
     def setUp(self):
@@ -30,22 +29,21 @@ class ContentPageRoleNavigationTests(TestCase):
         self.root_page = self.site.root_page.specific
 
         self.role = GovukRole.objects.create(title="Data analyst", family="Data")
-        role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data analyst",
-                slug="data-analyst",
-                selected_roles=[{"type": "role", "value": self.role.pk}],
-            )
-        )
-        role_page.save_revision().publish()
 
-        self.page = ContentPage(
-            title="Welcome", slug="welcome", body="<p>Some words.</p>"
+        # Start from every switch off, so each test turns on just the one it
+        # exercises. A new framework main page defaults them all on; that
+        # default is covered on its own in test_content_page_panels.
+        self.page = make_framework_main_page(
+            self.root_page,
+            title="Welcome",
+            slug="welcome",
+            body="<p>Some words.</p>",
+            show_role_navigation=False,
+            show_framework_updates=False,
+            show_framework_welcome=False,
         )
-        self.root_page.add_child(instance=self.page)
-        self.page.save_revision().publish()
 
-    def test_a_content_page_has_no_role_navigation_by_default(self):
+    def test_a_content_page_has_no_role_navigation_when_switched_off(self):
         response = self.client.get(self.page.url)
 
         self.assertNotContains(response, "role-nav__list")
@@ -61,6 +59,20 @@ class ContentPageRoleNavigationTests(TestCase):
         self.assertContains(response, "Data analyst")
         self.assertContains(response, "govuk-grid-column-one-quarter")
         self.assertContains(response, "govuk-grid-column-three-quarters")
+
+    def test_the_sidebar_home_link_names_the_framework_and_is_current_here(self):
+        """The navigation's top link reads "Capability Framework", points at the
+        framework main page, and is marked current on the main page itself."""
+        self.page.show_role_navigation = True
+        self.page.save()
+
+        response = self.client.get(self.page.url)
+
+        home = response.context["framework_home"]
+        self.assertEqual(home["title"], "Home")
+        self.assertEqual(home["url"], self.page.url)
+        self.assertTrue(home["is_current"])
+        self.assertContains(response, ">Home</a>", html=False)
 
     def test_the_heading_navigation_is_untouched_on_its_own(self):
         self.page.enable_free_text_heading_navigation = True
@@ -103,11 +115,15 @@ class FrameworkUpdatesTests(TestCase):
 
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
-        self.page = ContentPage(
-            title="Welcome", slug="welcome", body="<p>Some words.</p>"
+        self.page = make_framework_main_page(
+            self.site.root_page.specific,
+            title="Welcome",
+            slug="welcome",
+            body="<p>Some words.</p>",
+            show_role_navigation=False,
+            show_framework_updates=False,
+            show_framework_welcome=False,
         )
-        self.site.root_page.specific.add_child(instance=self.page)
-        self.page.save_revision().publish()
 
         self.role = GovukRole.objects.create(title="Data analyst", family="Data")
         GovukChangelogEntry.objects.create(
@@ -178,28 +194,28 @@ class FrameworkWelcomeContentTests(TestCase):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
 
+        # Switches off to start; the welcome tests turn on just what they need.
+        self.page = make_framework_main_page(
+            self.root_page,
+            title="Welcome",
+            slug="welcome",
+            show_role_navigation=False,
+            show_framework_updates=False,
+            show_framework_welcome=False,
+        )
+
         for title, family in (
             ("Data analyst", "Data"),
             ("Business architect", "Architecture"),
         ):
-            role = GovukRole.objects.create(title=title, family=family)
-            page = self.root_page.add_child(
-                instance=RolePage(
-                    title=title,
-                    slug=slugify(title),
-                    selected_roles=[{"type": "role", "value": role.pk}],
-                )
-            )
-            page.save_revision().publish()
+            GovukRole.objects.create(title=title, family=family)
 
-        self.skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+        # The framework's "further resources" group is the main page's own
+        # children, so the skills index sits under the welcome page.
+        self.skills_page = self.page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         self.skills_page.save_revision().publish()
-
-        self.page = ContentPage(title="Welcome", slug="welcome")
-        self.root_page.add_child(instance=self.page)
-        self.page.save_revision().publish()
 
     def _welcome(self) -> str:
         self.page.show_framework_welcome = True
@@ -378,7 +394,7 @@ class FrameworkWelcomeContentTests(TestCase):
         """
         self._welcome()
 
-        field = ContentPage._meta.get_field("framework_welcome_body")
+        field = FrameworkMainPage._meta.get_field("framework_welcome_body")
         self.page.framework_welcome_body = field.to_python(
             json.dumps(
                 [

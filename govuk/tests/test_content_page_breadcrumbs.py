@@ -11,7 +11,8 @@ survive there.
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import ContentPage
+from govuk.models import ContentPage, FrameworkContentPage
+from govuk.tests.framework_helpers import make_framework_main_page
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -42,7 +43,18 @@ class ContentPageBreadcrumbTests(TestCase):
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
     def test_framework_replaces_the_ancestor_trail_and_hides_it_on_a_wide_screen(self):
-        response = self.client.get(self.nested.url)
+        # The framework's own trail comes from the framework page types, not
+        # from a plain content page: a framework content page under the main
+        # page gets Home, then itself, hidden until the side navigation is.
+        main_page = make_framework_main_page(self.root_page)
+        nested = main_page.add_child(
+            instance=FrameworkContentPage(
+                title="Keeping records", slug="framework-keeping-records", body=""
+            )
+        )
+        nested.save_revision().publish()
+
+        response = self.client.get(nested.url)
 
         self.assertEqual(
             [crumb["title"] for crumb in response.context["breadcrumbs"]],

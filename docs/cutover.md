@@ -1,5 +1,14 @@
 # Cutting a site over to Wagtail
 
+> **Launch candidate A.** The build verified end to end for the Capability
+> Framework's 30 September go-live is tag `build-119`, also held as branch
+> `cf-launch-candidate-build-119`, image
+> `ghcr.io/gds-dtx/wagtail-govuk-preview:7.4.3-119-capability-framework-112ad14`.
+> The framework page types were reshaped after it (`cf-next`, from PR #72). If
+> the reshaped build is not signed off by 19 September, deploy that tag: every
+> instance is pinned to an exact image, so nothing about a branch's later
+> history changes what it runs.
+
 This is the runbook for moving a service from its existing publishing platform
 onto a new Wagtail instance. It is written from the DDaT Capability Framework
 migration, but the shape applies to any instance: content comes across in one
@@ -112,6 +121,35 @@ The import matches on slug and never deletes, so it is safe to run against
 content editors have been working on. That safety has a cost, and the cost is
 the second half of this section.
 
+**Then restore the level order.** The CSV lists a role's levels alphabetically,
+not by seniority, and the import takes them as it finds them: after a refresh,
+Business architect reads "Associate, Business architect, Lead, Trainee" and
+Software developer "Apprentice, Developer, Junior, ...". Measured on
+10 September 2026 on a database whose order had been right before the refresh.
+`import_role_grades` puts the seniority order back (and the indicative job
+grades with it), reading both from the live site. Run it every time the CSV
+import runs, on whichever instance it ran on:
+
+```bash
+python manage.py import_role_grades --save grades.json
+```
+
+`--save` keeps what it fetched, so the same order can be re-applied later with
+`--json grades.json` once the live site is gone. Run it on the instance itself
+(over `aws ecs execute-command`, like the redirect check), where the live site's
+certificate chain is trusted. From a laptop behind TLS inspection every fetch
+fails with `CERTIFICATE_VERIFY_FAILED` and the command reports "Updated 0 roles
+(0 reordered)" — read that line; a zero here after a refresh means the order is
+still wrong. On 10 September the refreshed rehearsal database needed
+"Updated 52 roles (43 reordered)".
+
+**The refresh covers roles, skills and change notes only.** Nothing refreshes
+the hand-made pages. On 10 September the live Roadmap said "the last update was
+2 September 2026" and the copy on the development instance said 8 June: the
+content team had edited live after the export was taken. Before exporting, read
+each of the eight supporting pages against live and bring the copy across by
+hand where it has moved.
+
 ### Read what the import says it did not touch
 
 The import ends by naming everything in the CMS that the exports no longer
@@ -167,6 +205,18 @@ pages' URLs against the live service's before assuming the redirects cover them:
 a redirect built from our slug points at our page, which is no help to somebody
 following a link built from theirs.
 
+This is not hypothetical. On 10 September 2026 the live CSV titled the role
+"Data and artificial intelligence ethicist", so the refresh created the slug
+`data-and-artificial-intelligence-ethicist`; the live site publishes it at
+`/role/data-and-artificial-intelligence-ai-ethicist`, and that URL answered 404
+on the refreshed instance while `seed_live_service_redirects --check` reported
+everything fine, because the check can only know our slugs. Fix it in the CMS by
+editing the role's slug to match live's, or add a redirect by hand. The list to
+check against is the set of `/role/...` links on live's home page; the old
+`data-ethicist` role the refresh reports as "in the CMS but not in this file"
+is the same role under its previous name and should be unpublished with a
+redirect to the new one.
+
 ## 1. Bring up the instance
 
 Apply the Terraform for the new instance and wait for the service to be stable.
@@ -197,6 +247,19 @@ Sign in to the production admin and upload the file at
 `/admin/pages/import-export/`. Read the report it prints rather than assuming
 success — it lists what was created, what was updated and what was skipped.
 
+**A file from before the framework page types changed still works.** Every
+export taken from an instance running the earlier code names `govuk.ContentPage`
+for the framework's pages, `govuk.RolePage` for each role and
+`govuk.SkillsAZPage` for the A to Z. The importer reads such a file as one that
+names the present types: the home page becomes the Framework main page, pages
+with a framework switch on or ticked for the side menu become Framework content
+pages, the A to Z becomes the Framework skills page, and the role pages are not
+imported because the roles themselves are in the file's `roles` key and are
+served from there. The report begins with one line saying exactly this; if it
+does not, the file already named the present types. Because the ticks come from
+migration `0069`, take the export from an instance that has run it (build 119 or
+later), or three of live's five side-menu pages arrive as plain content pages.
+
 The first page in the file is the home page, and a fresh instance ships an
 empty placeholder home page. `_replace_placeholder_home_page` swaps the
 placeholder for the imported page and repoints the site at it, but only while
@@ -207,10 +270,14 @@ level down and every URL gains a `/home/` prefix.
 ## 4. Check the redirects
 
 The live service publishes roles at `/role/<slug>` and skills at
-`/skill/<slug>`. Wagtail serves a role at `/<slug>` and every skill as a section
-of the Skills A to Z. Without redirects, every bookmark, every search result and
-every link inside the migrated content itself answers 404 — the welcome copy
-alone links 37 roles the old way.
+`/skill/<slug>`. Wagtail serves a role at `/<framework-main-page>/role/<slug>/`
+and every skill as a section of the Framework Skills page. When the framework
+main page is the site's home page, as it is for the Capability Framework, a
+role is therefore served at its live address (`/role/<slug>` answers with
+Django's own redirect to the slashed form) and **no role redirects are needed
+or written**. The skills still need theirs. Without those, every bookmark,
+every search result and every link inside the migrated content itself answers
+404 — the welcome copy alone links 37 roles the old way.
 
 **The import in step 3 seeds these itself**, so on a clean run there is nothing
 to do here but confirm it. The import report says how many it wrote. If the
@@ -258,30 +325,38 @@ Capability Framework these match the live service exactly:
 | Terms and conditions | `https://www.gov.uk/help/terms-conditions` |
 | Privacy | `/privacy/` |
 
-**Customise settings** (`CustomiseSettings`) — for the Capability Framework:
-`show_service_name_in_navigation` on, `search_placeholder` set to
-"Search for roles and skills", `hide_sign_in_link` on, and the error-page
-contact name and email. Confirm the contact address with the service team
-before entering it; the address carried in the migration fixture is not
-necessarily the one the service wants published.
-Also `show_page_feedback_prompt` on, so every page ends with "Is this page
-useful?" as the live service's do; `page_feedback_more_url` is `/feedback`,
-and the two wording fields keep their defaults, which are the live copy.
+**Customise settings** (`CustomiseSettings`) — the `import_capability_framework`
+command sets most of these automatically on first run. Confirm they are correct
+in the CMS afterwards, and fill in anything the import does not cover:
 
-**The role side menu's last group is chosen page by page.** "List in the role
-side menu", in a content page's settings, puts it under the group that closes
-the menu; Skills A to Z is always there. The flag travels in the export like
-any other page field, **so take the export from the source instance after it
-has run migration `0069`** — that migration ticks the five pages the live
-service lists (propose a change, download, job grades, context and challenges,
-roadmap), but only for pages that exist when it runs. On a fresh instance the
-pages arrive by import after the migration, so an export taken before the
-source instance had the field leaves the group at Skills A to Z until someone
-ticks the pages by hand. The order of the group follows the page order in the
-explorer; drag the pages into the live service's order (Skills A to Z, Propose
-a change, Download, Job grades, Context and challenges, Roadmap) on the source
-instance before exporting, and the order travels too. Wagtail's own "Show in menus" is a different
-switch: it drives the header, which on this service lists only the site name.
+| Setting | Value |
+| --- | --- |
+| Service name location | Navigation |
+| Sign in location | Hidden |
+| Search box location | Navigation |
+| Header logo | GOV.UK |
+| Search placeholder | "Search for roles or skills" (the live service's wording, per the search box specification) |
+| Show page feedback prompt | On |
+| Page feedback — Follow up URL | `/feedback` |
+
+Also set the error-page contact name and email. Confirm the contact address
+with the service team before entering it; the address carried in the migration
+fixture is not necessarily the one the service wants published. The page
+feedback wording fields (`Intro text`, `Follow up text`) keep their defaults,
+which are the live copy.
+
+**The sidebar's "Further resources" group is managed in "Sidebar settings".**
+Under **Capability framework → Sidebar settings**, add the framework content
+pages (and Skills A to Z), drag them into the order the live service uses
+(Skills A to Z, Propose a change, Download, Job grades, Context and challenges,
+Roadmap), and untick any you want hidden without losing its place. **The list
+you write is the menu**: a framework page left off it does not appear, which is
+how the six above are achieved on an instance whose editors have ticked more
+pages into the navigation than the live service shows. Leave the list empty and
+every framework page appears in page-tree order, so a site nobody has
+configured is not left with an empty menu. These are `SidebarSettings`
+(`BaseSiteSetting`) — like the other site settings they are **not** in the page
+export and must be re-entered in the CMS on production.
 
 **The `/feedback` page itself is not in the export.** On the dev instance it
 was made by hand after the 20 August export, as a content page linking to the
@@ -340,6 +415,35 @@ change propagates quickly and so a reversal does too.
       that has never visited either host.
 - [ ] Re-run `redirect_coverage.mjs` once more, after DNS, against the real
       domain.
+
+## Upgrading an instance that already has content
+
+Production starts empty and takes its content from the export, so the above is
+the whole story there. The development instance is different: it already holds
+the content, in the shape the code had before the framework page types were
+reshaped, and migrations `0071` and `0072` convert it in place at container
+start (`0071` creates the new types and moves the content, `0072` removes what
+they replaced -- two migrations because Postgres will not alter a table in the
+same transaction that changed its rows):
+
+- the home page (the shallowest page with a framework switch on) becomes the
+  Framework main page;
+- every other page with a switch on, and every page ticked "List in the role
+  side menu", becomes a Framework content page under it. The tick is what put
+  three of live's five side-menu pages in the menu, so it counts;
+- the skills A to Z keeps its page and its address under the new type name;
+- the header layout (the two tick boxes become three dropdowns) and any hero
+  colours are carried into the new settings, so the header and masthead look
+  the same after the deploy as before it;
+- **every role page is deleted**, with its revisions, workflow state, search
+  and reference-index rows. Roles are served from their snippets at
+  `/role/<slug>/` from then on. Anything an editor wrote on a role *page*
+  (rather than on the role) does not survive: export first if that matters.
+
+Redirects that pointed at a role page go with it. With the main page as the
+home page the roles are served at the live service's own URLs and need none;
+the skill redirects point at the renamed A to Z page and survive. Run
+`seed_live_service_redirects --check` afterwards all the same.
 
 ## Rolling back
 

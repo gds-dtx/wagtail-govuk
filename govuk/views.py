@@ -20,7 +20,7 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 from wagtail.models import Site
 
-from govuk import framework_csv
+from govuk import capability_framework_csv
 from govuk.forms import FeedbackForm
 from govuk.models import CustomiseSettings, EdDSAKeySettings, Feedback
 from govuk.oidc import (
@@ -177,6 +177,61 @@ def search_view(request):
     )
 
 
+SUGGESTION_MIN_LENGTH = 2
+SUGGESTION_LIMIT = 10
+# How far down the ranked results to look before regrouping by kind. Roles are
+# few and rank high; a generous pool keeps a role from being cut off behind a
+# run of skills that happened to score above it.
+SUGGESTION_POOL = 50
+
+
+@require_http_methods(["GET", "HEAD"])
+def search_suggest_view(request):
+    """Suggestions for the header search box as the reader types.
+
+    A JSON list of ``{"text", "link", "type"}``, roles first, then skills, then
+    supporting pages, at most ten -- the shape the live service's autocomplete
+    consumed, so the box can behave as it does there (CS32-3458). Each entry
+    is the same result the results page would show for the same query, from
+    the same backend and the same ranking, only regrouped by kind: a role
+    links to its page, a skill to its section of the A to Z, a page to itself.
+    External content is left out; the spec names roles, skills and the site's
+    own pages.
+
+    Two characters or fewer suggest nothing rather than everything. ``query``
+    is accepted as well as ``q`` so the same URL answers the results page's
+    parameter name.
+    """
+    query = (request.GET.get("q") or request.GET.get("query") or "").strip()
+    if len(query) < SUGGESTION_MIN_LENGTH:
+        response = JsonResponse([], safe=False)
+    else:
+        site = Site.find_for_request(request)
+        results = search_backend.search(
+            query=query,
+            filters={
+                "request": request,
+                "site": site,
+                "live": True,
+                "public": not request.user.is_authenticated,
+                "page_size": SUGGESTION_POOL,
+            },
+            page=1,
+        )
+        grouped: dict[str, list[dict[str, str]]] = {"Role": [], "Skill": [], "Page": []}
+        for item in results.object_list:
+            if item.is_external or not item.url:
+                continue
+            kind = item.result_type if item.result_type in ("Role", "Skill") else "Page"
+            grouped[kind].append({"text": item.title, "link": item.url, "type": kind})
+        suggestions = (grouped["Role"] + grouped["Skill"] + grouped["Page"])[:SUGGESTION_LIMIT]
+        response = JsonResponse(suggestions, safe=False)
+    # What a signed-in editor sees can differ from what the public sees, and
+    # content changes as editors work, so nothing on the path keeps a copy.
+    response["Cache-Control"] = "no-store"
+    return response
+
+
 @require_http_methods(["GET", "HEAD"])
 def framework_csv_view(request, name):
     """One of the framework's published CSVs, built from the content asked for.
@@ -189,7 +244,7 @@ def framework_csv_view(request, name):
     if not settings.FEATURE_FLAGS.get("SKILLS"):
         raise Http404
     try:
-        label, write = framework_csv.FRAMEWORK_CSV_DOWNLOADS[name]
+        label, write = capability_framework_csv.FRAMEWORK_CSV_DOWNLOADS[name]
     except KeyError:
         raise Http404
 
