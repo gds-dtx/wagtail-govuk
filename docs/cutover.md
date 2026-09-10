@@ -359,6 +359,29 @@ change propagates quickly and so a reversal does too.
 - [ ] Re-run `redirect_coverage.mjs` once more, after DNS, against the real
       domain.
 
+## Upgrading an instance that already has content
+
+Production starts empty and takes its content from the export, so the above is
+the whole story there. The development instance is different: it already holds
+the content, in the shape the code had before the framework page types were
+reshaped, and migration `0071` converts it in place at container start:
+
+- the home page (the shallowest page with a framework switch on) becomes the
+  Framework main page;
+- every other page with a switch on, and every page ticked "List in the role
+  side menu", becomes a Framework content page under it. The tick is what put
+  three of live's five side-menu pages in the menu, so it counts;
+- the skills A to Z keeps its page and its address under the new type name;
+- **every role page is deleted**, with its revisions, workflow state, search
+  and reference-index rows. Roles are served from their snippets at
+  `/role/<slug>/` from then on. Anything an editor wrote on a role *page*
+  (rather than on the role) does not survive: export first if that matters.
+
+Redirects that pointed at a role page go with it. With the main page as the
+home page the roles are served at the live service's own URLs and need none;
+the skill redirects point at the renamed A to Z page and survive. Run
+`seed_live_service_redirects --check` afterwards all the same.
+
 ## Rolling back
 
 Before DNS moves, rollback is free: the old service is still serving and nothing
