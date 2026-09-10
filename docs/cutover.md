@@ -429,6 +429,9 @@ same transaction that changed its rows):
   side menu", becomes a Framework content page under it. The tick is what put
   three of live's five side-menu pages in the menu, so it counts;
 - the skills A to Z keeps its page and its address under the new type name;
+- the header layout (the two tick boxes become three dropdowns) and any hero
+  colours are carried into the new settings, so the header and masthead look
+  the same after the deploy as before it;
 - **every role page is deleted**, with its revisions, workflow state, search
   and reference-index rows. Roles are served from their snippets at
   `/role/<slug>/` from then on. Anything an editor wrote on a role *page*

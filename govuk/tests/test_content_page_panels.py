@@ -314,3 +314,91 @@ class ContentPageRenderWriteTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIsNotNone(response.context["framework_wording"])
         self.assertIn("framework_changelog", response.context)
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+class FrameworkPagesOnASiteWithoutTheFrameworkTests(TestCase):
+    """The framework's page types are not pages anywhere the framework is off.
+
+    The admin cannot make one there, but the page import is not the admin and
+    creates any page whose model it can resolve, so a framework export landed
+    on another service leaves them in its tree. The skills index already 404ed
+    there and stayed out of the generic listings; the main page and the
+    framework content pages served and were listed. Now all three behave alike,
+    which is what docs/platform-boundaries.md promises.
+    """
+
+    def setUp(self):
+        from govuk.models import FrameworkContentPage
+
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.main_page = make_framework_main_page(self.root_page)
+        self.content_page = self.main_page.add_child(
+            instance=FrameworkContentPage(title="Roadmap", slug="roadmap", body="")
+        )
+        self.content_page.save_revision().publish()
+
+    def test_the_main_page_and_its_framework_children_answer_404(self):
+        self.assertEqual(self.client.get(self.main_page.url).status_code, 404)
+        self.assertEqual(self.client.get(self.content_page.url).status_code, 404)
+
+    def test_they_are_kept_out_of_the_generic_listings(self):
+        from wagtail.models import Page
+
+        from govuk.models import without_framework_pages
+
+        listed = without_framework_pages(Page.objects.live()).specific()
+
+        self.assertNotIn(self.main_page.pk, [page.pk for page in listed])
+        self.assertNotIn(self.content_page.pk, [page.pk for page in listed])
+        self.assertIn(self.root_page.pk, [page.pk for page in listed])
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_with_the_framework_on_they_serve_as_before(self):
+        self.assertEqual(self.client.get(self.main_page.url).status_code, 200)
+        self.assertEqual(self.client.get(self.content_page.url).status_code, 200)
+
+
+class PlainPagesMayNestUnderFrameworkPagesTests(TestCase):
+    """The development instance holds project pages under the pages beside
+    the roles, so a plain page has to be allowed there too."""
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    def test_a_content_page_can_be_created_under_a_framework_content_page(self):
+        from govuk.models import FrameworkContentPage
+
+        site = Site.objects.get(is_default_site=True)
+        main_page = make_framework_main_page(site.root_page.specific)
+        roadmap = main_page.add_child(
+            instance=FrameworkContentPage(title="Roadmap", slug="roadmap", body="")
+        )
+        roadmap.save_revision().publish()
+
+        self.assertTrue(ContentPage.can_create_at(roadmap))
+        self.assertIn(ContentPage, FrameworkContentPage.allowed_subpage_models())
+
+
+class FeedbackSettingsKeepTheirLabelsTests(SimpleTestCase):
+    """#71 gave the feedback fields labels an editor understands. A panel
+    heading overrides the label in the form but not in the revision-compare
+    view, so the two disagreed; the form reads the field's own label again."""
+
+    def test_the_feedback_panels_carry_no_heading_override(self):
+        from govuk.models import CustomiseSettings
+
+        def field_panels(panel):
+            children = getattr(panel, "children", None)
+            if children is None:
+                return [panel]
+            return [found for child in children for found in field_panels(child)]
+
+        panels = [
+            panel
+            for top in CustomiseSettings.panels
+            for panel in field_panels(top)
+            if getattr(panel, "field_name", "").startswith("page_feedback_more_")
+        ]
+        self.assertEqual(len(panels), 3)
+        for panel in panels:
+            self.assertFalse(panel.heading, panel.field_name)

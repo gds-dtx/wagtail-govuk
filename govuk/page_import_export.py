@@ -1853,6 +1853,18 @@ def _find_or_create_page(*, slug: str, model_class, parent_page: Page, site_root
             raise PermissionError(
                 f"You do not have permission to create pages under '{parent_page.title}'."
             )
+        # max_count is the admin's rule, enforced by can_create_at, and the
+        # import is not the admin. A second framework main page under another
+        # slug would leave two, and the navigation, the role routes and the
+        # redirects each free to pick a different one.
+        max_count = getattr(model_class, "max_count", None)
+        if max_count and model_class.objects.count() >= max_count:
+            existing = model_class.objects.order_by("path").first()
+            raise ValidationError(
+                f"only {max_count} {model_class._meta.verbose_name} is allowed and "
+                f"this site already has one, '{existing.slug}'. Import into that "
+                "page's slug to update it, or delete it first."
+            )
         new_title = slug.replace("-", " ").strip().title() or slug
         # Not live yet. Wagtail's default is live=True the moment a page is
         # added to the tree, which would put a half-populated page in front of

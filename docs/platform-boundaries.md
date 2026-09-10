@@ -120,7 +120,8 @@ stored data is not enough: the data can arrive from a framework site.
   an import.** Wagtail checks `can_exist_under` when a page is created or moved
   in the admin, and the import is not the admin. The importer warns, but a
   warning in a deployment log is not the same as the page not being public.
-  Both now 404; so do the main page's role routes.
+  All three framework page types now 404 without the flag (each overrides
+  `serve`), and so do the main page's role routes.
 - **The CSV attachment card rendered anywhere.** `page_body` runs
   `rewrite_csv_download_links` over every content page on every site, and the
   download URL is registered unconditionally — it is the view that 404s. So a
@@ -163,8 +164,9 @@ Anything it lists is published to anyone who asks, and
 `?type=govuk.FrameworkSkillsPage` is the obvious way to go looking.
 
 The fix is one helper, `without_framework_pages` in `govuk/models.py`. It takes a
-page queryset and returns it minus `FrameworkSkillsPage`, or returns it
-untouched when the flag is on, so the framework's own site is unaffected and
+page queryset and returns it minus the three framework page types
+(`FrameworkMainPage`, `FrameworkContentPage`, `FrameworkSkillsPage`), or returns
+it untouched when the flag is on, so the framework's own site is unaffected and
 there is no second code path to keep in step. (Roles are no longer pages, so
 there is nothing role-shaped to exclude; the main page's role routes 404
 without the flag.) Every generic public listing goes through it:
