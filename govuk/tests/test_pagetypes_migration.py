@@ -149,6 +149,15 @@ class PageTypesMigrationTests(TransactionTestCase):
         )
         site = OldSite.objects.get(is_default_site=True)
         OldSite.objects.filter(pk=site.pk).update(root_page_id=home.pk)
+
+        # The header as the development instance has it: the live service's
+        # layout, set through the two tick boxes this migration replaces.
+        OldCustomiseSettings = apps.get_model("govuk", "CustomiseSettings")
+        OldCustomiseSettings.objects.create(
+            site_id=site.pk,
+            show_service_name_in_navigation=True,
+            hide_sign_in_link=True,
+        )
         self.home_id = home.pk
         home_as_page = OldPage.objects.get(pk=home.pk)
 
@@ -267,6 +276,19 @@ class PageTypesMigrationTests(TransactionTestCase):
 
         self.assertEqual(main_page.numchild, main_page.get_children().count())
         self.assertEqual(main_page.numchild, 8)
+
+    def test_the_header_layout_survives_the_change_from_tick_boxes_to_dropdowns(self):
+        """Two booleans become three choices. Dropping the booleans and adding
+        the choices with their defaults would give the development site the
+        header-bar layout with a Sign in link, whatever it showed the day
+        before; the values are carried across instead."""
+        from govuk.models import CustomiseSettings
+
+        settings_row = CustomiseSettings.objects.get(site=self.site)
+
+        self.assertEqual(settings_row.service_name_location, "navigation")
+        self.assertEqual(settings_row.search_location, "navigation")
+        self.assertEqual(settings_row.sign_in_location, "hidden")
 
     def test_every_role_is_still_answered_at_its_live_url(self):
         """No redirect survives for the roles, and none is needed: the main
