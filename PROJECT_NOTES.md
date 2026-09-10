@@ -18,7 +18,7 @@ discovery** subsystem that ingests external feeds. A major subsystem is the
 
 ## Runtime & environment
 
-- **Python ≥3.12** (local dev here is 3.14; CI uses 3.13). Prod image per Dockerfile.
+- **Python ≥3.12** (CI uses 3.13). Prod image per Dockerfile.
 - **No global `python`** on this machine — always use `.venv/bin/python`.
 - Install: `pip install -e .` (deps live in `pyproject.toml`, not requirements.txt).
 - Package deps: Django, wagtail==7.4.3, gunicorn, whitenoise, django-allauth
@@ -41,7 +41,7 @@ discovery** subsystem that ingests external feeds. A major subsystem is the
 .venv/bin/python manage.py check
 .venv/bin/python manage.py migrate
 .venv/bin/python manage.py runserver
-# Tests (SQLite, local settings) — ~838 tests as of this writing:
+# Tests (SQLite, local settings); the run prints the current count:
 .venv/bin/python manage.py test govuk
 # Narrow to one module:
 .venv/bin/python manage.py test govuk.tests.test_role_page_layout
@@ -192,7 +192,8 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
 
 ## Tests
 
-~838 tests across ~45 test modules under `govuk/tests/`, all `test_*.py`. A shared
+Around 870 tests across 70 test modules under `govuk/tests/`, all `test_*.py`
+(`ls govuk/tests/test_*.py | wc -l` and the test run give the current numbers). A shared
 test helper (`govuk/tests/framework_helpers.py`) provides `make_framework_main_page`
 and `role_url` for the framework-specific tests.
 
@@ -208,12 +209,17 @@ and `role_url` for the framework-specific tests.
 ## Gotchas / conventions
 
 - **`.venv/bin/python`, never `python`** — bare `python` is not on PATH here.
-- **Static JS lives at `static/js/`, un-namespaced** — matching `main.css`/
-  `main.js`/`cyber.css`. Reference editor JS as e.g. `"js/draftail-govuk-button.js"`.
-  Static changes need `collectstatic` + hard refresh to show in a running admin.
-- **Migrations:** ~79 numbered migrations; latest in the `0079_*` range. Data
-  migrations walk RichTextField/JSONField content and `bulk_update` (no
-  signals/revisions), with fail-loud post-checks.
+- **Static files live under `govuk/static/`** — `main.css`, `main.js` and
+  `cyber.css` at the top level, editor JS under `govuk/static/govuk/js/`. Check
+  `wagtail_hooks.py` for how a file is referenced before adding one. Static
+  changes need `collectstatic` + hard refresh to show in a running admin.
+- **Migrations:** numbered with gaps; `ls govuk/migrations | tail -1` is the
+  leaf (`0074_customisesettings_content_max_width_and_more` when this was
+  written). `0071` and `0072` convert an existing instance's framework content
+  in place and delete its role pages (two migrations because Postgres will not
+  alter a table in the same transaction that changed its rows) — see `docs/cutover.md`, "Upgrading an instance
+  that already has content". Data migrations walk RichTextField/JSONField
+  content and `bulk_update` (no signals/revisions), with fail-loud post-checks.
 - **`wagtail.contrib.routable_page` is in `INSTALLED_APPS`** — required for
   `FrameworkMainPage.serve_role`. The route is at `role/<slug>/` (NOT bare
   `<slug>/` — that would shadow the main page's child pages; the one slug it

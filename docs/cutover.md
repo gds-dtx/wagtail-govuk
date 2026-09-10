@@ -206,6 +206,19 @@ Sign in to the production admin and upload the file at
 `/admin/pages/import-export/`. Read the report it prints rather than assuming
 success — it lists what was created, what was updated and what was skipped.
 
+**A file from before the framework page types changed still works.** Every
+export taken from an instance running the earlier code names `govuk.ContentPage`
+for the framework's pages, `govuk.RolePage` for each role and
+`govuk.SkillsAZPage` for the A to Z. The importer reads such a file as one that
+names the present types: the home page becomes the Framework main page, pages
+with a framework switch on or ticked for the side menu become Framework content
+pages, the A to Z becomes the Framework skills page, and the role pages are not
+imported because the roles themselves are in the file's `roles` key and are
+served from there. The report begins with one line saying exactly this; if it
+does not, the file already named the present types. Because the ticks come from
+migration `0069`, take the export from an instance that has run it (build 119 or
+later), or three of live's five side-menu pages arrive as plain content pages.
+
 The first page in the file is the home page, and a fresh instance ships an
 empty placeholder home page. `_replace_placeholder_home_page` swaps the
 placeholder for the imported page and repoints the site at it, but only while
