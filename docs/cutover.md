@@ -121,6 +121,35 @@ The import matches on slug and never deletes, so it is safe to run against
 content editors have been working on. That safety has a cost, and the cost is
 the second half of this section.
 
+**Then restore the level order.** The CSV lists a role's levels alphabetically,
+not by seniority, and the import takes them as it finds them: after a refresh,
+Business architect reads "Associate, Business architect, Lead, Trainee" and
+Software developer "Apprentice, Developer, Junior, ...". Measured on
+10 September 2026 on a database whose order had been right before the refresh.
+`import_role_grades` puts the seniority order back (and the indicative job
+grades with it), reading both from the live site. Run it every time the CSV
+import runs, on whichever instance it ran on:
+
+```bash
+python manage.py import_role_grades --save grades.json
+```
+
+`--save` keeps what it fetched, so the same order can be re-applied later with
+`--json grades.json` once the live site is gone. Run it on the instance itself
+(over `aws ecs execute-command`, like the redirect check), where the live site's
+certificate chain is trusted. From a laptop behind TLS inspection every fetch
+fails with `CERTIFICATE_VERIFY_FAILED` and the command reports "Updated 0 roles
+(0 reordered)" — read that line; a zero here after a refresh means the order is
+still wrong. On 10 September the refreshed rehearsal database needed
+"Updated 52 roles (43 reordered)".
+
+**The refresh covers roles, skills and change notes only.** Nothing refreshes
+the hand-made pages. On 10 September the live Roadmap said "the last update was
+2 September 2026" and the copy on the development instance said 8 June: the
+content team had edited live after the export was taken. Before exporting, read
+each of the eight supporting pages against live and bring the copy across by
+hand where it has moved.
+
 ### Read what the import says it did not touch
 
 The import ends by naming everything in the CMS that the exports no longer
@@ -175,6 +204,18 @@ the same way at both ends. After a refresh that adds roles, compare the new
 pages' URLs against the live service's before assuming the redirects cover them:
 a redirect built from our slug points at our page, which is no help to somebody
 following a link built from theirs.
+
+This is not hypothetical. On 10 September 2026 the live CSV titled the role
+"Data and artificial intelligence ethicist", so the refresh created the slug
+`data-and-artificial-intelligence-ethicist`; the live site publishes it at
+`/role/data-and-artificial-intelligence-ai-ethicist`, and that URL answered 404
+on the refreshed instance while `seed_live_service_redirects --check` reported
+everything fine, because the check can only know our slugs. Fix it in the CMS by
+editing the role's slug to match live's, or add a redirect by hand. The list to
+check against is the set of `/role/...` links on live's home page; the old
+`data-ethicist` role the refresh reports as "in the CMS but not in this file"
+is the same role under its previous name and should be unpublished with a
+redirect to the new one.
 
 ## 1. Bring up the instance
 
