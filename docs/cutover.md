@@ -1,5 +1,14 @@
 # Cutting a site over to Wagtail
 
+> **Launch candidate A.** The build verified end to end for the Capability
+> Framework's 30 September go-live is tag `build-119`, also held as branch
+> `cf-launch-candidate-build-119`, image
+> `ghcr.io/gds-dtx/wagtail-govuk-preview:7.4.3-119-capability-framework-112ad14`.
+> The framework page types were reshaped after it (`cf-next`, from PR #72). If
+> the reshaped build is not signed off by 19 September, deploy that tag: every
+> instance is pinned to an exact image, so nothing about a branch's later
+> history changes what it runs.
+
 This is the runbook for moving a service from its existing publishing platform
 onto a new Wagtail instance. It is written from the DDaT Capability Framework
 migration, but the shape applies to any instance: content comes across in one
