@@ -47,7 +47,7 @@ def seed_hidden_pages(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('govuk', '0071_pagetypes_setting_reorg_and_more'),
+        ('govuk', '0072_remove_legacy_framework_fields_and_rolepage'),
         ('wagtailcore', '0097_baselogentry_uuid_action_timestamp_indexes'),
     ]
 

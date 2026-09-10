@@ -9,6 +9,10 @@ container start. These tests build that shape at 0070, run the migration
 forward, and check what comes out: which pages changed type, what was deleted
 with the role pages, and that nothing the editors chose was lost.
 
+They are also the reason the reshaping is two migrations rather than one: run
+on Postgres they showed that a table whose rows 0071 deletes cannot be altered
+in the same transaction ("pending trigger events"), which SQLite never reports.
+
 They drive the migration executor rather than calling the RunPython functions,
 because the functions need the tables as they stand mid-migration (RolePage
 still there, the new types just created), and only the executor puts the
