@@ -67,6 +67,13 @@ def carry_header_settings_forward(apps, schema_editor):
     template drew for that row before. A database without the booleans'
     values -- one created on a codebase that never had them -- has no rows to
     carry and keeps the defaults, which reproduce that codebase's header.
+
+    The two hero colour fields are dropped by this migration as well. They
+    were not inoperable: ``render_custom_css`` wrote them into ``/gen/custom.css``
+    as ``.masthead { background: ... }`` and ``.masthead { color: ... }`` (with
+    ``.hero__description``), and a test held it to that. A site that set them
+    keeps exactly that CSS, prepended to its ``extra_css``, which the same view
+    still serves.
     """
     CustomiseSettings = apps.get_model("govuk", "CustomiseSettings")
     db_alias = schema_editor.connection.alias
@@ -75,13 +82,22 @@ def carry_header_settings_forward(apps, schema_editor):
         row.service_name_location = "navigation" if in_navigation else "header"
         row.search_location = "navigation" if in_navigation else "header"
         row.sign_in_location = "hidden" if row.hide_sign_in_link else "navigation"
-        row.save(
-            update_fields=[
-                "service_name_location",
-                "search_location",
-                "sign_in_location",
-            ]
-        )
+        update_fields = ["service_name_location", "search_location", "sign_in_location"]
+
+        hero_css = []
+        background = (row.hero_background_color or "").strip()
+        text = (row.hero_text_color or "").strip()
+        if background:
+            hero_css.append(f".masthead {{ background: {background}; }}")
+        if text:
+            hero_css.append(f".masthead {{ color: {text}; }}")
+            hero_css.append(f".hero__description {{ color: {text}; }}")
+        if hero_css:
+            extra_css = (row.extra_css or "").strip()
+            row.extra_css = "\n".join(hero_css + ([extra_css] if extra_css else []))
+            update_fields.append("extra_css")
+
+        row.save(update_fields=update_fields)
 
 
 class Migration(migrations.Migration):
@@ -111,17 +127,10 @@ class Migration(migrations.Migration):
             model_name='contentpage',
             name='show_role_navigation',
         ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='hero_background_color',
-        ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='hero_text_color',
-        ),
-        # The three dropdowns replace two tick boxes. Add them, carry each
-        # site's choice across, then drop the tick boxes -- in that order, so
-        # an existing site's header is the same after the deploy as before it.
+        # The three dropdowns replace two tick boxes, and the two hero colour
+        # fields go. Add the dropdowns, carry each site's choices across (the
+        # colours into extra_css), then drop the old fields -- in that order,
+        # so an existing site looks the same after the deploy as before it.
         migrations.AddField(
             model_name='customisesettings',
             name='search_location',
@@ -148,6 +157,14 @@ class Migration(migrations.Migration):
         migrations.RemoveField(
             model_name='customisesettings',
             name='show_service_name_in_navigation',
+        ),
+        migrations.RemoveField(
+            model_name='customisesettings',
+            name='hero_background_color',
+        ),
+        migrations.RemoveField(
+            model_name='customisesettings',
+            name='hero_text_color',
         ),
         # RolePageTag fields removed after delete_rolepages has used them.
         migrations.RemoveField(
