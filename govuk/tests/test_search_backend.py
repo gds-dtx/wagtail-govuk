@@ -15,6 +15,7 @@ from govuk.models import (
     ContentDiscoverySource,
     ContentPage,
     ExternalContentItem,
+    FrameworkMainPage,
     FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
@@ -1079,3 +1080,38 @@ class SearchWithoutTheFrameworkTests(TestCase):
             ],
             [],
         )
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+class SearchFindsRolesWhenTheMainPageIsTheHomePageTests(TestCase):
+    """On the Capability Framework the framework main page *is* the site's
+    home page. The site filter looks below the root, so the main page was never
+    found, so no role was ever a search result on the one site that has roles.
+    Every other role-search test puts the main page under the home page, which
+    is why none of them noticed.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        tree_root = Page.objects.get(depth=1)
+        main_page = make_framework_main_page(tree_root, slug="framework")
+        self.site.root_page = main_page
+        self.site.save()
+        self.addCleanup(Site.clear_site_root_paths_cache)
+        self.main_page = FrameworkMainPage.objects.get(pk=main_page.pk)
+        self.role = GovukRole.objects.create(
+            slug="data-analyst",
+            title="Data analyst",
+            family="Data",
+            body="<p>A data analyst collects, manages and shares data.</p>",
+        )
+
+    def test_a_role_is_found_and_links_to_its_live_url(self):
+        page = search_backend.search("data analyst", filters={"site": self.site}, page=1)
+
+        result = next(
+            (item for item in page.object_list if item.result_type == "Role"), None
+        )
+        self.assertIsNotNone(result, [item.title for item in page.object_list])
+        self.assertEqual(result.title, "Data analyst")
+        self.assertEqual(result.url, "/role/data-analyst/")
