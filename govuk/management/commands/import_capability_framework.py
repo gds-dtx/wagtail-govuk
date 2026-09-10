@@ -289,7 +289,7 @@ class Command(BaseCommand):
         """Ensure the framework's pages exist: the main page and the A to Z.
 
         Roles no longer have a page each -- the framework main page serves one
-        per role snippet at ``<role-slug>/`` -- so there is nothing to create
+        per role snippet at ``role/<role-slug>/`` -- so there is nothing to create
         per role here. The navigation and the role URLs are built from the role
         snippets at render time.
         """

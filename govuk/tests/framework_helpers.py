@@ -1,7 +1,7 @@
 """Helpers for tests of the framework's roles.
 
 Roles no longer have a page each; the single ``FrameworkMainPage`` serves one
-per ``GovukRole`` snippet at ``<role-slug>/``. These build that main page and
+per ``GovukRole`` snippet at ``role/<role-slug>/``. These build that main page and
 the URL a role is served on, so the role tests can set up in one line where they
 used to create a ``RolePage``.
 """

@@ -2,9 +2,9 @@
 
 The live framework publishes a role at ``/role/<slug>`` and a skill at
 ``/skill/<slug>``. This site serves a role as a route under the framework main
-page (``/<main-page>/<role-slug>/``) and every skill as a section of the skills
-A to Z, so both shapes have to be translated. That happens in two places, and
-this module is the single rule both use:
+page (``/<main-page>/role/<role-slug>/``) and every skill as a section of the
+skills A to Z, so both shapes have to be translated. That happens in two
+places, and this module is the single rule both use:
 
 * ``seed_live_service_redirects`` turns them into redirects, for bookmarks,
   search engines and links from outside the service. It runs at the end of an
@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from django.conf import settings
 from django.utils.html import escape
@@ -47,7 +48,7 @@ def role_page_targets(site) -> list[tuple[str, str]]:
     """(role slug, url) for every role, served under the framework main page.
 
     Every role now has a page of its own -- a route on the framework main page
-    at ``<role-slug>/`` -- so this covers every role, not only the ones an
+    at ``role/<role-slug>/`` -- so this covers every role, not only the ones an
     editor once chose to surface. Empty when the site has no framework main
     page, or it has no URL yet (no site, no request).
     """
@@ -176,12 +177,30 @@ def live_service_redirect_targets(site) -> tuple[dict, FrameworkSkillsPage | Non
     # (the page element of the tuple is always None).
     targets: dict[str, tuple[None, str]] = {}
     for slug, url in role_page_targets(site):
-        targets[Redirect.normalise_path(f"/role/{slug}")] = (None, url)
+        old_path = Redirect.normalise_path(f"/role/{slug}")
+        if _served_at_its_live_path(old_path, url):
+            continue
+        targets[old_path] = (None, url)
 
     skills, skills_page = skill_targets(site)
     for slug, link in skills:
         targets[Redirect.normalise_path(f"/skill/{slug}")] = (None, link)
     return targets, skills_page
+
+
+def _served_at_its_live_path(old_path: str, url: str) -> bool:
+    """The live path and the path that serves it here are the same.
+
+    The route is ``role/<slug>/`` because the live service publishes
+    ``/role/<slug>``, so with the framework main page as the site's home page
+    a role is served at its live address. A redirect from a path to itself
+    would never fire -- Wagtail's redirects only answer a 404 -- and would
+    count as missing in every check, so the rule does not produce one.
+    ``normalise_path`` drops the trailing slash the route carries; ``urlsplit``
+    drops a host, which ``Page.url`` includes when the site is not the only
+    one.
+    """
+    return Redirect.normalise_path(urlsplit(url).path) == old_path
 
 
 def _redirect_is_current(redirect: Redirect, *, page, link: str) -> bool:
@@ -281,10 +300,19 @@ def unanswerable_live_service_urls(site) -> list[str]:
     """
     targets, skills_page = live_service_redirect_targets(site)
 
+    # A role served at its live path is answered without a redirect, so it is
+    # neither a target nor unanswerable.
+    served_in_place = {
+        Redirect.normalise_path(f"/role/{slug}")
+        for slug, url in role_page_targets(site)
+        if _served_at_its_live_path(Redirect.normalise_path(f"/role/{slug}"), url)
+    }
     unanswerable = [
         f"/role/{slug}"
         for slug in GovukRole.objects.values_list("slug", flat=True)
-        if slug and Redirect.normalise_path(f"/role/{slug}") not in targets
+        if slug
+        and Redirect.normalise_path(f"/role/{slug}") not in targets
+        and Redirect.normalise_path(f"/role/{slug}") not in served_in_place
     ]
     if skills_page is None:
         unanswerable += [

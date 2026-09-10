@@ -3554,7 +3554,7 @@ class RoleRenderingMixin:
     """The rendering of a single role, shared by the framework main page's route.
 
     A role has no page of its own any more: the framework main page serves one
-    at ``/<main-page>/<role-slug>/`` for every ``GovukRole`` snippet (see
+    at ``/<main-page>/role/<role-slug>/`` for every ``GovukRole`` snippet (see
     ``FrameworkMainPage.serve_role``). This mixin holds the logic that used to
     live on the old ``RolePage`` -- the section it builds for a role, the
     headings and sentences the framework prints around it, the in-page anchors,
@@ -3954,7 +3954,7 @@ class FrameworkMainPage(
     """The single Capability Framework page for the site.
 
     It carries the framework welcome content and the framework switches, and it
-    serves a page for every role snippet at ``roles/<role-slug>/``. The roles
+    serves a page for every role snippet at ``role/<role-slug>/``. The roles
     have no page of their own, so the navigation and the role URLs are built
     from the ``GovukRole`` snippets rather than from hand-made pages.
 
@@ -3990,16 +3990,25 @@ class FrameworkMainPage(
             return False
         return super().can_exist_under(parent)
 
-    @path("roles/<slug:role_slug>/")
+    @path("role/<slug:role_slug>/")
     def serve_role(self, request, role_slug):
         """Serve a role's page from its snippet, or 404.
 
         A route per role stands in for the pages the framework used to carry.
-        The routes sit under ``roles/`` so they do not shadow the framework
+        The routes sit under ``role/`` so they do not shadow the framework
         main page's own child pages: ``RoutablePageMixin`` resolves its routes
         before it falls through to ordinary child-page routing, so a bare
         ``<slug>/`` pattern would swallow every child page's first path segment
-        and 404 it as a missing role.
+        and 404 it as a missing role. (A child page whose slug is ``role`` is
+        the one page this does shadow.)
+
+        ``role``, singular, because that is the live service's URL: it
+        publishes every role at ``/role/<slug>``. With the framework main page
+        as the site's home page, as it is on the Capability Framework, a role
+        is served at its live address and every bookmark, search result and
+        link in the migrated content reaches it directly, with no redirect to
+        seed and none to go missing. GOV.UK's rule is not to change a URL
+        without a reason, and there was none.
 
         Without the framework flag the route 404s, as the old role pages did:
         a route cannot be guarded by ``can_exist_under``, and an import can

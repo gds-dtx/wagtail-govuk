@@ -10,10 +10,13 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase, override_settings
 from wagtail.contrib.redirects.models import Redirect
-from wagtail.models import Site
+from wagtail.models import Page, Site
 
-from govuk.live_service_links import live_service_redirect_targets
-from govuk.models import FrameworkSkillsPage, GovukRole, GovukSkill
+from govuk.live_service_links import (
+    live_service_link_map,
+    live_service_redirect_targets,
+)
+from govuk.models import FrameworkMainPage, FrameworkSkillsPage, GovukRole, GovukSkill
 from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
@@ -31,8 +34,11 @@ class LiveServiceFixture(TestCase):
     A to Z to sit in.
 
     Roles no longer have a page each: the framework main page serves one per
-    role snippet at ``<role-slug>/``, so a live role resolves to its route URL
-    and its redirect is a link redirect pointing there.
+    role snippet at ``role/<role-slug>/``, so a live role resolves to its route
+    URL and its redirect is a link redirect pointing there. The main page sits
+    at ``/capability-framework/`` here, below the home page, so the route URL
+    differs from the live one and a redirect is needed; the case where it does
+    not is ``RolesServedAtTheirLivePathTests``.
     """
 
     def setUp(self):
@@ -268,3 +274,81 @@ class RedirectsBelongToTheFrameworkTests(LiveServiceFixture):
 
         self.assertEqual(targets, {})
         self.assertIsNone(skills_page)
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class RolesServedAtTheirLivePathTests(TestCase):
+    """The framework main page is the site's home page, as it is on the
+    Capability Framework, so a role's route URL *is* the live service's URL.
+
+    The live service publishes a role at ``/role/<slug>``. With the main page
+    at ``/``, the route serves the role at ``/role/<slug>/`` -- the same path,
+    with the trailing slash Django adds. A redirect from a path to itself
+    would never fire (Wagtail's redirects only answer a 404) and would count
+    as missing in every check, so the rule produces none for a role served
+    in place, and the check does not report the role as unanswerable.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        tree_root = Page.objects.get(depth=1)
+        self.main_page = make_framework_main_page(tree_root, slug="framework")
+        self.site.root_page = self.main_page
+        self.site.save()
+        # Wagtail caches each site's root path and every page URL is computed
+        # from it. The transaction rollback at the end of the test does not
+        # empty that cache, so without this the next test class computes its
+        # URLs against a root page that no longer exists.
+        self.addCleanup(Site.clear_site_root_paths_cache)
+        self.main_page = FrameworkMainPage.objects.get(pk=self.main_page.pk)
+
+        self.role = GovukRole.objects.create(title="Business architect")
+        self.skill = GovukSkill.objects.create(title="Prototyping")
+        self.skills_page = self.main_page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
+        )
+        self.skills_page.save_revision().publish()
+
+    def _run(self, *args):
+        out = StringIO()
+        call_command("seed_live_service_redirects", *args, stdout=out)
+        return out.getvalue()
+
+    def test_the_route_url_is_the_live_url(self):
+        self.assertEqual(self.main_page.url, "/")
+        self.assertEqual(role_url(self.main_page, self.role), f"/role/{self.role.slug}/")
+
+    def test_a_live_role_url_is_served_not_redirected(self):
+        response = self.client.get(f"/role/{self.role.slug}/")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Business architect")
+
+        # The live service's exact form, without the slash, gets Django's own
+        # slash redirect rather than a redirects-app row.
+        bare = self.client.get(f"/role/{self.role.slug}")
+        self.assertEqual(bare.status_code, 301)
+        self.assertEqual(bare["Location"], f"/role/{self.role.slug}/")
+
+    def test_no_role_redirect_is_written_because_none_is_needed(self):
+        output = self._run()
+
+        self.assertFalse(Redirect.objects.filter(old_path__startswith="/role/").exists())
+        # The skills still need theirs: a skill is a section of the A to Z.
+        self.assertEqual(
+            Redirect.objects.get(old_path=f"/skill/{self.skill.slug}").redirect_link,
+            f"{self.skills_page.url}#{self.skill.slug}",
+        )
+        self.assertIn("1 created", output)
+
+    def test_the_check_passes_with_roles_served_in_place(self):
+        self._run()
+
+        self.assertIn("Every live service URL redirects", self._run("--check"))
+
+    def test_the_changelog_link_map_still_points_a_role_link_at_its_route(self):
+        """A note's ``/role/<slug>`` link is rewritten to the slashed form the
+        route serves, so a reader following it is not sent round a redirect."""
+        self.assertEqual(
+            live_service_link_map(self.site)[f"/role/{self.role.slug}"],
+            f"/role/{self.role.slug}/",
+        )

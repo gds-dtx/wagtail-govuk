@@ -216,10 +216,14 @@ level down and every URL gains a `/home/` prefix.
 ## 4. Check the redirects
 
 The live service publishes roles at `/role/<slug>` and skills at
-`/skill/<slug>`. Wagtail serves a role at `/<framework-main-page>/roles/<slug>/`
-and every skill as a section of the Framework Skills page. Without redirects,
-every bookmark, every search result and every link inside the migrated content
-itself answers 404 — the welcome copy alone links 37 roles the old way.
+`/skill/<slug>`. Wagtail serves a role at `/<framework-main-page>/role/<slug>/`
+and every skill as a section of the Framework Skills page. When the framework
+main page is the site's home page, as it is for the Capability Framework, a
+role is therefore served at its live address (`/role/<slug>` answers with
+Django's own redirect to the slashed form) and **no role redirects are needed
+or written**. The skills still need theirs. Without those, every bookmark,
+every search result and every link inside the migrated content itself answers
+404 — the welcome copy alone links 37 roles the old way.
 
 **The import in step 3 seeds these itself**, so on a clean run there is nothing
 to do here but confirm it. The import report says how many it wrote. If the
