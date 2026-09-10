@@ -149,6 +149,18 @@ class PageTypesMigrationTests(TransactionTestCase):
         )
         site = OldSite.objects.get(is_default_site=True)
         OldSite.objects.filter(pk=site.pk).update(root_page_id=home.pk)
+
+        # The header as the development instance has it: the live service's
+        # layout, set through the two tick boxes this migration replaces.
+        OldCustomiseSettings = apps.get_model("govuk", "CustomiseSettings")
+        OldCustomiseSettings.objects.create(
+            site_id=site.pk,
+            show_service_name_in_navigation=True,
+            hide_sign_in_link=True,
+            hero_background_color="#112233",
+            hero_text_color="#fefefe",
+            extra_css=".existing { margin: 0; }",
+        )
         self.home_id = home.pk
         home_as_page = OldPage.objects.get(pk=home.pk)
 
@@ -267,6 +279,35 @@ class PageTypesMigrationTests(TransactionTestCase):
 
         self.assertEqual(main_page.numchild, main_page.get_children().count())
         self.assertEqual(main_page.numchild, 8)
+
+    def test_the_header_layout_survives_the_change_from_tick_boxes_to_dropdowns(self):
+        """Two booleans become three choices. Dropping the booleans and adding
+        the choices with their defaults would give the development site the
+        header-bar layout with a Sign in link, whatever it showed the day
+        before; the values are carried across instead."""
+        from govuk.models import CustomiseSettings
+
+        settings_row = CustomiseSettings.objects.get(site=self.site)
+
+        self.assertEqual(settings_row.service_name_location, "navigation")
+        self.assertEqual(settings_row.search_location, "navigation")
+        self.assertEqual(settings_row.sign_in_location, "hidden")
+
+    def test_the_hero_colours_survive_as_the_css_they_always_produced(self):
+        """The two colour fields go, but they were not inoperable: the custom
+        CSS view wrote them out. A site that set them keeps the same CSS."""
+        from govuk.models import CustomiseSettings
+
+        settings_row = CustomiseSettings.objects.get(site=self.site)
+
+        self.assertEqual(
+            settings_row.extra_css,
+            ".masthead { background: #112233; }\n"
+            ".masthead { color: #fefefe; }\n"
+            ".hero__description { color: #fefefe; }\n"
+            ".existing { margin: 0; }",
+        )
+        self.assertIn(".masthead { background: #112233; }", settings_row.render_custom_css())
 
     def test_every_role_is_still_answered_at_its_live_url(self):
         """No redirect survives for the roles, and none is needed: the main

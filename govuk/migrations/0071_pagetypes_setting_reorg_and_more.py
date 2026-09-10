@@ -108,7 +108,19 @@ def convert_framework_contentpages(apps, schema_editor):
         .order_by("depth", "path")
         .values_list("id", "path")
     )
-    main_page_id = ordered[0][0]
+    # The default site's home page is the main page when it carries a switch,
+    # which on the Capability Framework it does. Only otherwise does the
+    # shallowest switched page win -- a stray switched page beside the home
+    # page with an earlier path must not become the framework's root and have
+    # the real home page moved underneath it.
+    Site = apps.get_model("wagtailcore", "Site")
+    default_root_id = (
+        Site.objects.using(db_alias)
+        .filter(is_default_site=True)
+        .values_list("root_page_id", flat=True)
+        .first()
+    )
+    main_page_id = default_root_id if default_root_id in switch_page_ids else ordered[0][0]
     ticked_page_ids = list(
         ContentPage.objects.using(db_alias)
         .filter(show_in_role_navigation=True)
@@ -117,7 +129,7 @@ def convert_framework_contentpages(apps, schema_editor):
     )
     content_page_ids = list(
         Page.objects.using(db_alias)
-        .filter(id__in=[pid for pid, _ in ordered[1:]] + ticked_page_ids)
+        .filter(id__in=[pid for pid, _ in ordered if pid != main_page_id] + ticked_page_ids)
         .order_by("depth", "path")
         .values_list("id", flat=True)
     )
@@ -210,13 +222,27 @@ def delete_rolepages(apps, schema_editor):
 
     with conn.cursor() as cursor:
         cursor.execute(
-            "SELECT id, path FROM wagtailcore_page WHERE content_type_id = %s",
+            "SELECT id, path, numchild FROM wagtailcore_page WHERE content_type_id = %s",
             [rolepage_ct.id],
         )
         role_rows = cursor.fetchall()
 
     if not role_rows:
         return
+
+    # A role page could hold child pages. Deleting it by raw SQL would leave
+    # them in the tree under a path that no longer exists: unreachable, but
+    # counted, and a trap for the next tree repair. No instance has any, and
+    # rather than guess what to do with one this stops the migration -- and so
+    # the container -- with a message naming the pages, before anything is
+    # changed. Move or delete them in the admin, then deploy again.
+    with_children = [row[0] for row in role_rows if row[2]]
+    if with_children:
+        raise RuntimeError(
+            "Migration 0071 cannot delete role pages that have child pages "
+            f"(page ids {with_children}). Move or delete the children in the "
+            "admin first."
+        )
 
     role_ids = [row[0] for row in role_rows]
     role_paths = [row[1] for row in role_rows]
@@ -248,6 +274,13 @@ def delete_rolepages(apps, schema_editor):
             role_ids,
         )
         # Rows that hang off rows deleted below, so they go first.
+        if "wagtailcore_pageviewrestriction_groups" in existing_tables:
+            cursor.execute(
+                f"DELETE FROM wagtailcore_pageviewrestriction_groups WHERE "
+                f"pageviewrestriction_id IN (SELECT id FROM "
+                f"wagtailcore_pageviewrestriction WHERE page_id IN ({ph}))",
+                role_ids,
+            )
         if "wagtailcore_commentreply" in existing_tables:
             cursor.execute(
                 f"DELETE FROM wagtailcore_commentreply WHERE comment_id IN "

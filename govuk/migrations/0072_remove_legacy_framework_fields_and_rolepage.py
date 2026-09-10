@@ -48,6 +48,58 @@ def clear_stale_contentpage_references(apps, schema_editor):
     ).delete()
 
 
+def carry_header_settings_forward(apps, schema_editor):
+    """Set each site's three header dropdowns from the two tick boxes they replace.
+
+    Before this migration a site's header layout was two booleans on
+    CustomiseSettings: ``show_service_name_in_navigation`` moved the service
+    name *and* the search box from the header bar into the service navigation
+    bar, and ``hide_sign_in_link`` hid the sign-in link. Now it is three
+    choices. Adding the choices with their defaults and dropping the booleans
+    would give every existing site the default layout -- name and search in
+    the header bar, sign-in link showing -- whatever it showed the day before,
+    and the Capability Framework's development site shows the live service's
+    layout (everything in the navigation bar, no sign-in link) precisely
+    because an editor set the booleans. So the booleans are read first.
+
+    A site whose row was created after the booleans existed but never saved
+    has both False, and lands on header/header/navigation, which is what the
+    template drew for that row before. A database without the booleans'
+    values -- one created on a codebase that never had them -- has no rows to
+    carry and keeps the defaults, which reproduce that codebase's header.
+
+    The two hero colour fields are dropped by this migration as well. They
+    were not inoperable: ``render_custom_css`` wrote them into ``/gen/custom.css``
+    as ``.masthead { background: ... }`` and ``.masthead { color: ... }`` (with
+    ``.hero__description``), and a test held it to that. A site that set them
+    keeps exactly that CSS, prepended to its ``extra_css``, which the same view
+    still serves.
+    """
+    CustomiseSettings = apps.get_model("govuk", "CustomiseSettings")
+    db_alias = schema_editor.connection.alias
+    for row in CustomiseSettings.objects.using(db_alias).all():
+        in_navigation = bool(row.show_service_name_in_navigation)
+        row.service_name_location = "navigation" if in_navigation else "header"
+        row.search_location = "navigation" if in_navigation else "header"
+        row.sign_in_location = "hidden" if row.hide_sign_in_link else "navigation"
+        update_fields = ["service_name_location", "search_location", "sign_in_location"]
+
+        hero_css = []
+        background = (row.hero_background_color or "").strip()
+        text = (row.hero_text_color or "").strip()
+        if background:
+            hero_css.append(f".masthead {{ background: {background}; }}")
+        if text:
+            hero_css.append(f".masthead {{ color: {text}; }}")
+            hero_css.append(f".hero__description {{ color: {text}; }}")
+        if hero_css:
+            extra_css = (row.extra_css or "").strip()
+            row.extra_css = "\n".join(hero_css + ([extra_css] if extra_css else []))
+            update_fields.append("extra_css")
+
+        row.save(update_fields=update_fields)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -75,22 +127,10 @@ class Migration(migrations.Migration):
             model_name='contentpage',
             name='show_role_navigation',
         ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='hero_background_color',
-        ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='hero_text_color',
-        ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='hide_sign_in_link',
-        ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='show_service_name_in_navigation',
-        ),
+        # The three dropdowns replace two tick boxes, and the two hero colour
+        # fields go. Add the dropdowns, carry each site's choices across (the
+        # colours into extra_css), then drop the old fields -- in that order,
+        # so an existing site looks the same after the deploy as before it.
         migrations.AddField(
             model_name='customisesettings',
             name='search_location',
@@ -105,6 +145,26 @@ class Migration(migrations.Migration):
             model_name='customisesettings',
             name='sign_in_location',
             field=models.CharField(choices=[('header', 'Header bar'), ('navigation', 'Service navigation'), ('hidden', 'Hidden')], default='navigation', help_text='Where the sign in and sign out links appear. Choose Hidden for sites where visitors never sign in -- the sign in link is hidden, but a signed-in user can still sign out.', max_length=20),
+        ),
+        migrations.RunPython(
+            carry_header_settings_forward,
+            migrations.RunPython.noop,
+        ),
+        migrations.RemoveField(
+            model_name='customisesettings',
+            name='hide_sign_in_link',
+        ),
+        migrations.RemoveField(
+            model_name='customisesettings',
+            name='show_service_name_in_navigation',
+        ),
+        migrations.RemoveField(
+            model_name='customisesettings',
+            name='hero_background_color',
+        ),
+        migrations.RemoveField(
+            model_name='customisesettings',
+            name='hero_text_color',
         ),
         # RolePageTag fields removed after delete_rolepages has used them.
         migrations.RemoveField(
