@@ -1,3 +1,5 @@
+import html
+import re
 from datetime import date
 
 from django.db import connection
@@ -462,6 +464,78 @@ class RolePageLayoutTests(TestCase):
         group = further_resources_group()
 
         self.assertEqual([item["title"] for item in group["items"]], ["Alpha", "Beta", "Gamma"])
+
+    def test_the_dev_instances_fourteen_pages_configured_to_lives_six(self):
+        """Antony's case, end to end through the rendered page.
+
+        The development instance has fourteen framework children, because its
+        editors ticked privacy, cookies, accessibility, feedback and the project
+        pages into the navigation over time and migration 0071 carried that
+        forward. The live service shows six. Configuring those six has to
+        produce those six, in that order, on the page itself -- reading the
+        rendered navigation, not just the function that feeds it.
+        """
+        live_six = [
+            "Skills A to Z",
+            "Propose a change",
+            "Download framework content",
+            "Civil Service job grades in this framework",
+            "Context and challenges for Senior Civil Service roles",
+            "Roadmap",
+        ]
+        also_on_dev = [
+            "Privacy notice",
+            "Accessibility Statement",
+            "Upcoming changes to the framework",
+            "Project: agile coach - new role",
+            "Project: business relationship manager - new role level",
+            "Project: information architect - new role",
+            "Feedback",
+            "Cookies",
+        ]
+        # Built in tree order, with the live six deliberately scattered among
+        # the others so that order can only come from the setting.
+        pages = {}
+        for index, title in enumerate(
+            [also_on_dev[0], live_six[5], also_on_dev[1], live_six[3], also_on_dev[2],
+             live_six[1], also_on_dev[3], also_on_dev[4], live_six[2], also_on_dev[5],
+             live_six[4], also_on_dev[6], also_on_dev[7]]
+        ):
+            page = self.main_page.add_child(
+                instance=FrameworkContentPage(title=title, slug=f"page-{index}", body="")
+            )
+            page.save_revision().publish()
+            pages[title] = page
+        skills = self.main_page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
+        )
+        skills.save_revision().publish()
+        pages["Skills A to Z"] = skills
+
+        self.assertEqual(len(pages), 14, "the shape of the development instance")
+
+        setting = SidebarSettings.objects.create(site=self.site)
+        for order, title in enumerate(live_six):
+            SidebarNavigationItem.objects.create(
+                setting=setting, page=pages[title], visible=True, sort_order=order
+            )
+
+        response = self.client.get(self.data_analyst_url)
+        rendered = response.content.decode()
+        block = re.search(
+            r'<nav class="role-nav__group" aria-label="Further resources">(.*?)</nav>',
+            rendered,
+            re.S,
+        )
+        self.assertIsNotNone(block, "the Further resources group is on the page")
+        listed = [
+            html.unescape(title).strip()
+            for title in re.findall(r"<a\b[^>]*>(.*?)</a>", block.group(1), re.S)
+        ]
+
+        self.assertEqual(listed, live_six)
+        for title in also_on_dev:
+            self.assertNotIn(title, block.group(1))
 
     def test_roles_without_a_family_are_left_out_of_the_navigation(self):
         GovukRole.objects.create(title="Unfamilied role")
