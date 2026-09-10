@@ -66,9 +66,18 @@ def _migrate_tags(*, page_id, SourceTag, TargetTag):
 def convert_framework_contentpages(apps, schema_editor):
     """Convert ContentPages that have framework switches on to the new types.
 
-    The shallowest such page becomes the single FrameworkMainPage; the rest
-    become FrameworkContentPage children under it.  Pages without any framework
-    switch are left as ContentPages.
+    The shallowest page with a framework switch on becomes the single
+    FrameworkMainPage. Every other page with a switch on, and every page ticked
+    for the role side menu (``show_in_role_navigation``, which 0069 set on the
+    five pages the live service lists there), becomes a FrameworkContentPage
+    under it. Pages with neither are left as ContentPages.
+
+    The tick counts because it is the editors' record of which pages belong
+    beside the roles. On the development instance only two of live's five
+    side-menu pages have a switch on; the other three were put in the menu by
+    the tick alone, and reading only the switches would drop them from the
+    menu on upgrade. The page import applies the same rule to a file from
+    before this migration, so the two paths agree.
     """
     from django.db.models import Q
 
@@ -83,22 +92,35 @@ def convert_framework_contentpages(apps, schema_editor):
 
     db_alias = schema_editor.connection.alias
 
-    framework_page_ids = list(
+    switch_page_ids = list(
         ContentPage.objects.using(db_alias)
         .filter(Q(show_role_navigation=True) | Q(show_framework_updates=True) | Q(show_framework_welcome=True))
         .values_list("page_ptr_id", flat=True)
     )
-    if not framework_page_ids:
+    if not switch_page_ids:
+        # A ticked page with no main page to sit under stays as it is: a
+        # FrameworkContentPage needs the framework, and there is none here.
         return
 
     ordered = list(
         Page.objects.using(db_alias)
-        .filter(id__in=framework_page_ids)
+        .filter(id__in=switch_page_ids)
         .order_by("depth", "path")
         .values_list("id", "path")
     )
     main_page_id = ordered[0][0]
-    content_page_ids = [pid for pid, _ in ordered[1:]]
+    ticked_page_ids = list(
+        ContentPage.objects.using(db_alias)
+        .filter(show_in_role_navigation=True)
+        .exclude(page_ptr_id__in=switch_page_ids)
+        .values_list("page_ptr_id", flat=True)
+    )
+    content_page_ids = list(
+        Page.objects.using(db_alias)
+        .filter(id__in=[pid for pid, _ in ordered[1:]] + ticked_page_ids)
+        .order_by("depth", "path")
+        .values_list("id", flat=True)
+    )
 
     main_ct, _ = ContentType.objects.using(db_alias).get_or_create(
         app_label="govuk", model="frameworkmainpage"
@@ -164,39 +186,6 @@ def convert_framework_contentpages(apps, schema_editor):
                 ReferenceIndex.create_or_update_for_object(page.specific)
 
 
-def clear_stale_contentpage_references(apps, schema_editor):
-    """Drop reference-index rows that point at ContentPage.framework_welcome_body.
-
-    This migration removes that field from ContentPage.  Any reference-index row
-    still typed as ContentPage with a framework_welcome_body path — from a page
-    that carried welcome-body content but was not converted, or one re-indexing
-    did not cover — raises FieldDoesNotExist when Wagtail resolves it (e.g. on
-    the page-delete confirmation).  Correct rows for the converted pages are now
-    typed FrameworkMainPage/FrameworkContentPage and are left untouched;
-    ``rebuild_references_index`` restores anything dropped here.
-    """
-    ContentType = apps.get_model("contenttypes", "ContentType")
-    db_alias = schema_editor.connection.alias
-
-    try:
-        ReferenceIndex = apps.get_model("wagtailcore", "ReferenceIndex")
-    except LookupError:
-        return
-
-    contentpage_ct = (
-        ContentType.objects.using(db_alias)
-        .filter(app_label="govuk", model="contentpage")
-        .first()
-    )
-    if contentpage_ct is None:
-        return
-
-    ReferenceIndex.objects.using(db_alias).filter(
-        content_type_id=contentpage_ct.id,
-        model_path__startswith="framework_welcome_body",
-    ).delete()
-
-
 def delete_rolepages(apps, schema_editor):
     """Delete every RolePage row without using the ORM cascade collector.
 
@@ -232,6 +221,21 @@ def delete_rolepages(apps, schema_editor):
     role_ids = [row[0] for row in role_rows]
     role_paths = [row[1] for row in role_rows]
     ph = ", ".join(["%s"] * len(role_ids))
+    # Revisions, workflow state, the search index and the reference index name
+    # a page by content type and a *string* object id rather than by a page
+    # foreign key, so the ORM cascade that would normally clear them does not
+    # apply and they are named here. Left behind they are not inert: a revision
+    # for a page that no longer exists surfaces in the admin's history views
+    # and reports, and a stale reference-index row raises when Wagtail resolves
+    # it.
+    object_ids = [str(role_id) for role_id in role_ids]
+    page_ct = (
+        ContentType.objects.using(db_alias)
+        .filter(app_label="wagtailcore", model="page")
+        .first()
+    )
+    content_type_ids = [rolepage_ct.id] + ([page_ct.id] if page_ct else [])
+    ct_ph = ", ".join(["%s"] * len(content_type_ids))
 
     RolePageTag.objects.using(db_alias).filter(content_object_id__in=role_ids).delete()
 
@@ -243,6 +247,26 @@ def delete_rolepages(apps, schema_editor):
             f"WHERE {qn('page_ptr_id')} IN ({ph})",
             role_ids,
         )
+        # Rows that hang off rows deleted below, so they go first.
+        if "wagtailcore_commentreply" in existing_tables:
+            cursor.execute(
+                f"DELETE FROM wagtailcore_commentreply WHERE comment_id IN "
+                f"(SELECT id FROM wagtailcore_comment WHERE page_id IN ({ph}))",
+                role_ids,
+            )
+        if "wagtailcore_taskstate" in existing_tables:
+            cursor.execute(
+                f"DELETE FROM wagtailcore_taskstate WHERE workflow_state_id IN "
+                f"(SELECT id FROM wagtailcore_workflowstate "
+                f"WHERE content_type_id IN ({ct_ph}) AND object_id IN ({ph}))",
+                [*content_type_ids, *object_ids],
+            )
+            cursor.execute(
+                f"DELETE FROM wagtailcore_taskstate WHERE revision_id IN "
+                f"(SELECT id FROM wagtailcore_revision "
+                f"WHERE content_type_id IN ({ct_ph}) AND object_id IN ({ph}))",
+                [*content_type_ids, *object_ids],
+            )
         for table, fk_col in [
             ("wagtailcore_pagelogentry", "page_id"),
             ("wagtailcore_pageviewrestriction", "page_id"),
@@ -251,6 +275,11 @@ def delete_rolepages(apps, schema_editor):
             ("wagtailcore_workflowpage", "page_id"),
             ("wagtailcore_pagesubscription", "page_id"),
             ("wagtailforms_formsubmission", "page_id"),
+            # A redirect that pointed at a role page points at nothing now. The
+            # role is served at the live service's own URL (role/<slug>/ on the
+            # framework main page), so when the main page is the site's home
+            # page no replacement is needed; anywhere else,
+            # `seed_live_service_redirects` writes the link redirects.
             ("wagtailredirects_redirect", "redirect_page_id"),
         ]:
             if table in existing_tables:
@@ -258,6 +287,27 @@ def delete_rolepages(apps, schema_editor):
                     f"DELETE FROM {qn(table)} WHERE {qn(fk_col)} IN ({ph})",
                     role_ids,
                 )
+        for table in (
+            "wagtailcore_workflowstate",
+            "wagtailcore_revision",
+            "wagtailcore_referenceindex",
+            "wagtailsearch_indexentry",
+            "wagtailadmin_editingsession",
+        ):
+            if table in existing_tables:
+                cursor.execute(
+                    f"DELETE FROM {qn(table)} "
+                    f"WHERE content_type_id IN ({ct_ph}) AND object_id IN ({ph})",
+                    [*content_type_ids, *object_ids],
+                )
+        if "wagtailcore_referenceindex" in existing_tables:
+            # Rows pointing *at* a role page from elsewhere (a welcome-page
+            # link, a related role), which would otherwise resolve to nothing.
+            cursor.execute(
+                f"DELETE FROM wagtailcore_referenceindex "
+                f"WHERE to_content_type_id IN ({ct_ph}) AND to_object_id IN ({ph})",
+                [*content_type_ids, *object_ids],
+            )
         cursor.execute(
             f"UPDATE wagtailcore_page SET alias_of_id = NULL "
             f"WHERE alias_of_id IN ({ph})",
@@ -391,78 +441,6 @@ class Migration(migrations.Migration):
         ),
         migrations.RunPython(
             delete_rolepages,
-            migrations.RunPython.noop,
-        ),
-        migrations.RemoveField(
-            model_name='contentpage',
-            name='framework_welcome_body',
-        ),
-        migrations.RemoveField(
-            model_name='contentpage',
-            name='show_framework_updates',
-        ),
-        migrations.RemoveField(
-            model_name='contentpage',
-            name='show_framework_welcome',
-        ),
-        migrations.RemoveField(
-            model_name='contentpage',
-            name='show_in_role_navigation',
-        ),
-        migrations.RemoveField(
-            model_name='contentpage',
-            name='show_role_navigation',
-        ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='hero_background_color',
-        ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='hero_text_color',
-        ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='hide_sign_in_link',
-        ),
-        migrations.RemoveField(
-            model_name='customisesettings',
-            name='show_service_name_in_navigation',
-        ),
-        migrations.AddField(
-            model_name='customisesettings',
-            name='search_location',
-            field=models.CharField(choices=[('header', 'Header bar'), ('navigation', 'Service navigation'), ('hidden', 'Hidden')], default='header', help_text='Where the search box appears.', max_length=20),
-        ),
-        migrations.AddField(
-            model_name='customisesettings',
-            name='service_name_location',
-            field=models.CharField(choices=[('header', 'Header bar'), ('navigation', 'Service navigation')], default='header', help_text='Where the service name appears.', max_length=20),
-        ),
-        migrations.AddField(
-            model_name='customisesettings',
-            name='sign_in_location',
-            field=models.CharField(choices=[('header', 'Header bar'), ('navigation', 'Service navigation'), ('hidden', 'Hidden')], default='navigation', help_text='Where the sign in and sign out links appear. Choose Hidden for sites where visitors never sign in -- the sign in link is hidden, but a signed-in user can still sign out.', max_length=20),
-        ),
-        # RolePageTag fields removed after delete_rolepages has used them.
-        migrations.RemoveField(
-            model_name='rolepagetag',
-            name='content_object',
-        ),
-        migrations.RemoveField(
-            model_name='rolepagetag',
-            name='tag',
-        ),
-        migrations.DeleteModel(
-            name='RolePage',
-        ),
-        migrations.DeleteModel(
-            name='RolePageTag',
-        ),
-        # Field is gone now; drop any reference-index rows that still point at
-        # ContentPage.framework_welcome_body so the admin can resolve references.
-        migrations.RunPython(
-            clear_stale_contentpage_references,
             migrations.RunPython.noop,
         ),
     ]

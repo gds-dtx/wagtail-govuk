@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('govuk', '0072_remove_frameworkcontentpage_show_in_framework_navigation_and_more'),
+        ('govuk', '0073_remove_frameworkcontentpage_show_in_framework_navigation_and_more'),
     ]
 
     operations = [
