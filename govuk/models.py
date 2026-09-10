@@ -3150,7 +3150,7 @@ class FrameworkFieldsMixin(models.Model):
                 # resources" group when it is one of them -- a framework content
                 # page highlights itself there, the way a role does on its route.
                 groups = role_navigation_groups(
-                    current_page_id=self.pk, wording=framework_wording
+                    current_page_id=self.pk, wording=framework_wording, request=request
                 )
                 if self.show_role_navigation:
                     context["role_navigation"] = groups
@@ -3274,6 +3274,11 @@ class SidebarNavigationItem(Orderable):
 class ContentPage(BaseContentPage):
     parent_page_types = [
         "govuk.ContentPage",
+        # The framework's home page is the site's home page on the Capability
+        # Framework, so the privacy notice, the cookie statement and the other
+        # pages that are not about the framework live under it too. They are
+        # plain content pages: no role navigation, and not in the side menu.
+        "govuk.FrameworkMainPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
@@ -3385,26 +3390,41 @@ def role_page_urls_by_role_id() -> dict[int, str]:
     }
 
 
-def further_resources_group(*, current_page_id: int | None = None, wording=None) -> dict | None:
+def further_resources_group(
+    *, current_page_id: int | None = None, wording=None, request=None
+) -> dict | None:
     """The pages about the framework itself, for the side navigation.
 
     The live service closes its navigation with these: the skills index and the
     handful of pages that are about the framework rather than one role. They are
-    the framework main page's own children. Sidebar settings decides which are
-    shown and in what order; a child not listed there is shown after the
-    configured ones, in tree order, so a new page never silently vanishes.
+    the framework main page's framework children -- its framework content pages
+    and the skills index. Its plain content pages are not about the framework
+    and stay out: the live service keeps its privacy notice, cookie statement
+    and accessibility statement off the menu, and an editor chooses which a
+    page is by choosing its type. Sidebar settings decides which of the
+    framework pages are shown and in what order; a child not listed there is
+    shown after the configured ones, in tree order, so a new page never
+    silently vanishes.
     """
     main_page = framework_main_page()
     if main_page is None:
         return None
 
-    children = list(main_page.get_children().live().order_by("path"))
+    children = list(
+        main_page.get_children()
+        .live()
+        .type(FrameworkContentPage, FrameworkSkillsPage)
+        .order_by("path")
+    )
     child_by_id = {page.pk: page for page in children}
 
-    # The configured order/visibility, from Sidebar settings for the default
-    # site (the navigation helpers have no request; the site is the same one
-    # _default_site_wording reads).
-    site = Site.objects.filter(is_default_site=True).first()
+    # The configured order/visibility, from Sidebar settings for the site being
+    # served when there is a request to say which, so that two sites on one
+    # instance each get their own; otherwise the default site's, which is the
+    # one _default_site_wording reads.
+    site = Site.find_for_request(request) if request is not None else None
+    if site is None:
+        site = Site.objects.filter(is_default_site=True).first()
     setting = SidebarSettings.objects.filter(site=site).first() if site else None
     configured = list(setting.items.all()) if setting else []
 
@@ -3440,6 +3460,7 @@ def role_navigation_groups(
     current_role_slug: str | None = None,
     current_page_id: int | None = None,
     wording=None,
+    request=None,
 ) -> list[dict]:
     """The side navigation: every live role grouped by family, then the rest.
 
@@ -3482,7 +3503,7 @@ def role_navigation_groups(
     ]
 
     resources = further_resources_group(
-        current_page_id=current_page_id, wording=wording
+        current_page_id=current_page_id, wording=wording, request=request
     )
     if resources:
         navigation.append(resources)
@@ -3882,7 +3903,7 @@ class RoleRenderingMixin:
             "job_grades_url": self._job_grades_url(site_root),
             "framework_wording": framework_wording,
             "role_navigation": role_navigation_groups(
-                current_role_slug=role.slug, wording=framework_wording
+                current_role_slug=role.slug, wording=framework_wording, request=request
             ),
             # The role, not the framework home, is the current thing here.
             "framework_home": framework_home_link(is_current=False),
@@ -3964,7 +3985,13 @@ class FrameworkMainPage(
 
     max_count = 1
     subpage_types = [
+        # A framework content page sits beside the roles in the side menu; a
+        # plain content page under here does not. That is how an editor
+        # chooses which of the two a page is: the live service lists five
+        # pages beside the roles and keeps its privacy notice, cookie
+        # statement and accessibility statement out of the menu.
         "govuk.FrameworkContentPage",
+        "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
@@ -4213,7 +4240,7 @@ class FrameworkSkillsPage(Page):
         # carries the same side navigation, and the same narrow-screen
         # breadcrumb standing in for it.
         context["role_navigation"] = role_navigation_groups(
-            current_page_id=self.pk, wording=framework_wording
+            current_page_id=self.pk, wording=framework_wording, request=request
         )
         # The framework home is the navigation's top link; the skills index is
         # not it, so it is not marked current there.

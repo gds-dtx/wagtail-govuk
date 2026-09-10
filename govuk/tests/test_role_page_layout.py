@@ -1,13 +1,14 @@
 from datetime import date
 
 from django.db import connection
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from wagtail.models import Site
 
 from govuk.models import (
     ContentPage,
     FrameworkContentPage,
+    FrameworkMainPage,
     FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
@@ -243,7 +244,7 @@ class RolePageLayoutTests(TestCase):
     def test_further_resources_keeps_the_order_the_editors_chose(self):
         for title, slug in (("Roadmap", "roadmap"), ("Job grades", "job-grades")):
             page = self.main_page.add_child(
-                instance=ContentPage(title=title, slug=slug)
+                instance=FrameworkContentPage(title=title, slug=slug, body="")
             )
             page.save_revision().publish()
 
@@ -253,13 +254,63 @@ class RolePageLayoutTests(TestCase):
 
     def test_further_resources_marks_the_page_being_looked_at(self):
         page = self.main_page.add_child(
-            instance=ContentPage(title="Roadmap", slug="roadmap")
+            instance=FrameworkContentPage(title="Roadmap", slug="roadmap", body="")
         )
         page.save_revision().publish()
 
         group = further_resources_group(current_page_id=page.pk)
 
         self.assertTrue(group["items"][0]["is_current"])
+
+    def test_a_plain_content_page_under_the_main_page_stays_out_of_the_sidebar(self):
+        """The live service keeps its privacy notice, cookie statement and
+        accessibility statement off the menu. They live under the framework
+        home page all the same, because that is the site's home page, so the
+        page's type is what says which side of the line it is on."""
+        for title, slug in (("Privacy notice", "privacy"), ("Cookies", "cookie-statement")):
+            page = self.main_page.add_child(instance=ContentPage(title=title, slug=slug))
+            page.save_revision().publish()
+        roadmap = self.main_page.add_child(
+            instance=FrameworkContentPage(title="Roadmap", slug="roadmap", body="")
+        )
+        roadmap.save_revision().publish()
+
+        group = further_resources_group()
+
+        self.assertEqual([item["title"] for item in group["items"]], ["Roadmap"])
+
+    def test_a_plain_content_page_can_be_made_under_the_main_page(self):
+        """Otherwise a site whose home page is the framework's has nowhere to
+        put a page that is not about the framework."""
+        self.assertTrue(ContentPage.can_create_at(self.main_page))
+        self.assertIn(ContentPage, FrameworkMainPage.allowed_subpage_models())
+        self.assertTrue(FrameworkContentPage.can_create_at(self.main_page))
+
+    def test_the_sidebar_reads_the_settings_of_the_site_being_served(self):
+        """Two sites on one instance each get their own sidebar settings."""
+        guidance = self.main_page.add_child(
+            instance=FrameworkContentPage(title="Guidance", slug="guidance", body="")
+        )
+        guidance.save_revision().publish()
+        other_root = self.root_page.add_child(instance=ContentPage(title="Other", slug="other"))
+        other_root.save_revision().publish()
+        other_site = Site.objects.create(
+            hostname="other.example.gov.uk", port=80, root_page=other_root
+        )
+        setting = SidebarSettings.objects.create(site=other_site)
+        SidebarNavigationItem.objects.create(
+            setting=setting, page=guidance, visible=False, sort_order=0
+        )
+
+        on_the_default_site = further_resources_group(
+            request=RequestFactory().get("/", HTTP_HOST=self.site.hostname)
+        )
+        on_the_other_site = further_resources_group(
+            request=RequestFactory().get("/", HTTP_HOST="other.example.gov.uk")
+        )
+
+        self.assertEqual([item["title"] for item in on_the_default_site["items"]], ["Guidance"])
+        self.assertIsNone(on_the_other_site)
 
     def test_further_resources_is_left_out_when_there_is_nothing_in_it(self):
         self.assertIsNone(further_resources_group())
@@ -271,18 +322,28 @@ class RolePageLayoutTests(TestCase):
     def test_further_resources_does_not_cost_a_query_per_page(self):
         """It runs on every page the navigation appears on. The framework
         content pages beside the roles are the main page's own children."""
-        for index in range(6):
-            page = self.main_page.add_child(
-                instance=ContentPage(title=f"Page {index}", slug=f"page-{index}")
-            )
-            page.save_revision().publish()
+        def add_pages(prefix, count):
+            for index in range(count):
+                page = self.main_page.add_child(
+                    instance=FrameworkContentPage(
+                        title=f"{prefix} {index}", slug=f"{prefix}-{index}", body=""
+                    )
+                )
+                page.save_revision().publish()
+
+        add_pages("page", 1)
+        with CaptureQueriesContext(connection) as with_one:
+            further_resources_group()
+        add_pages("more", 6)
+        with CaptureQueriesContext(connection) as with_seven:
+            further_resources_group()
 
         # A fixed cost whatever the number of pages: finding the framework main
-        # page, one query for its children, the default site and the Sidebar
-        # settings that order them, and the default site and its wording, which
-        # names the group headings.
-        with self.assertNumQueries(6):
-            further_resources_group()
+        # page, one query for its framework children, the default site and the
+        # Sidebar settings that order them, and the default site and its
+        # wording, which names the group headings.
+        self.assertEqual(len(with_seven), len(with_one))
+        self.assertLessEqual(len(with_one), 6)
 
     def test_the_navigation_costs_the_same_whatever_the_number_of_roles(self):
         """It runs on every role page of the framework, listing every role, and
@@ -300,7 +361,9 @@ class RolePageLayoutTests(TestCase):
 
     def test_draft_pages_stay_out_of_further_resources(self):
         draft = self.main_page.add_child(
-            instance=ContentPage(title="Not ready", slug="not-ready", live=False)
+            instance=FrameworkContentPage(
+                title="Not ready", slug="not-ready", body="", live=False
+            )
         )
         draft.save()
 
