@@ -3218,8 +3218,9 @@ class SidebarSettings(ClusterableModel, BaseSiteSetting):
 
     Each row picks a framework content page (or the skills index), says whether
     it is visible, and -- through its position in the list -- sets the order.
-    A framework child not listed here is still shown, appended after the
-    configured ones in tree order, so a new page never silently vanishes;
+    Listing any page makes this list the menu: framework children left off it
+    are left out. Leaving the list empty shows every framework child in tree
+    order, which is what a site gets before anyone configures it.
     ``further_resources_group`` reads all of this.
     """
 
@@ -3230,8 +3231,10 @@ class SidebarSettings(ClusterableModel, BaseSiteSetting):
             label="Page",
             help_text=(
                 "Choose the pages shown in the framework sidebar's further "
-                "resources, drag to reorder, and untick any to hide. Pages not "
-                "listed here are shown after these, in page-tree order."
+                "resources, drag to reorder, and untick any to hide it without "
+                "losing its place. These are the only pages shown: a framework "
+                "page left off this list does not appear. Leave the list empty "
+                "to show every framework page in page-tree order."
             ),
         ),
     ]
@@ -3405,10 +3408,20 @@ def further_resources_group(
     and the skills index. Its plain content pages are not about the framework
     and stay out: the live service keeps its privacy notice, cookie statement
     and accessibility statement off the menu, and an editor chooses which a
-    page is by choosing its type. Sidebar settings decides which of the
-    framework pages are shown and in what order; a child not listed there is
-    shown after the configured ones, in tree order, so a new page never
-    silently vanishes.
+    page is by choosing its type.
+
+    Sidebar settings then decides the menu. Listing any page at all makes the
+    list the menu: the pages listed and ticked are shown, in the order given,
+    and a framework child left off it is left out. An empty list means the
+    editor has not chosen, so every framework child is shown in tree order,
+    which is what a newly built site gets.
+
+    It used to append the unlisted children to the configured ones instead, so
+    that a new page could never silently vanish. Antony found on 10 Sep 2026
+    that this makes the setting unable to express live's menu at all: picking
+    the six pages live shows still left the other eight on the page, and the
+    only way to get live's menu was to list all fourteen and untick eight.
+    Choosing pages has to mean choosing pages.
     """
     main_page = framework_main_page()
     if main_page is None:
@@ -3439,8 +3452,10 @@ def further_resources_group(
             seen.add(item.page_id)
             if item.visible:
                 ordered.append(child_by_id[item.page_id])
-    # Children not configured are shown after, keeping their tree order.
-    ordered.extend(page for page in children if page.pk not in seen)
+    # Only when nothing at all is configured does the tree stand in for a
+    # choice; once an editor has listed a page, the list is the menu.
+    if not configured:
+        ordered.extend(page for page in children if page.pk not in seen)
 
     items = [
         {

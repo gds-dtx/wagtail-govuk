@@ -1,3 +1,5 @@
+import html
+import re
 from datetime import date
 
 from django.db import connection
@@ -402,8 +404,11 @@ class RolePageLayoutTests(TestCase):
         )
         hidden.save_revision().publish()
 
+        # The list is the menu, so both pages are listed and one is unticked.
+        # Unticking keeps the row and its place while hiding the page.
         setting = SidebarSettings.objects.create(site=self.site)
-        SidebarNavigationItem.objects.create(setting=setting, page=hidden, visible=False, sort_order=0)
+        SidebarNavigationItem.objects.create(setting=setting, page=shown, visible=True, sort_order=0)
+        SidebarNavigationItem.objects.create(setting=setting, page=hidden, visible=False, sort_order=1)
 
         group = further_resources_group()
 
@@ -420,24 +425,117 @@ class RolePageLayoutTests(TestCase):
 
         self.assertIsNone(further_resources_group())
 
-    def test_sidebar_settings_set_the_order_and_unlisted_pages_follow(self):
-        for title, slug in (("Alpha", "alpha"), ("Beta", "beta"), ("Gamma", "gamma")):
+    def _add_framework_children(self, *names):
+        for title in names:
             page = self.main_page.add_child(
-                instance=FrameworkContentPage(title=title, slug=slug, body="")
+                instance=FrameworkContentPage(title=title, slug=title.lower(), body="")
             )
             page.save_revision().publish()
 
-        # Configure Gamma first, then Beta; Alpha is unlisted and follows.
+    def test_sidebar_settings_set_the_order_and_leave_out_what_is_not_listed(self):
+        """Choosing pages means choosing pages.
+
+        Antony configured the six pages the live service shows on 10 Sep 2026
+        and still saw all fourteen framework children, because the unlisted ones
+        used to be appended. The list an editor writes is the menu.
+        """
+        self._add_framework_children("Alpha", "Beta", "Gamma")
+
         setting = SidebarSettings.objects.create(site=self.site)
         SidebarNavigationItem.objects.create(setting=setting, page=FrameworkContentPage.objects.get(slug="gamma"), sort_order=0)
         SidebarNavigationItem.objects.create(setting=setting, page=FrameworkContentPage.objects.get(slug="beta"), sort_order=1)
 
         group = further_resources_group()
 
-        self.assertEqual(
-            [item["title"] for item in group["items"]],
-            ["Gamma", "Beta", "Alpha"],
+        self.assertEqual([item["title"] for item in group["items"]], ["Gamma", "Beta"])
+
+    def test_an_empty_sidebar_setting_shows_every_framework_child(self):
+        """A site nobody has configured yet still has a full menu."""
+        self._add_framework_children("Alpha", "Beta", "Gamma")
+        SidebarSettings.objects.create(site=self.site)
+
+        group = further_resources_group()
+
+        self.assertEqual([item["title"] for item in group["items"]], ["Alpha", "Beta", "Gamma"])
+
+    def test_no_sidebar_setting_at_all_shows_every_framework_child(self):
+        self._add_framework_children("Alpha", "Beta", "Gamma")
+
+        group = further_resources_group()
+
+        self.assertEqual([item["title"] for item in group["items"]], ["Alpha", "Beta", "Gamma"])
+
+    def test_the_dev_instances_fourteen_pages_configured_to_lives_six(self):
+        """Antony's case, end to end through the rendered page.
+
+        The development instance has fourteen framework children, because its
+        editors ticked privacy, cookies, accessibility, feedback and the project
+        pages into the navigation over time and migration 0071 carried that
+        forward. The live service shows six. Configuring those six has to
+        produce those six, in that order, on the page itself -- reading the
+        rendered navigation, not just the function that feeds it.
+        """
+        live_six = [
+            "Skills A to Z",
+            "Propose a change",
+            "Download framework content",
+            "Civil Service job grades in this framework",
+            "Context and challenges for Senior Civil Service roles",
+            "Roadmap",
+        ]
+        also_on_dev = [
+            "Privacy notice",
+            "Accessibility Statement",
+            "Upcoming changes to the framework",
+            "Project: agile coach - new role",
+            "Project: business relationship manager - new role level",
+            "Project: information architect - new role",
+            "Feedback",
+            "Cookies",
+        ]
+        # Built in tree order, with the live six deliberately scattered among
+        # the others so that order can only come from the setting.
+        pages = {}
+        for index, title in enumerate(
+            [also_on_dev[0], live_six[5], also_on_dev[1], live_six[3], also_on_dev[2],
+             live_six[1], also_on_dev[3], also_on_dev[4], live_six[2], also_on_dev[5],
+             live_six[4], also_on_dev[6], also_on_dev[7]]
+        ):
+            page = self.main_page.add_child(
+                instance=FrameworkContentPage(title=title, slug=f"page-{index}", body="")
+            )
+            page.save_revision().publish()
+            pages[title] = page
+        skills = self.main_page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
+        skills.save_revision().publish()
+        pages["Skills A to Z"] = skills
+
+        self.assertEqual(len(pages), 14, "the shape of the development instance")
+
+        setting = SidebarSettings.objects.create(site=self.site)
+        for order, title in enumerate(live_six):
+            SidebarNavigationItem.objects.create(
+                setting=setting, page=pages[title], visible=True, sort_order=order
+            )
+
+        response = self.client.get(self.data_analyst_url)
+        rendered = response.content.decode()
+        block = re.search(
+            r'<nav class="role-nav__group" aria-label="Further resources">(.*?)</nav>',
+            rendered,
+            re.S,
+        )
+        self.assertIsNotNone(block, "the Further resources group is on the page")
+        listed = [
+            html.unescape(title).strip()
+            for title in re.findall(r"<a\b[^>]*>(.*?)</a>", block.group(1), re.S)
+        ]
+
+        self.assertEqual(listed, live_six)
+        for title in also_on_dev:
+            self.assertNotIn(title, block.group(1))
 
     def test_roles_without_a_family_are_left_out_of_the_navigation(self):
         GovukRole.objects.create(title="Unfamilied role")

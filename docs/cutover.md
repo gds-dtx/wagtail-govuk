@@ -349,9 +349,12 @@ which are the live copy.
 Under **Capability framework → Sidebar settings**, add the framework content
 pages (and Skills A to Z), drag them into the order the live service uses
 (Skills A to Z, Propose a change, Download, Job grades, Context and challenges,
-Roadmap), and untick any you want hidden. A framework page not listed there is
-shown anyway, appended after the configured ones in page-tree order, so nothing
-disappears just because it was not added. These are `SidebarSettings`
+Roadmap), and untick any you want hidden without losing its place. **The list
+you write is the menu**: a framework page left off it does not appear, which is
+how the six above are achieved on an instance whose editors have ticked more
+pages into the navigation than the live service shows. Leave the list empty and
+every framework page appears in page-tree order, so a site nobody has
+configured is not left with an empty menu. These are `SidebarSettings`
 (`BaseSiteSetting`) — like the other site settings they are **not** in the page
 export and must be re-entered in the CMS on production.
 
