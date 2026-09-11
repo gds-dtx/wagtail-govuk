@@ -208,6 +208,12 @@
                                                                             <ul class="govuk-list govuk-list--bullet govuk-!-margin-bottom-0">
                                                                                 {% for point in skill_row.points %}<li>{{ point }}</li>{% endfor %}
                                                                             </ul>
+                                                                        {% elif skill_row.placeholder %}
+                                                                            {% comment %}
+                                                                                The framework's "not defined" sentence, printed on its own
+                                                                                as the live service does rather than as the end of "You can:".
+                                                                            {% endcomment %}
+                                                                            <p class="govuk-body govuk-!-margin-bottom-0">{{ skill_row.placeholder }}</p>
                                                                         {% endif %}
                                                                     </td>
                                                                 </tr>
