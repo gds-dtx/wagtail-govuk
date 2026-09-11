@@ -456,6 +456,20 @@ function setSiteSearchAutocomplete() {
     })[character]);
   }
 
+  const form = container.querySelector("form");
+  // On the results page the box starts with the query in it, and the library
+  // offers that string back as the one suggestion until the reader types: its
+  // option list is seeded with defaultValue. It is a string where every
+  // fetched suggestion is an object, so it rendered as "undefined" and Enter
+  // on it did nothing (CS32-3458, 11 September 2026). It is plain text, and
+  // confirming it is a search for it.
+  function itemText(item) {
+    if (typeof item === "string") {
+      return item;
+    }
+    return item && item.text ? item.text : "";
+  }
+
   window.accessibleAutocomplete({
     element: mount,
     id: inputId,
@@ -472,22 +486,30 @@ function setSiteSearchAutocomplete() {
     tStatusQueryTooShort: (count) => "Type " + count + " or more characters for suggestions",
     source: source,
     templates: {
-      inputValue: (item) => (item ? item.text : ""),
+      inputValue: itemText,
       suggestion: (item) => {
         if (!item) {
           return "";
         }
-        // The kind is shown for a role or a skill; a page is just its name.
+        // The kind is shown for a role or a skill; a page is just its name,
+        // and so is the query offered back.
         const type =
           item.type === "Role" || item.type === "Skill"
             ? '<span class="app-site-search__option-type">' + escapeHtml(item.type) + "</span>"
             : "";
-        return '<span class="app-site-search__option-text">' + escapeHtml(item.text) + "</span>" + type;
+        return '<span class="app-site-search__option-text">' + escapeHtml(itemText(item)) + "</span>" + type;
       },
     },
     onConfirm: (item) => {
       if (item && item.link) {
         window.location.assign(item.link);
+      } else if (typeof item === "string" && form) {
+        // The query offered back: search for it, as Enter in the plain box does.
+        if (form.requestSubmit) {
+          form.requestSubmit();
+        } else {
+          form.submit();
+        }
       }
     },
   });
