@@ -501,15 +501,23 @@ function setSiteSearchAutocomplete() {
       },
     },
     onConfirm: (item) => {
-      if (item && item.link) {
-        window.location.assign(item.link);
-      } else if (typeof item === "string" && form) {
-        // The query offered back: search for it, as Enter in the plain box does.
-        if (form.requestSubmit) {
-          form.requestSubmit();
-        } else {
-          form.submit();
+      // The query offered back is a string, and .link on a string is the
+      // native String.prototype.link method, not undefined -- so a string has
+      // to be caught before the object branch, or confirming it navigates to
+      // that method's source text (CS32-3458, 14 September 2026).
+      if (typeof item === "string") {
+        // Search for it, as Enter in the plain box does.
+        if (form) {
+          if (form.requestSubmit) {
+            form.requestSubmit();
+          } else {
+            form.submit();
+          }
         }
+      } else if (item && item.link && /^(\/|https?:)/i.test(item.link)) {
+        // A same-site path or an http(s) URL only, so a link that somehow
+        // arrived as javascript:, data: or the like cannot run on confirm.
+        window.location.assign(item.link);
       }
     },
   });
