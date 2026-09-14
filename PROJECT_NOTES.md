@@ -82,7 +82,12 @@ Big files first — these are where most work lands:
   `FooterSettings` (order 2), `CustomiseSettings` (order 1 — leads the Settings
   menu). `CustomiseSettings` holds **location dropdowns** for `service_name_location`,
   `sign_in_location` (header / navigation / hidden — "hidden" still shows Sign Out
-  for authenticated users), `search_location`, and `header_logo`. Hero colour
+  for authenticated users), `search_location`, and `header_logo`.
+  `enable_search_results_page` (default on) is the free-text search switch: turn
+  it off and the header box keeps its jump-to-a-role/skill/page autocomplete but
+  submits nothing (no `<form>`, so Enter is inert and the magnifier is a
+  decorative in-input icon) and `search_view` 404s. The
+  `import_capability_framework` command sets it off on first import. Hero colour
   fields were removed; migration 0072 carries a site's colours into `extra_css`
   as the CSS they produced. `content_max_width` (optional px) feeds
   `render_custom_css`, which sets `--govuk-content-width` and shifts main.css's

@@ -92,6 +92,29 @@ class HeaderLayoutTests(TestCase):
 
         self.assertNotContains(self._get(), 'class="app-site-search"')
 
+    def test_the_search_box_submits_to_the_results_page_by_default(self):
+        response = self._get()
+
+        # Free-text results are on by default: a real form pointed at /search/.
+        self.assertContains(response, '<form action="/search/"')
+        self.assertContains(response, 'type="submit"')
+
+    def test_disabling_free_text_results_drops_the_submitting_form(self):
+        # With free-text results off the box keeps its jump-to-a-suggestion
+        # autocomplete (the wrapper and its suggest URL stay) but has no form to
+        # submit and no button at all, so Enter is inert. The magnifier becomes
+        # a decorative icon inside the input (the app-site-search--icon variant).
+        self.settings.enable_search_results_page = False
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertContains(response, "app-site-search--icon")
+        self.assertContains(response, "data-suggest-url")
+        self.assertNotContains(response, '<form action="/search/"')
+        self.assertNotContains(response, "app-site-search__button")
+        self.assertContains(response, "app-site-search__decoration")
+
     def test_the_sign_in_link_sits_in_the_navigation_by_default(self):
         response = self._get()
 

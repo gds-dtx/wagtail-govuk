@@ -276,6 +276,7 @@ class ImportCapabilityFrameworkTests(TestCase):
         self.assertEqual(customise.header_logo, "govuk")
         self.assertEqual(customise.service_name_location, "navigation")
         self.assertEqual(customise.search_location, "navigation")
+        self.assertFalse(customise.enable_search_results_page)
         self.assertEqual(customise.sign_in_location, "hidden")
 
     def test_a_second_import_leaves_editor_welcome_content_alone(self):

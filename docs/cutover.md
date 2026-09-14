@@ -334,6 +334,7 @@ in the CMS afterwards, and fill in anything the import does not cover:
 | Service name location | Navigation |
 | Sign in location | Hidden |
 | Search box location | Navigation |
+| Allow free-text search results | Off — the box only jumps to a matching role, skill or page as the reader types; there is no free-text results page and `/search/` is not served |
 | Header logo | GOV.UK |
 | Search placeholder | "Search for roles or skills" (the live service's wording, per the search box specification) |
 | Show page feedback prompt | On |

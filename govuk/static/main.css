@@ -260,6 +260,31 @@ main > :nth-last-child(1 of .section-cards-container) {
     display: block;
 }
 
+/* Free-text results turned off: no submit button. The magnifier is a
+   decorative icon at the right-hand end of the input instead. It is pinned to
+   the form container's right edge -- which the flex input, or the
+   autocomplete's replacement input, fills -- and the input gains right padding
+   so typed text clears it. pointer-events: none keeps clicks on the field. */
+.app-site-search--icon .app-site-search__form {
+    position: relative;
+}
+
+.app-site-search--icon .app-site-search__input {
+    padding-right: 2.5rem;
+}
+
+.app-site-search__decoration {
+    position: absolute;
+    top: 50%;
+    right: 0.625rem;
+    display: block;
+    width: 20px;
+    height: 20px;
+    transform: translateY(-50%);
+    color: #0b0c0c;
+    pointer-events: none;
+}
+
 .tags-container {
     display: flex;
     flex-wrap: wrap;

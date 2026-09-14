@@ -566,6 +566,17 @@ class CustomiseSettings(BaseSiteSetting):
             "Search for roles or skills. Defaults to Search."
         ),
     )
+    enable_search_results_page = models.BooleanField(
+        default=True,
+        verbose_name="Allow free-text search results",
+        help_text=(
+            "Let visitors search for any phrase and see a results page. Turn "
+            "this off to keep only the suggestions that jump straight to a "
+            "live page or snippet as the reader types -- pressing Enter or the "
+            "search button on its own then does nothing, and the results page "
+            "is not served."
+        ),
+    )
     error_contact_link_text = models.CharField(
         max_length=255,
         blank=True,
@@ -644,6 +655,7 @@ class CustomiseSettings(BaseSiteSetting):
         MultiFieldPanel(
             [
                 FieldPanel("search_location"),
+                FieldPanel("enable_search_results_page"),
                 FieldPanel("show_site_name_in_search_box"),
                 FieldPanel("search_placeholder"),
             ],
