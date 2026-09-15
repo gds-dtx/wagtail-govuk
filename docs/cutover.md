@@ -332,6 +332,7 @@ in the CMS afterwards, and fill in anything the import does not cover:
 | Setting | Value |
 | --- | --- |
 | Service name location | Navigation |
+| Service name link | `/` (the site home — the default; the logo keeps its own GOV.UK link because the name is in the navigation) |
 | Sign in location | Hidden |
 | Search box location | Navigation |
 | Allow free-text search results | Off — the box only jumps to a matching role, skill or page as the reader types; there is no free-text results page and `/search/` is not served |

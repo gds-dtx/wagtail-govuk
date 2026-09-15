@@ -83,6 +83,11 @@ Big files first — these are where most work lands:
   menu). `CustomiseSettings` holds **location dropdowns** for `service_name_location`,
   `sign_in_location` (header / navigation / hidden — "hidden" still shows Sign Out
   for authenticated users), `search_location`, and `header_logo`.
+  `service_name_link` (default `/`, grouped with `service_name_location` under a
+  "Service name" panel) sets where the service name links: in the header-bar
+  placement the logo and name are one link to it, in the navigation placement
+  only the name links to it while the logo keeps its own `https://www.gov.uk`
+  link (see `base.html` header block).
   `enable_search_results_page` (default on) is the free-text search switch: turn
   it off and the header box keeps its jump-to-a-role/skill/page autocomplete but
   submits nothing (no `<form>`, so Enter is inert and the magnifier is a

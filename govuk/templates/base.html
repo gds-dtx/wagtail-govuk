@@ -64,7 +64,14 @@
                             System's header requires. The service's own home
                             page is reached from the service name below.
                         {% endcomment %}
-                        <a href="https://www.gov.uk" class="govuk-header__homepage-link">
+                        {% comment %}
+                            When the service name sits in the header bar the logo
+                            and name are one link, pointing where the "Service
+                            name link" setting says (the site home by default).
+                            When the name sits in the service navigation the logo
+                            is on its own and always leaves for GOV.UK.
+                        {% endcomment %}
+                        <a href="{% if customise_settings.service_name_location == 'header' %}{{ customise_settings.service_name_link|default:'/' }}{% else %}https://www.gov.uk{% endif %}" class="govuk-header__homepage-link">
                             {% if customise_settings and customise_settings.header_logo == "uk-government" %}
                                 <svg focusable="false"
                                      role="img"
@@ -131,7 +138,7 @@
                     <div class="govuk-service-navigation__container">
                         {% if customise_settings.service_name_location == "navigation" and current_site.site_name %}
                             <span class="govuk-service-navigation__service-name">
-                                <a href="/" class="govuk-service-navigation__link">{% block service_name %}{{ current_site.site_name|cut:"GOV.UK" }}{% endblock %}</a>
+                                <a href="{{ customise_settings.service_name_link|default:'/' }}" class="govuk-service-navigation__link">{% block service_name %}{{ current_site.site_name|cut:"GOV.UK" }}{% endblock %}</a>
                             </span>
                         {% endif %}
                         {% comment %}

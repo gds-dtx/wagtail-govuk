@@ -570,7 +570,18 @@ class HomePageChecklistTests(ReviewChecklistTestCase):
     """T23, T33 and T58: the header and the home page's updates."""
 
     def test_t23_the_govuk_logo_links_to_govuk_not_to_this_service(self):
-        """"The GOV.UK should link to gov.uk homepage\"."""
+        """"The GOV.UK should link to gov.uk homepage\".
+
+        The framework puts the service name in the service navigation, which
+        leaves the header logo on its own -- and on its own it always links to
+        GOV.UK. (In the header-bar placement the logo and service name are a
+        single link to the service, governed by the "Service name link"
+        setting instead.)
+        """
+        settings = CustomiseSettings.for_site(self.site)
+        settings.service_name_location = "navigation"
+        settings.save()
+
         html = self.client.get(self.main_page.url).content.decode()
         logo = re.search(r'<a href="([^"]*)" class="govuk-header__homepage-link"', html)
 

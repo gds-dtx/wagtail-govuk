@@ -1,4 +1,5 @@
 import os
+import re
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -58,14 +59,58 @@ class HeaderLayoutTests(TestCase):
         self.assertContains(response, "govuk-service-navigation__service-name")
         self.assertContains(response, "Capability Framework")
 
-    def test_the_govuk_logo_links_to_govuk(self):
-        """The Design System's header logo leaves the service for GOV.UK."""
+    def test_in_the_navigation_the_logo_links_to_govuk_on_its_own(self):
+        """With the service name in the navigation the header logo stands
+        alone and always leaves the service for GOV.UK."""
+        self.settings.service_name_location = "navigation"
+        self.settings.save()
+
         response = self._get()
 
         self.assertContains(
             response,
             '<a href="https://www.gov.uk" class="govuk-header__homepage-link">',
         )
+
+    def test_in_the_header_bar_the_logo_and_name_link_to_the_home_page(self):
+        """With the service name in the header bar (the default) the logo and
+        name are a single link, pointing at the site home by default."""
+        response = self._get()
+
+        self.assertContains(
+            response,
+            '<a href="/" class="govuk-header__homepage-link">',
+        )
+
+    def test_the_service_name_link_can_be_customised(self):
+        """The "Service name link" setting overrides where the service name
+        points, in both placements. The standalone navigation logo does not
+        follow it -- it always links to GOV.UK."""
+        self.settings.service_name_link = "https://www.gov.uk/"
+        self.settings.save()
+
+        # Header bar: the combined logo-and-name link uses the setting.
+        self.assertContains(
+            self._get(),
+            '<a href="https://www.gov.uk/" class="govuk-header__homepage-link">',
+        )
+
+        # Navigation: only the service name link uses the setting; the logo
+        # keeps its own GOV.UK link.
+        self.settings.service_name_location = "navigation"
+        self.settings.save()
+        response = self._get()
+        self.assertContains(
+            response,
+            '<a href="https://www.gov.uk" class="govuk-header__homepage-link">',
+        )
+        name = re.search(
+            r'<span class="govuk-service-navigation__service-name">(.*?)</span>',
+            response.content.decode(),
+            re.S,
+        )
+        self.assertIsNotNone(name)
+        self.assertIn('href="https://www.gov.uk/"', name.group(1))
 
     def test_every_page_carries_a_back_to_top_button(self):
         """main.js reveals it once the page has been scrolled."""

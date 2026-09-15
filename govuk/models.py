@@ -529,6 +529,18 @@ class CustomiseSettings(BaseSiteSetting):
         default="header",
         help_text="Where the service name appears.",
     )
+    service_name_link = models.CharField(
+        max_length=500,
+        blank=True,
+        default="/",
+        verbose_name="Service name link",
+        help_text=(
+            "Where the service name links to. In the header bar the logo and "
+            "service name form a single link to this address. In the service "
+            "navigation the logo always links to GOV.UK and only the service "
+            "name links here. Defaults to this site's home page (/)."
+        ),
+    )
     sign_in_location = models.CharField(
         max_length=20,
         choices=[
@@ -650,7 +662,13 @@ class CustomiseSettings(BaseSiteSetting):
 
     panels = [
         FieldPanel("header_logo"),
-        FieldPanel("service_name_location"),
+        MultiFieldPanel(
+            [
+                FieldPanel("service_name_location"),
+                FieldPanel("service_name_link"),
+            ],
+            heading="Service name",
+        ),
         FieldPanel("sign_in_location"),
         MultiFieldPanel(
             [
