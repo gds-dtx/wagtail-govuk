@@ -22,13 +22,13 @@ discovery** subsystem that ingests external feeds. A major subsystem is the
 - **No global `python`** on this machine — always use `.venv/bin/python`.
 - Install: `pip install -e .` (deps live in `pyproject.toml`, not requirements.txt).
 - Package deps: Django, wagtail==7.4.3, gunicorn, whitenoise, django-allauth
-  (socialaccount+openid), djangorestframework-simplejwt[crypto], psycopg2-binary.
+  (socialaccount+openid), djangorestframework, pyjwt[crypto], psycopg2-binary.
 
 ### Settings layout (`govuk/settings/`)
 
 | Module | Use | DB | Notes |
 |---|---|---|---|
-| `base.py` | shared base, imported by all | — | env-var helpers `_bool_env`, `_parse_csv_env`; `FEATURE_FLAGS`; MIDDLEWARE; SIMPLE_JWT |
+| `base.py` | shared base, imported by all | — | env-var helpers `_bool_env`, `_parse_csv_env`; `FEATURE_FLAGS`; MIDDLEWARE; OIDC_TOKEN_AUTH |
 | `local.py` | **default** for `manage.py` locally | SQLite (`db.sqlite3`) | `DEBUG=True`, dummy `SECRET_KEY="abc123"`, verbose logging on |
 | `dev.py` | server / container | PostgreSQL (env vars) | requires `SECRET_KEY`, `DATABASE_*`, `BASE_URL`, `DOMAIN`, `OIDC_*` |
 | `runtime.py` | picks local vs non-local | — | `runserver` defaults to local; gunicorn must set `DJANGO_SETTINGS_MODULE` explicitly |
@@ -129,7 +129,7 @@ Subsystem modules (smaller, single-purpose):
 
 - **Auth / SSO:** `oidc.py`, `authentication.py`, `adapters.py` (allauth),
   `jwt_tokens.py`, `middleware.py` (`AdminOIDCLoginMiddleware`,
-  `AuthenticatedUserRedirectMiddleware`). JWKS/JWT via simplejwt (RS256).
+  `AuthenticatedUserRedirectMiddleware`). JWKS/JWT via PyJWT (RS256).
 - **API:** `api.py` (DRF + Wagtail API v2 router), served under `/api/`.
 - **Content discovery:** `content_discovery.py`, `content_discovery_import.py`
   (CSV upsert by `(site_id, url)`), management command

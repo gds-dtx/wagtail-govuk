@@ -59,7 +59,7 @@ def _parse_admin_user_emails(raw_emails: str | None) -> list[str]:
     return emails
 
 
-def _resolve_simple_jwt_audience(
+def _resolve_oidc_token_audience(
     default_audience: str | None,
 ) -> str | tuple[str, ...] | None:
     raw_audiences = os.getenv("OIDC_TOKEN_AUDIENCES")
@@ -323,7 +323,7 @@ SECURITYTXT_LOCATION = os.getenv(
     "SECURITYTXT_LOCATION",
     "https://vulnerability-reporting.service.security.gov.uk/.well-known/security.txt",
 )
-SIMPLE_JWT_AUDIENCE = _resolve_simple_jwt_audience(OIDC_CLIENT_ID)
+OIDC_TOKEN_AUDIENCE = _resolve_oidc_token_audience(OIDC_CLIENT_ID)
 SOCIALACCOUNT_LOGIN_ON_GET = True
 SOCIALACCOUNT_PROVIDERS = {
     "openid_connect": {
@@ -465,19 +465,20 @@ AUTHENTICATION_BACKENDS = [
     "allauth.account.auth_backends.AuthenticationBackend",
 ]
 
-SIMPLE_JWT = {
+# Consumed by govuk.authentication.InternalAccessJWTAuthentication, which
+# verifies OIDC ID tokens against the issuer's JWKS with PyJWT.
+OIDC_TOKEN_AUTH = {
     "ALGORITHM": "RS256",
-    "JWK_URL": OIDC_JWKS_URL,
+    "JWKS_URL": OIDC_JWKS_URL,
     "ISSUER": OIDC_ISSUER,
     # Accept one or more JWT audiences.
-    "AUDIENCE": SIMPLE_JWT_AUDIENCE,
-    "AUTH_HEADER_TYPES": ("Bearer",),
-    # OIDC ID tokens typically use "sub" as the subject identifier.
+    "AUDIENCE": OIDC_TOKEN_AUDIENCE,
+    "AUTH_HEADER_TYPE": "Bearer",
+    # OIDC ID tokens use "sub" as the subject identifier.
     "USER_ID_CLAIM": "sub",
-    # OIDC ID tokens usually omit "jti", so do not require it.
-    "JTI_CLAIM": None,
-    # OIDC ID tokens do not include SimpleJWT's "token_type" claim.
-    "AUTH_TOKEN_CLASSES": ("rest_framework_simplejwt.tokens.UntypedToken",),
+    # Reject ID tokens older than this, regardless of their own exp.
+    "MAX_ID_TOKEN_AGE_SECONDS": 12 * 60 * 60,
+    "LEEWAY_SECONDS": 0,
 }
 
 REST_FRAMEWORK = {
