@@ -187,11 +187,51 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
   `seed_live_service_redirects` after import.
 - **Role grades (SCS):** not in the public CSV; need `import_role_grades` separately.
 
+## News subsystem
+
+Gated by `FEATURE_FLAGS["NEWS"]`. Modelled on the roles pattern — a snippet for
+the content, a routable page for URLs — but it is the project's **first
+workflow-enabled snippet** (every other snippet is a plain `models.Model`).
+
+- **`NewsArticle`** (`models.py`) is a snippet, authored in its own top-level
+  **News** admin menu (`NewsArticleViewSet`, `add_to_admin_menu=True`, in
+  `wagtail_hooks.py`) — not in the Pages tree. Unlike the role/skill snippets it
+  is a `ClusterableModel` carrying Wagtail's editorial mixins
+  (`WorkflowMixin, DraftStateMixin, LockableMixin, RevisionMixin,
+  PreviewableMixin`), so it has draft/publish, revisions, locking, workflow
+  sign-off and preview. Fields: title, slug (auto via `_next_unique_slug`,
+  `fallback="news"`), publication_date, hero_image, standfirst, body, author,
+  featured, tags. Its `PublishingPanel` is gated on `SCHEDULED_PUBLISHING` the
+  same way `page_settings_panels()` gates pages — scheduling is inert without
+  the `publish_scheduled` cron, so it is hidden by default.
+- **`NewsIndexPage`** (`RoutablePageMixin, Page`, no `max_count`) lists articles
+  and serves each at `article/<slug>/` via `serve_article` (copies
+  `FrameworkMainPage.serve_role`; `article/` prefix avoids shadowing child
+  pages). Its `tags` are an **editor-side filter** ("only show articles tagged
+  with…", empty = all live articles), applied in `listed_articles()`; there is
+  no front-end tag control. `live=True` filtering (DraftStateMixin), not
+  `.live()` — snippets have no custom manager here.
+- **Multiple index pages** may list the same article (each at its own route). An
+  index serves an article only if it would list it (tag filter matches), so a
+  filtered-out article 404s there. Canonical URL for search/cross-links is built
+  by `news_index_page_for()` / `news_article_url()` from the first live index
+  page that lists it (empty when none — as roles behave without a main page).
+- **Search:** `_build_news_results` / `_search_news` in `search_backend.py`,
+  `result_type="News"` (blue badge in `search/results.html`), added to the
+  `search()` merge and the `search_suggest_view` grouping.
+- **Templates:** `govuk/news_index_page.html` (extends `base.html`, section-card
+  listing) and `govuk/news_article.html` (extends `base.html`, driven by an
+  `article` context var so the route serve and the snippet preview share it —
+  it cannot extend `wagtailcore/page.html` because preview has no page `self`).
+- **Workflow assignment is a one-time admin step:** attach a workflow to the
+  `NewsArticle` content type in *Settings → Workflows*; Wagtail auto-applies its
+  Moderation workflow to pages only, not snippets.
+
 ## Feature flags (env-driven, `base.py`)
 
 `FEATURE_SKILLS`, `FEATURE_ORGANISATIONS`, `FEATURE_PEOPLE_FINDER`,
-`FEATURE_FEEDBACK` → `settings.FEATURE_FLAGS` dict. Tests commonly override with
-`@override_settings(FEATURE_FLAGS=...)`.
+`FEATURE_FEEDBACK`, `FEATURE_NEWS` → `settings.FEATURE_FLAGS` dict. Tests commonly
+override with `@override_settings(FEATURE_FLAGS=...)`.
 
 ## Static & templates
 

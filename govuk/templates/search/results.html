@@ -90,7 +90,7 @@
                                     {% if result.result_type or result.source_name or result.tags or not result.is_external %}
                                         <p class="govuk-body-s govuk-!-margin-bottom-2 tags-container">
                                             {% if result.result_type %}
-                                                <strong class="govuk-tag govuk-tag--purple">{{ result.result_type }}</strong>
+                                                <strong class="govuk-tag {% if result.result_type == 'News' %}govuk-tag--blue{% else %}govuk-tag--purple{% endif %}">{{ result.result_type }}</strong>
                                             {% elif result.source_name %}
                                                 <strong class="govuk-tag">{{ result.source_name }}</strong>
                                             {% elif not result.is_external %}

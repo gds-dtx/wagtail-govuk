@@ -224,13 +224,24 @@ def search_suggest_view(request):
             },
             page=1,
         )
-        grouped: dict[str, list[dict[str, str]]] = {"Role": [], "Skill": [], "Page": []}
+        grouped: dict[str, list[dict[str, str]]] = {
+            "Role": [],
+            "Skill": [],
+            "News": [],
+            "Page": [],
+        }
         for item in results.object_list:
             if item.is_external or not item.url:
                 continue
-            kind = item.result_type if item.result_type in ("Role", "Skill") else "Page"
+            kind = (
+                item.result_type
+                if item.result_type in ("Role", "Skill", "News")
+                else "Page"
+            )
             grouped[kind].append({"text": item.title, "link": item.url, "type": kind})
-        suggestions = (grouped["Role"] + grouped["Skill"] + grouped["Page"])[:SUGGESTION_LIMIT]
+        suggestions = (
+            grouped["Role"] + grouped["Skill"] + grouped["News"] + grouped["Page"]
+        )[:SUGGESTION_LIMIT]
         response = JsonResponse(suggestions, safe=False)
     # What a signed-in editor sees can differ from what the public sees, and
     # content changes as editors work, so nothing on the path keeps a copy.
