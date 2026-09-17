@@ -144,6 +144,49 @@ class RolePageTests(TestCase):
 
         self.assertContains(response, "You can:")
 
+    def test_a_skill_level_marked_not_defined_is_printed_as_the_bare_sentence(self):
+        """The framework's "not defined" sentence is not the end of "You can:".
+
+        It arrives as a single point, from the exports or from an editor typing
+        it, and printed under "You can:" with a bullet it read as a broken
+        sentence (Tim Young, 11 September 2026). The live service prints it on
+        its own; so does this.
+        """
+        undefined_skill = GovukSkill.objects.create(
+            title="Undefined skill",
+            body="<p>Undefined body.</p>",
+            awareness_points=[
+                {"type": "point", "value": "This skill level is currently not defined."}
+            ],
+        )
+        sparse_role = GovukRole.objects.create(
+            title="Sparse role",
+            body="<p>A sparse role.</p>",
+            levels=[
+                {
+                    "type": "level",
+                    "value": {
+                        "title": "Sparse associate",
+                        "description": "<p>An associate with one undefined skill.</p>",
+                        "skills": [{"skill": undefined_skill.pk, "level": "awareness"}],
+                    },
+                }
+            ],
+        )
+
+        response = self.client.get(role_url(self.main_page, sparse_role))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "You can:")
+        self.assertNotContains(
+            response, "<li>This skill level is currently not defined.</li>"
+        )
+        self.assertContains(
+            response,
+            '<p class="govuk-body govuk-!-margin-bottom-0">'
+            "This skill level is currently not defined.</p>",
+        )
+
     def test_the_sidebar_home_link_names_the_framework_and_is_not_current(self):
         """On a role's page the top link still names the framework and points at
         it, but the role is the current thing, not the home."""
