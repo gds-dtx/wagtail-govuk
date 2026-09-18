@@ -428,6 +428,7 @@ FEATURE_FLAGS = {
     "ORGANISATIONS": _bool_env("FEATURE_ORGANISATIONS"),
     "PEOPLE_FINDER": _bool_env("FEATURE_PEOPLE_FINDER"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
+    "NEWS": _bool_env("FEATURE_NEWS"),
 }
 
 # Wagtail's go-live and expiry dates only fire if something runs the

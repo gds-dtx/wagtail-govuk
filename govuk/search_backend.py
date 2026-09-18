@@ -23,7 +23,9 @@ from govuk.models import (
     FrameworkSkillsPage,
     GovukRole,
     GovukSkill,
+    NewsArticle,
     SectionPage,
+    news_index_page_for,
     without_framework_pages,
 )
 from govuk.utils import normalised_text, row_id_from_text
@@ -53,6 +55,11 @@ SKILL_POINT_TEXT_WEIGHT = 0.4
 ROLE_TITLE_WEIGHT = 3.0
 ROLE_BODY_WEIGHT = 0.75
 ROLE_FAMILY_TEXT_WEIGHT = 0.4
+# News articles weigh like roles and skills: the headline carries the match,
+# the standfirst and body support it.
+NEWS_TITLE_WEIGHT = 3.0
+NEWS_STANDFIRST_WEIGHT = 1.0
+NEWS_BODY_WEIGHT = 0.75
 THIS_SITE_SOURCE_FILTER = "__this_site__"
 INTERNAL_RESULT_BOOST = 4.0
 EXACT_TITLE_BOOST = 3.0
@@ -112,6 +119,7 @@ class SearchBackend:
         tag_results = self._build_tag_results(clean_query, filters)
         skill_results = self._build_skill_results(clean_query, filters)
         role_results = self._build_role_results(clean_query, filters)
+        news_results = self._build_news_results(clean_query, filters)
         external_content_results = self._build_external_content_results(
             clean_query,
             filters,
@@ -123,6 +131,7 @@ class SearchBackend:
             + tag_results
             + skill_results
             + role_results
+            + news_results
             + external_content_results,
             clean_query,
         )
@@ -485,6 +494,84 @@ class SearchBackend:
 
         return results
 
+    def _build_news_results(
+        self, query: str, filters: dict[str, Any]
+    ) -> list[SearchResultItem]:
+        """News articles are snippets, so nothing finds them through the tree.
+
+        Each article is served on a route under a ``NewsIndexPage``, so a result
+        links to its canonical article URL and takes that page's breadcrumbs.
+        Gated by ``FEATURE_NEWS``.
+        """
+        if not settings.FEATURE_FLAGS.get("NEWS"):
+            return []
+
+        request = filters.get("request")
+        site_root = self._site_root_page(filters)
+
+        results: list[SearchResultItem] = []
+        for article in self._search_news(
+            NewsArticle.objects.filter(live=True), query
+        ):
+            standfirst = normalised_text(article.standfirst)
+            body = normalised_text(article.body)
+            score = self._text_relevance(
+                query,
+                (
+                    (article.title, NEWS_TITLE_WEIGHT),
+                    (standfirst, NEWS_STANDFIRST_WEIGHT),
+                    (body, NEWS_BODY_WEIGHT),
+                ),
+            )
+            if score <= 0 or not article.slug:
+                continue
+
+            index_page = news_index_page_for(article)
+            if index_page is None or not index_page.url:
+                continue
+
+            results.append(
+                SearchResultItem(
+                    title=normalised_text(article.title),
+                    search_description=standfirst or body,
+                    url=index_page.url
+                    + index_page.reverse_subpage(
+                        "serve_article", args=[article.slug]
+                    ),
+                    score=score,
+                    breadcrumbs=self._page_breadcrumbs(
+                        index_page,
+                        request=request,
+                        site_root=site_root,
+                        include_page=True,
+                    ),
+                    last_updated=self._news_last_updated(article),
+                    result_type="News",
+                )
+            )
+
+        return results
+
+    def _news_last_updated(self, article: NewsArticle) -> datetime | None:
+        """When the article was last published, else its editorial date.
+
+        ``last_published_at`` (from ``DraftStateMixin``) is the true recency
+        signal; a never-yet-published live row falls back to its publication
+        date, counted from the start of the day it holds no time.
+        """
+        published = article.last_published_at
+        if published is not None:
+            return published
+
+        publication_date = article.publication_date
+        if publication_date is None:
+            return None
+
+        start_of_day = datetime.combine(publication_date, time.min)
+        if settings.USE_TZ:
+            return timezone.make_aware(start_of_day, timezone.get_current_timezone())
+        return start_of_day
+
     def _role_last_updated(self, role: GovukRole) -> datetime | None:
         """When this role itself last changed, by its published changelog.
 
@@ -724,6 +811,20 @@ class SearchBackend:
                 filter=Q(changelog_entries__live=True),
             )
         )
+
+    def _search_news(self, queryset: QuerySet, query: str) -> QuerySet:
+        """Narrow the articles to the plausible ones before scoring them.
+
+        Matches an article's headline, standfirst, body and author. Works on
+        both backends the way ``_search_roles`` does, via ``icontains``.
+        """
+        matches = (
+            Q(title__icontains=query)
+            | Q(standfirst__icontains=query)
+            | Q(body__icontains=query)
+            | Q(author__icontains=query)
+        )
+        return queryset.filter(matches)
 
     def _skill_points(self, skill: GovukSkill) -> list[str]:
         points: list[str] = []

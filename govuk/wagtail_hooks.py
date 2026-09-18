@@ -62,6 +62,7 @@ from govuk.models import (
     GovukSkill,
     GovukTag,
     JWTGenerationError,
+    NewsArticle,
     SidebarSettings,
 )
 from govuk.page_import_export import (
@@ -469,6 +470,19 @@ class ExternalContentItemViewSet(SnippetViewSet):
     ]
     list_filter = ["hidden", "source"]
     search_fields = ["title", "url"]
+
+
+class NewsArticleViewSet(SnippetViewSet):
+    model = NewsArticle
+    icon = "doc-full"
+    add_to_admin_menu = True
+    menu_label = "News"
+    menu_name = "news"
+    menu_order = 210
+    list_display = ["title", "publication_date", "featured", "live"]
+    list_filter = ["featured", "live"]
+    search_fields = ["title", "slug", "standfirst", "body", "author"]
+    ordering = ["-publication_date"]
 
 
 class GovukSkillViewSet(SnippetViewSet):
@@ -1371,3 +1385,6 @@ if settings.FEATURE_FLAGS.get("SKILLS"):
 
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)
+
+if settings.FEATURE_FLAGS.get("NEWS"):
+    _register_snippet_if_needed(NewsArticleViewSet)
