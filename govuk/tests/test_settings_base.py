@@ -10,7 +10,7 @@ from govuk.settings import base as base_settings
 from govuk.settings.runtime import own_ipv4_address
 
 
-class ResolveSimpleJwtAudienceTests(SimpleTestCase):
+class ResolveOidcTokenAudienceTests(SimpleTestCase):
     def test_prefers_oidc_token_audiences_env_value(self):
         with patch.dict(
             os.environ,
@@ -20,7 +20,7 @@ class ResolveSimpleJwtAudienceTests(SimpleTestCase):
             },
             clear=True,
         ):
-            audience = base_settings._resolve_simple_jwt_audience("default-audience")
+            audience = base_settings._resolve_oidc_token_audience("default-audience")
 
         self.assertEqual(audience, ("aud-primary", "aud-secondary"))
 
@@ -32,7 +32,7 @@ class ResolveSimpleJwtAudienceTests(SimpleTestCase):
             },
             clear=True,
         ):
-            audience = base_settings._resolve_simple_jwt_audience("default-audience")
+            audience = base_settings._resolve_oidc_token_audience("default-audience")
 
         self.assertEqual(audience, "aud-primary")
 
@@ -44,7 +44,7 @@ class ResolveSimpleJwtAudienceTests(SimpleTestCase):
             },
             clear=True,
         ):
-            audience = base_settings._resolve_simple_jwt_audience("default-audience")
+            audience = base_settings._resolve_oidc_token_audience("default-audience")
 
         self.assertEqual(audience, ("aud-primary", "aud-secondary"))
 
@@ -56,19 +56,19 @@ class ResolveSimpleJwtAudienceTests(SimpleTestCase):
             },
             clear=True,
         ):
-            audience = base_settings._resolve_simple_jwt_audience("default-audience")
+            audience = base_settings._resolve_oidc_token_audience("default-audience")
 
         self.assertEqual(audience, "legacy-audience")
 
     def test_falls_back_to_default_audience_when_env_not_set(self):
         with patch.dict(os.environ, {}, clear=True):
-            audience = base_settings._resolve_simple_jwt_audience("default-audience")
+            audience = base_settings._resolve_oidc_token_audience("default-audience")
 
         self.assertEqual(audience, "default-audience")
 
     def test_returns_none_when_no_audience_is_available(self):
         with patch.dict(os.environ, {}, clear=True):
-            audience = base_settings._resolve_simple_jwt_audience(None)
+            audience = base_settings._resolve_oidc_token_audience(None)
 
         self.assertIsNone(audience)
 

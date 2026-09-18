@@ -15,19 +15,15 @@ license = "MIT"
 license-files = ["LICENCE"]
 requires-python = ">=3.12"
 dependencies = [
-  # Django 6.1 dropped django.utils.cache.cc_delim_re, which Django REST
-  # Framework still imports, so an unpinned build stopped starting up. Hold to
-  # the 6.0 series until a REST Framework release lands that works with 6.1.
-  "Django>=6.0.2,<6.1",
-  # Not below 7.4.3: 7.4.1 carried fifteen published advisories, the worst of
-  # them PYSEC-2026-616 (CVSS 3.1 AV:N/AC:L/PR:L/UI:R/S:U/C:H/I:H) -- an
-  # account with the lowest admin privilege reading and rewriting content it
-  # has no permission for.
-  "wagtail==7.4.3",
-  "gunicorn==26.1.0",
+  "Django==6.1.1",
+  "wagtail==8.0",
+  "gunicorn==26.2.0",
   "whitenoise==6.12.0",
-  "django-allauth[socialaccount,openid]==65.19.3",
-  "djangorestframework-simplejwt[crypto]>=5.4.0",
+  "django-allauth[socialaccount,openid]==65.19.4",
+  "djangorestframework==3.18.1",
+  # Verifies OIDC ID tokens against the issuer's JWKS. [crypto] pulls in
+  # cryptography for the RS256 signature check.
+  "pyjwt[crypto]==2.14.0",
   "psycopg2-binary==2.9.13",
 ]
 

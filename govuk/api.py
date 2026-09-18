@@ -25,7 +25,7 @@ from govuk.models import (
 )
 from govuk.utils import normalised_text, row_id_from_text
 
-DEFAULT_API_REPOSITORY_URL = "https://github.com/govuk-digital-backbone/wagtail-govuk"
+DEFAULT_API_REPOSITORY_URL = "https://github.com/gds-dtx/wagtail-govuk"
 
 
 def _get_api_version():
