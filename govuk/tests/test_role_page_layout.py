@@ -34,7 +34,7 @@ def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
 
 @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
 class RolePageLayoutTests(TestCase):
-    """The role page follows the DDaT Capability Framework's layout."""
+    """The role page follows the Capability Framework's layout."""
 
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)

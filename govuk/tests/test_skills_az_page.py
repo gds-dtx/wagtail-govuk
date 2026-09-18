@@ -107,6 +107,48 @@ class FrameworkSkillsPageTests(TestCase):
 
         self.assertNotContains(response, '<p class="govuk-body">You can:</p>')
 
+    def test_a_level_marked_not_defined_is_printed_as_the_bare_sentence(self):
+        """The framework's "not defined" sentence is not the end of "You can:".
+
+        The published exports carry it in the level's cell, so it arrives as a
+        single point, and an editor typing it into the points box produces the
+        same thing. Tim Young found it printed under "You can:" with a bullet
+        on 11 September 2026, which reads as a broken sentence. The live
+        service prints the sentence on its own; so does this, in whichever of
+        the framework's two wordings it was written. A level with nothing
+        written at all still gets the editors' message.
+        """
+        GovukSkill.objects.all().delete()
+        GovukSkill.objects.create(
+            title="Undefined skill",
+            body="<p>Undefined body.</p>",
+            awareness_points=[
+                {"type": "point", "value": "This skill level is currently not defined."}
+            ],
+            working_points=[
+                {"type": "point", "value": "This skill level is not defined"}
+            ],
+            practitioner_points=[
+                {"type": "point", "value": "Real practitioner point."}
+            ],
+        )
+
+        response = self.client.get(self.skills_page.url)
+        text = response.content.decode("utf-8")
+
+        self.assertEqual(text.count('<p class="govuk-body">You can:</p>'), 1)
+        self.assertNotIn('<li class="govuk-body">This skill level', text)
+        self.assertContains(
+            response,
+            '<p class="govuk-body govuk-!-margin-bottom-0">'
+            "This skill level is currently not defined.</p>",
+        )
+        self.assertContains(
+            response,
+            '<p class="govuk-body govuk-!-margin-bottom-0">This skill level is not defined</p>',
+        )
+        self.assertContains(response, "No description provided.")
+
     def test_the_skills_index_carries_the_frameworks_side_navigation(self):
         """It sits alongside the roles, so it is navigated the same way.
 

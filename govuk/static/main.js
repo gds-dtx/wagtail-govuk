@@ -50,6 +50,15 @@ function wrapperTextSize(el) {
 }
 
 function setListClasses() {
+  // The Design System styles its classes rather than the elements, so rich
+  // text an editor typed carries none of its type scale.
+  // It is not every service's choice, though, and every site this image serves
+  // renders the same .rich-text-content through the same script -- so the
+  // sizing below is applied only where base.html marked the body, which it
+  // does on a framework instance. Without the mark the lists still become
+  // govuk-list, which is what every site had before.
+  const typeScale = document.body.hasAttribute("data-rich-text-type-scale");
+
   // Paragraphs. GOV.UK Frontend styles the govuk-body class rather than the
   // element, so rich text paragraphs need it adding. Anything that already
   // asks for a size, such as govuk-body-s, is left as the author set it.
@@ -67,6 +76,9 @@ function setListClasses() {
     // spacing, and the intro is pushed down by a margin the Design System does
     // not put there. Repeating the wrapper's class carries the size and the
     // spacing together.
+    if (!typeScale) {
+      return;
+    }
     el.classList.add(wrapperTextSize(el) || "govuk-body");
   });
 
@@ -89,7 +101,7 @@ function setListClasses() {
       // text brings its own -- the CSV attachment card's title is an h3 with
       // gem-c-attachment__title -- and sizing those as body headings would
       // pull them out of the component they belong to.
-      if (el.className.trim()) {
+      if (!typeScale || el.className.trim()) {
         return;
       }
       el.classList.add(headingSize[el.tagName]);
@@ -109,7 +121,7 @@ function setListClasses() {
     .forEach((el) => {
       el.classList.add("govuk-list", listModifier[el.tagName]);
 
-      const wrapperSize = wrapperTextSize(el);
+      const wrapperSize = typeScale ? wrapperTextSize(el) : null;
       if (wrapperSize) {
         el.classList.add(wrapperSize);
       }

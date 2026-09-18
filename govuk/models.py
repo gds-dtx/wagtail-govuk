@@ -39,6 +39,7 @@ from wagtail.images.blocks import ImageChooserBlock
 from wagtail.models import Orderable, Page, Site
 from wagtail.snippets.blocks import SnippetChooserBlock
 
+from govuk.capability_framework import is_level_not_defined
 from govuk.utils import row_id_from_text
 
 HEX_COLOR_VALIDATOR = RegexValidator(
@@ -1932,6 +1933,24 @@ class GovukSkill(models.Model):
             entry["value"] for entry in self._normalised_stream_points(stream_value)
         ]
 
+    def level_description(self, level: str | None) -> dict:
+        """What a page prints for this skill at one level.
+
+        ``points`` are the ends of the "You can:" sentence the page prints
+        above them; ``placeholder`` is the framework's one sentence for a level
+        that has no description yet. Never both. The published exports carry
+        that sentence in the level's cell, so it arrives as a single point, and
+        an editor typing it into the points box produces the same thing. Read
+        on from "You can:" with a bullet it looked like a broken sentence (Tim
+        Young, 11 September 2026); the live service prints it bare, in
+        whichever of its two wordings it was written, and so does this. The
+        CSV export reads ``points_for_level`` directly and is not affected.
+        """
+        points = self.points_for_level(level)
+        if len(points) == 1 and is_level_not_defined(points[0]):
+            return {"points": [], "placeholder": points[0]}
+        return {"points": points, "placeholder": None}
+
     def get_changelog(self) -> dict:
         """Published entries for this skill, newest first, with key dates.
 
@@ -1961,7 +1980,7 @@ class GovukSkill(models.Model):
                     "key": level_key,
                     "label": level_label,
                     "ordinal": SKILL_LEVEL_ORDINALS.get(level_key, ""),
-                    "points": self.points_for_level(level_key),
+                    **self.level_description(level_key),
                 }
             )
         return level_rows
@@ -2284,9 +2303,7 @@ class GovukRole(models.Model):
     def get_related_roles(self, count: int = RELATED_ROLES_COUNT) -> list[dict]:
         """Other roles sharing skills with this one, most shared skills first.
 
-        Mirrors the DDaT Capability Framework behaviour: ordered by number of
-        shared skills descending then title, capped at ``count`` (the Strapi
-        site used a ``relatedRolesCount`` global setting defaulting to 5).
+        Ordered by number of shared skills descending then title, capped at ``count``.
         """
         own_skill_ids = self.get_skill_ids()
         if not own_skill_ids:
@@ -2363,7 +2380,7 @@ class GovukRole(models.Model):
                         "skill": skill,
                         "required_level": required_level,
                         "required_level_label": self._skill_level_label(required_level),
-                        "points": skill.points_for_level(required_level),
+                        **skill.level_description(required_level),
                     }
                 )
 
@@ -3161,7 +3178,7 @@ class FrameworkFieldsMixin(models.Model):
         # nothing at all on a site without the framework. The lookup below
         # reads as a read and is not one: Wagtail's BaseSiteSetting.for_site
         # does a get_or_create, so calling it unconditionally wrote a
-        # Capability Framework settings row for every site that rendered any
+        # framework settings row for every site that rendered any
         # page, including sites with the feature off and its admin panel
         # unregistered.
         #
@@ -3512,10 +3529,8 @@ def role_navigation_groups(
     request=None,
 ) -> list[dict]:
     """The side navigation: every live role grouped by family, then the rest.
-
-    Mirrors the DDaT Capability Framework, which lists every role grouped under
-    its family heading on each role page, and closes with the pages about the
-    framework itself. The roles come straight from the role snippets now, so the
+    Closes with the pages about the framework itself.
+    The roles come straight from the role snippets, so the
     navigation populates itself; a role's own page marks itself current through
     ``current_role_slug``, and a framework content page through
     ``current_page_id``.
@@ -4093,11 +4108,9 @@ class FrameworkMainPage(
 
         ``role``, singular, because that is the live service's URL: it
         publishes every role at ``/role/<slug>``. With the framework main page
-        as the site's home page, as it is on the Capability Framework, a role
-        is served at its live address and every bookmark, search result and
-        link in the migrated content reaches it directly, with no redirect to
-        seed and none to go missing. GOV.UK's rule is not to change a URL
-        without a reason, and there was none.
+        as the site's home page a role is served at its live address and every
+        bookmark, search result and link in the migrated content reaches it
+        directly, with no redirect to seed and none to go missing.
 
         Without the framework flag the route 404s, as the old role pages did:
         a route cannot be guarded by ``can_exist_under``, and an import can

@@ -48,7 +48,7 @@ hostname under the domain is HTTPS — preload is very hard to reverse.
 - Sessions last 12 hours (`SESSION_COOKIE_AGE`), do not slide on each request,
   and do not expire at browser close.
 - The public site sets no analytics or marketing cookies. See
-  [analytics.md](analytics.md) — this is the assumption CS32-3314 was closed on.
+  server-side collection only — the assumption CS32-3314 was closed on.
 
 ## Authorisation
 
@@ -171,7 +171,7 @@ service's own `/role/security-architect` address and is not a good trade.
 - [ ] **Deploy 7.4.3.** The advisories apply to what is running, not to the
       branch.
 - [ ] Alerting thresholds for 5xx and authentication failures — see
-      [monitoring.md](monitoring.md). CS32-3484.
+      CS32-3484, and Confluence 138969097.
 - [ ] Add a dependency vulnerability scan to CI.
 - [ ] Turn on GitHub secret scanning and push protection.
 - [x] Response headers verified on a running instance (31 August 2026).

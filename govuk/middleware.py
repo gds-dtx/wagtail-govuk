@@ -168,9 +168,7 @@ class MaintenanceModeMiddleware:
 
     # Every prefix ends in its separator. Without the trailing slash "/admin"
     # is also a prefix of "/admin-guidance", so a content page whose slug
-    # happens to start with one of these words would stay open through a
-    # cutover -- and the framework has pages beginning "accounts", "assets"
-    # and "static" waiting to be written.
+    # happens to start with one of these words would stay open.
     EXEMPT_PREFIXES = (
         "/api/health/",
         "/admin/",
