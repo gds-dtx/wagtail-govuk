@@ -1,0 +1,32 @@
+{% load wagtailcore_tags %}
+{% comment %}
+    The welcome page's contents list and role lists, both of which stand in for
+    the side navigation on a narrow screen and are hidden once it appears. The
+    contents list is built from the page's own section headings and the same
+    groups the navigation uses, so a role can only ever be in one place or the
+    other by mistake.
+
+    The prose itself lives in the page's framework welcome content, and the
+    heading over the contents list comes from the same wording settings the
+    role pages read, so the content team can change either without a code
+    change.
+{% endcomment %}
+<div class="mobile-homepage">
+    <p class="govuk-body-s contents-list-links" id="contents">{{ framework_wording.contents_heading }}</p>
+    <ul class="govuk-list govuk-body-s contents-list-links">
+        {% for entry in framework_contents %}
+            <li>— <a href="#{{ entry.anchor }}" class="contents-list-links govuk-link">{{ entry.title }}</a></li>
+        {% endfor %}
+    </ul>
+</div>
+{% include_block self.framework_welcome_body %}
+<div class="mobile-homepage mobile-homepage-roles">
+    {% for group in framework_sections %}
+        <h2 class="govuk-heading-l" id="{{ group.title|slugify }}">{{ group.title }}</h2>
+        <ul class="govuk-list">
+            {% for item in group.items %}
+                <li><a href="{{ item.url }}" class="govuk-link">{{ item.title }}</a></li>
+            {% endfor %}
+        </ul>
+    {% endfor %}
+</div>

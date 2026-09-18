@@ -1,4 +1,3 @@
-import os
 from .base import *
 
 # Local settings - these are used for local development and testing
@@ -10,6 +9,9 @@ CONTENT_DISCOVERY_REQUEST_INFO_LOGGING = True
 
 SECURE_HSTS_SECONDS = 0
 SESSION_COOKIE_SECURE = False
+# Local development is over plaintext HTTP, so a secure-only CSRF cookie would
+# never be sent back and every admin form would fail its CSRF check.
+CSRF_COOKIE_SECURE = False
 
 # This is a secret key used for cryptographic signing and is not suitable
 # for production use. This govuk.settings.local is for local development only.
@@ -23,8 +25,6 @@ DATABASES = {
 }
 
 WAGTAILADMIN_BASE_URL = "http://localhost:8000"
-
-ADDITIONAL_CSS = ["/static/cyber.css"]
 
 FEATURE_FLAGS = {
     "SKILLS": True,

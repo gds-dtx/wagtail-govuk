@@ -1,9 +1,8 @@
 import socket
-
 from unittest.mock import MagicMock, patch
+from urllib.request import Request
 
 from django.test import SimpleTestCase
-from urllib.request import Request
 
 from govuk.content_discovery import (
     ContentDiscoveryError,

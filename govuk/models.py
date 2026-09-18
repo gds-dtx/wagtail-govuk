@@ -17,26 +17,30 @@ from django import forms
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.paginator import Paginator
-from django.core.validators import RegexValidator
+from django.core.validators import MaxValueValidator, MinValueValidator, RegexValidator
 from django.db import models, transaction
 from django.db.models import Q
 from django.db.models.functions import Coalesce
+from django.http import Http404
 from django.utils import timezone
-from django.utils.text import slugify
-from django.utils.text import Truncator
+from django.utils.text import Truncator, slugify
 from modelcluster.contrib.taggit import ClusterTaggableManager
 from modelcluster.fields import ParentalKey
 from modelcluster.models import ClusterableModel
 from taggit.models import TagBase, TaggedItemBase
 from wagtail import blocks
-from wagtail.admin.panels import FieldPanel, InlinePanel
+from wagtail.admin.panels import FieldPanel, InlinePanel, MultiFieldPanel
 from wagtail.blocks import StructValue
+from wagtail.contrib.routable_page.models import RoutablePageMixin, path
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
+from wagtail.contrib.table_block.blocks import TableBlock
 from wagtail.fields import RichTextField, StreamField
 from wagtail.images.blocks import ImageChooserBlock
 from wagtail.models import Orderable, Page, Site
 from wagtail.snippets.blocks import SnippetChooserBlock
 
+from govuk.capability_framework import is_level_not_defined
+from govuk.utils import row_id_from_text
 
 HEX_COLOR_VALIDATOR = RegexValidator(
     regex=r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$",
@@ -69,6 +73,24 @@ SKILL_LEVEL_ORDINALS = {
     "expert": "fourth",
 }
 THIS_SITE_SOURCE_FILTER = "__this_site__"
+RELATED_ROLES_COUNT = 5
+JOB_GRADE_CHOICES = (
+    ("ao", "AO (Administrative Officer)"),
+    ("eo", "EO (Executive Officer)"),
+    ("heo", "HEO (Higher Executive Officer)"),
+    ("seo", "SEO (Senior Executive Officer)"),
+    ("g7", "G7 (Grade 7)"),
+    ("g6", "G6 (Grade 6)"),
+    ("scs1", "SCS 1 (Senior Civil Service 1)"),
+    ("scs2", "SCS 2 (Senior Civil Service 2)"),
+    ("scs3", "SCS 3 (Senior Civil Service 3)"),
+)
+JOB_GRADE_LABELS = dict(JOB_GRADE_CHOICES)
+# Ascending seniority, used to order grades however they were authored.
+JOB_GRADE_ORDER = {value: index for index, (value, _) in enumerate(JOB_GRADE_CHOICES)}
+SCS_GRADE_CHOICES = tuple(
+    (value, label) for value, label in JOB_GRADE_CHOICES if value.startswith("scs")
+)
 SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES = [
     "h2",
     "h3",
@@ -79,6 +101,7 @@ SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES = [
     "ul",
     "ol",
     "inset-text",
+    "line-break",
 ]
 
 SigningPublicKey = Ed25519PublicKey | ec.EllipticCurvePublicKey
@@ -299,7 +322,131 @@ def _next_unique_slug(
     return slug_value
 
 
-@register_setting(icon="warning")
+def page_settings_panels() -> list:
+    """``Page.settings_panels``, minus scheduling while nothing can schedule.
+
+    Wagtail's go-live and expiry dates do nothing by themselves: they need the
+    ``publish_scheduled`` command run on a timer, and nothing in this service's
+    deployment runs it -- no cron, no worker, no scheduled task in any of the
+    three repos. An editor who sets a go-live date therefore gets a page that
+    quietly never publishes, with no error to tell them so. Not offering the
+    field is the honest version of that, and it leaves publishing as a thing
+    someone does deliberately rather than a thing that was supposed to happen.
+
+    ``SCHEDULED_PUBLISHING=true`` puts the panel back, and with it the "Edit
+    schedule" toggle in the status side panel -- Wagtail shows that only when
+    the form has a ``go_live_at`` field, which is this panel's doing.
+
+    Read once at import, as panel definitions are. Changing the env var means a
+    new container either way.
+    """
+    if getattr(settings, "SCHEDULED_PUBLISHING", False):
+        return list(Page.settings_panels)
+    return [
+        panel
+        for panel in Page.settings_panels
+        if getattr(panel, "path", None) != "wagtail.admin.panels.PublishingPanel"
+    ]
+
+
+def base_content_panels() -> list:
+    """The editing panels shared by the content-style page types.
+
+    ``ContentPage`` and the two framework page types all carry the same hero and
+    body fields; this builds the common part so the three do not each write it
+    out. The framework welcome content is added on top only by the framework
+    types (see ``framework_content_panels``).
+    """
+    return list(Page.content_panels) + [
+        FieldPanel("hero_title"),
+        FieldPanel("hero_intro"),
+        FieldPanel("author"),
+        FieldPanel("body"),
+        FieldPanel("body_blocks"),
+    ]
+
+
+def framework_content_panels() -> list:
+    """``base_content_panels`` plus the framework welcome content.
+
+    The welcome content is the Capability Framework's own -- role families,
+    skill level definitions -- so it is only offered on the framework page
+    types, and only where the framework is switched on. The field stays on the
+    model either way: this decides what the form shows, not what the database
+    holds, so switching the flag needs no migration.
+    """
+    panels = base_content_panels()
+    if settings.FEATURE_FLAGS.get("SKILLS"):
+        panels.append(FieldPanel("framework_welcome_body"))
+    return panels
+
+
+def base_settings_panels() -> list:
+    """The settings panels shared by every content-style page type.
+
+    Only the settings every type offers: the last-updated date and the page
+    metadata. The hero-styling toggles are plain ``ContentPage``'s alone (the
+    framework pages set their own header treatment), as are the
+    sidebar-heading-navigation toggle and the tags panel; each type adds what it
+    offers on top.
+    """
+    return page_settings_panels() + [
+        FieldPanel("show_last_updated_date"),
+        FieldPanel("show_page_content_metadata"),
+    ]
+
+
+def content_settings_panels() -> list:
+    """Plain ``ContentPage`` settings: hero styling, the shared panels, heading
+    navigation, tags. The hero-styling toggles are offered here only."""
+    return page_settings_panels() + [
+        FieldPanel("enable_hero_styling"),
+        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("show_last_updated_date"),
+        FieldPanel("show_page_content_metadata"),
+        FieldPanel("enable_free_text_heading_navigation"),
+        InlinePanel("tagged_items", heading="Tags", label="Tag"),
+    ]
+
+
+def framework_main_settings_panels() -> list:
+    """``FrameworkMainPage`` settings: shared panels, the framework switches, tags.
+
+    The three framework switches each turn on a block of Capability Framework
+    furniture -- the role side navigation, the site-wide changelog, the welcome
+    layout. On a site without the framework they have nothing to show, and the
+    wording that labels them comes from settings the admin does not register
+    without the flag, so an editor there would be reading captions nobody on
+    that site can change. There is no heading-navigation toggle: the role
+    navigation already occupies that side column.
+    """
+    panels = base_settings_panels()
+    if settings.FEATURE_FLAGS.get("SKILLS"):
+        panels += [
+            FieldPanel("show_role_navigation"),
+            FieldPanel("show_framework_updates"),
+            FieldPanel("show_framework_welcome"),
+        ]
+    panels.append(InlinePanel("tagged_items", heading="Tags", label="Tag"))
+    return panels
+
+
+def framework_content_settings_panels() -> list:
+    """``FrameworkContentPage`` settings: the shared panels and tags only.
+
+    A framework content page always carries the role navigation, so there is no
+    switch for it; it offers neither the framework updates, the welcome layout,
+    the sidebar heading navigation, nor the hero-styling toggles. The framework
+    behaviours are forced in ``FrameworkContentPage.get_context`` regardless of
+    what is stored. Whether the page is listed in the sidebar, and in what order,
+    is managed centrally in Sidebar settings rather than per page.
+    """
+    return base_settings_panels() + [
+        InlinePanel("tagged_items", heading="Tags", label="Tag"),
+    ]
+
+
+@register_setting(icon="warning", order=3)
 class PhaseBannerSettings(BaseSiteSetting):
     enabled = models.BooleanField(
         default=False,
@@ -321,16 +468,31 @@ class PhaseBannerSettings(BaseSiteSetting):
         default="This is a new service - ",
         help_text="Phase banners are used to show users your service is still being worked on.",
     )
+    feedback_link_text = models.CharField(
+        max_length=100,
+        default="your feedback",
+        help_text="Wording of the feedback link, shown between the two sentences.",
+    )
+    phase_text_after = models.CharField(
+        max_length=500,
+        default="will help us to improve it.",
+        help_text="Wording shown after the feedback link.",
+    )
 
     panels = [
         FieldPanel("enabled"),
         FieldPanel("phase_label"),
         FieldPanel("feedback_url"),
         FieldPanel("phase_text"),
+        FieldPanel("feedback_link_text"),
+        FieldPanel("phase_text_after"),
     ]
 
+    class Meta:
+        verbose_name = "Phase banner"
 
-@register_setting(icon="link")
+
+@register_setting(icon="link", order=2)
 class FooterSettings(BaseSiteSetting):
     footer_links = StreamField(
         [
@@ -348,7 +510,7 @@ class FooterSettings(BaseSiteSetting):
     ]
 
 
-@register_setting(icon="cog")
+@register_setting(icon="cog", order=1)
 class CustomiseSettings(BaseSiteSetting):
     header_logo = models.CharField(
         max_length=20,
@@ -359,36 +521,187 @@ class CustomiseSettings(BaseSiteSetting):
         default="govuk",
         help_text="Select the header logo to display.",
     )
+    service_name_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+        ],
+        default="header",
+        help_text="Where the service name appears.",
+    )
+    service_name_link = models.CharField(
+        max_length=500,
+        blank=True,
+        default="/",
+        verbose_name="Service name link",
+        help_text=(
+            "Where the service name links to. In the header bar the logo and "
+            "service name form a single link to this address. In the service "
+            "navigation the logo always links to GOV.UK and only the service "
+            "name links here. Defaults to this site's home page (/)."
+        ),
+    )
+    sign_in_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+            ("hidden", "Hidden"),
+        ],
+        default="navigation",
+        help_text=(
+            "Where the sign in and sign out links appear. Choose Hidden for "
+            "sites where visitors never sign in -- the sign in link is hidden, "
+            "but a signed-in user can still sign out."
+        ),
+    )
+    search_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+            ("hidden", "Hidden"),
+        ],
+        default="header",
+        help_text="Where the search box appears.",
+    )
     show_site_name_in_search_box = models.BooleanField(
         default=False,
         help_text="Include the site name in the header search label and placeholder.",
     )
-    hero_background_color = models.CharField(
-        max_length=7,
+    search_placeholder = models.CharField(
+        max_length=100,
         blank=True,
         default="",
-        validators=[HEX_COLOR_VALIDATOR],
-        help_text="Optional hero background color in hex, for example #b5cd1e.",
+        help_text=(
+            "Wording shown in the header search box, for example "
+            "Search for roles or skills. Defaults to Search."
+        ),
     )
-    hero_text_color = models.CharField(
-        max_length=7,
+    enable_search_results_page = models.BooleanField(
+        default=True,
+        verbose_name="Allow free-text search results",
+        help_text=(
+            "Let visitors search for any phrase and see a results page. Turn "
+            "this off to keep only the suggestions that jump straight to a "
+            "live page or snippet as the reader types -- pressing Enter or the "
+            "search button on its own then does nothing, and the results page "
+            "is not served."
+        ),
+    )
+    error_contact_link_text = models.CharField(
+        max_length=255,
         blank=True,
         default="",
-        validators=[HEX_COLOR_VALIDATOR],
-        help_text="Optional hero text color in hex, for example #ffffff.",
+        help_text=(
+            "Who the error pages offer to put a reader in touch with, for "
+            "example a team's name. Leave blank for no contact sentence."
+        ),
+    )
+    error_contact_email = models.EmailField(
+        blank=True,
+        default="",
+        help_text="Where the error pages' contact link points.",
+    )
+    error_contact_about = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "What the reader would be speaking to someone about, closing the "
+            "contact sentence: 'if you need to speak to someone about the …'."
+        ),
+    )
+    content_max_width = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(320), MaxValueValidator(2560)],
+        verbose_name="Maximum content width (pixels)",
+        help_text=(
+            "How wide the page content grows on large screens, in pixels. "
+            "Leave blank for the default of 950."
+        ),
     )
     extra_css = models.TextField(
         blank=True,
         default="",
-        help_text="Optional additional CSS appended after hero overrides.",
+        help_text="Optional additional CSS appended after other overrides.",
+    )
+    show_page_feedback_prompt = models.BooleanField(
+        default=False,
+        verbose_name="Ask \"Is this page useful?\" on every page",
+        help_text=(
+            "Ask \"Is this page useful?\" at the foot of every page, as GOV.UK "
+            "publications do. Answers are recorded in the server logs."
+        ),
+    )
+    page_feedback_more_url = models.CharField(
+        max_length=500,
+        blank=True,
+        default="/feedback",
+        verbose_name="Feedback follow-up link",
+        help_text=(
+            "Where \"Give more feedback\" points after someone answers, for "
+            "example a survey. Defaults to /feedback."
+        ),
+    )
+    page_feedback_more_intro = models.CharField(
+        max_length=255,
+        blank=True,
+        default="To help improve the framework, we’d like to know more about your visit today.",
+        verbose_name="Feedback follow-up sentence",
+        help_text="The sentence shown after someone answers, above the link.",
+    )
+    page_feedback_more_link_text = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Give more feedback on using the framework website",
+        verbose_name="Feedback follow-up link text",
+        help_text="The wording of the link shown after someone answers.",
     )
 
     panels = [
         FieldPanel("header_logo"),
-        FieldPanel("show_site_name_in_search_box"),
-        FieldPanel("hero_background_color"),
-        FieldPanel("hero_text_color"),
-        FieldPanel("extra_css"),
+        MultiFieldPanel(
+            [
+                FieldPanel("service_name_location"),
+                FieldPanel("service_name_link"),
+            ],
+            heading="Service name",
+        ),
+        FieldPanel("sign_in_location"),
+        MultiFieldPanel(
+            [
+                FieldPanel("search_location"),
+                FieldPanel("enable_search_results_page"),
+                FieldPanel("show_site_name_in_search_box"),
+                FieldPanel("search_placeholder"),
+            ],
+            heading="Search box",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("error_contact_link_text"),
+                FieldPanel("error_contact_email"),
+                FieldPanel("error_contact_about"),
+            ],
+            heading="Error contact",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("show_page_feedback_prompt"),
+                # No heading overrides: the fields' own labels ("Feedback
+                # follow-up sentence" and so on) are what the revision-compare
+                # view shows, and the form should read the same.
+                FieldPanel("page_feedback_more_intro"),
+                FieldPanel("page_feedback_more_link_text"),
+                FieldPanel("page_feedback_more_url"),
+            ],
+            heading="Page feedback",
+        ),
+        FieldPanel("content_max_width"),
+        FieldPanel("extra_css", heading="Extra CSS"),
     ]
 
     class Meta:
@@ -398,14 +711,27 @@ class CustomiseSettings(BaseSiteSetting):
     def render_custom_css(self) -> str:
         sections: list[str] = []
 
-        hero_background_color = (self.hero_background_color or "").strip()
-        hero_text_color = (self.hero_text_color or "").strip()
-
-        if hero_background_color:
-            sections.append(f".masthead {{ background: {hero_background_color}; }}")
-        if hero_text_color:
-            sections.append(f".masthead {{ color: {hero_text_color}; }}")
-            sections.append(f".hero__description {{ color: {hero_text_color}; }}")
+        if self.content_max_width:
+            width = self.content_max_width
+            # main.css reads the content width from this variable (default 950)
+            # and centres the container at a hard-wired 1030px (= 950 + 80).
+            # Media queries cannot read the variable, so move that breakpoint to
+            # width + 80: keep the fixed side margins up to it, centre above it.
+            breakpoint_px = width + 80
+            sections.append(f":root {{ --govuk-content-width: {width}px; }}")
+            if breakpoint_px > 1030:
+                # Undo main.css's 1030px centring in the gap up to the new,
+                # wider breakpoint.
+                sections.append(
+                    f"@media (min-width: 1030px) and (max-width: {breakpoint_px - 1}px) {{\n"
+                    "    .govuk-width-container, .hero { margin-left: 30px !important; margin-right: 30px !important; }\n"
+                    "}"
+                )
+            sections.append(
+                f"@media (min-width: {breakpoint_px}px) {{\n"
+                "    .govuk-width-container, .hero { margin-left: auto !important; margin-right: auto !important; }\n"
+                "}"
+            )
 
         extra_css = (self.extra_css or "").strip()
         if extra_css:
@@ -539,6 +865,490 @@ class EdDSAKeySettings(ClusterableModel, BaseSiteSetting):
             payload.update(extra_claims)
 
         return primary_key_pair.sign_jwt(payload)
+
+
+class CapabilityFrameworkWordingSettings(BaseSiteSetting):
+    """The words a role or skill page prints that no editor authored.
+
+    Registered as a setting in ``wagtail_hooks``, alongside the skills and roles
+    snippets and under the same feature flag: the only pages that read this
+    wording are the ones that flag governs, so a service without them has no use
+    for a form of 38 fields nothing on it prints.
+
+    Headings, column headings, sentence lead-ins and the two empty states were
+    written into the templates, which put them out of reach of the people who
+    own the framework's language: changing "Roles that share x skills" meant a
+    release. Every default here is the wording the templates already carried,
+    so an instance that has never opened this form reads exactly as before.
+
+    ``{role}`` stands for the role's name, lowercased for mid-sentence use the
+    way the framework writes it, and is filled in per role.
+    """
+
+    ROLE_PLACEHOLDER = "{role}"
+    LEVEL_PLACEHOLDER = "{level}"
+    ORDINAL_PLACEHOLDER = "{ordinal}"
+    ARTICLE_PLACEHOLDER = "{article}"
+    FAMILY_PLACEHOLDER = "{family}"
+    COUNT_PLACEHOLDER = "{count}"
+    FIRST_PLACEHOLDER = "{first}"
+    LAST_PLACEHOLDER = "{last}"
+    LEVELS_RANGE_PLACEHOLDER = "{levels_range}"
+
+    contents_heading = models.CharField(
+        max_length=255,
+        default="Contents",
+        help_text="Heading over the in-page contents links.",
+    )
+    last_updated_prefix = models.CharField(
+        max_length=255,
+        default="Last updated",
+        help_text="Shown before the date the role was last changed.",
+    )
+    see_all_updates_link_text = models.CharField(
+        max_length=255,
+        default="See all updates",
+        help_text="Wording of the link down to the updates section.",
+    )
+
+    scs_context_text = models.CharField(
+        max_length=255,
+        default="A specific {role} job can vary depending on the",
+        help_text=(
+            "Senior Civil Service roles only. Shown before the link to the "
+            "context and challenges page. Use {role} for the role name."
+        ),
+    )
+    scs_context_link_text = models.CharField(
+        max_length=255,
+        default="context and challenges in your organisation",
+        help_text=(
+            "Wording of that link. A full stop follows it. Shown as plain "
+            "text where the page it points at is missing."
+        ),
+    )
+    scs_skills_heading = models.CharField(
+        max_length=255,
+        default="Skills for {role}",
+        help_text="Heading over a Senior Civil Service role's skills.",
+    )
+    scs_skills_intro = models.CharField(
+        max_length=255,
+        default="The {role} role will need to use digital and data skills to:",
+        help_text="Sentence introducing the two points below it.",
+    )
+    scs_skills_leadership_point = models.CharField(
+        max_length=255,
+        default="be an effective digital and data leader",
+        help_text="First of those points.",
+    )
+    scs_skills_context_point_text = models.CharField(
+        max_length=255,
+        default="operate in different contexts, depending",
+        help_text="Second point, up to the link.",
+    )
+    scs_skills_context_point_link_text = models.CharField(
+        max_length=255,
+        default="on the context and challenges in your organisation",
+        help_text="Rest of that point, linked to the context and challenges page.",
+    )
+    scs_skills_table_skill_heading = models.CharField(
+        max_length=255,
+        default="Skill",
+        help_text="First column of the Senior Civil Service skills table.",
+    )
+    scs_skills_table_description_heading = models.CharField(
+        max_length=255,
+        default="Description, including examples of leadership",
+        help_text="Second column of that table.",
+    )
+    scs_leadership_examples_heading = models.CharField(
+        max_length=255,
+        default="Examples of leadership using this skill:",
+        help_text="Shown in that table above a skill's leadership points.",
+    )
+
+    role_grades_text = models.CharField(
+        max_length=255,
+        default="This role is often performed at the",
+        help_text=(
+            "Shown before the link to the job grades page, above the grades a "
+            "Senior Civil Service role is done at."
+        ),
+    )
+    level_grades_text = models.CharField(
+        max_length=255,
+        default="This role level is most often performed at the",
+        help_text="The same sentence for a role level rather than a whole role.",
+    )
+    job_grades_link_text = models.CharField(
+        max_length=255,
+        default="Civil Service job grade",
+        help_text=(
+            "Wording of that link. Shown as plain text where the job grades "
+            "page is missing."
+        ),
+    )
+    grades_text_after = models.CharField(
+        max_length=255,
+        default="of:",
+        help_text="Wording after that link, ending the sentence.",
+    )
+
+    role_levels_heading = models.CharField(
+        max_length=255,
+        default="{role} role levels",
+        help_text=(
+            "Heading over a role's levels. Here {role} keeps the role title's "
+            "capitals, this being the start of a heading."
+        ),
+    )
+    level_skills_table_skill_heading = models.CharField(
+        max_length=255,
+        default="Skill",
+        help_text="First column of a role level's skills table.",
+    )
+    level_skills_table_description_heading = models.CharField(
+        max_length=255,
+        default="Description",
+        help_text="Second column of that table.",
+    )
+    skill_level_prefix = models.CharField(
+        max_length=255,
+        default="Level:",
+        help_text="Shown before the level a role level needs a skill at.",
+    )
+    skill_level_scale_text = models.CharField(
+        max_length=255,
+        default="{level} is the {ordinal} of four ascending skill levels",
+        help_text=(
+            "Read aloud in place of the progress bar, which is decorative. "
+            "Use {level} for the level and {ordinal} for first to fourth."
+        ),
+    )
+    skill_points_intro = models.CharField(
+        max_length=255,
+        default="You can:",
+        help_text="Sentence the points under a skill read on from.",
+    )
+
+    related_roles_heading = models.CharField(
+        max_length=255,
+        default="Roles that share {role} skills",
+        help_text="Heading over the roles sharing skills with this one.",
+    )
+    related_roles_table_role_heading = models.CharField(
+        max_length=255,
+        default="Role",
+        help_text="First column of that table.",
+    )
+    related_roles_table_skills_heading = models.CharField(
+        max_length=255,
+        default="Shared skills",
+        help_text="Second column of that table.",
+    )
+    progression_scs_roles_heading = models.CharField(
+        max_length=255,
+        default="Senior Civil Service roles that {role} could lead to",
+        help_text="Heading over the senior roles this role leads on to.",
+    )
+    progression_roles_heading = models.CharField(
+        max_length=255,
+        default="Roles that could lead to {role}",
+        help_text="Heading over the roles that lead into this one.",
+    )
+
+    updates_heading = models.CharField(
+        max_length=255,
+        default="Updates",
+        help_text="Heading over a role's change history.",
+    )
+    published_prefix = models.CharField(
+        max_length=255,
+        default="Published",
+        help_text="Shown before the date the role was first published.",
+    )
+    no_roles_message = models.CharField(
+        max_length=255,
+        default="No roles selected.",
+        help_text="Shown on a role page with no role chosen and nothing written.",
+    )
+
+    scs_skill_label = models.CharField(
+        max_length=255,
+        default="Senior Civil Service",
+        help_text="Shown beside a skill that only Senior Civil Service roles use.",
+    )
+    skill_leadership_examples_heading = models.CharField(
+        max_length=255,
+        default="Examples of leadership using this skill",
+        help_text="Heading over a skill's leadership points on the skills page.",
+    )
+    skill_levels_table_level_heading = models.CharField(
+        max_length=255,
+        default="Skill level",
+        help_text="First column of a skill's levels table.",
+    )
+    skill_levels_table_description_heading = models.CharField(
+        max_length=255,
+        default="Description",
+        help_text="Second column of that table.",
+    )
+    skill_level_no_description_message = models.CharField(
+        max_length=255,
+        default="No description provided.",
+        help_text="Shown where a skill level has had no points written for it.",
+    )
+    skill_roles_heading = models.CharField(
+        max_length=255,
+        default="Roles that require this skill",
+        help_text="Heading over the roles that need a skill.",
+    )
+    no_skills_message = models.CharField(
+        max_length=255,
+        default="No skills found.",
+        help_text="Shown on the skills page while no skills exist.",
+    )
+
+    overview_heading_text = models.CharField(
+        max_length=255,
+        default="What {article} {role} does",
+        help_text="Heading over a role's description. {article} is a or an.",
+    )
+    role_lead_text = models.CharField(
+        max_length=500,
+        default=(
+            "Find out what {article} {role} in government does and the skills "
+            "you need to do the role at each level."
+        ),
+        help_text="The sentence under a role's heading.",
+    )
+    scs_role_lead_text = models.CharField(
+        max_length=500,
+        default=(
+            "Find out what {article} {role} in the Senior Civil Service does "
+            "and the skills you need to do the role."
+        ),
+        help_text="The sentence under a Senior Civil Service role's heading.",
+    )
+    role_levels_opening_one = models.CharField(
+        max_length=255,
+        default="There is one {role} role level.",
+        help_text="Opens the levels section for a role with a single level.",
+    )
+    role_levels_opening_many = models.CharField(
+        max_length=255,
+        default="There are {count} {role} role levels{levels_range}.",
+        help_text=(
+            "Opens the levels section. {levels_range} is the from-to clause "
+            "below, or nothing where the levels are unnamed."
+        ),
+    )
+    role_levels_range_text = models.CharField(
+        max_length=255,
+        default=", from {first} to {last}",
+        help_text="The from-to clause naming the first and last role levels.",
+    )
+    role_levels_described_one = models.CharField(
+        max_length=255,
+        default=(
+            "The typical responsibilities and skills for this role level are "
+            "described below."
+        ),
+        help_text="Follows the opening for a role with a single level.",
+    )
+    role_levels_described_many = models.CharField(
+        max_length=255,
+        default=(
+            "The typical responsibilities and skills for each role level are "
+            "described in the sections below."
+        ),
+        help_text="Follows the opening for a role with several levels.",
+    )
+    role_levels_purpose_text = models.CharField(
+        max_length=500,
+        default=(
+            "You can use this to identify the skills you need to progress in "
+            "your career, or simply to learn more about each role in the "
+            "Government Digital and Data profession."
+        ),
+        help_text="Closes the sentence under the role levels heading.",
+    )
+    show_all_updates_link_text = models.CharField(
+        max_length=100,
+        default="+ show all updates",
+        help_text="The link that opens the home page's collapsed update history.",
+    )
+    hide_all_updates_link_text = models.CharField(
+        max_length=100,
+        default="- hide all updates",
+        help_text="The link that closes the home page's update history.",
+    )
+    further_resources_heading = models.CharField(
+        max_length=255,
+        default="Further resources",
+        help_text="Heading over the navigation's non-role pages.",
+    )
+    role_family_group_title = models.CharField(
+        max_length=255,
+        default="{family} roles",
+        help_text=(
+            "Title of each family's navigation group and home page section. "
+            "{family} is the family's name from the role records."
+        ),
+    )
+    breadcrumb_home_label = models.CharField(
+        max_length=100,
+        default="Home",
+        help_text="The first entry of the narrow-screen breadcrumb.",
+    )
+
+    panels = [
+        MultiFieldPanel(
+            [
+                FieldPanel("contents_heading"),
+                FieldPanel("last_updated_prefix"),
+                FieldPanel("see_all_updates_link_text"),
+                FieldPanel("overview_heading_text"),
+                FieldPanel("role_lead_text"),
+                FieldPanel("scs_role_lead_text"),
+            ],
+            heading="Above a role",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("scs_context_text"),
+                FieldPanel("scs_context_link_text"),
+                FieldPanel("scs_skills_heading"),
+                FieldPanel("scs_skills_intro"),
+                FieldPanel("scs_skills_leadership_point"),
+                FieldPanel("scs_skills_context_point_text"),
+                FieldPanel("scs_skills_context_point_link_text"),
+                FieldPanel("scs_skills_table_skill_heading"),
+                FieldPanel("scs_skills_table_description_heading"),
+                FieldPanel("scs_leadership_examples_heading"),
+            ],
+            heading="Senior Civil Service roles",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("role_grades_text"),
+                FieldPanel("level_grades_text"),
+                FieldPanel("job_grades_link_text"),
+                FieldPanel("grades_text_after"),
+            ],
+            heading="Job grades",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("role_levels_heading"),
+                FieldPanel("level_skills_table_skill_heading"),
+                FieldPanel("level_skills_table_description_heading"),
+                FieldPanel("skill_level_prefix"),
+                FieldPanel("skill_level_scale_text"),
+                FieldPanel("skill_points_intro"),
+            ],
+            heading="Role levels",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("role_levels_opening_one"),
+                FieldPanel("role_levels_opening_many"),
+                FieldPanel("role_levels_range_text"),
+                FieldPanel("role_levels_described_one"),
+                FieldPanel("role_levels_described_many"),
+                FieldPanel("role_levels_purpose_text"),
+            ],
+            heading="Role levels introduction",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("related_roles_heading"),
+                FieldPanel("related_roles_table_role_heading"),
+                FieldPanel("related_roles_table_skills_heading"),
+                FieldPanel("progression_scs_roles_heading"),
+                FieldPanel("progression_roles_heading"),
+            ],
+            heading="Related roles and career paths",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("updates_heading"),
+                FieldPanel("published_prefix"),
+                FieldPanel("show_all_updates_link_text"),
+                FieldPanel("hide_all_updates_link_text"),
+                FieldPanel("no_roles_message"),
+            ],
+            heading="Updates and empty states",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("further_resources_heading"),
+                FieldPanel("role_family_group_title"),
+                FieldPanel("breadcrumb_home_label"),
+            ],
+            heading="Navigation",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("scs_skill_label"),
+                FieldPanel("skill_leadership_examples_heading"),
+                FieldPanel("skill_levels_table_level_heading"),
+                FieldPanel("skill_levels_table_description_heading"),
+                FieldPanel("skill_level_no_description_message"),
+                FieldPanel("skill_roles_heading"),
+                FieldPanel("no_skills_message"),
+            ],
+            heading="Skills page",
+        ),
+    ]
+
+    class Meta:
+        verbose_name = "Capability framework wording"
+        verbose_name_plural = "Capability framework wording"
+
+    # Filled in per role, so a page holding several does not have to choose one.
+    ROLE_FIELDS = (
+        "scs_context_text",
+        "scs_skills_heading",
+        "scs_skills_intro",
+        "related_roles_heading",
+        "progression_scs_roles_heading",
+        "progression_roles_heading",
+    )
+
+    def for_role(self, *, display_role_name: str, role_title: str) -> dict[str, str]:
+        """This role's wording, with its name already in place.
+
+        The headings come back here rather than being substituted in the
+        template because the in-page contents links repeat them, and the two
+        have to say the same thing for the link to make sense.
+        """
+        wording = {
+            name: getattr(self, name).replace(
+                self.ROLE_PLACEHOLDER, display_role_name
+            )
+            for name in self.ROLE_FIELDS
+        }
+        # A heading opens with the role, so it keeps the capitals in a title
+        # like "Development operations (DevOps) engineer" rather than the
+        # lowercased form the mid-sentence wording uses.
+        wording["role_levels_heading"] = self.role_levels_heading.replace(
+            self.ROLE_PLACEHOLDER, role_title
+        )
+        return wording
+
+    def family_group_title(self, family: str) -> str:
+        """A family's navigation group title, used as the home page section
+        heading and the narrow-screen breadcrumb entry alike, so the anchor
+        the breadcrumb points at always matches the heading it lands on."""
+        return self.role_family_group_title.replace(self.FAMILY_PLACEHOLDER, family)
+
+    def skill_level_scale(self, *, label: str, ordinal: str) -> str:
+        """What a screen reader is given in place of the progress bar."""
+        return self.skill_level_scale_text.replace(
+            self.LEVEL_PLACEHOLDER, label
+        ).replace(self.ORDINAL_PLACEHOLDER, ordinal)
 
 
 class EdDSAKeyPair(Orderable):
@@ -1022,15 +1832,41 @@ class GovukSkill(models.Model):
         use_json_field=True,
         help_text="Optional expert-level points.",
     )
+    is_senior_civil_service = models.BooleanField(
+        default=False,
+        verbose_name="Senior Civil Service skill",
+        help_text=(
+            "Senior Civil Service skills describe leadership rather than "
+            "ascending proficiency levels."
+        ),
+    )
+    leadership_points = StreamField(
+        [
+            (
+                "point",
+                blocks.TextBlock(
+                    required=False,
+                    max_length=500,
+                    rows=3,
+                ),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        verbose_name="Examples of leadership",
+        help_text="Examples of leadership using this skill, for Senior Civil Service skills.",
+    )
 
     panels = [
         FieldPanel("slug"),
         FieldPanel("title"),
         FieldPanel("body"),
+        FieldPanel("is_senior_civil_service"),
         FieldPanel("awareness_points"),
         FieldPanel("working_points"),
         FieldPanel("practitioner_points"),
         FieldPanel("expert_points"),
+        FieldPanel("leadership_points"),
     ]
 
     class Meta:
@@ -1097,6 +1933,45 @@ class GovukSkill(models.Model):
             entry["value"] for entry in self._normalised_stream_points(stream_value)
         ]
 
+    def level_description(self, level: str | None) -> dict:
+        """What a page prints for this skill at one level.
+
+        ``points`` are the ends of the "You can:" sentence the page prints
+        above them; ``placeholder`` is the framework's one sentence for a level
+        that has no description yet. Never both. The published exports carry
+        that sentence in the level's cell, so it arrives as a single point, and
+        an editor typing it into the points box produces the same thing. Read
+        on from "You can:" with a bullet it looked like a broken sentence (Tim
+        Young, 11 September 2026); the live service prints it bare, in
+        whichever of its two wordings it was written, and so does this. The
+        CSV export reads ``points_for_level`` directly and is not affected.
+        """
+        points = self.points_for_level(level)
+        if len(points) == 1 and is_level_not_defined(points[0]):
+            return {"points": [], "placeholder": points[0]}
+        return {"points": points, "placeholder": None}
+
+    def get_changelog(self) -> dict:
+        """Published entries for this skill, newest first, with key dates.
+
+        Filtered in Python rather than with .filter(), which would go back to
+        the database and waste the prefetch the skills A to Z does for all 185
+        skills at once.
+        """
+        entries = [entry for entry in self.changelog_entries.all() if entry.live]
+        return {"entries": entries, **_changelog_dates(entries)}
+
+    def get_roles_requiring_skill(self) -> list["GovukRole"]:
+        """Roles that require this skill at any level, sorted by title."""
+        return GovukRole.roles_by_skill_id().get(self.pk, [])
+
+    def get_leadership_points(self) -> list[str]:
+        """Examples of leadership, for Senior Civil Service skills."""
+        return [
+            entry["value"]
+            for entry in self._normalised_stream_points(self.leadership_points)
+        ]
+
     def get_level_rows(self) -> list[dict]:
         level_rows: list[dict] = []
         for level_key, level_label in SKILL_LEVEL_CHOICES:
@@ -1105,7 +1980,7 @@ class GovukSkill(models.Model):
                     "key": level_key,
                     "label": level_label,
                     "ordinal": SKILL_LEVEL_ORDINALS.get(level_key, ""),
-                    "points": self.points_for_level(level_key),
+                    **self.level_description(level_key),
                 }
             )
         return level_rows
@@ -1142,6 +2017,13 @@ class GovukRole(models.Model):
         max_length=255,
         help_text="Role name, for example Digital forensics analyst.",
     )
+    family = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Role family used to group roles, for example Data.",
+    )
     body = RichTextField(
         blank=True,
         features=SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES,
@@ -1169,6 +2051,22 @@ class GovukRole(models.Model):
                             blocks.RichTextBlock(
                                 required=False,
                                 features=["bold", "italic", "link", "ul", "ol"],
+                            ),
+                        ),
+                        (
+                            "grades",
+                            blocks.ListBlock(
+                                blocks.ChoiceBlock(
+                                    required=False,
+                                    choices=JOB_GRADE_CHOICES,
+                                ),
+                                required=False,
+                                label="Indicative Civil Service job grades",
+                                help_text=(
+                                    "Grades this role level is most often "
+                                    "performed at. Leave empty to hide the "
+                                    "sentence, as management-track levels do."
+                                ),
                             ),
                         ),
                         (
@@ -1210,12 +2108,54 @@ class GovukRole(models.Model):
         use_json_field=True,
         help_text="Role levels and their associated skills.",
     )
+    is_senior_civil_service = models.BooleanField(
+        default=False,
+        verbose_name="Senior Civil Service role",
+        help_text=(
+            "Senior Civil Service roles have no role levels. Their skills are "
+            "listed flat, with examples of leadership."
+        ),
+    )
+    scs_grades = StreamField(
+        [("grade", blocks.ChoiceBlock(required=False, choices=SCS_GRADE_CHOICES))],
+        blank=True,
+        use_json_field=True,
+        verbose_name="Indicative Senior Civil Service grades",
+        help_text="Grades this role is most often performed at.",
+    )
+    scs_skills = StreamField(
+        [
+            (
+                "skill",
+                SnippetChooserBlock("govuk.GovukSkill", required=False),
+            )
+        ],
+        blank=True,
+        use_json_field=True,
+        verbose_name="Senior Civil Service skills",
+        help_text="Skills required by this role, with no proficiency level.",
+    )
+    roles_that_could_lead_here = StreamField(
+        [("role", SnippetChooserBlock("govuk.GovukRole", required=False))],
+        blank=True,
+        use_json_field=True,
+        verbose_name="Roles that could lead to this role",
+        help_text=(
+            "Roles someone might do before this one. Curated rather than "
+            "derived from shared skills, and listed in the order given."
+        ),
+    )
 
     panels = [
         FieldPanel("slug"),
         FieldPanel("title"),
+        FieldPanel("family"),
         FieldPanel("body"),
         FieldPanel("levels"),
+        FieldPanel("is_senior_civil_service"),
+        FieldPanel("scs_grades"),
+        FieldPanel("scs_skills"),
+        FieldPanel("roles_that_could_lead_here"),
     ]
 
     class Meta:
@@ -1241,6 +2181,183 @@ class GovukRole(models.Model):
             return ""
         return SKILL_LEVEL_LABELS.get(level_key, level_key.title())
 
+    @staticmethod
+    def _extract_skill_id(value) -> int | None:
+        if type(value) is int and value > 0:
+            return value
+        if isinstance(value, str):
+            parsed = row_id_from_text(value)
+            if parsed is not None and parsed > 0:
+                return parsed
+        skill_pk = getattr(value, "pk", None)
+        if type(skill_pk) is int and skill_pk > 0:
+            return skill_pk
+        return None
+
+    def get_scs_skills(self) -> list[dict]:
+        """Skills for a Senior Civil Service role, with leadership examples."""
+        skills: list[dict] = []
+        seen: set[int] = set()
+        for block in self.scs_skills:
+            skill = getattr(block, "value", None)
+            if skill is None or getattr(skill, "pk", None) in seen:
+                continue
+            seen.add(skill.pk)
+            skills.append(
+                {"skill": skill, "leadership_points": skill.get_leadership_points()}
+            )
+        return skills
+
+    def get_scs_grade_labels(self) -> list[str]:
+        return self._grade_labels(self.scs_grades)
+
+    def get_roles_that_could_lead_here(self) -> list["GovukRole"]:
+        """The curated career path into this role, in the order given.
+
+        Unlike ``get_related_roles`` this is not inferred from shared skills:
+        the framework lists particular roles a person might come from, which
+        is a judgement the content team makes.
+        """
+        roles: list[GovukRole] = []
+        seen: set[int] = set()
+        for block in self.roles_that_could_lead_here:
+            role = getattr(block, "value", None)
+            role_pk = getattr(role, "pk", None)
+            if role is None or role_pk in seen or role_pk == self.pk:
+                continue
+            seen.add(role_pk)
+            roles.append(role)
+        return roles
+
+    @classmethod
+    def senior_roles_by_source_role_id(cls) -> dict[int, list["GovukRole"]]:
+        """Map each role id to the Senior Civil Service roles it could lead to.
+
+        The content team authors this the other way round, as the roles that
+        could lead to a senior one, so the only way to the framework's
+        "Senior Civil Service roles that X could lead to" is to turn the
+        mapping around. Built in one pass, as ``roles_by_skill_id`` is.
+
+        Read from the raw stream rather than the resolved snippets, the way
+        ``get_skill_ids`` reads levels, because every role page builds this and
+        resolving each senior role's chooser blocks costs a query apiece.
+
+        The framework's own ordering is not recoverable from the reverse
+        mapping, so the roles are listed by title.
+        """
+        index: dict[int, list[GovukRole]] = {}
+        for senior_role in cls.objects.filter(is_senior_civil_service=True):
+            seen: set[int] = set()
+            raw_blocks = (
+                getattr(senior_role.roles_that_could_lead_here, "raw_data", None) or []
+            )
+            for raw_block in raw_blocks:
+                if not isinstance(raw_block, dict) or raw_block.get("type") != "role":
+                    continue
+                source_id = RoleRenderingMixin._extract_role_id(raw_block.get("value"))
+                if not source_id or source_id in seen or source_id == senior_role.pk:
+                    continue
+                seen.add(source_id)
+                index.setdefault(source_id, []).append(senior_role)
+        for roles in index.values():
+            roles.sort(key=lambda role: (role.title or "").strip().lower())
+        return index
+
+    def get_skill_ids(self) -> set[int]:
+        """Distinct ids of skills required at any level of this role."""
+        skill_ids: set[int] = set()
+        for block in self.scs_skills:
+            skill = getattr(block, "value", None)
+            skill_id = self._extract_skill_id(skill)
+            if skill_id:
+                skill_ids.add(skill_id)
+
+        raw_levels = getattr(self.levels, "raw_data", None)
+        if raw_levels:
+            for raw_level in raw_levels:
+                if not isinstance(raw_level, dict) or raw_level.get("type") != "level":
+                    continue
+                raw_skills = (raw_level.get("value") or {}).get("skills") or []
+                for raw_entry in raw_skills:
+                    if not isinstance(raw_entry, dict):
+                        continue
+                    # ListBlock items appear either as plain struct dicts or
+                    # wrapped as {"type": "item", "value": {...}}.
+                    entry_value = raw_entry.get("value") if "skill" not in raw_entry else raw_entry
+                    if not isinstance(entry_value, dict):
+                        continue
+                    skill_id = self._extract_skill_id(entry_value.get("skill"))
+                    if skill_id:
+                        skill_ids.add(skill_id)
+            return skill_ids
+
+        for level_block in self.levels:
+            if level_block.block_type != "level":
+                continue
+            for skill_requirement in level_block.value.get("skills") or []:
+                skill_id = self._extract_skill_id(skill_requirement.get("skill"))
+                if skill_id:
+                    skill_ids.add(skill_id)
+        return skill_ids
+
+    def get_related_roles(self, count: int = RELATED_ROLES_COUNT) -> list[dict]:
+        """Other roles sharing skills with this one, most shared skills first.
+
+        Ordered by number of shared skills descending then title, capped at ``count``.
+        """
+        own_skill_ids = self.get_skill_ids()
+        if not own_skill_ids:
+            return []
+
+        matches: list[tuple[GovukRole, set[int]]] = []
+        for role in type(self).objects.exclude(pk=self.pk):
+            shared_ids = own_skill_ids & role.get_skill_ids()
+            if shared_ids:
+                matches.append((role, shared_ids))
+
+        matches.sort(
+            key=lambda match: (-len(match[1]), (match[0].title or "").strip().lower())
+        )
+        matches = matches[:count]
+
+        skills_by_id = GovukSkill.objects.in_bulk(
+            {skill_id for _, shared_ids in matches for skill_id in shared_ids}
+        )
+        return [
+            {
+                "role": role,
+                "shared_skills": sorted(
+                    (
+                        skills_by_id[skill_id]
+                        for skill_id in shared_ids
+                        if skill_id in skills_by_id
+                    ),
+                    key=lambda skill: (skill.title or "").strip().lower(),
+                ),
+            }
+            for role, shared_ids in matches
+        ]
+
+    def get_changelog(self) -> dict:
+        """Published entries for this role, newest first, with key dates."""
+        entries = list(self.changelog_entries.filter(live=True))
+        return {"entries": entries, **_changelog_dates(entries)}
+
+    @classmethod
+    def roles_by_skill_id(cls) -> dict[int, list["GovukRole"]]:
+        """Map each skill id to the roles requiring it, sorted by role title.
+
+        Built in a single pass so pages listing many skills do not inspect
+        every role's StreamField repeatedly.
+        """
+        index: dict[int, list[GovukRole]] = {}
+        for role in cls.objects.all():
+            for skill_id in role.get_skill_ids():
+                index.setdefault(skill_id, []).append(role)
+        for roles in index.values():
+            roles.sort(key=lambda role: (role.title or "").strip().lower())
+        return index
+
     def get_levels_with_skills(self) -> list[dict]:
         role_levels: list[dict] = []
         for level_block in self.levels:
@@ -1263,7 +2380,7 @@ class GovukRole(models.Model):
                         "skill": skill,
                         "required_level": required_level,
                         "required_level_label": self._skill_level_label(required_level),
-                        "points": skill.points_for_level(required_level),
+                        **skill.level_description(required_level),
                     }
                 )
 
@@ -1278,11 +2395,26 @@ class GovukRole(models.Model):
                 {
                     "title": role_level_title,
                     "description": role_level_description,
+                    "grades": self._grade_labels(level_value.get("grades")),
                     "skills": skill_rows,
                 }
             )
 
         return role_levels
+
+    @staticmethod
+    def _grade_labels(raw_grades) -> list[str]:
+        """Labels for a level's indicative grades, ordered by seniority."""
+        values = {
+            str(getattr(raw_grade, "value", raw_grade) or "").strip()
+            for raw_grade in (raw_grades or [])
+        }
+        return [
+            JOB_GRADE_LABELS[value]
+            for value in sorted(
+                values & JOB_GRADE_LABELS.keys(), key=JOB_GRADE_ORDER.get
+            )
+        ]
 
     def __str__(self) -> str:
         return self.title or self.slug
@@ -1297,6 +2429,94 @@ class GovukRole(models.Model):
             fallback="role",
         )
         super().save(*args, **kwargs)
+
+
+class GovukChangelogEntry(models.Model):
+    """A dated note describing a change to the framework.
+
+    Entries with no role or skill are site-wide and appear on the framework
+    home page; entries attached to a role or skill appear in the "Updates"
+    section of the relevant page.
+    """
+
+    date = models.DateField(
+        db_index=True,
+        help_text="Date the change was published.",
+    )
+    role = models.ForeignKey(
+        "govuk.GovukRole",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="changelog_entries",
+        help_text="Leave blank for a site-wide update.",
+    )
+    skill = models.ForeignKey(
+        "govuk.GovukSkill",
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="changelog_entries",
+        help_text="Leave blank for a site-wide update.",
+    )
+    change_type = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text="Optional label, for example New role or Skills updated.",
+    )
+    note = RichTextField(
+        features=["bold", "italic", "link", "ul", "ol"],
+        help_text="What changed.",
+    )
+    live = models.BooleanField(
+        default=True,
+        verbose_name="Published",
+        help_text="Unpublish to hide this entry without deleting it.",
+    )
+
+    panels = [
+        FieldPanel("date"),
+        FieldPanel("role"),
+        FieldPanel("skill"),
+        FieldPanel("change_type"),
+        FieldPanel("note"),
+        FieldPanel("live"),
+    ]
+
+    class Meta:
+        verbose_name = "Changelog entry"
+        verbose_name_plural = "Changelog entries"
+        ordering = ["-date", "pk"]
+
+    def clean(self):
+        super().clean()
+        if self.role_id and self.skill_id:
+            raise ValidationError(
+                "Choose either a role or a skill for this entry, not both."
+            )
+
+    def __str__(self) -> str:
+        subject = self.role or self.skill or "Framework"
+        return f"{subject} - {self.date}"
+
+
+def site_wide_changelog() -> dict:
+    """Changelog entries about the framework rather than one role or skill."""
+    entries = list(
+        GovukChangelogEntry.objects.filter(
+            role__isnull=True, skill__isnull=True, live=True
+        )
+    )
+    return {"entries": entries, **_changelog_dates(entries)}
+
+
+def _changelog_dates(entries) -> dict[str, object]:
+    """First and last publication dates for a set of changelog entries."""
+    dates = sorted(entry.date for entry in entries if entry.date)
+    if not dates:
+        return {"published_date": None, "last_updated_date": None}
+    return {"published_date": dates[0], "last_updated_date": dates[-1]}
 
 
 class ContentDiscoverySource(Orderable):
@@ -1380,11 +2600,9 @@ class ContentDiscoverySource(Orderable):
         if type(value) is int and value > 0:
             return value
         if isinstance(value, str):
-            stripped = value.strip()
-            if stripped.isdigit():
-                parsed = int(stripped)
-                if parsed > 0:
-                    return parsed
+            parsed = row_id_from_text(value)
+            if parsed is not None and parsed > 0:
+                return parsed
         tag_pk = getattr(value, "pk", None)
         if type(tag_pk) is int and tag_pk > 0:
             return tag_pk
@@ -1583,15 +2801,32 @@ class ContentPageTag(TaggedItemBase):
     ]
 
 
-class RolePageTag(TaggedItemBase):
+class FrameworkMainPageTag(TaggedItemBase):
     content_object = ParentalKey(
-        "govuk.RolePage",
+        "govuk.FrameworkMainPage",
         related_name="tagged_items",
         on_delete=models.CASCADE,
     )
     tag = models.ForeignKey(
         "govuk.GovukTag",
-        related_name="role_page_tagged_items",
+        related_name="framework_main_page_tagged_items",
+        on_delete=models.CASCADE,
+    )
+
+    panels = [
+        FieldPanel("tag"),
+    ]
+
+
+class FrameworkContentPageTag(TaggedItemBase):
+    content_object = ParentalKey(
+        "govuk.FrameworkContentPage",
+        related_name="tagged_items",
+        on_delete=models.CASCADE,
+    )
+    tag = models.ForeignKey(
+        "govuk.GovukTag",
+        related_name="framework_content_page_tagged_items",
         on_delete=models.CASCADE,
     )
 
@@ -1634,21 +2869,194 @@ class TagListingsPageTag(TaggedItemBase):
     ]
 
 
-class ContentPage(Page):
-    parent_page_types = [
-        "govuk.ContentPage",
-        "govuk.SectionPage",
-        "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
-    ]
-    subpage_types = [
-        "govuk.ContentPage",
-        "govuk.SectionPage",
-        "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
-    ]
+FRAMEWORK_WELCOME_RICH_TEXT_FEATURES = [
+    "bold",
+    "italic",
+    "link",
+    "ul",
+    "ol",
+    # InsetTextBlock takes this list, and a quote that runs to two lines needs
+    # a line break rather than a second block: a new block is a second border.
+    "line-break",
+]
+
+
+class FrameworkWelcomeSectionValue(StructValue):
+    def anchor_id(self) -> str:
+        """The section's link target, so the contents list and the heading agree."""
+        return slugify(self.get("anchor") or self.get("heading") or "")
+
+
+class FrameworkWelcomeSectionBlock(blocks.StructBlock):
+    """A heading and its prose."""
+
+    heading = blocks.CharBlock(
+        max_length=255,
+        help_text="Section heading, for example How to use this framework.",
+    )
+    level = blocks.ChoiceBlock(
+        choices=[
+            ("h2", "Main section, listed in the contents"),
+            ("h3", "Sub-section, not listed in the contents"),
+        ],
+        default="h2",
+        help_text="Main sections appear in the contents list at the top of the page.",
+    )
+    anchor = blocks.CharBlock(
+        required=False,
+        max_length=255,
+        help_text=(
+            "Optional link target, for example capability-assessments. Defaults to "
+            "the heading. Set one to keep existing links working if the heading is "
+            "reworded."
+        ),
+    )
+    body = blocks.RichTextBlock(
+        features=FRAMEWORK_WELCOME_RICH_TEXT_FEATURES,
+        help_text="The section's prose.",
+    )
+
+    class Meta:
+        icon = "doc-full"
+        label = "Section"
+        value_class = FrameworkWelcomeSectionValue
+        template = "blocks/framework_welcome_section.html"
+
+
+class SkillLevelBlock(blocks.StructBlock):
+    name = blocks.CharBlock(
+        max_length=100,
+        help_text="Level name, for example Awareness.",
+    )
+    filled_segments = blocks.IntegerBlock(
+        min_value=1,
+        max_value=4,
+        default=1,
+        help_text=(
+            "How many of the 4 progress bar segments are filled, so awareness is 1 "
+            "and expert is 4."
+        ),
+    )
+    description = blocks.RichTextBlock(
+        features=FRAMEWORK_WELCOME_RICH_TEXT_FEATURES,
+        help_text="What someone at this level can do.",
+    )
+
+    class Meta:
+        icon = "list-ul"
+        label = "Skill level"
+
+
+class SkillLevelDefinitionsBlock(blocks.StructBlock):
+    """The skill level table, with the progress bars a rich text field would strip."""
+
+    caption = blocks.CharBlock(
+        max_length=255,
+        default="Skill level definitions",
+        help_text="Table caption, read out by screen readers.",
+    )
+    level_column_heading = blocks.CharBlock(
+        max_length=255,
+        default="Skill level definitions",
+    )
+    meaning_column_heading = blocks.CharBlock(
+        max_length=255,
+        default="What the level means",
+    )
+    levels = blocks.ListBlock(
+        SkillLevelBlock(),
+        help_text="One row per level, in ascending order.",
+    )
+
+    class Meta:
+        icon = "table"
+        label = "Skill level definitions"
+        template = "blocks/framework_welcome_skill_levels.html"
+
+
+class SectionBreakBlock(blocks.StaticBlock):
+    class Meta:
+        icon = "horizontalrule"
+        label = "Section break"
+        admin_text = "A horizontal rule across the page."
+        template = "blocks/framework_welcome_section_break.html"
+
+
+class InsetTextBlock(blocks.RichTextBlock):
+    class Meta:
+        icon = "warning"
+        label = "Inset text"
+        template = "blocks/framework_welcome_inset_text.html"
+
+
+class GovukTableBlock(TableBlock):
+    """A table an editor builds in a grid, rendered as a GOV.UK table.
+
+    Wagtail's rich text has no table feature, so before this the only way to
+    put one on a content page was to hand-write the HTML into a raw HTML
+    embed. That is not a formatting option a content designer has, which is
+    what left "tables can be added to the page" as the last unticked box on
+    CS32-3527 while everything around it was done.
+
+    Cells hold text, not HTML: the renderer stays on Wagtail's default, so
+    whatever is typed is escaped. A table is a place a paste from a document
+    would otherwise carry markup straight onto a public page.
+    """
+
+    def __init__(self, *args, table_options=None, **kwargs):
+        # Wagtail hands handsontable whatever LANGUAGE_CODE is, and ours is
+        # en-gb. The vendored handsontable 6.2.2 ships one locale, en-US, so
+        # it logs a console error and falls back to it anyway. The strings
+        # this picks are the grid's own context menu ("Insert row above"),
+        # where the two spellings do not differ. Naming the locale it has
+        # keeps the admin console clean.
+        table_options = {"language": "en-US", **(table_options or {})}
+        super().__init__(*args, table_options=table_options, **kwargs)
+
+    class Meta:
+        icon = "table"
+        label = "Table"
+        template = "blocks/govuk_table.html"
+        help_text = (
+            "Right-click a cell to add or remove rows and columns. Give the "
+            "table a caption: it is how somebody using a screen reader knows "
+            "what the table is before reading it."
+        )
+
+
+class ContentBodyBlock(blocks.StreamBlock):
+    """Prose and tables, in whatever order the page needs them.
+
+    ``ContentPage.body`` is a rich text field and stays one -- 67 pages of
+    live content are stored in it, and the verified export was taken with it
+    that shape. This renders after it, so an editor adding a table to an
+    existing page changes nothing about the page's existing text.
+
+    A page that needs a table part-way through moves its body text into a Text
+    block here, which offers the same formatting the body field does.
+    """
+
+    # No features argument, so this offers exactly what the body field above
+    # offers -- both take the default set, which the rich text hooks extend
+    # with the GOV.UK button, start button, inset text and raw HTML.
+    text = blocks.RichTextBlock(label="Text", icon="pilcrow")
+    table = GovukTableBlock()
+
+    class Meta:
+        required = False
+
+
+class BaseContentPage(Page):
+    """Shared hero, body and settings fields for the content-style page types.
+
+    ``ContentPage`` and the two framework page types (``FrameworkMainPage`` and
+    ``FrameworkContentPage``) all carry the same hero/body/settings fields.
+    Holding them on an abstract base keeps the three concrete types from each
+    writing the same twelve fields out. Being abstract, the base contributes its
+    columns to each subclass's own table, so every page type keeps its own
+    concrete columns -- exactly what Wagtail's multi-table inheritance needs.
+    """
+
     enable_hero_styling = models.BooleanField(
         default=False,
         verbose_name="Enable hero styling",
@@ -1685,208 +3093,1118 @@ class ContentPage(Page):
         help_text="Show page metadata above the main content.",
     )
     body = RichTextField(blank=True)
+    body_blocks = StreamField(
+        ContentBodyBlock(),
+        blank=True,
+        use_json_field=True,
+        verbose_name="Tables and further content",
+        help_text=(
+            "Shown after the body above. To put a table part-way through a "
+            "page, move the body text into a Text block here and add the "
+            "table between the blocks."
+        ),
+    )
     enable_free_text_heading_navigation = models.BooleanField(
         default=False,
         verbose_name="Enable sidebar heading navigation",
         help_text="Show free text in a two-thirds and one-third layout with an automatic clickable heading list.",
     )
-    tags = ClusterTaggableManager(through="govuk.ContentPageTag", blank=True)
 
-    content_panels = Page.content_panels + [
-        FieldPanel("hero_title"),
-        FieldPanel("hero_intro"),
-        FieldPanel("author"),
-        FieldPanel("body"),
-    ]
-
-    settings_panels = Page.settings_panels + [
-        FieldPanel("enable_hero_styling"),
-        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
-        FieldPanel("show_last_updated_date"),
-        FieldPanel("show_page_content_metadata"),
-        FieldPanel("enable_free_text_heading_navigation"),
-        InlinePanel("tagged_items", heading="Tags", label="Tag"),
-    ]
+    class Meta:
+        abstract = True
 
 
-class RolePage(Page):
-    parent_page_types = [
-        "govuk.ContentPage",
-        "govuk.SectionPage",
-        "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
-    ]
-    subpage_types = [
-        "govuk.ContentPage",
-        "govuk.SectionPage",
-        "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
-    ]
-    enable_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable hero styling",
-        help_text="When enabled, this page uses hero styling.",
+class FrameworkFieldsMixin(models.Model):
+    """The framework switches and welcome content, on the framework page types.
+
+    Only ``FrameworkMainPage`` and ``FrameworkContentPage`` carry the Capability
+    Framework furniture -- the role side navigation, the site-wide changelog and
+    the welcome layout. Plain ``ContentPage`` no longer offers any of it. The
+    ``get_context`` here layers the framework context on top of the base page
+    context; both framework types inherit it.
+    """
+
+    # Default on: a new framework main page starts with all three switched on
+    # (the framework home is the welcome page, with the role navigation and the
+    # updates). A framework content page ignores the stored values -- it forces
+    # role navigation on and the rest off in its own get_context.
+    show_role_navigation = models.BooleanField(
+        default=True,
+        verbose_name="Show role navigation",
+        help_text="Show the list of roles grouped by family alongside the page, as the role pages do.",
     )
-    enable_combined_service_navigation_and_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable combined service navigation and hero styling",
-        help_text="When enabled, this page uses a combined service navigation and hero styling.",
+    show_framework_updates = models.BooleanField(
+        default=True,
+        verbose_name="Show framework updates",
+        help_text=(
+            "Show the changelog entries that are not tied to a single role or "
+            "skill, with a last updated date above the page content."
+        ),
     )
-    hero_title = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Optional hero heading. If blank, the page title is used.",
+    show_framework_welcome = models.BooleanField(
+        default=True,
+        verbose_name="Show framework welcome content",
+        help_text=(
+            "Show the framework's welcome text, with a contents list and the "
+            "roles grouped by family for narrow screens."
+        ),
     )
-    hero_intro = RichTextField(
-        blank=True,
-        features=["bold", "italic", "link"],
-    )
-    author = models.CharField(
-        max_length=255,
-        blank=True,
-        default="",
-        help_text="Optional author name displayed above the main content.",
-    )
-    show_last_updated_date = models.BooleanField(
-        default=False,
-        verbose_name="Show last updated date",
-        help_text="Show the page last updated date above the main content.",
-    )
-    show_page_content_metadata = models.BooleanField(
-        default=False,
-        verbose_name="Show page content metadata",
-        help_text="Show page metadata above the main content.",
-    )
-    body = RichTextField(blank=True)
-    enable_free_text_heading_navigation = models.BooleanField(
-        default=False,
-        verbose_name="Enable sidebar heading navigation",
-        help_text="Show free text in a two-thirds and one-third layout with an automatic clickable heading list.",
-    )
-    tags = ClusterTaggableManager(through="govuk.RolePageTag", blank=True)
-    selected_roles = StreamField(
+    framework_welcome_body = StreamField(
         [
+            ("section", FrameworkWelcomeSectionBlock()),
+            ("skill_level_definitions", SkillLevelDefinitionsBlock()),
+            ("section_break", SectionBreakBlock()),
             (
-                "role",
-                SnippetChooserBlock(
-                    "govuk.GovukRole",
-                    required=False,
-                ),
-            )
+                "inset_text",
+                InsetTextBlock(features=FRAMEWORK_WELCOME_RICH_TEXT_FEATURES),
+            ),
         ],
         blank=True,
         use_json_field=True,
-        help_text="Select one or more roles to render on this page.",
+        verbose_name="Framework welcome content",
+        help_text=(
+            "The welcome page's editorial content, shown when Show framework "
+            "welcome content is switched on. The contents list is built from the "
+            "main section headings."
+        ),
     )
 
-    content_panels = Page.content_panels + [
-        FieldPanel("hero_title"),
-        FieldPanel("hero_intro"),
-        FieldPanel("author"),
-        FieldPanel("body"),
-        FieldPanel("selected_roles"),
+    class Meta:
+        abstract = True
+
+    def get_context(self, request, *args, **kwargs):
+        context = super().get_context(request, *args, **kwargs)
+        # Nothing framework-shaped until an editor has asked for it, and
+        # nothing at all on a site without the framework. The lookup below
+        # reads as a read and is not one: Wagtail's BaseSiteSetting.for_site
+        # does a get_or_create, so calling it unconditionally wrote a
+        # framework settings row for every site that rendered any
+        # page, including sites with the feature off and its admin panel
+        # unregistered.
+        #
+        # The flag is checked as well as the switches because the switches are
+        # columns the framework page types share, and a stored True outlives
+        # the site it was set on: the page export carries all four fields, so
+        # importing a framework export elsewhere sets them. Their panels are
+        # hidden without the flag, which would leave an editor looking at a role
+        # navigation they cannot find the switch for.
+        wants_framework = settings.FEATURE_FLAGS.get("SKILLS") and (
+            self.show_role_navigation
+            or self.show_framework_welcome
+            or self.show_framework_updates
+        )
+        if wants_framework:
+            framework_wording = CapabilityFrameworkWordingSettings.for_request(request)
+            if self.show_role_navigation or self.show_framework_welcome:
+                # current_page_id marks this page current in the "Further
+                # resources" group when it is one of them -- a framework content
+                # page highlights itself there, the way a role does on its route.
+                groups = role_navigation_groups(
+                    current_page_id=self.pk, wording=framework_wording, request=request
+                )
+                if self.show_role_navigation:
+                    context["role_navigation"] = groups
+                    # The navigation's top link is the framework main page,
+                    # current when that page is the one being rendered.
+                    context["framework_home"] = framework_home_link(
+                        is_current=isinstance(self, FrameworkMainPage)
+                    )
+                if self.show_framework_welcome:
+                    context["framework_sections"] = groups
+                    context["framework_contents"] = self.framework_welcome_contents(
+                        groups
+                    )
+            if self.show_framework_updates:
+                context["framework_changelog"] = site_wide_changelog()
+            # The framework wording names the updates block and the navigation.
+            context["framework_wording"] = framework_wording
+        # Only one side column fits, so the role navigation wins where an
+        # editor has asked for both.
+        context["heading_navigation"] = (
+            self.enable_free_text_heading_navigation and not self.show_role_navigation
+        )
+        # The generic ancestor trail names its first crumb after the site,
+        # which on the framework is a sentence long and reads as a heading
+        # rather than a way back, and it shows at every width where the live
+        # service has no breadcrumb at all. Follow the role pages instead:
+        # home, then this page, and only where the navigation is hidden.
+        #
+        # On a framework only. The home label below comes from wording settings
+        # the admin does not register without this flag, so a site without it
+        # would carry a crumb no editor there can change.
+        if settings.FEATURE_FLAGS.get("SKILLS"):
+            site = Site.find_for_request(request)
+            if site and self.pk != site.root_page_id:
+                context["breadcrumbs"] = framework_breadcrumbs(request, self)
+                context["breadcrumbs_mobile_only"] = True
+            else:
+                context["breadcrumbs"] = []
+        return context
+
+    def framework_welcome_contents(self, role_groups: list[dict]) -> list[dict]:
+        """The contents list at the top of the welcome page.
+
+        Built from the main section headings, so an editor adding a section to
+        the page adds it here too. The role groups sit directly under the
+        opening section, where the live service puts them.
+        """
+        sections = [
+            {"title": block.value["heading"], "anchor": block.value.anchor_id()}
+            for block in self.framework_welcome_body
+            if block.block_type == "section" and block.value.get("level") == "h2"
+        ]
+        groups = [
+            {"title": group["title"], "anchor": slugify(group["title"])}
+            for group in role_groups or []
+        ]
+        return sections[:1] + groups + sections[1:]
+
+
+class SidebarSettings(ClusterableModel, BaseSiteSetting):
+    """Editor control of the framework sidebar's "Further resources" listing.
+
+    Each row picks a framework content page (or the skills index), says whether
+    it is visible, and -- through its position in the list -- sets the order.
+    Listing any page makes this list the menu: framework children left off it
+    are left out. Leaving the list empty shows every framework child in tree
+    order, which is what a site gets before anyone configures it.
+    ``further_resources_group`` reads all of this.
+    """
+
+    panels = [
+        InlinePanel(
+            "items",
+            heading="Sidebar pages",
+            label="Page",
+            help_text=(
+                "Choose the pages shown in the framework sidebar's further "
+                "resources, drag to reorder, and untick any to hide it without "
+                "losing its place. These are the only pages shown: a framework "
+                "page left off this list does not appear. Leave the list empty "
+                "to show every framework page in page-tree order."
+            ),
+        ),
     ]
 
-    settings_panels = Page.settings_panels + [
-        FieldPanel("enable_hero_styling"),
-        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
-        FieldPanel("show_last_updated_date"),
-        FieldPanel("show_page_content_metadata"),
-        FieldPanel("enable_free_text_heading_navigation"),
-        InlinePanel("tagged_items", heading="Tags", label="Tag"),
+    class Meta:
+        verbose_name = "Sidebar settings"
+        verbose_name_plural = "Sidebar settings"
+
+
+class SidebarNavigationItem(Orderable):
+    setting = ParentalKey(
+        SidebarSettings, on_delete=models.CASCADE, related_name="items"
+    )
+    page = models.ForeignKey(
+        "wagtailcore.Page", on_delete=models.CASCADE, related_name="+"
+    )
+    visible = models.BooleanField(
+        default=True,
+        help_text="Untick to hide this page from the sidebar without removing it.",
+    )
+
+    panels = [
+        FieldPanel("page"),
+        FieldPanel("visible"),
     ]
 
-    @classmethod
-    def can_create_at(cls, parent):
-        if not settings.FEATURE_FLAGS.get("SKILLS"):
-            return False
-        return super().can_create_at(parent)
+    ALLOWED_PAGE_TYPES = {"FrameworkContentPage", "FrameworkSkillsPage"}
 
-    @classmethod
-    def can_exist_under(cls, parent):
-        if not settings.FEATURE_FLAGS.get("SKILLS"):
-            return False
-        return super().can_exist_under(parent)
+    def clean(self):
+        super().clean()
+        # Only framework content pages and the skills index belong in the
+        # sidebar list; anything else is ignored by ``further_resources_group``
+        # anyway, so guide the editor here rather than let it silently do
+        # nothing.
+        if self.page_id:
+            specific_class = self.page.specific_class
+            if specific_class is None or specific_class.__name__ not in self.ALLOWED_PAGE_TYPES:
+                raise ValidationError(
+                    {"page": "Choose a framework content page or the skills index."}
+                )
+
+
+class ContentPage(BaseContentPage):
+    parent_page_types = [
+        "govuk.ContentPage",
+        # The framework's home page is the site's home page on the Capability
+        # Framework, so the privacy notice, the cookie statement and the other
+        # pages that are not about the framework live under it too. They are
+        # plain content pages: no role navigation, and not in the side menu.
+        "govuk.FrameworkMainPage",
+        "govuk.FrameworkContentPage",
+        "govuk.SectionPage",
+        "govuk.TagListingsPage",
+        "govuk.FrameworkSkillsPage",
+    ]
+    subpage_types = [
+        "govuk.ContentPage",
+        "govuk.FrameworkMainPage",
+        "govuk.SectionPage",
+        "govuk.TagListingsPage",
+        "govuk.FrameworkSkillsPage",
+    ]
+    tags = ClusterTaggableManager(through="govuk.ContentPageTag", blank=True)
+
+    content_panels = base_content_panels()
+
+    settings_panels = content_settings_panels()
+
+    def get_context(self, request, *args, **kwargs):
+        context = super().get_context(request, *args, **kwargs)
+        # Plain content pages carry no role navigation, so the sidebar heading
+        # navigation is offered whenever it is switched on.
+        context["heading_navigation"] = self.enable_free_text_heading_navigation
+        return context
+
+
+def _default_site_wording() -> "CapabilityFrameworkWordingSettings":
+    """The framework wording for the default site, or the model's defaults.
+
+    The navigation helpers have no request to hang a lookup on, and an unsaved
+    instance carries every default, so a site that has never edited the
+    wording reads the same either way.
+    """
+    site = Site.objects.filter(is_default_site=True).first()
+    saved = (
+        CapabilityFrameworkWordingSettings.objects.filter(site=site).first()
+        if site
+        else None
+    )
+    return saved or CapabilityFrameworkWordingSettings()
+
+
+def framework_main_page():
+    """The single live Framework Main Page, or ``None``.
+
+    Roles are served as routes under this one page, so the navigation and the
+    related-role links resolve their URLs through it. ``max_count`` keeps it
+    unique; the first live one wins if a stray second ever exists.
+    """
+    return FrameworkMainPage.objects.live().first()
+
+
+def role_route_url(main_page, role_slug: str) -> str:
+    """The URL of a role's page: the Framework Main Page route for its slug.
+
+    ``reverse_subpage`` gives the sub-path with its trailing slash, and the
+    page's own URL its prefix, so the two join to the address a reader lands on.
+    Empty when there is no framework main page or it has no URL yet (no site,
+    no request), which the templates already fall back on as plain text.
+    """
+    if main_page is None:
+        return ""
+    base = main_page.url
+    if not base:
+        return ""
+    return base + main_page.reverse_subpage("serve_role", args=[role_slug])
+
+
+def without_framework_pages(queryset):
+    """``queryset`` minus the framework's page types, on a site without it.
+
+    ``FrameworkSkillsPage`` 404s rather than serves without the flag, but it can still
+    be in the tree: the page import creates pages for any model it can resolve,
+    and it is generic on purpose. A listing that goes on naming it offers a
+    reader a link that 404s, which reads as a broken site rather than a site
+    that does not have the framework. (Roles are no longer pages -- they are
+    served as routes under the framework main page -- so there is nothing role
+    shaped to exclude here.)
+
+    The public surfaces that list pages generically go through here: the pages
+    API, front-end search and the navigation menu. Tag listings make the same
+    exclusion a queryset at a time in ``_page_listing_querysets``. It is a no-op
+    with the flag on, so the framework's own site is unaffected.
+
+    Deliberately not applied to the Wagtail admin. An editor who has ended up
+    with these pages needs to be able to see them to delete them, and hiding
+    them there would leave the site with pages nobody can find or remove.
+    """
+    if settings.FEATURE_FLAGS.get("SKILLS"):
+        return queryset
+    return queryset.not_type(FrameworkMainPage, FrameworkContentPage, FrameworkSkillsPage)
+
+
+def role_page_urls_by_role_id() -> dict[int, str]:
+    """Map each role id to the URL of its page under the framework main page.
+
+    Every role now has a page of its own -- a route on the framework main page
+    -- so the mapping covers every role, not only the ones an editor chose to
+    surface. Used for the related-role and progression links between roles.
+    """
+    main_page = framework_main_page()
+    if main_page is None:
+        return {}
+    base = main_page.url
+    if not base:
+        return {}
+    return {
+        role.pk: base + main_page.reverse_subpage("serve_role", args=[role.slug])
+        for role in GovukRole.objects.all()
+    }
+
+
+def further_resources_group(
+    *, current_page_id: int | None = None, wording=None, request=None
+) -> dict | None:
+    """The pages about the framework itself, for the side navigation.
+
+    The live service closes its navigation with these: the skills index and the
+    handful of pages that are about the framework rather than one role. They are
+    the framework main page's framework children -- its framework content pages
+    and the skills index. Its plain content pages are not about the framework
+    and stay out: the live service keeps its privacy notice, cookie statement
+    and accessibility statement off the menu, and an editor chooses which a
+    page is by choosing its type.
+
+    Sidebar settings then decides the menu. Listing any page at all makes the
+    list the menu: the pages listed and ticked are shown, in the order given,
+    and a framework child left off it is left out. An empty list means the
+    editor has not chosen, so every framework child is shown in tree order,
+    which is what a newly built site gets.
+
+    It used to append the unlisted children to the configured ones instead, so
+    that a new page could never silently vanish. Antony found on 10 Sep 2026
+    that this makes the setting unable to express live's menu at all: picking
+    the six pages live shows still left the other eight on the page, and the
+    only way to get live's menu was to list all fourteen and untick eight.
+    Choosing pages has to mean choosing pages.
+    """
+    main_page = framework_main_page()
+    if main_page is None:
+        return None
+
+    children = list(
+        main_page.get_children()
+        .live()
+        .type(FrameworkContentPage, FrameworkSkillsPage)
+        .order_by("path")
+    )
+    child_by_id = {page.pk: page for page in children}
+
+    # The configured order/visibility, from Sidebar settings for the site being
+    # served when there is a request to say which, so that two sites on one
+    # instance each get their own; otherwise the default site's, which is the
+    # one _default_site_wording reads.
+    site = Site.find_for_request(request) if request is not None else None
+    if site is None:
+        site = Site.objects.filter(is_default_site=True).first()
+    setting = SidebarSettings.objects.filter(site=site).first() if site else None
+    configured = list(setting.items.all()) if setting else []
+
+    ordered: list = []
+    seen: set = set()
+    for item in configured:
+        if item.page_id in child_by_id:
+            seen.add(item.page_id)
+            if item.visible:
+                ordered.append(child_by_id[item.page_id])
+    # Only when nothing at all is configured does the tree stand in for a
+    # choice; once an editor has listed a page, the list is the menu.
+    if not configured:
+        ordered.extend(page for page in children if page.pk not in seen)
+
+    items = [
+        {
+            "title": page.title,
+            "url": page.url,
+            "is_current": page.pk == current_page_id,
+        }
+        for page in ordered
+        if page.url
+    ]
+
+    if not items:
+        return None
+    if wording is None:
+        wording = _default_site_wording()
+    return {"title": wording.further_resources_heading, "items": items}
+
+
+def role_navigation_groups(
+    *,
+    current_role_slug: str | None = None,
+    current_page_id: int | None = None,
+    wording=None,
+    request=None,
+) -> list[dict]:
+    """The side navigation: every live role grouped by family, then the rest.
+    Closes with the pages about the framework itself.
+    The roles come straight from the role snippets, so the
+    navigation populates itself; a role's own page marks itself current through
+    ``current_role_slug``, and a framework content page through
+    ``current_page_id``.
+    """
+    main_page = framework_main_page()
+    base = main_page.url if main_page else ""
+
+    groups: dict[str, list[dict]] = {}
+    for role in GovukRole.objects.all():
+        family = (role.family or "").strip()
+        if not family:
+            continue
+        url = (
+            base + main_page.reverse_subpage("serve_role", args=[role.slug])
+            if base
+            else ""
+        )
+        groups.setdefault(family, []).append(
+            {
+                "title": role.title,
+                "url": url,
+                "is_current": role.slug == current_role_slug,
+            }
+        )
+
+    if wording is None:
+        wording = _default_site_wording()
+    navigation = [
+        {
+            "title": wording.family_group_title(family),
+            "items": sorted(items, key=lambda item: (item["title"] or "").lower()),
+        }
+        for family, items in sorted(groups.items())
+    ]
+
+    resources = further_resources_group(
+        current_page_id=current_page_id, wording=wording, request=request
+    )
+    if resources:
+        navigation.append(resources)
+    return navigation
+
+
+FRAMEWORK_HOME_LABEL = "Home"
+
+
+def framework_home_link(*, is_current: bool = False) -> dict | None:
+    """The role navigation's top link: the framework main page itself.
+
+    Reads "Capability Framework" (a fixed label -- the main page's own title is
+    the full service name), points at the main page, and is marked current on
+    the main page's own page the way each role is on its route. ``None`` when
+    there is no framework main page, or it has no URL yet, so the template can
+    leave the link out.
+    """
+    main_page = framework_main_page()
+    if main_page is None:
+        return None
+    url = main_page.url
+    if not url:
+        return None
+    return {"title": FRAMEWORK_HOME_LABEL, "url": url, "is_current": is_current}
+
+
+def framework_breadcrumbs(
+    request, page, *, family: str = "", title: str | None = None
+) -> list[dict]:
+    """Home, an optional role family, then the current thing itself.
+
+    Stands in for the side navigation on a narrow screen, which hides it, so
+    every page carrying that navigation carries the same trail. The family
+    entry points at its heading on the home page, which is where the role
+    lists appear once the navigation is hidden.
+
+    ``title`` names the final crumb where it is not the page's own -- a role
+    served on the framework main page's route reads as the role, not the
+    framework, so it passes the role title here.
+    """
+    site = Site.find_for_request(request)
+    home_url = site.root_page.get_url(request) if site else None
+    if not home_url:
+        return []
+
+    wording = CapabilityFrameworkWordingSettings.for_request(request)
+    trail = [
+        {"title": wording.breadcrumb_home_label, "url": home_url, "is_current": False}
+    ]
+
+    if family:
+        group_title = wording.family_group_title(family)
+        trail.append(
+            {
+                "title": group_title,
+                "url": f"{home_url}#{slugify(group_title)}",
+                "is_current": False,
+            }
+        )
+
+    trail.append(
+        {"title": title or page.title, "url": None, "is_current": True}
+    )
+    return trail
+
+
+class RoleRenderingMixin:
+    """The rendering of a single role, shared by the framework main page's route.
+
+    A role has no page of its own any more: the framework main page serves one
+    at ``/<main-page>/role/<role-slug>/`` for every ``GovukRole`` snippet (see
+    ``FrameworkMainPage.serve_role``). This mixin holds the logic that used to
+    live on the old ``RolePage`` -- the section it builds for a role, the
+    headings and sentences the framework prints around it, the in-page anchors,
+    and the surrounding context (skills index, related roles, breadcrumbs).
+
+    Because a route renders exactly one role, the anchors match the framework's
+    own ids without the per-role suffix the old multi-role page needed.
+    """
 
     @staticmethod
     def _extract_role_id(value) -> int | None:
         if type(value) is int and value > 0:
             return value
         if isinstance(value, str):
-            stripped = value.strip()
-            if stripped.isdigit():
-                parsed = int(stripped)
-                if parsed > 0:
-                    return parsed
+            parsed = row_id_from_text(value)
+            if parsed is not None and parsed > 0:
+                return parsed
         role_pk = getattr(value, "pk", None)
         if type(role_pk) is int and role_pk > 0:
             return role_pk
         if isinstance(value, dict):
             for key in ("value", "id", "pk"):
-                extracted = RolePage._extract_role_id(value.get(key))
+                extracted = RoleRenderingMixin._extract_role_id(value.get(key))
                 if extracted:
                     return extracted
         return None
 
-    def get_selected_role_ids(self) -> list[int]:
-        role_ids: list[int] = []
-        seen: set[int] = set()
+    @staticmethod
+    def _role_section(role: "GovukRole") -> dict:
+        return {
+            "role": role,
+            "levels": role.get_levels_with_skills(),
+            "is_scs": role.is_senior_civil_service,
+            "scs_skills": role.get_scs_skills(),
+            "scs_grades": role.get_scs_grade_labels(),
+        }
 
-        for block in self.selected_roles:
-            role_id = self._extract_role_id(getattr(block, "value", None))
-            if role_id and role_id not in seen:
-                role_ids.append(role_id)
-                seen.add(role_id)
+    @staticmethod
+    def _display_role_name(title: str) -> str:
+        """Lowercase a role title for mid-sentence use, keeping acronyms."""
+        return " ".join(
+            word if word.isupper() else word.lower()
+            for word in (title or "").split()
+        )
 
-        if not role_ids:
-            for raw_block in getattr(self.selected_roles, "raw_data", []) or []:
-                role_id = self._extract_role_id(raw_block)
-                if role_id and role_id not in seen:
-                    role_ids.append(role_id)
-                    seen.add(role_id)
-        return role_ids
+    # A "u" sounded as "you" takes "a" rather than "an", which is how the
+    # framework writes "a user researcher".
+    _CONSONANT_SOUNDED_VOWELS = ("eu", "ubi", "uni", "use", "usu", "uti")
 
-    def get_selected_roles(self) -> list[GovukRole]:
-        role_ids = self.get_selected_role_ids()
-        if not role_ids:
+    @classmethod
+    def _lead_role_name(cls, title: str) -> str:
+        """A role title as the framework writes it in the sentence below the
+        heading, where only the opening word is lowered so that the capitals
+        inside "Development operations (DevOps) engineer" survive.
+
+        An acronym opening the title is left as it is, the same exception the
+        heading above makes: "an IT service manager", not "an it service
+        manager" a line under "What an IT service manager does".
+        """
+        words = (title or "").split()
+        if not words:
+            return ""
+        first = words[0] if words[0].isupper() else words[0].lower()
+        return " ".join([first, *words[1:]])
+
+    @classmethod
+    def _role_article(cls, name: str) -> str:
+        """"a" or "an" for a role name, chosen by how the name is said rather
+        than how it is spelt: "a user researcher" but "an IT service manager".
+        """
+        lowered = (name or "").lstrip().lower()
+        if not lowered:
+            return "a"
+        vowel_sounded = lowered[0] in "aeiou" and not lowered.startswith(
+            cls._CONSONANT_SOUNDED_VOWELS
+        )
+        return "an" if vowel_sounded else "a"
+
+    @classmethod
+    def _overview_heading(cls, display_role_name: str, wording) -> str:
+        """The heading over a role's description, and the contents entry that
+        points at it, which have to read the same."""
+        article = cls._role_article(display_role_name)
+        return wording.overview_heading_text.replace(
+            wording.ARTICLE_PLACEHOLDER, article
+        ).replace(wording.ROLE_PLACEHOLDER, display_role_name)
+
+    @classmethod
+    def _role_lead(cls, section: dict, wording) -> str:
+        """The one sentence the framework prints under a role's heading.
+
+        For example "Find out what a business architect in government does and
+        the skills you need to do the role at each level." Senior Civil Service
+        roles have no levels, so theirs stops at the role.
+        """
+        name = cls._lead_role_name(section["role"].title)
+        if not name:
+            return ""
+
+        article = cls._role_article(name)
+        text = wording.scs_role_lead_text if section["is_scs"] else wording.role_lead_text
+        return text.replace(wording.ARTICLE_PLACEHOLDER, article).replace(
+            wording.ROLE_PLACEHOLDER, name
+        )
+
+    @classmethod
+    def _role_levels_intro(cls, section: dict, wording) -> list[str]:
+        """The two sentences the framework prints under the role levels heading.
+
+        For example "There are 4 business architect role levels, from trainee
+        business architect to lead business architect."
+        """
+        levels = section["levels"]
+        if not levels:
             return []
 
-        roles_by_id = {
-            role.pk: role for role in GovukRole.objects.filter(pk__in=role_ids)
-        }
-        return [roles_by_id[role_id] for role_id in role_ids if role_id in roles_by_id]
-
-    def get_role_sections(self) -> list[dict]:
-        return [
-            {
-                "role": role,
-                "levels": role.get_levels_with_skills(),
-            }
-            for role in self.get_selected_roles()
+        display_role_name = section["display_role_name"]
+        titles = [
+            cls._display_role_name(level["title"])
+            for level in levels
+            if level["title"]
         ]
 
+        if len(levels) == 1:
+            opening = wording.role_levels_opening_one.replace(
+                wording.ROLE_PLACEHOLDER, display_role_name
+            )
+            described = wording.role_levels_described_one
+        else:
+            levels_range = ""
+            if len(titles) > 1:
+                levels_range = wording.role_levels_range_text.replace(
+                    wording.FIRST_PLACEHOLDER, titles[0]
+                ).replace(wording.LAST_PLACEHOLDER, titles[-1])
+            opening = (
+                wording.role_levels_opening_many.replace(
+                    wording.COUNT_PLACEHOLDER, str(len(levels))
+                )
+                .replace(wording.ROLE_PLACEHOLDER, display_role_name)
+                .replace(wording.LEVELS_RANGE_PLACEHOLDER, levels_range)
+            )
+            described = wording.role_levels_described_many
+
+        return [opening, f"{described} {wording.role_levels_purpose_text}"]
+
+    @staticmethod
+    def _section_anchors(
+        *, is_scs: bool, has_levels: bool, display_role_name: str
+    ) -> dict[str, str]:
+        """The framework's own ids, so a link written against the live service
+        still lands on the section it named.
+
+        The overview keeps "what-a-" whatever article the heading takes:
+        "what-a-it-service-manager-does" under "What an IT service manager
+        does". A Senior Civil Service role's page reuses three of the others
+        differently from the rest of the framework: its skills heading carries
+        "role-levels", the shared-skills heading "roles-that-shares", and
+        "related-roles" means the roles leading into the job rather than the
+        ones beside it.
+
+        That first one is only free because senior roles have no levels, which
+        is how the framework is written rather than anything the model holds:
+        one tick of the senior box on a role with levels and both sections
+        would answer to "role-levels", leaving the page with a repeated id and
+        two contents links onto the same heading. Where a senior role does have
+        levels its skills take the ordinary "skills" instead.
+
+        Each route renders one role, so these are the framework's bare ids with
+        no per-role suffix -- the ids a link written against the live service
+        expects.
+        """
+        return {
+            "overview": f"what-a-{slugify(display_role_name)}-does",
+            "skills": "role-levels" if is_scs and not has_levels else "skills",
+            "levels": "role-levels",
+            "related_roles": "roles-that-shares" if is_scs else "related-roles",
+            "progression_scs_roles": "related-scs-roles",
+            "progression_roles": (
+                "related-roles" if is_scs else "roles-that-could-lead-here"
+            ),
+            "updates": "update-history",
+        }
+
+    @staticmethod
+    def _contents_entries(section: dict) -> list[dict]:
+        """In-page contents links, in the order the sections are rendered.
+
+        Each one repeats the heading it points at, so both read the wording
+        the section was given rather than each writing out its own.
+        """
+        anchors = section["anchors"]
+        wording = section["wording"]
+        entries: list[dict] = []
+
+        if section["role"].body:
+            entries.append(
+                {
+                    "anchor": anchors["overview"],
+                    "text": section["overview_heading"],
+                    "children": [],
+                }
+            )
+        if section["scs_skills"]:
+            entries.append(
+                {
+                    "anchor": anchors["skills"],
+                    "text": wording["scs_skills_heading"],
+                    "children": [],
+                }
+            )
+        if section["levels"]:
+            entries.append(
+                {
+                    "anchor": anchors["levels"],
+                    "text": wording["role_levels_heading"],
+                    "children": [
+                        {
+                            "anchor": level["anchor"],
+                            "text": f"{level['number']}. {level['title']}",
+                            "children": [],
+                        }
+                        for level in section["levels"]
+                        if level["anchor"]
+                    ],
+                }
+            )
+        if section["related_roles"]:
+            entries.append(
+                {
+                    "anchor": anchors["related_roles"],
+                    "text": wording["related_roles_heading"],
+                    "children": [],
+                }
+            )
+        if section["progression_scs_roles"]:
+            entries.append(
+                {
+                    "anchor": anchors["progression_scs_roles"],
+                    "text": wording["progression_scs_roles_heading"],
+                    "children": [],
+                }
+            )
+        if section["progression_roles"]:
+            entries.append(
+                {
+                    "anchor": anchors["progression_roles"],
+                    "text": wording["progression_roles_heading"],
+                    "children": [],
+                }
+            )
+        return entries
+
+    def _enrich_section(
+        self, section: dict, framework_wording, role_page_urls: dict[int, str]
+    ) -> None:
+        """Fill a role's section with the headings, anchors, links and prose the
+        template renders around it."""
+        role = section["role"]
+        display_role_name = self._display_role_name(role.title)
+        section["display_role_name"] = display_role_name
+        section["overview_heading"] = self._overview_heading(
+            display_role_name, framework_wording
+        )
+        section["wording"] = framework_wording.for_role(
+            display_role_name=display_role_name, role_title=role.title
+        )
+        section["anchors"] = self._section_anchors(
+            is_scs=section["is_scs"],
+            has_levels=bool(section["levels"]),
+            display_role_name=display_role_name,
+        )
+        for number, level in enumerate(section["levels"], start=1):
+            level["number"] = number
+            level["anchor"] = slugify(level["title"]) if level["title"] else ""
+            for skill_row in level["skills"]:
+                skill_row["level_scale_text"] = framework_wording.skill_level_scale(
+                    label=skill_row["required_level_label"],
+                    ordinal=SKILL_LEVEL_ORDINALS.get(skill_row["required_level"], ""),
+                )
+        section["related_roles"] = [
+            {**entry, "url": role_page_urls.get(entry["role"].pk, "")}
+            for entry in role.get_related_roles()
+        ]
+        section["progression_roles"] = [
+            {"role": entry, "url": role_page_urls.get(entry.pk, "")}
+            for entry in role.get_roles_that_could_lead_here()
+        ]
+        # Only on the way up. A senior role lists what leads into it, and the
+        # framework leaves it there rather than also pointing on to the senior
+        # roles above that one.
+        if section["is_scs"]:
+            section["progression_scs_roles"] = []
+        else:
+            senior_roles_by_source = GovukRole.senior_roles_by_source_role_id()
+            section["progression_scs_roles"] = [
+                {"role": entry, "url": role_page_urls.get(entry.pk, "")}
+                for entry in senior_roles_by_source.get(role.pk, [])
+            ]
+        section["changelog"] = role.get_changelog()
+        section["lead"] = self._role_lead(section, framework_wording)
+        section["levels_intro"] = self._role_levels_intro(section, framework_wording)
+        section["contents"] = self._contents_entries(section)
+
+    def build_role_context(self, request, role: "GovukRole") -> dict:
+        """The template context for one role, served under the framework main page.
+
+        A route renders exactly one role, so ``role_sections`` is a single-item
+        list and the anchors match the framework's own ids. ``page_heading``
+        carries the role's title, which the template shows in place of the main
+        page's own.
+        """
+        section = self._role_section(role)
+        role_page_urls = role_page_urls_by_role_id()
+        site_root = self._site_root(request)
+        skills_page = self._first_live_in_site(FrameworkSkillsPage.objects.all(), site_root)
+        framework_wording = CapabilityFrameworkWordingSettings.for_request(request)
+        self._enrich_section(section, framework_wording, role_page_urls)
+
+        family = (role.family or "").strip()
+        return {
+            "page_heading": role.title,
+            "role_sections": [section],
+            "skills_index_url": skills_page.url if skills_page else "",
+            "scs_context_url": self._scs_context_url(site_root),
+            "job_grades_url": self._job_grades_url(site_root),
+            "framework_wording": framework_wording,
+            "role_navigation": role_navigation_groups(
+                current_role_slug=role.slug, wording=framework_wording, request=request
+            ),
+            # The role, not the framework home, is the current thing here.
+            "framework_home": framework_home_link(is_current=False),
+            # The side navigation is the way around the framework, but it is
+            # hidden on a narrow screen, so a breadcrumb stands in for it there.
+            "breadcrumbs": framework_breadcrumbs(
+                request, self, family=family, title=role.title
+            ),
+            "breadcrumbs_mobile_only": True,
+        }
+
+    # The framework explains, on every Senior Civil Service role, that the job
+    # varies with the organisation, and links to the page that sets that out.
+    SCS_CONTEXT_SLUG = (
+        "context-and-challenges-for-senior-civil-service-roles-in-digital-and-data"
+    )
+    # Both the role and its levels name the grade the job is usually done at,
+    # and link to the page explaining what those grades are.
+    JOB_GRADES_SLUG = "job-grades"
+
+    @classmethod
+    def _scs_context_url(cls, site_root: Page | None) -> str:
+        return cls._page_url_by_slug(cls.SCS_CONTEXT_SLUG, site_root)
+
+    @classmethod
+    def _job_grades_url(cls, site_root: Page | None) -> str:
+        return cls._page_url_by_slug(cls.JOB_GRADES_SLUG, site_root)
+
+    @classmethod
+    def _page_url_by_slug(cls, slug: str, site_root: Page | None) -> str:
+        """Where that page sits on this site, or nothing if it has not got one.
+
+        Written out by hand the link is a 404 wherever the page is missing or
+        has been moved, so the template asks for a URL and falls back to plain
+        text without one. It also spares the reader a redirect: Wagtail gives
+        back the path with its trailing slash, which a hand-written one lacks.
+        """
+        page = cls._first_live_in_site(Page.objects.filter(slug=slug), site_root)
+        return page.url if page else ""
+
+    @staticmethod
+    def _site_root(request) -> Page | None:
+        """The root of the site this request is being served from.
+
+        One database can serve several sites, and a bare ``Page.objects``
+        lookup crosses between them, so without this a role page could send a
+        reader to another site's copy of a page, or to one this site does not
+        publish at all.
+        """
+        site = Site.find_for_request(request)
+        return site.root_page if site else None
+
+    @staticmethod
+    def _first_live_in_site(queryset, site_root: Page | None) -> Page | None:
+        """The first live page in ``queryset`` belonging to that site.
+
+        Falls back to searching every site when the root is unknown, which is
+        no worse than the lookup this replaced.
+        """
+        queryset = queryset.live()
+        if site_root is not None:
+            queryset = queryset.descendant_of(site_root, inclusive=False)
+        return queryset.first()
+
+
+class FrameworkMainPage(
+    RoutablePageMixin, RoleRenderingMixin, FrameworkFieldsMixin, BaseContentPage
+):
+    """The single Capability Framework page for the site.
+
+    It carries the framework welcome content and the framework switches, and it
+    serves a page for every role snippet at ``role/<role-slug>/``. The roles
+    have no page of their own, so the navigation and the role URLs are built
+    from the ``GovukRole`` snippets rather than from hand-made pages.
+
+    It can sit anywhere in the tree (no ``parent_page_types`` restriction), and
+    ``max_count`` keeps the framework to a single instance per site.
+    """
+
+    max_count = 1
+    subpage_types = [
+        # A framework content page sits beside the roles in the side menu; a
+        # plain content page under here does not. That is how an editor
+        # chooses which of the two a page is: the live service lists five
+        # pages beside the roles and keeps its privacy notice, cookie
+        # statement and accessibility statement out of the menu.
+        "govuk.FrameworkContentPage",
+        "govuk.ContentPage",
+        "govuk.SectionPage",
+        "govuk.TagListingsPage",
+        "govuk.FrameworkSkillsPage",
+    ]
+    # The framework page types render the same page as the old framework
+    # content page did; only the role route swaps in the role template.
+    template = "govuk/content_page.html"
+    tags = ClusterTaggableManager(through="govuk.FrameworkMainPageTag", blank=True)
+
+    content_panels = framework_content_panels()
+
+    settings_panels = framework_main_settings_panels()
+
+    @classmethod
+    def can_create_at(cls, parent):
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return False
+        return super().can_create_at(parent)
+
+    @classmethod
+    def can_exist_under(cls, parent):
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return False
+        return super().can_exist_under(parent)
+
+    def serve(self, request, *args, **kwargs):
+        """Not a page on a site without the framework.
+
+        ``can_create_at`` and ``can_exist_under`` stop an editor making one,
+        but the page import is not the admin and creates any page whose model
+        it can resolve, so a framework export landed on another service leaves
+        this page in its tree. It 404s there, as the skills index does, rather
+        than serve the framework's welcome page on a site that has no framework.
+        """
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            raise Http404
+        return super().serve(request, *args, **kwargs)
+
+    @path("role/<slug:role_slug>/")
+    def serve_role(self, request, role_slug):
+        """Serve a role's page from its snippet, or 404.
+
+        A route per role stands in for the pages the framework used to carry.
+        The routes sit under ``role/`` so they do not shadow the framework
+        main page's own child pages: ``RoutablePageMixin`` resolves its routes
+        before it falls through to ordinary child-page routing, so a bare
+        ``<slug>/`` pattern would swallow every child page's first path segment
+        and 404 it as a missing role. (A child page whose slug is ``role`` is
+        the one page this does shadow.)
+
+        ``role``, singular, because that is the live service's URL: it
+        publishes every role at ``/role/<slug>``. With the framework main page
+        as the site's home page a role is served at its live address and every
+        bookmark, search result and link in the migrated content reaches it
+        directly, with no redirect to seed and none to go missing.
+
+        Without the framework flag the route 404s, as the old role pages did:
+        a route cannot be guarded by ``can_exist_under``, and an import can
+        leave a framework main page on a site without the flag.
+        """
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            raise Http404
+        role = GovukRole.objects.filter(slug=role_slug).first()
+        if role is None:
+            raise Http404
+        return self.render(
+            request,
+            template="govuk/role_page.html",
+            context_overrides=self.build_role_context(request, role),
+        )
+
+
+class FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage):
+    """A framework content page: a page about the framework beside the roles.
+
+    Only ever a child of the single ``FrameworkMainPage``. It always carries the
+    role navigation and nothing else framework-shaped: no updates block, no
+    welcome layout, no welcome content to author, and no sidebar heading
+    navigation. Those are fixed rather than offered -- see ``get_context`` -- so
+    the page reads consistently as one of the framework's own.
+    """
+
+    parent_page_types = ["govuk.FrameworkMainPage"]
+    subpage_types = [
+        # A plain page may sit under a framework page, as under the main page:
+        # the development instance holds project pages that way.
+        "govuk.ContentPage",
+        "govuk.SectionPage",
+        "govuk.TagListingsPage",
+        "govuk.FrameworkSkillsPage",
+    ]
+    template = "govuk/content_page.html"
+    tags = ClusterTaggableManager(through="govuk.FrameworkContentPageTag", blank=True)
+
+    def serve(self, request, *args, **kwargs):
+        """Not a page on a site without the framework -- see FrameworkMainPage."""
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            raise Http404
+        return super().serve(request, *args, **kwargs)
+
+    # No framework welcome content in the editor; the welcome layout is the
+    # main page's.
+    content_panels = base_content_panels()
+
+    settings_panels = framework_content_settings_panels()
+
+    @classmethod
+    def can_create_at(cls, parent):
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return False
+        return super().can_create_at(parent)
+
+    @classmethod
+    def can_exist_under(cls, parent):
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return False
+        return super().can_exist_under(parent)
+
     def get_context(self, request, *args, **kwargs):
-        context = super().get_context(request, *args, **kwargs)
-        context["role_sections"] = self.get_role_sections()
-        return context
+        """Always the role navigation, never the rest.
+
+        A framework content page offers no switches, so its behaviour cannot be
+        read off stored fields (an import could carry anything). It is fixed
+        here: role navigation on, updates and welcome off, and the sidebar
+        heading navigation off so the role navigation keeps that column.
+        """
+        self.show_role_navigation = True
+        self.show_framework_updates = False
+        self.show_framework_welcome = False
+        self.enable_free_text_heading_navigation = False
+        return super().get_context(request, *args, **kwargs)
 
 
-class SkillsAZPage(Page):
+class FrameworkSkillsPage(Page):
+    # One skills index per site, like the framework main page. The skill search
+    # results, the role pages and the live-service redirects all resolve "the"
+    # skills page, so a second one would make which page they point at arbitrary.
+    max_count = 1
     parent_page_types = [
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
+        "govuk.FrameworkMainPage",
+        "govuk.FrameworkContentPage",
     ]
     subpage_types = [
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
     ]
     enable_hero_styling = models.BooleanField(
         default=False,
@@ -1937,13 +4255,11 @@ class SkillsAZPage(Page):
         FieldPanel("body"),
     ]
 
-    settings_panels = Page.settings_panels + [
-        FieldPanel("enable_hero_styling"),
-        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
-        FieldPanel("show_last_updated_date"),
-        FieldPanel("show_page_content_metadata"),
-        FieldPanel("enable_free_text_heading_navigation"),
-    ]
+    # No hero-styling toggles and no sidebar heading navigation, like the other
+    # framework pages: the skills index carries the role navigation in that
+    # column and sets its own header treatment. Whether it is listed in the
+    # sidebar is managed centrally in Sidebar settings.
+    settings_panels = base_settings_panels()
 
     @classmethod
     def can_create_at(cls, parent):
@@ -1957,8 +4273,16 @@ class SkillsAZPage(Page):
             return False
         return super().can_exist_under(parent)
 
+    def serve(self, request, *args, **kwargs):
+        """Not a page on a site without the framework: the A to Z is the
+        framework's, not a page type anyone else can serve."""
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            raise Http404
+        return super().serve(request, *args, **kwargs)
+
     def get_skill_sections(self) -> list[dict]:
-        skills = list(GovukSkill.objects.all())
+        # One query for every skill's entries, not one per skill.
+        skills = list(GovukSkill.objects.prefetch_related("changelog_entries"))
         skills.sort(
             key=lambda skill: (
                 (skill.title or "").strip().lower(),
@@ -1966,17 +4290,47 @@ class SkillsAZPage(Page):
                 skill.pk or 0,
             )
         )
+        roles_by_skill = GovukRole.roles_by_skill_id()
+        role_urls = role_page_urls_by_role_id()
         return [
             {
                 "skill": skill,
-                "level_rows": skill.get_level_rows(),
+                "level_rows": [] if skill.is_senior_civil_service else skill.get_level_rows(),
+                "leadership_points": skill.get_leadership_points(),
+                "is_scs": skill.is_senior_civil_service,
+                "roles": [
+                    {"role": role, "url": role_urls.get(role.pk, "")}
+                    for role in roles_by_skill.get(skill.pk, [])
+                ],
+                # The same updates a role page shows, so a skill's history is
+                # readable where the skill is, not only in search dates.
+                "changelog": skill.get_changelog(),
             }
             for skill in skills
         ]
 
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
-        context["skill_sections"] = self.get_skill_sections()
+        skill_sections = self.get_skill_sections()
+        framework_wording = CapabilityFrameworkWordingSettings.for_request(request)
+        for section in skill_sections:
+            for level_row in section["level_rows"]:
+                level_row["scale_text"] = framework_wording.skill_level_scale(
+                    label=level_row["label"], ordinal=level_row["ordinal"]
+                )
+        context["skill_sections"] = skill_sections
+        context["framework_wording"] = framework_wording
+        # The skills index sits alongside the roles in the framework, so it
+        # carries the same side navigation, and the same narrow-screen
+        # breadcrumb standing in for it.
+        context["role_navigation"] = role_navigation_groups(
+            current_page_id=self.pk, wording=framework_wording, request=request
+        )
+        # The framework home is the navigation's top link; the skills index is
+        # not it, so it is not marked current there.
+        context["framework_home"] = framework_home_link(is_current=False)
+        context["breadcrumbs"] = framework_breadcrumbs(request, self)
+        context["breadcrumbs_mobile_only"] = True
         return context
 
 
@@ -2075,15 +4429,16 @@ class TagListingsPage(Page):
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
+        "govuk.FrameworkSkillsPage",
+        "govuk.FrameworkMainPage",
+        "govuk.FrameworkContentPage",
     ]
     subpage_types = [
         "govuk.ContentPage",
+        "govuk.FrameworkMainPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
+        "govuk.FrameworkSkillsPage",
     ]
 
     content_panels = Page.content_panels + [
@@ -2094,7 +4449,7 @@ class TagListingsPage(Page):
         FieldPanel("free_text"),
     ]
 
-    settings_panels = Page.settings_panels + [
+    settings_panels = page_settings_panels() + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
@@ -2153,12 +4508,25 @@ class TagListingsPage(Page):
             .annotate(sort_updated=page_sort_updated)
             .prefetch_related("tags", "view_restrictions")
             .distinct(),
-            RolePage.objects.live()
-            .filter(tags__id__in=tag_ids)
-            .annotate(sort_updated=page_sort_updated)
-            .prefetch_related("tags", "view_restrictions")
-            .distinct(),
         ]
+        # A tag listing is a platform page type and the framework's content
+        # pages are not, so they are listed only where they can be read. See
+        # ``without_framework_pages``; this one is a whole queryset rather than
+        # a filter on a shared one, so there is no query to run at all. Roles
+        # are snippets now rather than pages, so they no longer appear here.
+        if settings.FEATURE_FLAGS.get("SKILLS"):
+            page_querysets += [
+                FrameworkMainPage.objects.live()
+                .filter(tags__id__in=tag_ids)
+                .annotate(sort_updated=page_sort_updated)
+                .prefetch_related("tags", "view_restrictions")
+                .distinct(),
+                FrameworkContentPage.objects.live()
+                .filter(tags__id__in=tag_ids)
+                .annotate(sort_updated=page_sort_updated)
+                .prefetch_related("tags", "view_restrictions")
+                .distinct(),
+            ]
         is_authenticated = bool(request and request.user.is_authenticated)
         if (
             not is_authenticated
@@ -2227,12 +4595,20 @@ class TagListingsPage(Page):
                 ).values_list("tag_id", flat=True)
             )
 
+        # Keyed by model rather than indexed by position: the framework page
+        # querysets are not there at all on a site without the framework, and a
+        # fixed ``page_querysets[2]`` made that an IndexError -- a 500 on every
+        # tag listing page rather than a listing without the framework's pages
+        # in it.
+        through_models = {
+            ContentPage: ContentPageTag,
+            SectionPage: SectionPageTag,
+            FrameworkMainPage: FrameworkMainPageTag,
+            FrameworkContentPage: FrameworkContentPageTag,
+        }
         page_querysets = self._page_listing_querysets(tag_ids=tag_ids, request=request)
-        for page_queryset, through_model in (
-            (page_querysets[0], ContentPageTag),
-            (page_querysets[1], SectionPageTag),
-            (page_querysets[2], RolePageTag),
-        ):
+        for page_queryset in page_querysets:
+            through_model = through_models[page_queryset.model]
             page_ids = list(page_queryset.values_list("id", flat=True))
             if page_ids:
                 available_tag_ids.update(
@@ -2264,10 +4640,7 @@ class TagListingsPage(Page):
             if not selected_source_key:
                 selected_source_key = None
             elif selected_source_key != THIS_SITE_SOURCE_FILTER:
-                if selected_source_key.isdigit():
-                    selected_source_key = int(selected_source_key)
-                else:
-                    selected_source_key = None
+                selected_source_key = row_id_from_text(selected_source_key)
 
         external_queryset = self._external_listing_queryset(
             tag_ids=configured_tag_ids,
@@ -2586,15 +4959,16 @@ class SectionPage(Page):
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
+        "govuk.FrameworkSkillsPage",
+        "govuk.FrameworkMainPage",
+        "govuk.FrameworkContentPage",
     ]
     subpage_types = [
         "govuk.ContentPage",
+        "govuk.FrameworkMainPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
-        "govuk.RolePage",
-        "govuk.SkillsAZPage",
+        "govuk.FrameworkSkillsPage",
     ]
 
     content_panels = Page.content_panels + [
@@ -2605,7 +4979,7 @@ class SectionPage(Page):
         FieldPanel("free_text"),
     ]
 
-    settings_panels = Page.settings_panels + [
+    settings_panels = page_settings_panels() + [
         FieldPanel("enable_hero_styling"),
         FieldPanel("enable_combined_service_navigation_and_hero_styling"),
         FieldPanel("show_last_updated_date"),
@@ -2769,14 +5143,19 @@ __all__ = [
     "ExternalContentItemTag",
     "Feedback",
     "FooterSettings",
+    "FrameworkMainPage",
+    "FrameworkMainPageTag",
+    "FrameworkContentPage",
+    "FrameworkContentPageTag",
     "GovukTag",
     "GovukSkill",
     "GovukRole",
     "PhaseBannerSettings",
-    "RolePage",
-    "SkillsAZPage",
+    "FrameworkSkillsPage",
     "SectionPage",
     "SectionPageTag",
+    "SidebarSettings",
+    "SidebarNavigationItem",
     "TagListingsPage",
     "TagListingsPageTag",
 ]

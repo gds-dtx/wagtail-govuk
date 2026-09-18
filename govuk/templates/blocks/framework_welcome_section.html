@@ -1,0 +1,9 @@
+{% load wagtailcore_tags %}
+{% comment %}
+The tag is chosen here rather than interpolated from the stored level. A page
+import writes stream data straight into the field without running the block's
+validation, so the level cannot be trusted inside a tag name, where quoting it
+would not help. Anything other than a sub-section renders as the block default.
+{% endcomment %}
+{% if value.level == "h3" %}<h3 class="govuk-heading-m" id="{{ value.anchor_id }}">{{ value.heading }}</h3>{% else %}<h2 class="govuk-heading-l" id="{{ value.anchor_id }}">{{ value.heading }}</h2>{% endif %}
+{{ value.body|richtext }}

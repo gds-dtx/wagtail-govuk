@@ -1,12 +1,21 @@
 name: GHCR Deploy
 
+# Images built from main are the ones instances are expected to run, and go to
+# ghcr.io/gds-dtx/wagtail-govuk. Anything built from a branch is a preview: it
+# goes to a separate package so that an unreviewed build can never be mistaken
+# for a released one, whatever its tag says.
+
 on:
   push:
     branches:
       - main
   workflow_dispatch:
 
-permissions: write-all
+# A dispatch can come from any branch, so the job gets only what publishing an
+# image needs rather than write access to the whole repository.
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   deploy:
@@ -24,18 +33,54 @@ jobs:
 
       - name: Read app version
         id: app_version
+        env:
+          # Via the environment rather than inline, so a branch name cannot end
+          # up being read as shell.
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           WAGTAIL_VERSION="$(grep -E '"wagtail==[0-9\.]+"' pyproject.toml | sed -E 's/.*wagtail==([0-9\.]+).*/\1/')"
           if [ -z "$WAGTAIL_VERSION" ]; then
             echo "Unable to determine Wagtail version from pyproject.toml" >&2
             exit 1
           fi
-          RELEASE=$(printf '%03d' "${{ github.run_number }}")
+          RELEASE=$(printf '%03d' "$RUN_NUMBER")
           SHA=$(git rev-parse --short=7 HEAD)
-          VERSION="${WAGTAIL_VERSION}-${RELEASE}-${SHA}"
+
+          if [ "$REF" = "refs/heads/main" ]; then
+            IMAGE="ghcr.io/gds-dtx/wagtail-govuk"
+            VERSION="${WAGTAIL_VERSION}-${RELEASE}-${SHA}"
+          else
+            # The branch name goes in the tag as well as the package, so that an
+            # instance pinned to a preview says which branch it came from.
+            BRANCH=$(printf '%s' "$REF_NAME" | tr -c 'a-zA-Z0-9._-' '-' | cut -c1-40)
+            IMAGE="ghcr.io/gds-dtx/wagtail-govuk-preview"
+            VERSION="${WAGTAIL_VERSION}-${RELEASE}-${BRANCH}-${SHA}"
+          fi
+
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building $IMAGE:$VERSION"
 
       - name: 'Build Inventory Image'
         run: |
-          docker build . --no-cache --build-arg VERSION=${{ steps.app_version.outputs.version }} --tag ghcr.io/gds-dtx/wagtail-govuk:${{ steps.app_version.outputs.version }}
-          docker push ghcr.io/gds-dtx/wagtail-govuk:${{ steps.app_version.outputs.version }}
+          docker build . --no-cache --build-arg VERSION=${{ steps.app_version.outputs.version }} --tag ${{ steps.app_version.outputs.image }}:${{ steps.app_version.outputs.version }}
+          docker push ${{ steps.app_version.outputs.image }}:${{ steps.app_version.outputs.version }}
+
+      - name: Summary
+        env:
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+          IMAGE: ${{ steps.app_version.outputs.image }}
+          VERSION: ${{ steps.app_version.outputs.version }}
+        run: |
+          {
+            echo "### Image published"
+            echo ""
+            echo "\`${IMAGE}:${VERSION}\`"
+            if [ "$REF" != "refs/heads/main" ]; then
+              echo ""
+              echo "This is a **preview** build from \`${REF_NAME}\`. It is not a released image, and belongs only to a dev or test instance."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

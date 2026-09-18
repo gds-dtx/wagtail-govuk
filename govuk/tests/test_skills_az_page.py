@@ -1,7 +1,14 @@
+from django.db import connection
 from django.test import TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from wagtail.models import Site
 
-from govuk.models import GovukSkill, SkillsAZPage
+from govuk.models import (
+    FrameworkSkillsPage,
+    GovukChangelogEntry,
+    GovukRole,
+    GovukSkill,
+)
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -14,7 +21,7 @@ def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
-class SkillsAZPageTests(TestCase):
+class FrameworkSkillsPageTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
@@ -42,7 +49,7 @@ class SkillsAZPageTests(TestCase):
         )
 
         skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(
+            instance=FrameworkSkillsPage(
                 title="Skills A-Z",
                 slug="skills-az",
                 body="<p>Skill definitions in alphabetical order.</p>",
@@ -74,6 +81,188 @@ class SkillsAZPageTests(TestCase):
         charlie_index = response_text.find("Charlie skill")
         self.assertTrue(alpha_index < beta_index < charlie_index)
 
+    def test_a_level_description_reads_on_from_the_same_sentence_as_a_role_page(self):
+        """It is one skill at one level in both places, so it reads the same.
+
+        Without the lead-in the points arrived as a bare list here and as a
+        sentence on a role page, which is what the live service does and what
+        the review asked for.
+        """
+        response = self.client.get(self.skills_page.url)
+        response_text = response.content.decode("utf-8")
+
+        intro_index = response_text.find(
+            '<p class="govuk-body">You can:</p>',
+        )
+        self.assertNotEqual(intro_index, -1)
+        points_index = response_text.find("Alpha awareness point.")
+        self.assertLess(intro_index, points_index)
+
+    def test_a_level_with_nothing_written_for_it_gets_no_lead_in(self):
+        """A lead-in with no points under it is a sentence that stops dead."""
+        GovukSkill.objects.all().delete()
+        GovukSkill.objects.create(title="Empty skill", body="<p>Empty body.</p>")
+
+        response = self.client.get(self.skills_page.url)
+
+        self.assertNotContains(response, '<p class="govuk-body">You can:</p>')
+
+    def test_a_level_marked_not_defined_is_printed_as_the_bare_sentence(self):
+        """The framework's "not defined" sentence is not the end of "You can:".
+
+        The published exports carry it in the level's cell, so it arrives as a
+        single point, and an editor typing it into the points box produces the
+        same thing. Tim Young found it printed under "You can:" with a bullet
+        on 11 September 2026, which reads as a broken sentence. The live
+        service prints the sentence on its own; so does this, in whichever of
+        the framework's two wordings it was written. A level with nothing
+        written at all still gets the editors' message.
+        """
+        GovukSkill.objects.all().delete()
+        GovukSkill.objects.create(
+            title="Undefined skill",
+            body="<p>Undefined body.</p>",
+            awareness_points=[
+                {"type": "point", "value": "This skill level is currently not defined."}
+            ],
+            working_points=[
+                {"type": "point", "value": "This skill level is not defined"}
+            ],
+            practitioner_points=[
+                {"type": "point", "value": "Real practitioner point."}
+            ],
+        )
+
+        response = self.client.get(self.skills_page.url)
+        text = response.content.decode("utf-8")
+
+        self.assertEqual(text.count('<p class="govuk-body">You can:</p>'), 1)
+        self.assertNotIn('<li class="govuk-body">This skill level', text)
+        self.assertContains(
+            response,
+            '<p class="govuk-body govuk-!-margin-bottom-0">'
+            "This skill level is currently not defined.</p>",
+        )
+        self.assertContains(
+            response,
+            '<p class="govuk-body govuk-!-margin-bottom-0">This skill level is not defined</p>',
+        )
+        self.assertContains(response, "No description provided.")
+
+    def test_the_skills_index_carries_the_frameworks_side_navigation(self):
+        """It sits alongside the roles, so it is navigated the same way.
+
+        The roles come straight from the ``GovukRole`` snippets now, grouped by
+        family, so one live role is enough to raise its family heading in the
+        side navigation the index carries. (The index is served from the site
+        root rather than as a routable child of the framework main page, so it
+        is not itself one of the navigation's entries to be marked current.)
+        """
+        GovukRole.objects.create(title="Data analyst", family="Data")
+
+        response = self.client.get(self.skills_page.url)
+
+        self.assertContains(response, 'aria-label="Data roles"')
+        # The heading moves beside the navigation rather than staying in the
+        # site hero above it.
+        self.assertNotContains(response, "hero__title")
+        self.assertContains(
+            response, '<h1 class="govuk-heading-xl">Skills A-Z</h1>', html=True
+        )
+        self.assertContains(response, "app-breadcrumbs--mobile-only")
+
+    def test_the_skills_index_breadcrumb_reads_the_way_a_roles_does(self):
+        """Both stand in for the same navigation, so both start at Home."""
+        response = self.client.get(self.skills_page.url)
+
+        self.assertContains(
+            response,
+            '<a class="govuk-breadcrumbs__link" href="/">Home</a>',
+            html=True,
+        )
+        self.assertContains(
+            response,
+            '<li class="govuk-breadcrumbs__list-item" aria-current="page">Skills A-Z</li>',
+            html=True,
+        )
+        # Not the site name, which is long enough to wrap on a narrow screen.
+        self.assertNotContains(response, "Capability Framework</a>")
+
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_skills_az_page_is_not_creatable_when_skills_feature_is_disabled(self):
-        self.assertFalse(SkillsAZPage.can_create_at(self.root_page))
+        self.assertFalse(FrameworkSkillsPage.can_create_at(self.root_page))
+
+    def test_only_one_skills_page_is_allowed_per_site(self):
+        """Like the framework main page: one skills index, so the search
+        results and role links never have to guess which one they mean."""
+        self.assertEqual(FrameworkSkillsPage.max_count, 1)
+        # setUp has already created one, so a second cannot be added.
+        self.assertFalse(FrameworkSkillsPage.can_create_at(self.root_page))
+
+    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    def test_the_a_to_z_does_not_serve_without_the_framework(self):
+        """Creatability is checked in the admin; the page import is not the admin."""
+        response = self.client.get(self.skills_page.url)
+
+        self.assertEqual(response.status_code, 404)
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+class SkillsAZUpdatesTests(TestCase):
+    """A skill's change notes are readable where the skill is.
+
+    Role entries show on the role's page and site-wide entries on the home
+    page, but a skill's were stored and shown nowhere -- an editor could
+    attach one in the CMS and never find it again on the front end.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.noted_skill = GovukSkill.objects.create(
+            title="Noted skill", body="<p>Has history.</p>"
+        )
+        self.quiet_skill = GovukSkill.objects.create(
+            title="Quiet skill", body="<p>No history.</p>"
+        )
+        GovukChangelogEntry.objects.create(
+            date="2026-07-14",
+            note="<p>Guidance rewritten for clarity.</p>",
+            skill=self.noted_skill,
+        )
+        self.skills_page = self.root_page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A-Z", slug="skills")
+        )
+        self.skills_page.save_revision().publish()
+
+    def test_a_skills_entries_show_in_its_section(self):
+        response = self.client.get(self.skills_page.url)
+
+        self.assertContains(response, "Guidance rewritten for clarity.")
+        self.assertContains(response, "14 July 2026")
+
+    def test_a_skill_with_no_entries_gets_no_updates_heading(self):
+        response = self.client.get(self.skills_page.url)
+
+        # One skill has history, so the heading appears exactly once.
+        self.assertContains(response, ">Updates</h3>", count=1)
+
+    def test_the_entries_cost_one_query_however_many_skills_have_them(self):
+        for index in range(6):
+            skill = GovukSkill.objects.create(
+                title=f"Costed skill {index}", body="<p>Body.</p>"
+            )
+            GovukChangelogEntry.objects.create(
+                date="2026-07-01", note="<p>Changed.</p>", skill=skill
+            )
+
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(self.skills_page.url)
+        self.assertEqual(response.status_code, 200)
+
+        changelog_queries = [
+            entry
+            for entry in queries.captured_queries
+            if "govukchangelogentry" in entry["sql"].lower()
+        ]
+        self.assertEqual(len(changelog_queries), 1, changelog_queries)

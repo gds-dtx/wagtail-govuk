@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-
 from dataclasses import dataclass
 from typing import TextIO
 
@@ -10,6 +9,7 @@ from django.db.models import Max
 from wagtail.models import Site
 
 from govuk.models import ContentDiscoverySettings, ContentDiscoverySource, GovukTag
+from govuk.utils import row_id_from_text
 
 TRUTHY_VALUES = {"1", "true", "t", "yes", "y", "on"}
 FALSY_VALUES = {"0", "false", "f", "no", "n", "off", ""}
@@ -201,11 +201,11 @@ def _resolve_site_id(
 ) -> int:
     raw_site_id = row.get("site_id", "")
     if raw_site_id:
-        if not raw_site_id.isdigit():
+        site_id = row_id_from_text(raw_site_id)
+        if site_id is None:
             raise ContentDiscoverySourceImportError(
                 f"Row {row_index}: site_id must be a positive integer."
             )
-        site_id = int(raw_site_id)
         if site_id <= 0:
             raise ContentDiscoverySourceImportError(
                 f"Row {row_index}: site_id must be a positive integer."

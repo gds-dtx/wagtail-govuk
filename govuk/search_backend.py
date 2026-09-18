@@ -1,33 +1,61 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, time
 from typing import Any
 
+from django.conf import settings
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
-from django.core.paginator import Page as PaginatorPage
-from django.core.paginator import Paginator
+from django.core.paginator import Page as PaginatorPage, Paginator
 from django.db import connections
-from django.db.models import Q, QuerySet, TextField
+from django.db.models import Max, Q, QuerySet, TextField, prefetch_related_objects
 from django.db.models.functions import Cast
+from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.text import slugify
-from django.utils import timezone
-from wagtail.models import Page, Site
+from wagtail.models import Page, PageViewRestriction, Site
 
-from govuk.models import ContentPage, ExternalContentItem, SectionPage
-from govuk.utils import normalised_text
+from govuk.models import (
+    SKILL_LEVEL_CHOICES,
+    ContentPage,
+    ExternalContentItem,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
+    GovukRole,
+    GovukSkill,
+    SectionPage,
+    without_framework_pages,
+)
+from govuk.utils import normalised_text, row_id_from_text
 
 DEFAULT_PAGE_SIZE = 15
 SEARCH_CONFIG = "english"
 SEARCH_WEIGHTS = [0.1, 0.2, 0.4, 1.0]
+# What PostgreSQL scores a row that the query did not match. Asking for more
+# than one word makes ``ts_rank`` an AND of the words, and it floors that at
+# 1e-20 rather than returning the zero it means, so "rank above zero" keeps
+# every row in the table. SQLite matches on the text itself and has no such
+# floor, which is why local runs and CI never saw it.
+UNMATCHED_RANK = 1e-20
 PAGE_TAG_TEXT_WEIGHT = 0.75
 CARD_TAG_TEXT_WEIGHT = 1.0
 TAG_RESULT_WEIGHT = 1.2
 EXTERNAL_SOURCE_TEXT_WEIGHT = 0.4
 EXTERNAL_TAG_TEXT_WEIGHT = 0.6
+SKILL_TITLE_WEIGHT = 3.0
+# A skill's name is what a reader recognises; its description and level points
+# are supporting evidence, so they weigh less than a page's own description.
+SKILL_BODY_WEIGHT = 0.75
+SKILL_POINT_TEXT_WEIGHT = 0.4
+# Roles weigh like skills: the name carries the match, the description supports
+# it, and the family is a weak signal so a family search surfaces its roles
+# without drowning a role that is named for the query.
+ROLE_TITLE_WEIGHT = 3.0
+ROLE_BODY_WEIGHT = 0.75
+ROLE_FAMILY_TEXT_WEIGHT = 0.4
 THIS_SITE_SOURCE_FILTER = "__this_site__"
 INTERNAL_RESULT_BOOST = 4.0
+EXACT_TITLE_BOOST = 3.0
 RECENCY_BOOST_BUCKETS: tuple[tuple[int, float], ...] = (
     (7, 4.0),
     (30, 2.5),
@@ -50,6 +78,10 @@ class SearchResultItem:
     source_name: str = ""
     source_id: int | None = None
     last_updated: datetime | None = None
+    # A label for what kind of thing the result is -- "Role" or "Skill" -- shown
+    # as a badge so a reader can tell a role or skill apart from an ordinary
+    # page at a glance. Empty for pages, whose kind is not worth naming.
+    result_type: str = ""
 
 
 class SearchBackend:
@@ -57,7 +89,7 @@ class SearchBackend:
         self, query: str, filters: dict[str, Any] | None = None, page: int | str = 1
     ) -> PaginatorPage:
         filters = filters or {}
-        clean_query = (query or "").strip()
+        clean_query = self._clean_query(query)
         selected_tag_key = self._normalised_tag_filter(filters.get("tag"))
         selected_source_key = self._normalised_source_filter(filters.get("source"))
 
@@ -78,6 +110,8 @@ class SearchBackend:
         hero_results = self._build_hero_results(clean_query, filters)
         card_results = self._build_card_results(clean_query, filters)
         tag_results = self._build_tag_results(clean_query, filters)
+        skill_results = self._build_skill_results(clean_query, filters)
+        role_results = self._build_role_results(clean_query, filters)
         external_content_results = self._build_external_content_results(
             clean_query,
             filters,
@@ -87,7 +121,10 @@ class SearchBackend:
             + hero_results
             + card_results
             + tag_results
-            + external_content_results
+            + skill_results
+            + role_results
+            + external_content_results,
+            clean_query,
         )
 
         available_tags = self._available_tags(combined_results)
@@ -139,7 +176,9 @@ class SearchBackend:
     def _build_page_results(
         self, query: str, filters: dict[str, Any]
     ) -> list[SearchResultItem]:
-        queryset = self._apply_filters(Page.objects.all(), filters)
+        queryset = self._apply_filters(
+            without_framework_pages(Page.objects.all()), filters
+        )
         if self._is_postgres(queryset.db):
             queryset = self._search_pages_postgres(queryset, query)
         else:
@@ -147,9 +186,11 @@ class SearchBackend:
 
         request = filters.get("request")
         site_root = self._site_root_page(filters)
+        pages = list(queryset)
+        specific_pages = {page.pk: page.specific for page in pages}
         results: list[SearchResultItem] = []
-        for page in queryset:
-            specific_page = page.specific
+        for page in pages:
+            specific_page = specific_pages[page.pk]
             title = normalised_text(page.title)
             display_title = self._page_result_title(specific_page)
             description = self._page_search_description(specific_page)
@@ -319,6 +360,169 @@ class SearchBackend:
 
         return results
 
+    def _build_skill_results(
+        self, query: str, filters: dict[str, Any]
+    ) -> list[SearchResultItem]:
+        """Skills are snippets, so nothing finds them through the page tree.
+
+        The index page renders every skill as its own accordion section, so a
+        result links into that section rather than the top of a long page.
+
+        Skills are the Capability Framework's, and the A to Z page that holds
+        them is not creatable without the flag. Search should not be the one
+        route that reaches them anyway.
+        """
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return []
+
+        skills_page = self._apply_filters(FrameworkSkillsPage.objects.all(), filters).first()
+        if skills_page is None:
+            return []
+
+        request = filters.get("request")
+        skills_url = self._page_url(skills_page, request)
+        breadcrumbs = self._page_breadcrumbs(
+            skills_page,
+            request=request,
+            site_root=self._site_root_page(filters),
+            include_page=True,
+        )
+        tag_items = self._page_tag_items(skills_page)
+        tag_labels = [tag["value"] for tag in tag_items]
+        tag_keys = [tag["key"] for tag in tag_items]
+
+        results: list[SearchResultItem] = []
+        for skill in self._search_skills(GovukSkill.objects.all(), query):
+            body = normalised_text(skill.body)
+            points = self._skill_points(skill)
+            score = self._text_relevance(
+                query,
+                (
+                    (skill.title, SKILL_TITLE_WEIGHT),
+                    (body, SKILL_BODY_WEIGHT),
+                    (" ".join(points), SKILL_POINT_TEXT_WEIGHT),
+                ),
+            )
+            # The database filter also matches the StreamField's JSON keys, so
+            # the score is what decides whether a skill really matched.
+            if score <= 0:
+                continue
+
+            results.append(
+                SearchResultItem(
+                    title=normalised_text(skill.title),
+                    # No description on a skill result: the title and its "Skill"
+                    # label are the whole result, and the body still feeds the
+                    # score above. (The body/points are still read for scoring.)
+                    search_description="",
+                    url=f"{skills_url}#{skill.slug}" if skill.slug else skills_url,
+                    score=score,
+                    breadcrumbs=breadcrumbs,
+                    tags=tag_labels,
+                    tag_keys=tag_keys,
+                    last_updated=self._skill_last_updated(skill),
+                    result_type="Skill",
+                )
+            )
+
+        return results
+
+    def _build_role_results(
+        self, query: str, filters: dict[str, Any]
+    ) -> list[SearchResultItem]:
+        """Roles are snippets, so nothing finds them through the page tree.
+
+        Each role is served on a route under the framework main page, so a
+        result links to that route. Like the skills, roles are the Capability
+        Framework's and are reached only where the framework is switched on.
+        """
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return []
+
+        # include_root: for some services, the main page *is* the site's home
+        # page, and the site filter otherwise looks only below the root.
+        main_page = self._apply_filters(
+            FrameworkMainPage.objects.all(), {**filters, "include_root": True}
+        ).first()
+        if main_page is None:
+            return []
+
+        request = filters.get("request")
+        breadcrumbs = self._page_breadcrumbs(
+            main_page,
+            request=request,
+            site_root=self._site_root_page(filters),
+            include_page=True,
+        )
+
+        results: list[SearchResultItem] = []
+        for role in self._search_roles(GovukRole.objects.all(), query):
+            body = normalised_text(role.body)
+            family = normalised_text(role.family)
+            score = self._text_relevance(
+                query,
+                (
+                    (role.title, ROLE_TITLE_WEIGHT),
+                    (body, ROLE_BODY_WEIGHT),
+                    (family, ROLE_FAMILY_TEXT_WEIGHT),
+                ),
+            )
+            if score <= 0 or not role.slug:
+                continue
+
+            results.append(
+                SearchResultItem(
+                    title=normalised_text(role.title),
+                    search_description=body,
+                    url=main_page.url
+                    + main_page.reverse_subpage("serve_role", args=[role.slug]),
+                    score=score,
+                    breadcrumbs=breadcrumbs,
+                    last_updated=self._role_last_updated(role),
+                    result_type="Role",
+                )
+            )
+
+        return results
+
+    def _role_last_updated(self, role: GovukRole) -> datetime | None:
+        """When this role itself last changed, by its published changelog.
+
+        The same reasoning as ``_skill_last_updated``: a role's own changelog
+        date rather than the framework main page's revision, so a role is not
+        dated -- and recency-boosted -- by an edit somewhere else on the page it
+        is served from.
+        """
+        changed_on = getattr(role, "last_changelog_date", None)
+        if changed_on is None:
+            return None
+
+        start_of_day = datetime.combine(changed_on, time.min)
+        if settings.USE_TZ:
+            return timezone.make_aware(start_of_day, timezone.get_current_timezone())
+        return start_of_day
+
+    def _skill_last_updated(self, skill: GovukSkill) -> datetime | None:
+        """When this skill itself last changed, by its published changelog.
+
+        Not the index page's revision date, which is what a skill would
+        otherwise inherit: every skill would then be dated the day the page was
+        last saved and take the recency boost that goes with it, so publishing
+        an edit to the index would lift all 185 of them above older pages that
+        match the search better.
+
+        A date rather than a time, the changelog holding only the day, so it
+        counts from the start of it.
+        """
+        changed_on = getattr(skill, "last_changelog_date", None)
+        if changed_on is None:
+            return None
+
+        start_of_day = datetime.combine(changed_on, time.min)
+        if settings.USE_TZ:
+            return timezone.make_aware(start_of_day, timezone.get_current_timezone())
+        return start_of_day
+
     def _build_hero_results(
         self, query: str, filters: dict[str, Any]
     ) -> list[SearchResultItem]:
@@ -443,7 +647,7 @@ class SearchBackend:
             queryset.annotate(
                 rank=SearchRank(search_vector, search_query, weights=SEARCH_WEIGHTS),
             )
-            .filter(rank__gt=0)
+            .filter(rank__gt=UNMATCHED_RANK)
             .order_by("-rank", "-first_published_at", "title")
         )
 
@@ -463,9 +667,70 @@ class SearchBackend:
             queryset.annotate(
                 card_rank=SearchRank(rows_vector, search_query, weights=SEARCH_WEIGHTS),
             )
-            .filter(card_rank__gt=0)
+            .filter(card_rank__gt=UNMATCHED_RANK)
             .order_by("-card_rank", "-first_published_at", "title")
         )
+
+    def _search_skills(self, queryset: QuerySet, query: str) -> QuerySet:
+        """Narrow 185 skills to the plausible ones before scoring them.
+
+        The level points are StreamField JSON, which neither database can
+        search block by block, so they are matched as raw text. That also
+        matches the JSON's own keys, which is why the caller rescores.
+        """
+        point_fields = (
+            "awareness_points",
+            "working_points",
+            "practitioner_points",
+            "expert_points",
+            "leadership_points",
+        )
+        annotations = {
+            f"{field_name}_text": Cast(field_name, TextField())
+            for field_name in point_fields
+        }
+        matches = Q(title__icontains=query) | Q(body__icontains=query)
+        for annotation_name in annotations:
+            matches |= Q(**{f"{annotation_name}__icontains": query})
+
+        # Dated here rather than a changelog lookup per skill, which would be a
+        # query apiece across whatever the search matched.
+        return (
+            queryset.annotate(**annotations)
+            .filter(matches)
+            .annotate(
+                last_changelog_date=Max(
+                    "changelog_entries__date",
+                    filter=Q(changelog_entries__live=True),
+                )
+            )
+        )
+
+    def _search_roles(self, queryset: QuerySet, query: str) -> QuerySet:
+        """Narrow the roles to the plausible ones before scoring them.
+
+        Matches a role's name, its description and its family (so a search for a
+        family name surfaces the roles in it). Dated here by the role's own
+        changelog rather than a lookup per role, the way the skills are.
+        """
+        matches = (
+            Q(title__icontains=query)
+            | Q(body__icontains=query)
+            | Q(family__icontains=query)
+        )
+        return queryset.filter(matches).annotate(
+            last_changelog_date=Max(
+                "changelog_entries__date",
+                filter=Q(changelog_entries__live=True),
+            )
+        )
+
+    def _skill_points(self, skill: GovukSkill) -> list[str]:
+        points: list[str] = []
+        for level_key, _ in SKILL_LEVEL_CHOICES:
+            points.extend(skill.points_for_level(level_key))
+        points.extend(skill.get_leadership_points())
+        return points
 
     def _search_hero_sqlite(self, queryset: QuerySet, query: str) -> QuerySet:
         return queryset.filter(
@@ -483,7 +748,7 @@ class SearchBackend:
             queryset.annotate(
                 hero_rank=SearchRank(hero_vector, search_query, weights=SEARCH_WEIGHTS),
             )
-            .filter(hero_rank__gt=0)
+            .filter(hero_rank__gt=UNMATCHED_RANK)
             .order_by("-hero_rank", "-first_published_at", "title")
         )
 
@@ -523,7 +788,7 @@ class SearchBackend:
                     search_vector, search_query, weights=SEARCH_WEIGHTS
                 ),
             )
-            .filter(external_rank__gt=0)
+            .filter(external_rank__gt=UNMATCHED_RANK)
             .order_by(
                 "-external_rank",
                 "-updated_at",
@@ -538,8 +803,7 @@ class SearchBackend:
     def _apply_filters(self, queryset: QuerySet, filters: dict[str, Any]) -> QuerySet:
         if filters.get("live", True):
             queryset = queryset.live()
-        if filters.get("public", True):
-            queryset = queryset.public()
+        queryset = self._viewable_by_reader(queryset, filters)
 
         site_or_root = filters.get("site")
         if site_or_root:
@@ -557,6 +821,89 @@ class SearchBackend:
             queryset = queryset.exclude(pk__in=exclude_ids)
 
         return queryset
+
+    def _viewable_by_reader(
+        self, queryset: QuerySet, filters: dict[str, Any]
+    ) -> QuerySet:
+        """The pages this reader would actually be served.
+
+        ``public()`` answers the whole question only while nobody is signed in:
+        it drops every restricted page, whoever is asking. Signed in, the
+        search was asking nothing at all, so a page held back for one group, or
+        kept behind a shared password, was listed by title and description to
+        anybody holding an account -- while the page itself went on answering
+        that same reader with a redirect or the password form. A restriction is
+        there to keep something quiet before it is announced, and a search
+        result names it and summarises it.
+
+        So each restriction is put the question Wagtail puts at serve time, and
+        only those it refuses are excluded. What the search lists is then what
+        the site would serve: a group's own members still find their page, a
+        password already entered this session no longer hides the page it was
+        entered for, and a superuser meets the password form here exactly as
+        they would meet it on the page.
+        """
+        if filters.get("public", True):
+            return queryset.public()
+
+        request = filters.get("request")
+        if request is None:
+            # A restriction is a question about a reader, and without a request
+            # there is no reader to ask it about. Nothing extra is let through.
+            return queryset.public()
+
+        refused = self._refused_restrictions_q(request)
+        return queryset.exclude(refused) if refused else queryset
+
+    def _refused_restrictions_q(self, request) -> Q:
+        """Pages under a restriction this request fails, as one Q.
+
+        Held on the request, as the ancestors above are: a single search runs
+        several querysets and the same restrictions decide all of them, while
+        asking a group restriction costs a query every time it is asked.
+        """
+        cached = getattr(request, "_govuk_search_refused_restrictions", None)
+        if cached is not None:
+            return cached
+
+        restrictions = list(
+            PageViewRestriction.objects.select_related("page").prefetch_related("groups")
+        )
+        self._prime_reader_groups(request, restrictions)
+
+        refused = Q()
+        for restriction in restrictions:
+            if restriction.accept_request(request):
+                continue
+            # A restriction covers the page it is set on and everything below
+            # it, which is how Wagtail decides what it applies to.
+            page = restriction.page
+            refused |= Q(path__startswith=page.path, depth__gte=page.depth)
+
+        request._govuk_search_refused_restrictions = refused
+        return refused
+
+    @staticmethod
+    def _prime_reader_groups(request, restrictions: list[PageViewRestriction]) -> None:
+        """Fetch the reader's groups once, before they are asked for repeatedly.
+
+        ``accept_request`` reads ``request.user.groups.all()`` itself, and a
+        related manager builds a fresh queryset every call, so a site with a
+        dozen group restrictions asked the same question a dozen times. Filling
+        the cache Django keeps on the user answers all of them from the first.
+        """
+        user = getattr(request, "user", None)
+        if getattr(user, "pk", None) is None or user.is_superuser:
+            # A superuser passes a group restriction without being asked, and
+            # an anonymous or absent user has no groups to fetch.
+            return
+        if not any(
+            restriction.restriction_type == PageViewRestriction.GROUPS
+            for restriction in restrictions
+        ):
+            return
+
+        prefetch_related_objects([user], "groups")
 
     def _external_content_queryset(self, filters: dict[str, Any]) -> QuerySet:
         queryset = ExternalContentItem.objects.filter(hidden=False).select_related(
@@ -639,7 +986,10 @@ class SearchBackend:
         include_page: bool = False,
     ) -> list[dict[str, str]]:
         breadcrumbs: list[dict[str, str]] = []
-        for ancestor in page.get_ancestors(inclusive=include_page).specific():
+        ancestors = self._ancestors_of(
+            page, request=request, include_page=include_page
+        )
+        for ancestor in ancestors:
             if site_root and not ancestor.path.startswith(site_root.path):
                 continue
             if not include_page and ancestor.pk == page.pk:
@@ -653,6 +1003,45 @@ class SearchBackend:
                 }
             )
         return breadcrumbs
+
+    def _ancestors_of(self, page: Page, *, request, include_page: bool) -> list[Page]:
+        """The pages above this one, fetched once per request rather than per result.
+
+        Results share their ancestors: every one of them is under the same home
+        page and most are under one of a handful of sections. Asking each result
+        for its own ancestors cost a query or three a result, and since the
+        results are paginated most of that was spent on entries the reader never
+        sees. A path in the tree spells out the paths above it, so the ones not
+        yet fetched can be fetched together and kept for the rest of the request.
+        """
+        steps = range(page.steplen, len(page.path) + 1, page.steplen)
+        paths = [page.path[:step] for step in steps]
+        if not include_page:
+            paths = paths[:-1]
+
+        fetched = self._ancestor_pages(request)
+        missing = [path for path in paths if path not in fetched]
+        if missing:
+            for ancestor in Page.objects.filter(path__in=missing).specific():
+                fetched[ancestor.path] = ancestor
+
+        return [fetched[path] for path in paths if path in fetched]
+
+    def _ancestor_pages(self, request) -> dict[str, Page]:
+        """The ancestors this request has already fetched, keyed by path.
+
+        Held on the request, as Wagtail holds its own site root paths, so that
+        the cache lives exactly as long as the page being answered. Without a
+        request there is nothing to hold it on, and each call fetches its own.
+        """
+        if request is None:
+            return {}
+
+        fetched = getattr(request, "_govuk_search_ancestors", None)
+        if fetched is None:
+            fetched = {}
+            request._govuk_search_ancestors = fetched
+        return fetched
 
     def _page_url(self, page: Page, request) -> str:
         url = page.get_url(request=request)
@@ -709,11 +1098,40 @@ class SearchBackend:
                 return boost
         return 0.0
 
-    def _ranking_score(self, item: SearchResultItem) -> float:
+    def _ranking_score(self, item: SearchResultItem, query: str) -> float:
         score = float(item.score or 0.0) + self._recency_boost(item.last_updated)
         if not item.is_external:
             score += INTERNAL_RESULT_BOOST
+        # Someone typing a role or skill name in full means that one, not the
+        # longer title that happens to quote it.
+        if self._named_exactly_as_searched(item, query):
+            score += EXACT_TITLE_BOOST
         return score
+
+    def _named_exactly_as_searched(self, item: SearchResultItem, query: str) -> bool:
+        return bool(query) and item.title.strip().lower() == query.strip().lower()
+
+    def _sort_key(self, item: SearchResultItem, query: str) -> tuple[bool, float, str]:
+        """Ours by that name first, then the score, then the title.
+
+        A boost alone cannot keep the promise, whatever it is set to. The longer
+        title that quotes the query is usually a skill, and a skill scores on its
+        description and its level points as well as its name, so three fields of
+        a near match outrun one field of an exact one: searching "Business
+        architect" put the skill "Business architecture" above the role of that
+        name by 0.45, and did the same to three other roles. The score is
+        unbounded in the number of words searched for, so no constant is safe.
+
+        Ours only. An external item named exactly what was typed keeps its boost
+        and takes its chances on the score, rather than jumping the site's own
+        pages, which is what INTERNAL_RESULT_BOOST is for.
+        """
+        named_exactly = self._named_exactly_as_searched(item, query)
+        return (
+            item.is_external or not named_exactly,
+            -item.score,
+            item.title.lower(),
+        )
 
     def _clean_text(self, value: Any) -> str:
         if not value:
@@ -847,14 +1265,16 @@ class SearchBackend:
             return DEFAULT_PAGE_SIZE
         return parsed_page_size if parsed_page_size > 0 else DEFAULT_PAGE_SIZE
 
-    def _merge_results(self, results: list[SearchResultItem]) -> list[SearchResultItem]:
+    def _merge_results(
+        self, results: list[SearchResultItem], query: str
+    ) -> list[SearchResultItem]:
         unique_results: list[SearchResultItem] = []
         seen: set[tuple[str, str]] = set()
 
         for item in results:
-            item.score = self._ranking_score(item)
+            item.score = self._ranking_score(item, query)
 
-        for item in sorted(results, key=lambda item: (-item.score, item.title.lower())):
+        for item in sorted(results, key=lambda item: self._sort_key(item, query)):
             key = (item.title.lower(), item.url)
             if key in seen:
                 continue
@@ -862,6 +1282,16 @@ class SearchBackend:
             unique_results.append(item)
 
         return unique_results
+
+    def _clean_query(self, query: Any) -> str:
+        """The words searched for, without the one character text cannot hold.
+
+        PostgreSQL refuses a string carrying a NUL outright, so "?query=%00"
+        was a 500 on dev and production while SQLite searched for it, found
+        nothing and said so. Dropping it leaves the rest of the query to be
+        searched for, and a query of nothing else falls to the empty state.
+        """
+        return str(query or "").replace("\x00", "").strip()
 
     def _normalised_tag_filter(self, value: Any) -> str:
         return normalised_text(value).lower()
@@ -872,11 +1302,11 @@ class SearchBackend:
             return ""
         if source_value == THIS_SITE_SOURCE_FILTER:
             return THIS_SITE_SOURCE_FILTER
-        if not source_value.isdigit():
-            return ""
-
-        parsed_source_id = int(source_value)
-        if parsed_source_id <= 0:
+        # Not ``isdigit`` then ``int``: "²" is isdigit-True and ``int`` refuses
+        # it, so a source of "²" in the query string was a 500 rather than the
+        # no-such-source-so-show-everything every other unreadable value gets.
+        parsed_source_id = row_id_from_text(source_value)
+        if parsed_source_id is None or parsed_source_id <= 0:
             return ""
         return str(parsed_source_id)
 

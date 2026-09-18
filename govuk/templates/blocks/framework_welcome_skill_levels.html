@@ -1,0 +1,35 @@
+{% load wagtailcore_tags govuk_filters %}
+{% comment %}
+    The skill level table. The progress bars are built from each level's
+    filled_segments count rather than stored as markup, so an editor can
+    reword a level without touching the bars, and a rich text field can
+    never strip them.
+{% endcomment %}
+<table class="govuk-table homepage">
+    <caption class="govuk-table__caption govuk-table__caption--m sr-only">{{ value.caption }}</caption>
+    <thead class="govuk-table__head">
+        <tr class="govuk-table__row">
+            <th scope="col" class="govuk-table__header">{{ value.level_column_heading }}</th>
+            <th scope="col" class="govuk-table__header">{{ value.meaning_column_heading }}</th>
+        </tr>
+    </thead>
+    <tbody class="govuk-table__body">
+        {% for level in value.levels %}
+            <tr class="govuk-table__row">
+                <td class="govuk-table__cell{% if forloop.last %} last-cell{% endif %}">
+                    <p class="govuk-body govuk-!-font-size-19">{{ level.name }}</p>
+                    <span class="govuk-visually-hidden">{{ level.name }} is the {{ forloop.counter|ordinal_word }} of {{ value.levels|length }} ascending skill levels.</span>
+                    <div class="skill-definitions__container" aria-hidden="true">
+                        <div class="progress-bar__container" aria-hidden="true">
+                            {% for segment in "1234" %}
+                                {% if not forloop.first %}<div class="progress-bar__divider" aria-hidden="true"></div>{% endif %}
+                                <div class="progress-bar__{% if forloop.counter <= level.filled_segments %}grey{% else %}white{% endif %}" aria-hidden="true"></div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </td>
+                <td class="govuk-table__cell govuk-!-width-two-thirds{% if forloop.last %} last-cell{% endif %}">{{ level.description|richtext }}</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>

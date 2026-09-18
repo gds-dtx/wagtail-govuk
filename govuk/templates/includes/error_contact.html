@@ -1,0 +1,13 @@
+{% comment %}
+    The contact sentence the GOV.UK error pages close with, rendered only
+    where the site has someone to offer. `contact_lead` is the page's own
+    opening ("Contact" or "If the web address is correct …, contact").
+{% endcomment %}
+{% if customise_settings.error_contact_email and customise_settings.error_contact_link_text %}
+    <p class="govuk-body">
+        {{ contact_lead }}
+        <a class="govuk-link"
+           href="mailto:{{ customise_settings.error_contact_email }}">{{ customise_settings.error_contact_link_text }}</a>{% if customise_settings.error_contact_about %}
+            if you need to speak to someone about the {{ customise_settings.error_contact_about }}{% endif %}.
+    </p>
+{% endif %}

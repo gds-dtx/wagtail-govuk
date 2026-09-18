@@ -6,6 +6,11 @@ document.addEventListener("DOMContentLoaded", function () {
   setListClasses();
   setAutoHeadingNavigation();
   addStartButtonSVG();
+  setBackToTop();
+  setChangelogToggle();
+  openLinkedAccordionSection();
+  setPageFeedback();
+  setSiteSearchAutocomplete();
 });
 
 function setHyperlinkClasses() {
@@ -29,16 +34,98 @@ function setHyperlinkClasses() {
   });
 }
 
+// The size a wrapper asks its contents to take, as the hero intro does with
+// govuk-body-l and the changelog does with govuk-body-s, or null if none does.
+// closest() includes the element itself, so something already sized keeps the
+// size it was given.
+function wrapperTextSize(el) {
+  const wrapper = el.closest("[class*='govuk-body-']");
+  return (
+    (wrapper &&
+      Array.from(wrapper.classList).find((name) =>
+        name.startsWith("govuk-body-"),
+      )) ||
+    null
+  );
+}
+
 function setListClasses() {
-  // Unordered lists
-  document.querySelectorAll(".rich-text-content ul").forEach((el) => {
-    el.classList.add("govuk-list", "govuk-list--bullet");
+  // The Design System styles its classes rather than the elements, so rich
+  // text an editor typed carries none of its type scale.
+  // It is not every service's choice, though, and every site this image serves
+  // renders the same .rich-text-content through the same script -- so the
+  // sizing below is applied only where base.html marked the body, which it
+  // does on a framework instance. Without the mark the lists still become
+  // govuk-list, which is what every site had before.
+  const typeScale = document.body.hasAttribute("data-rich-text-type-scale");
+
+  // Paragraphs. GOV.UK Frontend styles the govuk-body class rather than the
+  // element, so rich text paragraphs need it adding. Anything that already
+  // asks for a size, such as govuk-body-s, is left as the author set it.
+  document.querySelectorAll(".rich-text-content p").forEach((el) => {
+    if (
+      Array.from(el.classList).some((name) => name.startsWith("govuk-body"))
+    ) {
+      return;
+    }
+
+    // A wrapper can ask for the size instead. Adding govuk-body would override
+    // that size from the inside, and adding nothing leaves the paragraph on
+    // the browser's own 1em margins: the bundle styles the class rather than
+    // the element, so there is nothing else to give a paragraph GOV.UK's
+    // spacing, and the intro is pushed down by a margin the Design System does
+    // not put there. Repeating the wrapper's class carries the size and the
+    // spacing together.
+    if (!typeScale) {
+      return;
+    }
+    el.classList.add(wrapperTextSize(el) || "govuk-body");
   });
 
-  // Ordered lists
-  document.querySelectorAll(".rich-text-content ol").forEach((el) => {
-    el.classList.add("govuk-list", "govuk-list--number");
-  });
+  // Headings. Same reason as paragraphs: the bundle styles govuk-heading-*
+  // rather than h2/h3/h4, so a heading an editor typed into rich text drops to
+  // the browser's own bold-and-slightly-larger and stops standing off the 19px
+  // body beside it. The sizes are the ones the live service carries in its
+  // hand-written markup: h2 is govuk-heading-l, h3 is govuk-heading-m.
+  const headingSize = {
+    H2: "govuk-heading-l",
+    H3: "govuk-heading-m",
+    H4: "govuk-heading-s",
+  };
+  document
+    .querySelectorAll(
+      ".rich-text-content h2, .rich-text-content h3, .rich-text-content h4",
+    )
+    .forEach((el) => {
+      // Only headings the editor left plain. A component rendered into rich
+      // text brings its own -- the CSV attachment card's title is an h3 with
+      // gem-c-attachment__title -- and sizing those as body headings would
+      // pull them out of the component they belong to.
+      if (!typeScale || el.className.trim()) {
+        return;
+      }
+      el.classList.add(headingSize[el.tagName]);
+    });
+
+  // Lists. govuk-list carries the 19px body size of its own accord, so in a
+  // wrapper that asked for a smaller one the bullets came out larger than the
+  // paragraphs beside them -- reported on the home page, where the update
+  // history sits in a govuk-body-s block, and true of a role page whose
+  // changelog note has bullets. Repeating the wrapper's size puts the two back
+  // in step. govuk-body-s is defined after govuk-list in the Frontend bundle,
+  // so it wins on source order and needs no !important; the welcome page's
+  // contents list already carries both classes by hand for the same reason.
+  const listModifier = { UL: "govuk-list--bullet", OL: "govuk-list--number" };
+  document
+    .querySelectorAll(".rich-text-content ul, .rich-text-content ol")
+    .forEach((el) => {
+      el.classList.add("govuk-list", listModifier[el.tagName]);
+
+      const wrapperSize = typeScale ? wrapperTextSize(el) : null;
+      if (wrapperSize) {
+        el.classList.add(wrapperSize);
+      }
+    });
 }
 
 function addStartButtonSVG() {
@@ -57,6 +144,129 @@ function addStartButtonSVG() {
       button.appendChild(svg);
     }
   });
+}
+
+function setBackToTop() {
+  // The button is hidden in CSS and only ever revealed here, so a visitor
+  // without JavaScript is not offered a control that cannot work.
+  const button = document.getElementById("back-to-top");
+  if (!button) {
+    return;
+  }
+
+  const footer = document.querySelector(".govuk-template__footer");
+  // The "Is this page useful?" band sits directly above the footer when a
+  // site has it switched on, so the button lifts clear of whichever of the
+  // two is higher, rather than floating beside the band.
+  const feedback = document.getElementById("page-feedback");
+
+  function update() {
+    const scrolled = window.pageYOffset || document.documentElement.scrollTop;
+    button.classList.toggle(
+      "back-to-top--visible",
+      scrolled > window.innerHeight,
+    );
+
+    // Lift the button clear of the footer rather than letting it sit on top.
+    let bottom = 30;
+    const edge = feedback || footer;
+    if (edge) {
+      const overlap = window.innerHeight - edge.getBoundingClientRect().top;
+      if (overlap > 0) {
+        bottom = overlap + 30;
+      }
+    }
+    button.style.bottom = bottom + "px";
+  }
+
+  button.addEventListener("click", function () {
+    window.scrollTo(0, 0);
+    // Send keyboard focus back to the top of the page as well as the view.
+    const skipLink = document.querySelector(".govuk-skip-link");
+    if (skipLink) {
+      skipLink.focus();
+    }
+  });
+
+  window.addEventListener("scroll", update, { passive: true });
+  window.addEventListener("resize", update, { passive: true });
+  update();
+}
+
+function setChangelogToggle() {
+  // The update history is long, so it is collapsed once JavaScript can offer a
+  // way to open it again. Without JavaScript it stays open and the toggle stays
+  // hidden.
+  const toggle = document.getElementById("toggle-link");
+  const panel = document.getElementById("collapsible-div");
+  if (!toggle || !panel) {
+    return;
+  }
+
+  function setExpanded(expanded) {
+    panel.hidden = !expanded;
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    toggle.textContent = expanded
+      ? toggle.dataset.hideText || "- hide all updates"
+      : toggle.dataset.showText || "+ show all updates";
+  }
+
+  toggle.hidden = false;
+  setExpanded(false);
+
+  toggle.addEventListener("click", function (event) {
+    event.preventDefault();
+    setExpanded(panel.hidden);
+  });
+
+  // "See all updates" at the top of the page opens the history as well as
+  // jumping to it, so the anchor still works on its own.
+  const jumpLink = document.getElementById("jump-link");
+  if (jumpLink) {
+    jumpLink.addEventListener("click", function () {
+      setExpanded(true);
+    });
+  }
+}
+
+function openLinkedAccordionSection() {
+  // Skill names on a role page deep link into the Skills A to Z, which is an
+  // accordion, so the section being linked to has to be opened.
+  const accordion = document.querySelector(".govuk-accordion");
+  if (!accordion) {
+    return;
+  }
+
+  function openFromHash() {
+    const hash = window.location.hash;
+    if (hash.length < 2) {
+      return;
+    }
+
+    let target = null;
+    try {
+      target = document.getElementById(decodeURIComponent(hash.slice(1)));
+    } catch (error) {
+      return;
+    }
+    if (!target) {
+      return;
+    }
+
+    const section = target.closest(".govuk-accordion__section");
+    if (!section) {
+      return;
+    }
+
+    const button = section.querySelector(".govuk-accordion__section-button");
+    if (button && button.getAttribute("aria-expanded") === "false") {
+      button.click();
+    }
+    target.scrollIntoView();
+  }
+
+  openFromHash();
+  window.addEventListener("hashchange", openFromHash);
 }
 
 function setAutoHeadingNavigation() {
@@ -145,4 +355,182 @@ function getUniqueHeadingId(text, existingIds, fallbackIndex) {
 
   existingIds.add(candidate);
   return candidate;
+}
+
+function setPageFeedback() {
+  // "Is this page useful?" at the foot of the page. The form works on its own:
+  // the browser posts it and comes back to the same page with the thank-you
+  // showing. With JavaScript the answer is posted in the background and the
+  // panels swap in place, so the reader does not lose their position, and
+  // focus moves to the thank-you so it is announced.
+  const component = document.getElementById("page-feedback");
+  if (!component) {
+    return;
+  }
+  const form = component.querySelector(".js-prompt-questions");
+  const success = component.querySelector(".js-prompt-success");
+  if (!form || !success) {
+    return;
+  }
+
+  // event.submitter is what tells Yes from No; older browsers do not set it,
+  // so the last button pressed is remembered as well.
+  let pressed = null;
+  form.querySelectorAll("button[name='answer']").forEach((button) => {
+    button.addEventListener("click", () => {
+      pressed = button;
+    });
+  });
+
+  form.addEventListener("submit", (event) => {
+    const button = event.submitter || pressed;
+    if (!button || !button.value) {
+      return;
+    }
+    event.preventDefault();
+
+    const data = new FormData(form);
+    data.set("answer", button.value);
+    fetch(form.action, {
+      method: "POST",
+      body: data,
+      credentials: "same-origin",
+      headers: { "X-Requested-With": "fetch" },
+    }).catch((error) => {
+      console.error(error);
+    });
+
+    form.hidden = true;
+    success.hidden = false;
+    success.focus();
+  });
+}
+
+function setSiteSearchAutocomplete() {
+  // The header search box suggests roles, skills and pages as the reader
+  // types, the way the live service's box does, using GOV.UK's accessible
+  // autocomplete (CS32-3458). Without JavaScript, or if the library did not
+  // load, the box is the plain form it started as and Enter goes to the
+  // results page. With it, Enter takes the highlighted suggestion; when
+  // there are no suggestions the list is not shown, so Enter still submits
+  // the form and the results page says so.
+  const container = document.querySelector(".app-site-search[data-suggest-url]");
+  if (!container || typeof window.accessibleAutocomplete !== "function") {
+    return;
+  }
+  const input = container.querySelector("input[type='search']");
+  if (!input) {
+    return;
+  }
+  const suggestUrl = container.dataset.suggestUrl;
+  const minLength = parseInt(container.dataset.minLength || "2", 10);
+
+  // The library renders its own input, so the original gives up its place,
+  // id, name, value and placeholder. The label keeps pointing at the id.
+  const mount = document.createElement("div");
+  mount.className = "app-site-search__autocomplete";
+  input.parentNode.insertBefore(mount, input);
+  const inputId = input.id;
+  const inputName = input.name;
+  const placeholder = input.placeholder;
+  const defaultValue = input.value;
+  input.remove();
+
+  let controller = null;
+  function source(query, populate) {
+    // A keystroke cancels the request the last one started, so a slow reply
+    // cannot arrive after a faster one and put stale suggestions on top.
+    if (controller) {
+      controller.abort();
+    }
+    controller = new AbortController();
+    fetch(suggestUrl + "?q=" + encodeURIComponent(query), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((items) => populate(Array.isArray(items) ? items : []))
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          populate([]);
+        }
+      });
+  }
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    })[character]);
+  }
+
+  const form = container.querySelector("form");
+  // On the results page the box starts with the query in it, and the library
+  // offers that string back as the one suggestion until the reader types: its
+  // option list is seeded with defaultValue. It is a string where every
+  // fetched suggestion is an object, so it rendered as "undefined" and Enter
+  // on it did nothing (CS32-3458, 11 September 2026). It is plain text, and
+  // confirming it is a search for it.
+  function itemText(item) {
+    if (typeof item === "string") {
+      return item;
+    }
+    return item && item.text ? item.text : "";
+  }
+
+  window.accessibleAutocomplete({
+    element: mount,
+    id: inputId,
+    name: inputName,
+    defaultValue: defaultValue,
+    placeholder: placeholder,
+    minLength: minLength,
+    cssNamespace: "app-site-search",
+    inputClasses: "govuk-input app-site-search__input",
+    displayMenu: "overlay",
+    autoselect: true,
+    confirmOnBlur: false,
+    showNoOptionsFound: false,
+    tStatusQueryTooShort: (count) => "Type " + count + " or more characters for suggestions",
+    source: source,
+    templates: {
+      inputValue: itemText,
+      suggestion: (item) => {
+        if (!item) {
+          return "";
+        }
+        // The kind is shown for a role or a skill; a page is just its name,
+        // and so is the query offered back.
+        const type =
+          item.type === "Role" || item.type === "Skill"
+            ? '<span class="app-site-search__option-type">' + escapeHtml(item.type) + "</span>"
+            : "";
+        return '<span class="app-site-search__option-text">' + escapeHtml(itemText(item)) + "</span>" + type;
+      },
+    },
+    onConfirm: (item) => {
+      // The query offered back is a string, and .link on a string is the
+      // native String.prototype.link method, not undefined -- so a string has
+      // to be caught before the object branch, or confirming it navigates to
+      // that method's source text (CS32-3458, 14 September 2026).
+      if (typeof item === "string") {
+        // Search for it, as Enter in the plain box does.
+        if (form) {
+          if (form.requestSubmit) {
+            form.requestSubmit();
+          } else {
+            form.submit();
+          }
+        }
+      } else if (item && item.link && /^(\/|https?:)/i.test(item.link)) {
+        // A same-site path or an http(s) URL only, so a link that somehow
+        // arrived as javascript:, data: or the like cannot run on confirm.
+        window.location.assign(item.link);
+      }
+    },
+  });
 }

@@ -1,7 +1,7 @@
 from datetime import timedelta
 
-from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.authentication import JWTStatelessUserAuthentication
+from rest_framework_simplejwt.exceptions import InvalidToken
 from rest_framework_simplejwt.utils import aware_utcnow, datetime_from_epoch
 
 

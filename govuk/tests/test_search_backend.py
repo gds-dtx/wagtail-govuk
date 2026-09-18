@@ -1,19 +1,31 @@
-from datetime import timedelta
+from datetime import date, timedelta
+from unittest import skipUnless
 
-from django.test import TestCase
+from django.contrib.postgres.search import SearchRank
+from django.db import connection
+from django.db.models import QuerySet
+from django.db.models.lookups import GreaterThan
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from wagtail.models import Page, Site
 
 from govuk.models import (
-    ContentPage,
     ContentDiscoverySettings,
     ContentDiscoverySource,
+    ContentPage,
     ExternalContentItem,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
+    GovukChangelogEntry,
+    GovukRole,
+    GovukSkill,
     GovukTag,
     SectionPage,
     TagListingsPage,
 )
-from govuk.search_backend import search_backend
+from govuk.search_backend import UNMATCHED_RANK, search_backend
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 class SearchBackendExternalContentRankingTests(TestCase):
@@ -345,3 +357,761 @@ class SearchBackendInternalPriorityAndRecencyTests(TestCase):
         self.assertIsNotNone(old_result)
         self.assertIsNotNone(new_result)
         self.assertGreater(new_result.score, old_result.score)
+
+
+class SearchBackendSkillTests(TestCase):
+    """Skills are snippets, so nothing reaches them through the page tree."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+    def _add_skills_index(self):
+        skills_page = self.root_page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A-Z", slug="skills-az")
+        )
+        skills_page.save_revision().publish()
+        return skills_page.specific
+
+    def _result_for_title(self, results, title: str):
+        return next((item for item in results if item.title == title), None)
+
+    def test_a_skill_is_found_by_its_name(self):
+        skills_page = self._add_skills_index()
+        skill = GovukSkill.objects.create(
+            title="Prototyping",
+            body="<p>Building throwaway versions to test an idea.</p>",
+        )
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+        result = self._result_for_title(page.object_list, "Prototyping")
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.url, f"{skills_page.url}#{skill.slug}")
+
+    def test_a_skill_result_carries_no_description(self):
+        """The title and the "Skill" label are the whole result."""
+        self._add_skills_index()
+        GovukSkill.objects.create(
+            title="Prototyping",
+            body="<p>Building throwaway versions to test an idea.</p>",
+        )
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+        result = self._result_for_title(page.object_list, "Prototyping")
+
+        self.assertEqual(result.result_type, "Skill")
+        self.assertEqual(result.search_description, "")
+
+    def test_a_skill_is_found_by_the_wording_of_its_level_points(self):
+        """The level points hold most of a skill's text, and they are the part
+        someone is most likely to half-remember."""
+        self._add_skills_index()
+        GovukSkill.objects.create(
+            title="Systems design",
+            body="<p>Designing whole systems.</p>",
+            working_points=[
+                {"type": "point", "value": "identify interdependencies in a service"},
+            ],
+        )
+
+        page = search_backend.search(
+            "interdependencies", filters={"site": self.site}, page=1
+        )
+
+        self.assertIsNotNone(
+            self._result_for_title(page.object_list, "Systems design")
+        )
+
+    def test_a_skill_matching_only_the_streamfield_json_is_not_returned(self):
+        """The database filter reads the raw JSON, so it also matches the keys
+        the editor never typed. Scoring is what keeps those out."""
+        self._add_skills_index()
+        GovukSkill.objects.create(
+            title="Systems design",
+            body="<p>Designing whole systems.</p>",
+            working_points=[
+                {"type": "point", "value": "identify interdependencies in a service"},
+            ],
+        )
+
+        page = search_backend.search("point", filters={"site": self.site}, page=1)
+
+        self.assertIsNone(self._result_for_title(page.object_list, "Systems design"))
+
+    def test_skills_are_left_out_when_the_site_has_no_skills_index(self):
+        """Without the index page there is nowhere for a result to link to."""
+        GovukSkill.objects.create(title="Prototyping", body="<p>Prototyping.</p>")
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+
+        self.assertIsNone(self._result_for_title(page.object_list, "Prototyping"))
+
+    def test_a_page_named_exactly_as_searched_beats_a_skill_that_quotes_it(self):
+        """Someone typing a role name in full wants that role, not a skill whose
+        longer name happens to contain it."""
+        self._add_skills_index()
+        role_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Business analyst", slug="business-analyst", body=""
+            )
+        )
+        role_page.save_revision().publish()
+        GovukSkill.objects.create(
+            title="Enterprise architecture (business analyst)",
+            body="<p>Architecture for a business analyst.</p>",
+        )
+
+        page = search_backend.search(
+            "business analyst", filters={"site": self.site}, page=1
+        )
+        titles = [item.title for item in page.object_list]
+
+        self.assertIn("Business analyst", titles)
+        self.assertIn("Enterprise architecture (business analyst)", titles)
+        self.assertLess(
+            titles.index("Business analyst"),
+            titles.index("Enterprise architecture (business analyst)"),
+        )
+
+    def test_a_role_beats_a_skill_whose_name_and_wording_both_quote_it(self):
+        """The case a boost alone could not carry.
+
+        Four of the framework's roles are named as a skill is, one word apart:
+        the skill "Business architecture" quotes "Business architect" in its
+        name, its description and its level points, and three fields of a near
+        match outscored the role's one exact one.
+        """
+        self._add_skills_index()
+        role_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Business architect", slug="business-architect", body=""
+            )
+        )
+        role_page.save_revision().publish()
+        # Aged, as the framework's own role pages are: published a year ago and
+        # edited when the wording changes, so no recency boost stands in for the
+        # ranking under test.
+        published_at = timezone.now() - timedelta(days=400)
+        Page.objects.filter(pk=role_page.pk).update(
+            first_published_at=published_at,
+            last_published_at=published_at,
+            latest_revision_created_at=published_at,
+        )
+        GovukSkill.objects.create(
+            title="Business architecture",
+            body="<p>What a business architect does for an organisation.</p>",
+            working_points=[
+                {"type": "point", "value": "work alongside a business architect"},
+            ],
+        )
+
+        page = search_backend.search(
+            "Business architect", filters={"site": self.site}, page=1
+        )
+        titles = [item.title for item in page.object_list]
+
+        self.assertIn("Business architecture", titles)
+        self.assertEqual(titles[0], "Business architect")
+
+    def test_being_named_exactly_does_not_lift_an_external_result_over_ours(self):
+        """The site's own pages still come first: the promise is about content
+        this service holds, not about every feed it reads."""
+        self._add_skills_index()
+        settings = ContentDiscoverySettings.for_site(self.site)
+        source = ContentDiscoverySource.objects.create(
+            settings=settings,
+            sort_order=0,
+            name="Named source",
+            url="https://example.gov.uk/named-feed.xml",
+        )
+        ExternalContentItem.objects.create(
+            source=source,
+            url="https://example.gov.uk/feed-item-one",
+            title="Delivery manager",
+            summary="An article from elsewhere.",
+            updated_at=timezone.now() - timedelta(days=500),
+            hidden=False,
+        )
+        internal_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Delivery manager guidance",
+                slug="delivery-manager-guidance",
+                body="",
+            )
+        )
+        internal_page.save_revision().publish()
+
+        page = search_backend.search(
+            "Delivery manager", filters={"site": self.site}, page=1
+        )
+        titles = [item.title for item in page.object_list]
+
+        self.assertIn("Delivery manager", titles)
+        self.assertEqual(titles[0], "Delivery manager guidance")
+
+    def test_a_skill_is_dated_by_its_own_changelog(self):
+        self._add_skills_index()
+        skill = GovukSkill.objects.create(title="Prototyping", body="<p>x</p>")
+        GovukChangelogEntry.objects.create(
+            skill=skill, date=date(2026, 3, 4), note="<p>Rewritten.</p>"
+        )
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+        result = self._result_for_title(page.object_list, "Prototyping")
+
+        self.assertEqual(result.last_updated.date(), date(2026, 3, 4))
+
+    def test_a_skill_nobody_has_dated_carries_no_date(self):
+        """Rather than the index page's, which is the day an editor last saved
+        a page the skill has nothing to do with."""
+        self._add_skills_index()
+        GovukSkill.objects.create(title="Prototyping", body="<p>x</p>")
+
+        page = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+
+        self.assertIsNone(
+            self._result_for_title(page.object_list, "Prototyping").last_updated
+        )
+
+    def test_publishing_the_index_does_not_lift_every_skill_up_the_results(self):
+        """Dated by the page, all 185 skills would count as changed the day it
+        was last saved and take the recency boost that goes with it, putting a
+        skill that mentions the word once above a page written about it.
+        """
+        self._add_skills_index()
+        older = self.root_page.add_child(
+            instance=ContentPage(
+                title="Guidance for delivery teams",
+                slug="guidance",
+                search_description="Advice on digital ways of working.",
+            )
+        )
+        older.save_revision().publish()
+        ContentPage.objects.filter(pk=older.pk).update(
+            first_published_at=timezone.now() - timedelta(days=400),
+            last_published_at=timezone.now() - timedelta(days=400),
+            latest_revision_created_at=timezone.now() - timedelta(days=400),
+        )
+        GovukSkill.objects.create(
+            title="Systems design",
+            body="<p>Designing whole systems.</p>",
+            working_points=[
+                {"type": "point", "value": "work with digital colleagues"}
+            ],
+        )
+
+        page = search_backend.search("digital", filters={"site": self.site}, page=1)
+        titles = [item.title for item in page.object_list]
+
+        self.assertLess(
+            titles.index("Guidance for delivery teams"),
+            titles.index("Systems design"),
+        )
+
+
+class SearchBackendBreadcrumbTests(TestCase):
+    """Results share their ancestors, so they should not each go and fetch them."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.section = self.root_page.add_child(
+            instance=SectionPage(title="Data roles", slug="data-roles")
+        )
+        self.section.save_revision().publish()
+        self.pages = []
+        for index in range(1, 5):
+            page = self.section.add_child(
+                instance=ContentPage(
+                    title=f"Breadcrumb sample role {index}",
+                    slug=f"breadcrumb-sample-role-{index}",
+                    body="",
+                )
+            )
+            page.save_revision().publish()
+            self.pages.append(page)
+
+    def test_a_result_carries_the_pages_above_it(self):
+        request = RequestFactory().get("/search/")
+
+        results = search_backend.search(
+            "breadcrumb sample role",
+            filters={"site": self.site, "request": request},
+            page=1,
+        )
+        sample = next(
+            item for item in results.object_list if item.title.startswith("Breadcrumb")
+        )
+
+        self.assertEqual(
+            [crumb["title"] for crumb in sample.breadcrumbs],
+            [self.root_page.title, self.section.title],
+        )
+
+    def test_the_pages_above_are_fetched_once_a_request_not_once_a_result(self):
+        request = RequestFactory().get("/search/")
+        site_root = self.site.root_page
+
+        with CaptureQueriesContext(connection) as first:
+            search_backend._page_breadcrumbs(
+                self.pages[0], request=request, site_root=site_root
+            )
+        with CaptureQueriesContext(connection) as rest:
+            for page in self.pages[1:]:
+                search_backend._page_breadcrumbs(
+                    page, request=request, site_root=site_root
+                )
+
+        self.assertGreater(len(first.captured_queries), 0)
+        self.assertEqual(len(rest.captured_queries), 0)
+
+    def test_a_second_request_reads_the_titles_as_they_are_now(self):
+        """The cache is the request's, so an edit between requests still shows."""
+        site_root = self.site.root_page
+        search_backend._page_breadcrumbs(
+            self.pages[0], request=RequestFactory().get("/search/"), site_root=site_root
+        )
+
+        self.section.title = "Renamed data roles"
+        self.section.save_revision().publish()
+
+        crumbs = search_backend._page_breadcrumbs(
+            self.pages[0], request=RequestFactory().get("/search/"), site_root=site_root
+        )
+
+        self.assertEqual(crumbs[-1]["title"], "Renamed data roles")
+
+    def test_the_breadcrumbs_are_the_same_without_a_request(self):
+        with_request = search_backend._page_breadcrumbs(
+            self.pages[0],
+            request=RequestFactory().get("/search/"),
+            site_root=self.site.root_page,
+        )
+        without_request = search_backend._page_breadcrumbs(
+            self.pages[0], request=None, site_root=self.site.root_page
+        )
+
+        self.assertEqual(
+            [crumb["title"] for crumb in without_request],
+            [crumb["title"] for crumb in with_request],
+        )
+
+    def test_a_result_that_includes_itself_ends_with_itself(self):
+        crumbs = search_backend._page_breadcrumbs(
+            self.pages[0],
+            request=RequestFactory().get("/search/"),
+            site_root=self.site.root_page,
+            include_page=True,
+        )
+
+        self.assertEqual(
+            [crumb["title"] for crumb in crumbs],
+            [self.root_page.title, self.section.title, self.pages[0].title],
+        )
+
+
+class SearchBackendPostgresRankTests(SimpleTestCase):
+    """A rank above zero is not the same thing as a match.
+
+    PostgreSQL reads a query of more than one word as an AND of the words and
+    floors the rank of a row that failed it at 1e-20 rather than returning the
+    zero it means. Everything the four full-text searches read is then above
+    zero, so the site answers a search for words it does not hold with every
+    page it has. SQLite matches on the text itself, which is why neither a
+    local run nor CI has ever shown it.
+    """
+
+    def _rank_floor(self, queryset: QuerySet) -> float:
+        conditions = [
+            node
+            for node in queryset.query.where.children
+            if isinstance(node, GreaterThan) and isinstance(node.lhs, SearchRank)
+        ]
+        self.assertEqual(len(conditions), 1, "expected one rank condition")
+        return conditions[0].rhs
+
+    def test_a_page_search_asks_for_more_than_an_unmatched_rank(self):
+        queryset = search_backend._search_pages_postgres(
+            Page.objects.all(), "two words"
+        )
+
+        self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
+
+    def test_a_section_card_search_asks_for_more_than_an_unmatched_rank(self):
+        queryset = search_backend._search_sections_postgres(
+            SectionPage.objects.all(), "two words"
+        )
+
+        self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
+
+    def test_a_hero_search_asks_for_more_than_an_unmatched_rank(self):
+        queryset = search_backend._search_hero_postgres(
+            ContentPage.objects.all(), "two words"
+        )
+
+        self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
+
+    def test_an_external_content_search_asks_for_more_than_an_unmatched_rank(self):
+        queryset = search_backend._search_external_content_postgres(
+            ExternalContentItem.objects.all(), "two words"
+        )
+
+        self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
+
+
+@skipUnless(
+    connection.vendor == "postgresql",
+    "the full-text search this covers is PostgreSQL's",
+)
+class SearchBackendPostgresResultTests(TestCase):
+    """What a PostgreSQL instance answers, which is what dev and production are."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Accessibility specialist",
+                slug="accessibility-specialist",
+                body="",
+            )
+        )
+        self.page.save_revision().publish()
+        self.other_page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Delivery manager", slug="delivery-manager", body=""
+            )
+        )
+        self.other_page.save_revision().publish()
+
+    def _search(self, query: str):
+        return search_backend.search(
+            query,
+            filters={"site": self.site, "request": RequestFactory().get("/search/")},
+            page=1,
+        )
+
+    def test_words_the_site_does_not_hold_find_nothing(self):
+        results = self._search("quantum widget")
+
+        self.assertEqual(list(results.object_list), [])
+
+    def test_a_page_named_by_two_of_its_words_is_still_found(self):
+        results = self._search("accessibility specialist")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+
+
+class SearchBackendSourceFilterTests(TestCase):
+    """A source the site cannot read is no source, not a 500.
+
+    ``str.isdigit`` is true of "²" and "₂" and ``int`` then refuses them, so
+    "/search/?query=data&source=²" raised where every other unreadable source
+    fell back to showing all of them.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Accessibility specialist",
+                slug="accessibility-specialist",
+                body="",
+            )
+        )
+        self.page.save_revision().publish()
+
+    def _search(self, source: str):
+        return search_backend.search(
+            "accessibility",
+            filters={
+                "site": self.site,
+                "request": RequestFactory().get("/search/"),
+                "source": source,
+            },
+            page=1,
+        )
+
+    def test_a_source_of_superscript_two_is_read_as_no_source(self):
+        results = self._search("²")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+        self.assertEqual(results.selected_source_id, "")
+
+    def test_a_source_that_is_no_number_at_all_is_read_the_same_way(self):
+        results = self._search("abc")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+        self.assertEqual(results.selected_source_id, "")
+
+    def test_a_source_numbered_in_another_script_is_still_a_number(self):
+        self.assertEqual(search_backend._normalised_source_filter("٣"), "3")
+
+    def test_a_source_of_more_digits_than_int_reads_matches_nothing(self):
+        """Reading the digits is not enough on its own to reach ``int``.
+
+        Python refuses a run of more than 4,300 digits, so a source of 4,301 of
+        them is decimal all the way down and was still a 500 -- on PostgreSQL
+        as much as on SQLite, since it is ``int`` that objects, not the engine.
+        """
+        results = self._search("1" * 4301)
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+        self.assertEqual(results.selected_source_id, "")
+
+    def test_a_source_larger_than_a_row_id_goes_the_same_way(self):
+        largest = 2**63 - 1
+        self.assertEqual(
+            search_backend._normalised_source_filter(str(largest)), str(largest)
+        )
+        self.assertEqual(search_backend._normalised_source_filter(str(largest + 1)), "")
+
+
+class SearchBackendNulQueryTests(TestCase):
+    """A NUL in the query is dropped rather than handed to the database.
+
+    PostgreSQL refuses a string literal carrying one, so "/search/?query=%00"
+    answered 500 on dev and production. SQLite takes it, which is why the
+    suite and CI never saw it: these tests read the query the backend built
+    rather than waiting for an engine to object to it.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.page = self.root_page.add_child(
+            instance=ContentPage(
+                title="Accessibility specialist",
+                slug="accessibility-specialist",
+                body="",
+            )
+        )
+        self.page.save_revision().publish()
+
+    def _search(self, query: str):
+        return search_backend.search(
+            query,
+            filters={"site": self.site, "request": RequestFactory().get("/search/")},
+            page=1,
+        )
+
+    def test_a_query_of_nothing_but_a_nul_is_the_empty_state(self):
+        results = self._search("\x00")
+
+        self.assertEqual(list(results.object_list), [])
+        self.assertEqual(results.paginator.count, 0)
+
+    def test_a_nul_among_the_words_leaves_the_words(self):
+        results = self._search("accessibility\x00")
+
+        self.assertEqual(
+            [item.title for item in results.object_list], ["Accessibility specialist"]
+        )
+
+    def test_the_query_the_backend_searches_for_holds_no_nul(self):
+        self.assertEqual(search_backend._clean_query("data\x00 "), "data")
+        self.assertEqual(search_backend._clean_query("\x00"), "")
+        self.assertEqual(search_backend._clean_query(None), "")
+
+
+@override_settings(
+    FEATURE_FLAGS={
+        "SKILLS": True,
+        "ORGANISATIONS": False,
+        "PEOPLE_FINDER": False,
+        "FEEDBACK": False,
+    }
+)
+class SearchBackendRolesAreResultsTests(TestCase):
+    """A role is a snippet served on a route, and search reaches it.
+
+    A role has no page of its own -- the single framework main page serves it
+    as a route -- but the search backend indexes the role snippets directly, so
+    a search for a role's name returns the role, links to its route, and labels
+    it a "Role" the way skill results are labelled "Skill".
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+        self.role = GovukRole.objects.create(
+            slug="product-manager",
+            title="Product manager",
+            family="Digital",
+            body="<p>A product manager is responsible for the quality of "
+            "their products.</p>",
+        )
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.role)
+
+    def _result_for_url(self, query: str, url: str):
+        page = search_backend.search(query, filters={"site": self.site}, page=1)
+        return next((item for item in page.object_list if item.url == url), None)
+
+    def test_a_role_is_returned_as_a_search_result_linking_to_its_route(self):
+        result = self._result_for_url("product manager", self.role_url)
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result.title, "Product manager")
+        self.assertIn("responsible for the quality", result.search_description)
+
+    def test_a_role_result_is_labelled_as_a_role(self):
+        result = self._result_for_url("product manager", self.role_url)
+
+        self.assertEqual(result.result_type, "Role")
+
+    def test_a_family_search_surfaces_its_roles(self):
+        """The family is a weak match, so a search for it finds the role."""
+        result = self._result_for_url("Digital", self.role_url)
+
+        self.assertIsNotNone(result)
+
+
+def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
+    return {
+        "SKILLS": skills_enabled,
+        "ORGANISATIONS": False,
+        "PEOPLE_FINDER": False,
+        "FEEDBACK": False,
+    }
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+class SearchWithoutTheFrameworkTests(TestCase):
+    """Search is the one route that reaches snippets without the page tree.
+
+    Roles and skills are the Capability Framework's, and its page types are not
+    creatable on a site with the flag off -- but the search backend queried the
+    snippet tables regardless of the flag, so leftover or shared rows would
+    surface on a site that has no framework to explain them.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+    def test_a_skill_is_not_returned(self):
+        skills_page = self.root_page.add_child(
+            instance=FrameworkSkillsPage(title="Skills A-Z", slug="skills-az")
+        )
+        skills_page.save_revision().publish()
+        GovukSkill.objects.create(
+            title="Prototyping",
+            body="<p>Building throwaway versions to test an idea.</p>",
+        )
+
+        results = search_backend.search(
+            "prototyping", filters={"site": self.site}, page=1
+        )
+
+        self.assertEqual(
+            [item for item in results.object_list if item.title == "Prototyping"],
+            [],
+        )
+
+    def test_a_role_is_not_a_search_result(self):
+        """The role's route 404s here, so listing it would be a dead link.
+
+        A framework main page can be in the tree without ever having been
+        creatable here: the import makes pages for any model it can resolve.
+        Its role routes 404 without the flag, as the old role pages did.
+        """
+        role = GovukRole.objects.create(
+            slug="product-manager",
+            title="Product manager",
+            body="<p>A product manager is responsible for their products.</p>",
+        )
+        main_page = make_framework_main_page(self.root_page)
+        served_role_url = role_url(main_page, role)
+
+        results = search_backend.search(
+            "product manager", filters={"site": self.site}, page=1
+        )
+        result = next(
+            (item for item in results.object_list if item.url == served_role_url),
+            None,
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(self.client.get(served_role_url).status_code, 404)
+
+    def test_the_role_table_is_not_queried_at_all(self):
+        """Not merely filtered out afterwards -- not read."""
+        GovukRole.objects.create(
+            slug="delivery-manager", title="Delivery manager", body="<p>Body.</p>"
+        )
+        make_framework_main_page(self.root_page)
+
+        with CaptureQueriesContext(connection) as queries:
+            search_backend.search(
+                "delivery manager", filters={"site": self.site}, page=1
+            )
+
+        self.assertEqual(
+            [
+                query["sql"]
+                for query in queries.captured_queries
+                if "govuk_govukskill" in query["sql"]
+                or (
+                    "govuk_govukrole" in query["sql"]
+                    and "govuk_govukrole_tags" not in query["sql"]
+                )
+            ],
+            [],
+        )
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+class SearchFindsRolesWhenTheMainPageIsTheHomePageTests(TestCase):
+    """On the Capability Framework the framework main page *is* the site's
+    home page. The site filter looks below the root, so the main page was never
+    found, so no role was ever a search result on the one site that has roles.
+    Every other role-search test puts the main page under the home page, which
+    is why none of them noticed.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        tree_root = Page.objects.get(depth=1)
+        main_page = make_framework_main_page(tree_root, slug="framework")
+        self.site.root_page = main_page
+        self.site.save()
+        self.addCleanup(Site.clear_site_root_paths_cache)
+        self.main_page = FrameworkMainPage.objects.get(pk=main_page.pk)
+        self.role = GovukRole.objects.create(
+            slug="data-analyst",
+            title="Data analyst",
+            family="Data",
+            body="<p>A data analyst collects, manages and shares data.</p>",
+        )
+
+    def test_a_role_is_found_and_links_to_its_live_url(self):
+        page = search_backend.search("data analyst", filters={"site": self.site}, page=1)
+
+        result = next(
+            (item for item in page.object_list if item.result_type == "Role"), None
+        )
+        self.assertIsNotNone(result, [item.title for item in page.object_list])
+        self.assertEqual(result.title, "Data analyst")
+        self.assertEqual(result.url, "/role/data-analyst/")
