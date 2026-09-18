@@ -1,10 +1,14 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 
 import jwt
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from rest_framework.authentication import BaseAuthentication, get_authorization_header
 from rest_framework.exceptions import AuthenticationFailed
+
+logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=None)
@@ -91,6 +95,11 @@ class InternalAccessJWTAuthentication(BaseAuthentication):
             return None
         claims = self._validated_claims(raw_token)
         user = TokenUser(claims, id_claim=self._config.get("USER_ID_CLAIM", "sub"))
+        if user.id is None:
+            # The claim was present (required above) but carried no value: we
+            # have no identity to authorise against, so reject rather than
+            # authenticate an identity-less caller.
+            raise AuthenticationFailed("Invalid token")
         return user, claims
 
     def authenticate_header(self, request):
@@ -117,6 +126,21 @@ class InternalAccessJWTAuthentication(BaseAuthentication):
     def _validated_claims(self, raw_token) -> dict:
         audience = self._config.get("AUDIENCE")
         issuer = self._config.get("ISSUER")
+        id_claim = self._config.get("USER_ID_CLAIM", "sub")
+        # Fail closed: a missing audience or issuer must stop token
+        # verification, never silently skip a check. Raising here surfaces the
+        # misconfiguration instead of accepting tokens meant for another
+        # relying party of the same issuer.
+        if not audience:
+            raise ImproperlyConfigured(
+                "OIDC_TOKEN_AUTH['AUDIENCE'] is not set; refusing to verify "
+                "tokens without an expected audience."
+            )
+        if not issuer:
+            raise ImproperlyConfigured(
+                "OIDC_TOKEN_AUTH['ISSUER'] is not set; refusing to verify "
+                "tokens without an expected issuer."
+            )
         try:
             signing_key = _jwks_client(
                 self._config["JWKS_URL"]
@@ -129,15 +153,18 @@ class InternalAccessJWTAuthentication(BaseAuthentication):
                 issuer=issuer,
                 leeway=self._config.get("LEEWAY_SECONDS", 0),
                 options={
-                    # Verify the audience only when one is configured, and
-                    # require the claims we then go on to trust.
-                    "verify_aud": audience is not None,
-                    "verify_iss": issuer is not None,
-                    "require": ["exp", "iat"],
+                    "verify_aud": True,
+                    "verify_iss": True,
+                    # Require the claims we go on to trust, including the one
+                    # that establishes the caller's identity.
+                    "require": ["exp", "iat", id_claim],
                 },
             )
         except jwt.PyJWTError as exc:
-            raise AuthenticationFailed(f"Invalid token: {exc}") from exc
+            # Keep the specifics server-side; PyJWT's message can leak details
+            # of why verification failed, so the caller only sees a generic 401.
+            logger.warning("JWT verification failed: %s", exc)
+            raise AuthenticationFailed("Invalid token") from exc
         self._validate_id_token_age(claims)
         return claims
 

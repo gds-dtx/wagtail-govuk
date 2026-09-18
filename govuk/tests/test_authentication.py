@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
+from django.core.exceptions import ImproperlyConfigured
 from django.test import RequestFactory, SimpleTestCase, override_settings
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.request import Request
@@ -128,6 +129,20 @@ class InternalAccessJWTAuthenticationTests(SimpleTestCase):
         future = datetime.now(timezone.utc) + timedelta(minutes=30)
         with self.assertRaises(AuthenticationFailed):
             self._authenticate(_make_token(iat=future, exp=future + timedelta(hours=1)))
+
+    def test_token_missing_id_claim_is_rejected(self):
+        with self.assertRaises(AuthenticationFailed):
+            self._authenticate(_make_token(sub=None))
+
+    @override_settings(OIDC_TOKEN_AUTH={**_OIDC_TOKEN_AUTH, "AUDIENCE": None})
+    def test_missing_configured_audience_fails_closed(self):
+        with self.assertRaises(ImproperlyConfigured):
+            self._authenticate(_make_token())
+
+    @override_settings(OIDC_TOKEN_AUTH={**_OIDC_TOKEN_AUTH, "ISSUER": None})
+    def test_missing_configured_issuer_fails_closed(self):
+        with self.assertRaises(ImproperlyConfigured):
+            self._authenticate(_make_token())
 
     def test_signature_from_unknown_key_is_rejected(self):
         other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
