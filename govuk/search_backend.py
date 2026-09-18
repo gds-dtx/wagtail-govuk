@@ -439,9 +439,8 @@ class SearchBackend:
         if not settings.FEATURE_FLAGS.get("SKILLS"):
             return []
 
-        # include_root: on the Capability Framework the main page *is* the
-        # site's home page, and the site filter otherwise looks only below the
-        # root -- so on the one site that has roles, none was ever found.
+        # include_root: for some services, the main page *is* the site's home
+        # page, and the site filter otherwise looks only below the root.
         main_page = self._apply_filters(
             FrameworkMainPage.objects.all(), {**filters, "include_root": True}
         ).first()

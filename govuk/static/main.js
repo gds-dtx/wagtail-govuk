@@ -51,10 +51,8 @@ function wrapperTextSize(el) {
 
 function setListClasses() {
   // The Design System styles its classes rather than the elements, so rich
-  // text an editor typed carries none of its type scale. Adding it is the
-  // Capability Framework's house style, asked for in review round 2 (T18, T57)
-  // and matching what the live service publishes as hand-written markup. It is
-  // not every service's choice, though, and every site this image serves
+  // text an editor typed carries none of its type scale.
+  // It is not every service's choice, though, and every site this image serves
   // renders the same .rich-text-content through the same script -- so the
   // sizing below is applied only where base.html marked the body, which it
   // does on a framework instance. Without the mark the lists still become

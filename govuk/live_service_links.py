@@ -1,6 +1,8 @@
-"""The live service's URL shapes, mapped onto the pages this site serves.
+"""This is a shim for cutover compatability from the old Capability Framework site.
 
-The live framework publishes a role at ``/role/<slug>`` and a skill at
+The live service's URL shapes, mapped onto the pages this site serves.
+
+The previous framework site publishes a role at ``/role/<slug>`` and a skill at
 ``/skill/<slug>``. This site serves a role as a route under the framework main
 page (``/<main-page>/role/<role-slug>/``) and every skill as a section of the
 skills A to Z, so both shapes have to be translated. That happens in two
@@ -13,9 +15,8 @@ places, and this module is the single rule both use:
 * the ``changelog_note`` template tag rewrites them where they appear inside
   the content itself.
 
-The second is not a nicety. The 262 imported changelog notes hold their links
-in the live service's shape -- the framework home page alone renders 58 of
-them -- because the CSV they came from wrote them that way and
+The second is not a nicety. The imported changelog notes hold their links
+in the live service's shape because the CSV they came from wrote them that way and
 ``changelog_note_to_html`` stored what it was given. Left alone they resolve
 only for as long as the redirects are seeded, so a fresh instance imported
 from the admin export, with no runbook step run, publishes a home page whose

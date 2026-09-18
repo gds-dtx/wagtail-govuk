@@ -2303,9 +2303,7 @@ class GovukRole(models.Model):
     def get_related_roles(self, count: int = RELATED_ROLES_COUNT) -> list[dict]:
         """Other roles sharing skills with this one, most shared skills first.
 
-        Mirrors the DDaT Capability Framework behaviour: ordered by number of
-        shared skills descending then title, capped at ``count`` (the Strapi
-        site used a ``relatedRolesCount`` global setting defaulting to 5).
+        Ordered by number of shared skills descending then title, capped at ``count``.
         """
         own_skill_ids = self.get_skill_ids()
         if not own_skill_ids:
@@ -3180,7 +3178,7 @@ class FrameworkFieldsMixin(models.Model):
         # nothing at all on a site without the framework. The lookup below
         # reads as a read and is not one: Wagtail's BaseSiteSetting.for_site
         # does a get_or_create, so calling it unconditionally wrote a
-        # Capability Framework settings row for every site that rendered any
+        # framework settings row for every site that rendered any
         # page, including sites with the feature off and its admin panel
         # unregistered.
         #
@@ -3531,10 +3529,8 @@ def role_navigation_groups(
     request=None,
 ) -> list[dict]:
     """The side navigation: every live role grouped by family, then the rest.
-
-    Mirrors the DDaT Capability Framework, which lists every role grouped under
-    its family heading on each role page, and closes with the pages about the
-    framework itself. The roles come straight from the role snippets now, so the
+    Closes with the pages about the framework itself.
+    The roles come straight from the role snippets, so the
     navigation populates itself; a role's own page marks itself current through
     ``current_role_slug``, and a framework content page through
     ``current_page_id``.
@@ -4112,11 +4108,9 @@ class FrameworkMainPage(
 
         ``role``, singular, because that is the live service's URL: it
         publishes every role at ``/role/<slug>``. With the framework main page
-        as the site's home page, as it is on the Capability Framework, a role
-        is served at its live address and every bookmark, search result and
-        link in the migrated content reaches it directly, with no redirect to
-        seed and none to go missing. GOV.UK's rule is not to change a URL
-        without a reason, and there was none.
+        as the site's home page a role is served at its live address and every
+        bookmark, search result and link in the migrated content reaches it
+        directly, with no redirect to seed and none to go missing.
 
         Without the framework flag the route 404s, as the old role pages did:
         a route cannot be guarded by ``can_exist_under``, and an import can

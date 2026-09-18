@@ -32,7 +32,7 @@ def _sync_default_site_after_migrate(app_config, **kwargs):
 
 
 def _warn_about_framework_across_sites(app_config, **kwargs):
-    """One database per site while the Capability Framework is switched on.
+    """One database per site while the Framework setting is switched on.
 
     Roles, skills, changelog entries and tags are snippets with no site of
     their own, so where two Wagtail Sites share a database they share the
