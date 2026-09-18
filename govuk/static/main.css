@@ -1226,11 +1226,11 @@ main > :nth-last-child(1 of .section-cards-container) {
 .app-site-search__option:last-child {
     border-bottom: 0;
 }
+/* Suggestion text is not underlined: an option in the list is understood to
+   be somewhere to go, and other autocompletes leave it plain. Underlining it
+   was picked up in review (CS32-3458, 11 September 2026). */
 .app-site-search__option-text {
     color: #1d70b8;
-    text-decoration: underline;
-    text-decoration-thickness: max(1px, 0.0625rem);
-    text-underline-offset: 0.1578em;
 }
 .app-site-search__option-type {
     display: block;

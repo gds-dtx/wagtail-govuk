@@ -7,8 +7,11 @@ where the results page would send the reader. These tests are the endpoint
 that feeds it, and that the box in every page's header knows where it is.
 """
 
+import re
+from pathlib import Path
+
 from django.contrib.staticfiles import finders
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.models import (
@@ -21,6 +24,8 @@ from govuk.models import (
     GovukSkill,
 )
 from govuk.tests.framework_helpers import make_framework_main_page, role_url
+
+STATIC = Path(__file__).resolve().parents[1] / "static"
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -81,9 +86,12 @@ class SearchSuggestTests(TestCase):
         _response, items = self._suggest(q="data")
         by_text = {item["text"]: item for item in items}
 
-        self.assertEqual(by_text["Data analyst"]["link"], role_url(self.main_page, self.role))
         self.assertEqual(
-            by_text["Data visualisation"]["link"], f"{self.skills_page.url}#{self.skill.slug}"
+            by_text["Data analyst"]["link"], role_url(self.main_page, self.role)
+        )
+        self.assertEqual(
+            by_text["Data visualisation"]["link"],
+            f"{self.skills_page.url}#{self.skill.slug}",
         )
         self.assertEqual(by_text["Data protection guidance"]["link"], self.page.url)
         self.assertEqual(by_text["Data protection guidance"]["type"], "Page")
@@ -138,7 +146,9 @@ class SearchSuggestTests(TestCase):
         self.assertEqual(response["Cache-Control"], "no-store")
 
     def test_only_get_and_head(self):
-        self.assertEqual(self.client.post("/search/suggest/", {"q": "data"}).status_code, 405)
+        self.assertEqual(
+            self.client.post("/search/suggest/", {"q": "data"}).status_code, 405
+        )
         self.assertEqual(self.client.head("/search/suggest/?q=data").status_code, 200)
 
     def test_the_header_box_says_where_the_suggestions_are(self):
@@ -158,7 +168,9 @@ class SearchSuggestWithoutTheFrameworkTests(TestCase):
     def test_only_pages_are_suggested(self):
         site = Site.objects.get(is_default_site=True)
         page = site.root_page.add_child(
-            instance=ContentPage(title="Data guidance", slug="data-guidance", body="<p>Data.</p>")
+            instance=ContentPage(
+                title="Data guidance", slug="data-guidance", body="<p>Data.</p>"
+            )
         )
         page.save_revision().publish()
         GovukRole.objects.create(title="Data analyst", family="Data")
@@ -168,3 +180,28 @@ class SearchSuggestWithoutTheFrameworkTests(TestCase):
 
         self.assertEqual([item["type"] for item in items], ["Page"])
         self.assertEqual(items[0]["text"], "Data guidance")
+
+
+class SuggestionPresentationTests(SimpleTestCase):
+    """Antony's review notes of 11 September 2026 on CS32-3458.
+
+    The box is the library's; these read the two files that shape it, since
+    nothing here runs a browser.
+    """
+
+    def test_suggestion_text_is_not_underlined(self):
+        """An option in the list is understood to be somewhere to go."""
+        css = re.sub(r"/\*.*?\*/", "", (STATIC / "main.css").read_text(), flags=re.S)
+        block = re.search(r"\.app-site-search__option-text\s*\{([^}]*)\}", css).group(1)
+
+        self.assertNotIn("underline", block)
+
+    def test_the_query_offered_back_is_plain_text_and_searches(self):
+        """On the results page the library offers the query back as a string
+        suggestion; it read as "undefined" and Enter on it did nothing."""
+        js = (STATIC / "main.js").read_text()
+
+        self.assertIn('typeof item === "string"', js)
+        self.assertIn("inputValue: itemText", js)
+        self.assertIn("escapeHtml(itemText(item))", js)
+        self.assertIn("form.requestSubmit()", js)
