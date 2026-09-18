@@ -1,40 +1,34 @@
-import os
-
 from .base import *
-from .runtime import deployment_allowed_hosts
 
-# Development settings - these are used in development and test environments
+# Local settings - these are used for local development and testing
 
-DEBUG = os.getenv("DEBUG", "False") == "True"
-SECRET_KEY = os.getenv("SECRET_KEY")
+DEBUG = True
+WHITENOISE_USE_FINDERS = True
+INCOMING_REQUEST_INFO_LOGGING = True
+CONTENT_DISCOVERY_REQUEST_INFO_LOGGING = True
+
+SECURE_HSTS_SECONDS = 0
+SESSION_COOKIE_SECURE = False
+# Local development is over plaintext HTTP, so a secure-only CSRF cookie would
+# never be sent back and every admin form would fail its CSRF check.
+CSRF_COOKIE_SECURE = False
+
+# This is a secret key used for cryptographic signing and is not suitable
+# for production use. This govuk.settings.local is for local development only.
+SECRET_KEY = "abc123"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.getenv("DATABASE_NAME"),
-        "USER": os.getenv("DATABASE_USER"),
-        "PASSWORD": os.getenv("DATABASE_PASSWORD"),
-        "HOST": os.getenv("DATABASE_HOST"),
-        "PORT": os.getenv("DATABASE_PORT", "5432"),
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",
     }
 }
 
-MEDIA_ROOT = "/app/data/media"
+WAGTAILADMIN_BASE_URL = "http://localhost:8000"
 
-BASE_URL = os.getenv("BASE_URL").strip().rstrip("/")
-
-# Host allow-list, no wildcard (Django rejects unexpected Host headers when
-# DEBUG is off). Set ALLOWED_HOSTS to a comma-separated list per environment;
-# it must include every host the app is reached on. Falls back to DOMAIN when
-# the var is unset, and the task's own address is added for the load balancer
-# health check, which arrives by IP -- see deployment_allowed_hosts.
-ALLOWED_HOSTS = deployment_allowed_hosts()
-CSRF_TRUSTED_ORIGINS = [BASE_URL]
-CSRF_ALLOWED_ORIGINS = [BASE_URL]
-CORS_ORIGINS_WHITELIST = [BASE_URL]
-SECURE_PROXY_SSL_HEADER = ("HTTP_CLOUDFRONT_FORWARDED_PROTO", "https")
-USE_X_FORWARDED_PORT = True
-DEFAULT_SITE_PORT = 443
-
-WAGTAILADMIN_BASE_URL = BASE_URL
-WAGTAILAPI_BASE_URL = BASE_URL + "/"
+FEATURE_FLAGS = {
+    "SKILLS": True,
+    "ORGANISATIONS": True,
+    "PEOPLE_FINDER": True,
+    "FEEDBACK": True,
+}
