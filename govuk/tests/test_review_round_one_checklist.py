@@ -84,6 +84,27 @@ def _rules(css: str, selector: str) -> str:
     return "\n".join(found)
 
 
+def _small_screen_css(css: str) -> str:
+    """Everything inside the stylesheet's small-screen media queries.
+
+    The framework's small-screen rules are all written against the width the
+    Design System calls tablet, a hair below it so that a max-width and a
+    min-width query never both apply at exactly 40.0625em.
+    """
+    blocks = []
+    for match in re.finditer(r"@media \(max-width: 40\.0525em\)\s*\{", css):
+        depth, start = 1, match.end()
+        index = start
+        while depth and index < len(css):
+            if css[index] == "{":
+                depth += 1
+            elif css[index] == "}":
+                depth -= 1
+            index += 1
+        blocks.append(css[start : index - 1])
+    return "\n".join(blocks)
+
+
 def _strip_tags(html: str) -> str:
     return " ".join(re.sub(r"<[^>]+>", " ", html).split())
 
@@ -448,6 +469,81 @@ class StylingChecklistTests(ReviewChecklistTestCase):
         self.assertIn("width: 50%", bar)
         self.assertIn("table-layout: fixed", bar)
         self.assertNotIn("width: auto", bar)
+
+    def test_mobile_1_nothing_is_hyphenated_and_the_framework_tables_take_lives_small_screen_size(
+        self,
+    ):
+        """Antony, 18 September 2026, from mobile testing: "on small screens,
+        text should reflow to keep complete words", high priority.
+
+        GOV.UK Frontend 6 keeps .govuk-table at 19px on every screen; live runs
+        Frontend 5, where a table is 16px below 40.0625em, which is how its
+        skill tables fit 320px without splitting a word. Ours were hyphenated
+        to fit instead, and split a word on most lines. The framework's tables
+        now take live's size on small screens and nothing is hyphenated.
+        """
+        self.assertNotIn("hyphens: auto", CSS)
+
+        small = _rules(CSS, ".app-framework-table")
+        self.assertIn("font-size: 1rem", small)
+        # Only the framework's own tables: an editor's table on another site
+        # keeps the Design System's sizing.
+        self.assertNotIn("font-size: 1rem", _rules(CSS, ".govuk-table"))
+
+    def test_mobile_1_the_skill_tables_are_the_named_ones(self):
+        role_html = self.role_html(self.analyst)
+        skills_html = self.client.get(self.skills_page.url).content.decode()
+
+        self.assertIn('<table class="govuk-table app-framework-table">', role_html)
+        self.assertIn('<table class="govuk-table app-framework-table">', skills_html)
+        self.assertNotIn('<table class="govuk-table">', role_html)
+
+    def test_mobile_2_the_back_to_top_button_leaves_the_fixed_layer_on_a_small_screen(
+        self,
+    ):
+        """CS32-3560, from Antony's mobile testing on 18 September 2026: "back
+        to top link covering last line of content".
+
+        Under the tablet width there is no gutter beside the text, so a button
+        fixed at the left edge is over the content wherever the page is
+        scrolled to, not only at the end. The ticket asks for both "user can
+        read all content on page" and "user can still use the back to top
+        link", so it is not hidden as the live service hides it -- it takes
+        its place in the flow at the end of the content instead, where nothing
+        can be underneath it.
+        """
+        docked = _rules(_small_screen_css(CSS), "#back-to-top.back-to-top--visible")
+
+        self.assertIn("position: static", docked)
+        # The class main.js adds has to be named: the rule that reveals the
+        # button carries it, so a bare #back-to-top would lose to it.
+        self.assertNotIn("display: none", docked)
+
+    def test_mobile_2_the_button_is_fixed_again_above_the_tablet_width(self):
+        """One media query, not a rewrite -- the wide layout has the gutter for
+        a fixed button and keeps it."""
+        base = _rules(CSS, "#back-to-top")
+
+        self.assertIn("position: fixed", base)
+        self.assertIn(
+            "display: block", _rules(CSS, "#back-to-top.back-to-top--visible")
+        )
+
+    def test_mobile_2_the_button_sits_at_the_end_of_the_content(self):
+        """In the flow it is visible, so where it falls in the markup starts to
+        matter: it belongs after the content and before the feedback prompt,
+        which is where GOV.UK puts it."""
+        customise = CustomiseSettings.for_site(self.site)
+        customise.show_page_feedback_prompt = True
+        customise.save()
+
+        html = self.role_html(self.analyst)
+
+        self.assertIn("gem-c-feedback", html)
+        self.assertLess(
+            html.index('<button type="button" id="back-to-top"'),
+            html.index("gem-c-feedback"),
+        )
 
     def test_t57_a_bullet_inside_a_changelog_note_is_the_smaller_size_too(self):
         """ "Text in bullet points should also be smaller - currently appearing

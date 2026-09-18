@@ -108,7 +108,7 @@
                                                         {% endif %}
                                                     </li>
                                                 </ul>
-                                                <table class="govuk-table">
+                                                <table class="govuk-table app-framework-table">
                                                     <thead class="govuk-table__head">
                                                         <tr class="govuk-table__row">
                                                             <th scope="col" class="govuk-table__header">{{ framework_wording.scs_skills_table_skill_heading }}</th>
@@ -164,7 +164,7 @@
                                                     </ul>
                                                 {% endif %}
                                                 {% if role_level.skills %}
-                                                    <table class="govuk-table">
+                                                    <table class="govuk-table app-framework-table">
                                                         <thead class="govuk-table__head">
                                                             <tr class="govuk-table__row">
                                                                 <th scope="col" class="govuk-table__header">{{ framework_wording.level_skills_table_skill_heading }}</th>
@@ -224,7 +224,7 @@
                                             {% endfor %}
                                             {% if role_section.related_roles %}
                                                 <h2 class="govuk-heading-l" id="{{ role_section.anchors.related_roles }}">{{ role_section.wording.related_roles_heading }}</h2>
-                                                <table class="govuk-table">
+                                                <table class="govuk-table app-framework-table">
                                                     <thead class="govuk-table__head">
                                                         <tr class="govuk-table__row">
                                                             <th scope="col" class="govuk-table__header">{{ framework_wording.related_roles_table_role_heading }}</th>
