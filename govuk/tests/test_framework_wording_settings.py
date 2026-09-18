@@ -85,9 +85,7 @@ class DefaultWordingTests(FrameworkWordingTestCase):
             is_senior_civil_service=True,
             scs_grades=[{"type": "grade", "value": "scs1"}],
             scs_skills=[{"type": "skill", "value": self.leadership_skill.pk}],
-            roles_that_could_lead_here=[
-                {"type": "role", "value": self.analyst.pk}
-            ],
+            roles_that_could_lead_here=[{"type": "role", "value": self.analyst.pk}],
         )
         GovukChangelogEntry.objects.create(
             date="2026-04-01", role=self.cto, note="<p>First published.</p>"
@@ -142,7 +140,8 @@ class DefaultWordingTests(FrameworkWordingTestCase):
 
         for wording in (
             "Senior Civil Service",
-            "Examples of leadership using this skill",
+            "Description, including examples of leadership",
+            "Examples of leadership using this skill:",
             "Skill level",
             "Working is the second of four ascending skill levels",
             "No description provided.",
@@ -216,7 +215,7 @@ class EditedWordingTests(FrameworkWordingTestCase):
         )
 
     def test_a_heading_keeps_the_capitals_inside_a_role_title(self):
-        """"Development operations (DevOps) engineer" opens a heading, so it
+        """ "Development operations (DevOps) engineer" opens a heading, so it
         is not lowercased the way the mid-sentence form is."""
         response = self.client.get(self.role_url)
 

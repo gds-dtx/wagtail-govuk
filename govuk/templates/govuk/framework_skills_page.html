@@ -49,6 +49,16 @@
                                 </div>
                                 <div id="skills-accordion-content-{{ forloop.counter }}"
                                      class="govuk-accordion__section-content">
+                                    {% if skill_section.is_scs %}
+                                        {% comment %}
+                                            A Senior Civil Service skill has no levels table, so the
+                                            live service heads its entry the way it heads the column
+                                            on a Senior Civil Service role page: "Description,
+                                            including examples of leadership". Same wording setting
+                                            as that column (review round 2, T37.2).
+                                        {% endcomment %}
+                                        <h3 class="govuk-heading-s govuk-!-margin-bottom-2">{{ framework_wording.scs_skills_table_description_heading }}</h3>
+                                    {% endif %}
                                     {% if skill_section.skill.body %}
                                         {% comment %}
                                             rich-text-content is what main.js looks for to give
@@ -61,7 +71,13 @@
                                         <div class="govuk-body rich-text-content">{{ skill_section.skill.body|richtext }}</div>
                                     {% endif %}
                                     {% if skill_section.leadership_points %}
-                                        <h3 class="govuk-heading-s govuk-!-margin-bottom-2">{{ framework_wording.skill_leadership_examples_heading }}</h3>
+                                        {% comment %}
+                                            A sentence, not a heading: it introduces the list the way
+                                            "You can:" introduces the points above it, and it is the
+                                            same sentence the Senior Civil Service role page prints
+                                            in its skills table (T37.2).
+                                        {% endcomment %}
+                                        <p class="govuk-body govuk-!-margin-bottom-1">{{ framework_wording.scs_leadership_examples_heading }}</p>
                                         <ul class="govuk-list govuk-list--bullet">
                                             {% for point in skill_section.leadership_points %}<li>{{ point }}</li>{% endfor %}
                                         </ul>
@@ -131,6 +147,15 @@
                                         </div>
                                     {% endif %}
                                     {% if skill_section.roles %}
+                                        {% if skill_section.is_scs %}
+                                            {% comment %}
+                                                Every other skill's levels table ends in a rule that
+                                                sets its roles list off; a Senior Civil Service skill
+                                                has no table, so the live service draws the rule
+                                                itself (T37.3).
+                                            {% endcomment %}
+                                            <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+                                        {% endif %}
                                         <h3 class="govuk-heading-s govuk-!-margin-bottom-2">{{ framework_wording.skill_roles_heading }}</h3>
                                         <ul class="govuk-list">
                                             {% for entry in skill_section.roles %}
