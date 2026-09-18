@@ -21,7 +21,13 @@ def navigation_and_breadcrumbs(request):
     else:
         additional_css = []
 
+    # main.js gives an editor's rich text the Design System's type scale, which
+    # is the framework's house style and not every service's. The flag rides on
+    # the body element so the script can tell which kind of site it is on.
+    framework_enabled = bool(settings.FEATURE_FLAGS.get("SKILLS"))
+
     template_context = {
+        "framework_enabled": framework_enabled,
         "app_debug": settings.DEBUG,
         "app_version": getattr(settings, "VERSION", ""),
         "additional_css": additional_css,
