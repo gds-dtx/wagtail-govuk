@@ -25,18 +25,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) if you want to send a change back.
   Start with [where content comes from](docs/cutover.md#where-the-content-actually-comes-from):
   none of it is in this repository. Also covers the three kinds of state that do
   not travel in a content export, and how to refresh content before you go.
-- [Decommissioning the old service](docs/decommission.md) — what happens to the
-  system being replaced, and why not at cutover.
 - [The published downloads](docs/downloads.md) — the three CSVs and their
   column schemas.
-- [Logging, monitoring and alerting](docs/monitoring.md) — what is emitted,
-  what is watched, and the alerts still to agree.
-- [Analytics](docs/analytics.md) — there is none; the options, and the decision
-  that has to be made before there is.
 - [User journeys](docs/user-journeys.md) — the journeys to test, written so
   somebody who did not build it can run them.
-- [Delivery status](docs/delivery-status.md) — every Jira ticket, its evidence,
-  and what is genuinely left.
 
 ## Local Setup
 

@@ -144,9 +144,17 @@ For anything too large to do by hand there is the JSON import and export at
 between instances, described in [cutover.md](cutover.md).
 
 Two things to know before using it on a live site: it runs outside the
-moderation workflow, and it **adds and updates but never deletes**. An import
-cannot be used to remove a page, and a file that omits a page leaves that page
-exactly as it was.
+moderation workflow, and for pages it **adds and updates but never deletes**.
+An import cannot be used to remove a page, and a file that omits a page leaves
+that page exactly as it was.
+
+Changelog entries are the exception, and the difference matters. An entry has
+no identifier of its own, so the importer cannot match one to another: it
+deletes the entries belonging to a role, a skill or the framework and writes
+the file's set in their place. A file carrying one new entry for a role
+therefore leaves that role with one entry, not with its previous entries plus
+one. It also needs delete permission on the changelog, and is reported and
+skipped rather than refused if you do not have it.
 
 Skipping the workflow does not mean skipping permissions. The import publishes
 only what the person running it could have published by hand: an editor's
