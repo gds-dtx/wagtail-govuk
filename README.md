@@ -50,7 +50,7 @@ pip install -e .
 
 3. Run the development server
 
-By default the project uses `govuk/settings/dev.py` for local development which is configured to use SQLite. You can override this by setting the `DJANGO_SETTINGS_MODULE` environment variable to point to a different settings file. WSGI servers such as Gunicorn must set `DJANGO_SETTINGS_MODULE` explicitly to a deployed settings module.
+By default the project uses `govuk/settings/development.py` for local development which is configured to use SQLite. You can override this by setting the `DJANGO_SETTINGS_MODULE` environment variable to point to a different settings file. WSGI servers such as Gunicorn must set `DJANGO_SETTINGS_MODULE` explicitly to a deployed settings module.
 
 ```bash
 # Run checks, apply migrations, and start the server
@@ -61,7 +61,7 @@ python manage.py runserver
 
 ## Environment Variables
 
-- `DJANGO_SETTINGS_MODULE`: The settings module to use for the project. Local `manage.py` workflows default to `govuk.settings.dev`; Gunicorn requires an explicit deployed settings module.
+- `DJANGO_SETTINGS_MODULE`: The settings module to use for the project. Local `manage.py` workflows default to `govuk.settings.development`; Gunicorn requires an explicit deployed settings module.
 
 When using `govuk.settings.production`, the following variables are required:
 

@@ -7,7 +7,7 @@ from django.http.request import validate_host
 from django.test import SimpleTestCase
 
 from govuk.settings.runtime import (
-    DEV_SETTINGS_MODULE,
+    DEVELOPMENT_SETTINGS_MODULE,
     deployment_allowed_hosts,
     is_gunicorn_process,
     is_runserver_process,
@@ -117,7 +117,7 @@ class GunicornDetectionTests(SimpleTestCase):
 
 
 class ResolveWsgiSettingsModuleTests(SimpleTestCase):
-    def test_defaults_to_dev_settings_for_runserver(self):
+    def test_defaults_to_development_settings_for_runserver(self):
         environ = {}
 
         resolved = resolve_wsgi_settings_module(
@@ -125,8 +125,8 @@ class ResolveWsgiSettingsModuleTests(SimpleTestCase):
             argv=["manage.py", "runserver"],
         )
 
-        self.assertEqual(resolved, DEV_SETTINGS_MODULE)
-        self.assertEqual(environ["DJANGO_SETTINGS_MODULE"], DEV_SETTINGS_MODULE)
+        self.assertEqual(resolved, DEVELOPMENT_SETTINGS_MODULE)
+        self.assertEqual(environ["DJANGO_SETTINGS_MODULE"], DEVELOPMENT_SETTINGS_MODULE)
 
     def test_preserves_explicit_deployed_settings(self):
         environ = {"DJANGO_SETTINGS_MODULE": "govuk.settings.production"}
@@ -138,14 +138,14 @@ class ResolveWsgiSettingsModuleTests(SimpleTestCase):
 
         self.assertEqual(resolved, "govuk.settings.production")
 
-    def test_rejects_dev_settings_for_gunicorn(self):
+    def test_rejects_development_settings_for_gunicorn(self):
         with self.assertRaisesMessage(
             ImproperlyConfigured,
-            "govuk.settings.dev is only supported for local "
+            "govuk.settings.development is only supported for local "
             "`python manage.py runserver`.",
         ):
             resolve_wsgi_settings_module(
-                environ={"DJANGO_SETTINGS_MODULE": DEV_SETTINGS_MODULE},
+                environ={"DJANGO_SETTINGS_MODULE": DEVELOPMENT_SETTINGS_MODULE},
                 argv=["/venv/bin/gunicorn", "govuk.wsgi:application"],
             )
 
@@ -160,14 +160,14 @@ class ResolveWsgiSettingsModuleTests(SimpleTestCase):
                 argv=["/venv/bin/gunicorn", "govuk.wsgi:application"],
             )
 
-    def test_rejects_dev_settings_outside_runserver(self):
+    def test_rejects_development_settings_outside_runserver(self):
         with self.assertRaisesMessage(
             ImproperlyConfigured,
-            "govuk.settings.dev is only supported for local "
+            "govuk.settings.development is only supported for local "
             "`python manage.py runserver`.",
         ):
             resolve_wsgi_settings_module(
-                environ={"DJANGO_SETTINGS_MODULE": DEV_SETTINGS_MODULE},
+                environ={"DJANGO_SETTINGS_MODULE": DEVELOPMENT_SETTINGS_MODULE},
                 argv=["python", "-c", "import govuk.wsgi"],
             )
 

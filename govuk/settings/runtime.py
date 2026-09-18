@@ -4,7 +4,7 @@ import sys
 
 from django.core.exceptions import ImproperlyConfigured
 
-DEV_SETTINGS_MODULE = "govuk.settings.dev"
+DEVELOPMENT_SETTINGS_MODULE = "govuk.settings.development"
 RUNSERVER_COMMANDS = {"runserver", "runserver_plus"}
 
 
@@ -113,9 +113,9 @@ def resolve_wsgi_settings_module(
         loaded_modules=loaded_modules,
     )
 
-    if configured_settings == DEV_SETTINGS_MODULE and (gunicorn or not runserver):
+    if configured_settings == DEVELOPMENT_SETTINGS_MODULE and (gunicorn or not runserver):
         raise ImproperlyConfigured(
-            "govuk.settings.dev is only supported for local "
+            "govuk.settings.development is only supported for local "
             "`python manage.py runserver`. Set DJANGO_SETTINGS_MODULE to a "
             "deployed settings module before starting the WSGI application."
         )
@@ -124,8 +124,8 @@ def resolve_wsgi_settings_module(
         return configured_settings
 
     if runserver and not gunicorn:
-        environ.setdefault("DJANGO_SETTINGS_MODULE", DEV_SETTINGS_MODULE)
-        return DEV_SETTINGS_MODULE
+        environ.setdefault("DJANGO_SETTINGS_MODULE", DEVELOPMENT_SETTINGS_MODULE)
+        return DEVELOPMENT_SETTINGS_MODULE
 
     if gunicorn:
         raise ImproperlyConfigured(
@@ -135,6 +135,6 @@ def resolve_wsgi_settings_module(
 
     raise ImproperlyConfigured(
         "DJANGO_SETTINGS_MODULE must be set before starting the WSGI "
-        "application. Refusing to default to govuk.settings.dev outside "
+        "application. Refusing to default to govuk.settings.development outside "
         "`python manage.py runserver`."
     )
