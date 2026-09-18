@@ -11,7 +11,7 @@ from django.test import (
 from wagtail.models import Site
 
 from govuk.context_processors import navigation_and_breadcrumbs
-from govuk.models import ContentPage, RolePage
+from govuk.models import ContentPage, FrameworkSkillsPage
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -90,10 +90,11 @@ class NavigationAndBreadcrumbsContextTests(SimpleTestCase):
 class ServiceNavigationWithoutTheFrameworkTests(TestCase):
     """The navigation menu is on every page of the site, including the errors.
 
-    A ``RolePage`` can be a child of the site root with ``show_in_menus`` set:
-    the page import carries the field along with the rest of the payload. It
-    404s when fetched, so a link to it in the header is a link that does not
-    work, in the one place a reader sees on every page.
+    A framework page type such as ``FrameworkSkillsPage`` can be a child of the site
+    root with ``show_in_menus`` set: the page import carries the field along
+    with the rest of the payload. It 404s when fetched on a site without the
+    framework, so a link to it in the header is a link that does not work, in
+    the one place a reader sees on every page.
     """
 
     def setUp(self):
@@ -111,15 +112,14 @@ class ServiceNavigationWithoutTheFrameworkTests(TestCase):
         )
         self.content_page.save_revision().publish()
 
-        self.role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data analyst",
-                slug="data-analyst",
-                body="",
+        self.framework_page = self.root_page.add_child(
+            instance=FrameworkSkillsPage(
+                title="Skills A-Z",
+                slug="skills-az",
                 show_in_menus=True,
             )
         )
-        self.role_page.save_revision().publish()
+        self.framework_page.save_revision().publish()
 
     def _menu_titles(self):
         return [
@@ -131,11 +131,11 @@ class ServiceNavigationWithoutTheFrameworkTests(TestCase):
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
     def test_the_framework_site_still_gets_the_whole_menu(self):
-        self.assertEqual(self._menu_titles(), ["Guidance", "Data analyst"])
+        self.assertEqual(self._menu_titles(), ["Guidance", "Skills A-Z"])
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
-    def test_a_role_page_is_not_a_navigation_item(self):
+    def test_a_framework_page_is_not_a_navigation_item(self):
         titles = self._menu_titles()
 
-        self.assertNotIn("Data analyst", titles)
+        self.assertNotIn("Skills A-Z", titles)
         self.assertEqual(titles, ["Guidance"])

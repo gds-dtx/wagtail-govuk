@@ -9,8 +9,8 @@ from govuk.models import (
     ContentPage,
     ExternalContentItem,
     ExternalContentItemTag,
+    FrameworkMainPage,
     GovukTag,
-    RolePage,
     SectionPage,
     TagListingsPage,
 )
@@ -77,15 +77,15 @@ class TagListingsPageQuerysetTests(TestCase):
         self.section_page_beta.tags.add(self.beta_tag)
         self.section_page_beta.save_revision().publish()
 
-        self.role_page_alpha = self.root_page.add_child(
-            instance=RolePage(
-                title="Alpha role page",
-                slug="alpha-role-page",
+        self.framework_page_alpha = self.root_page.add_child(
+            instance=FrameworkMainPage(
+                title="Alpha framework page",
+                slug="alpha-framework-page",
                 body="",
             )
         )
-        self.role_page_alpha.tags.add(self.alpha_tag)
-        self.role_page_alpha.save_revision().publish()
+        self.framework_page_alpha.tags.add(self.alpha_tag)
+        self.framework_page_alpha.save_revision().publish()
 
         self.gamma_page = self.root_page.add_child(
             instance=ContentPage(title="Gamma page", slug="gamma-page", body="")
@@ -148,7 +148,7 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertIn(self.external_beta.url, urls)
         self.assertIn(self.content_page_alpha.url, urls)
         self.assertIn(self.section_page_beta.url, urls)
-        self.assertIn(self.role_page_alpha.url, urls)
+        self.assertIn(self.framework_page_alpha.url, urls)
 
         self.assertNotIn(self.external_gamma.url, urls)
         self.assertNotIn(self.gamma_page.url, urls)
@@ -172,13 +172,13 @@ class TagListingsPageQuerysetTests(TestCase):
 
         self.assertEqual(urls, {self.external_beta.url, self.section_page_beta.url})
 
-    def test_get_listing_queryset_applies_selected_tag_to_role_pages(self):
+    def test_get_listing_queryset_applies_selected_tag_to_framework_pages(self):
         items = self.listings_page.get_listing_queryset(selected_tag_id=self.alpha_tag.id)
         urls = {item["url"] for item in items}
 
         self.assertIn(self.external_alpha.url, urls)
         self.assertIn(self.content_page_alpha.url, urls)
-        self.assertIn(self.role_page_alpha.url, urls)
+        self.assertIn(self.framework_page_alpha.url, urls)
         self.assertNotIn(self.section_page_beta.url, urls)
 
     def test_get_listing_queryset_applies_selected_source_to_external_only(self):
@@ -198,7 +198,7 @@ class TagListingsPageQuerysetTests(TestCase):
 
         self.assertIn(self.content_page_alpha.url, urls)
         self.assertIn(self.section_page_beta.url, urls)
-        self.assertIn(self.role_page_alpha.url, urls)
+        self.assertIn(self.framework_page_alpha.url, urls)
         self.assertNotIn(self.external_alpha.url, urls)
         self.assertNotIn(self.external_beta.url, urls)
 
@@ -265,7 +265,7 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Alpha page")
         self.assertContains(response, "Beta section")
-        self.assertContains(response, "Alpha role page")
+        self.assertContains(response, "Alpha framework page")
         self.assertNotContains(response, "Alpha external")
         self.assertNotContains(response, "Beta external")
 
@@ -292,7 +292,7 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Alpha external")
         self.assertContains(response, "Alpha page")
-        self.assertContains(response, "Alpha role page")
+        self.assertContains(response, "Alpha framework page")
         self.assertNotContains(response, "Private alpha page")
 
     def test_get_listing_queryset_includes_private_pages_for_anonymous_users_when_enabled(
@@ -307,7 +307,7 @@ class TagListingsPageQuerysetTests(TestCase):
 
         self.assertIn(self.content_page_alpha.url, urls)
         self.assertIn(self.private_alpha_page.url, urls)
-        self.assertIn(self.role_page_alpha.url, urls)
+        self.assertIn(self.framework_page_alpha.url, urls)
 
     def test_tag_filter_page_response_includes_private_pages_for_anonymous_users_when_enabled(
         self,
@@ -529,11 +529,11 @@ class TagListingsPageQuerysetTests(TestCase):
 
 @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
 class TagListingsWithoutTheFrameworkTests(TestCase):
-    """A tag listing is a platform page type; role pages are not.
+    """A tag listing is a platform page type; the framework's pages are not.
 
-    A ``RolePage`` can be in the tree on a site with the flag off because the
-    page import creates pages for any model it can resolve. It 404s when
-    fetched, so listing it here would offer a card that does not open.
+    A ``FrameworkMainPage`` can be in the tree on a site with the flag off
+    because the page import creates pages for any model it can resolve. It 404s
+    when fetched, so listing it here would offer a card that does not open.
     """
 
     def setUp(self):
@@ -555,16 +555,18 @@ class TagListingsWithoutTheFrameworkTests(TestCase):
         self.content_page.tags.add(self.alpha_tag)
         self.content_page.save_revision().publish()
 
-        self.role_page = self.root_page.add_child(
-            instance=RolePage(title="Alpha role page", slug="alpha-role-page", body="")
+        self.framework_page = self.root_page.add_child(
+            instance=FrameworkMainPage(
+                title="Alpha framework page", slug="alpha-framework-page", body=""
+            )
         )
-        self.role_page.tags.add(self.alpha_tag)
-        self.role_page.save_revision().publish()
+        self.framework_page.tags.add(self.alpha_tag)
+        self.framework_page.save_revision().publish()
 
-    def test_a_role_page_is_not_listed_and_the_rest_of_the_listing_is(self):
+    def test_a_framework_page_is_not_listed_and_the_rest_of_the_listing_is(self):
         urls = {item["url"] for item in self.listings_page.get_listing_queryset()}
 
-        self.assertNotIn(self.role_page.url, urls)
+        self.assertNotIn(self.framework_page.url, urls)
         self.assertIn(self.content_page.url, urls)
 
     def test_filtering_by_tag_does_not_bring_it_back(self):
@@ -575,15 +577,16 @@ class TagListingsWithoutTheFrameworkTests(TestCase):
             )
         }
 
-        self.assertNotIn(self.role_page.url, urls)
+        self.assertNotIn(self.framework_page.url, urls)
         self.assertIn(self.content_page.url, urls)
 
-    def test_the_page_still_renders_with_the_role_queryset_absent(self):
+    def test_the_page_still_renders_with_the_framework_queryset_absent(self):
         """The queryset is absent here, not empty.
 
         ``_available_filter_tags`` used to reach for it by position, so a
         shorter list was an IndexError: a 500 on every tag listing page on a
-        site without the framework, rather than a listing without role pages.
+        site without the framework, rather than a listing without the
+        framework's pages.
         """
         available_tags = self.listings_page._available_filter_tags(
             tag_ids=self.listings_page._configured_tag_ids(),

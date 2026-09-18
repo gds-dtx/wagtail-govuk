@@ -11,6 +11,7 @@ from govuk.models import (
     ContentDiscoverySettings,
     ContentDiscoverySource,
     ContentPage,
+    CustomiseSettings,
     ExternalContentItem,
     ExternalContentItemTag,
     GovukTag,
@@ -496,3 +497,39 @@ class SearchRestrictionQueryCostTests(TestCase):
             and "auth_permission" not in entry["sql"]
         ]
         self.assertEqual(len(group_lookups), 1, group_lookups)
+
+
+class SearchResultsPageDisabledTests(TestCase):
+    """Customise can turn the free-text results page off.
+
+    The header box keeps its jump-to-a-role/skill/page suggestions (served by
+    search_suggest_view), but a submitted or bookmarked /search/?query= URL is
+    not served -- see CustomiseSettings.enable_search_results_page.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.settings = CustomiseSettings.for_site(self.site)
+
+    def test_results_page_is_served_by_default(self):
+        response = self.client.get(reverse("search"), {"query": "anything"})
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_results_page_404s_when_free_text_results_are_disabled(self):
+        self.settings.enable_search_results_page = False
+        self.settings.save()
+
+        response = self.client.get(reverse("search"), {"query": "anything"})
+
+        self.assertEqual(response.status_code, 404)
+
+    def test_suggestions_still_work_when_free_text_results_are_disabled(self):
+        # The jump-to autocomplete the box relies on when results are off must
+        # keep answering, so the suggest endpoint is untouched by the toggle.
+        self.settings.enable_search_results_page = False
+        self.settings.save()
+
+        response = self.client.get(reverse("search_suggest"), {"q": "anything"})
+
+        self.assertEqual(response.status_code, 200)

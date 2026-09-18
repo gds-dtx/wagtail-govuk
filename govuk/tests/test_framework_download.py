@@ -12,7 +12,11 @@ import io
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from govuk.framework_csv import CHANGELOG_COLUMNS, ROLE_COLUMNS, SKILL_COLUMNS
+from govuk.capability_framework_csv import (
+    CHANGELOG_COLUMNS,
+    ROLE_COLUMNS,
+    SKILL_COLUMNS,
+)
 from govuk.models import GovukChangelogEntry, GovukRole, GovukSkill
 
 

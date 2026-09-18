@@ -87,9 +87,11 @@
                                         <a class="govuk-link govuk-link--no-visited-state section-card__link--stretched"
                                            href="{{ result.url }}">{{ result.title }}</a>
                                     </h2>
-                                    {% if result.source_name or result.tags or not result.is_external %}
+                                    {% if result.result_type or result.source_name or result.tags or not result.is_external %}
                                         <p class="govuk-body-s govuk-!-margin-bottom-2 tags-container">
-                                            {% if result.source_name %}
+                                            {% if result.result_type %}
+                                                <strong class="govuk-tag govuk-tag--purple">{{ result.result_type }}</strong>
+                                            {% elif result.source_name %}
                                                 <strong class="govuk-tag">{{ result.source_name }}</strong>
                                             {% elif not result.is_external %}
                                                 <strong class="govuk-tag">{{ current_site.site_name|default:"This site" }}</strong>

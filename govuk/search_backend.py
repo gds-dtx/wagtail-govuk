@@ -19,11 +19,11 @@ from govuk.models import (
     SKILL_LEVEL_CHOICES,
     ContentPage,
     ExternalContentItem,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
     GovukRole,
     GovukSkill,
-    RolePage,
     SectionPage,
-    SkillsAZPage,
     without_framework_pages,
 )
 from govuk.utils import normalised_text, row_id_from_text
@@ -47,6 +47,12 @@ SKILL_TITLE_WEIGHT = 3.0
 # are supporting evidence, so they weigh less than a page's own description.
 SKILL_BODY_WEIGHT = 0.75
 SKILL_POINT_TEXT_WEIGHT = 0.4
+# Roles weigh like skills: the name carries the match, the description supports
+# it, and the family is a weak signal so a family search surfaces its roles
+# without drowning a role that is named for the query.
+ROLE_TITLE_WEIGHT = 3.0
+ROLE_BODY_WEIGHT = 0.75
+ROLE_FAMILY_TEXT_WEIGHT = 0.4
 THIS_SITE_SOURCE_FILTER = "__this_site__"
 INTERNAL_RESULT_BOOST = 4.0
 EXACT_TITLE_BOOST = 3.0
@@ -72,6 +78,10 @@ class SearchResultItem:
     source_name: str = ""
     source_id: int | None = None
     last_updated: datetime | None = None
+    # A label for what kind of thing the result is -- "Role" or "Skill" -- shown
+    # as a badge so a reader can tell a role or skill apart from an ordinary
+    # page at a glance. Empty for pages, whose kind is not worth naming.
+    result_type: str = ""
 
 
 class SearchBackend:
@@ -101,6 +111,7 @@ class SearchBackend:
         card_results = self._build_card_results(clean_query, filters)
         tag_results = self._build_tag_results(clean_query, filters)
         skill_results = self._build_skill_results(clean_query, filters)
+        role_results = self._build_role_results(clean_query, filters)
         external_content_results = self._build_external_content_results(
             clean_query,
             filters,
@@ -111,6 +122,7 @@ class SearchBackend:
             + card_results
             + tag_results
             + skill_results
+            + role_results
             + external_content_results,
             clean_query,
         )
@@ -176,15 +188,12 @@ class SearchBackend:
         site_root = self._site_root_page(filters)
         pages = list(queryset)
         specific_pages = {page.pk: page.specific for page in pages}
-        role_descriptions = self._role_page_descriptions(specific_pages.values())
         results: list[SearchResultItem] = []
         for page in pages:
             specific_page = specific_pages[page.pk]
             title = normalised_text(page.title)
             display_title = self._page_result_title(specific_page)
-            description = self._page_search_description(
-                specific_page
-            ) or role_descriptions.get(page.pk, "")
+            description = self._page_search_description(specific_page)
             tag_items = self._page_tag_items(specific_page)
             tag_labels = [tag["value"] for tag in tag_items]
             tag_keys = [tag["key"] for tag in tag_items]
@@ -219,54 +228,6 @@ class SearchBackend:
                 )
             )
         return results
-
-    def _role_page_descriptions(self, pages) -> dict[int, str]:
-        """The description a role page borrows from the role it leads with.
-
-        A RolePage carries no words of its own: no hero intro, no search
-        description, because the text belongs to the GovukRole snippet it
-        selects. So a search for "product manager" returned the role as a bare
-        title and a tag while the skill beside it showed a full description --
-        on a site whose whole subject is roles, that is the one result a
-        reader most needs to be able to tell apart from its neighbours.
-
-        Skill results already do this, from GovukSkill.body.
-
-        One query for the lot. get_selected_role_ids reads the ids out of the
-        stored StreamField JSON without resolving the chooser, which is what
-        makes the batch possible -- see its own note on the side navigation
-        that was paying a query per page to learn what the JSON already said.
-
-        Roles belong to the Capability Framework, so a site without it borrows
-        nothing: the page type is not creatable there and the snippets are not
-        its content.
-        """
-        if not settings.FEATURE_FLAGS.get("SKILLS"):
-            return {}
-
-        first_role_id_by_page: dict[int, int] = {}
-        for page in pages:
-            if not isinstance(page, RolePage):
-                continue
-            if self._page_search_description(page):
-                continue
-            role_ids = page.get_selected_role_ids()
-            if role_ids:
-                first_role_id_by_page[page.pk] = role_ids[0]
-
-        if not first_role_id_by_page:
-            return {}
-
-        bodies_by_role_id = {
-            role.pk: normalised_text(role.body)
-            for role in GovukRole.objects.filter(
-                pk__in=set(first_role_id_by_page.values())
-            ).only("pk", "body")
-        }
-        return {
-            page_pk: bodies_by_role_id.get(role_id, "")
-            for page_pk, role_id in first_role_id_by_page.items()
-        }
 
     def _build_card_results(
         self, query: str, filters: dict[str, Any]
@@ -414,7 +375,7 @@ class SearchBackend:
         if not settings.FEATURE_FLAGS.get("SKILLS"):
             return []
 
-        skills_page = self._apply_filters(SkillsAZPage.objects.all(), filters).first()
+        skills_page = self._apply_filters(FrameworkSkillsPage.objects.all(), filters).first()
         if skills_page is None:
             return []
 
@@ -450,17 +411,97 @@ class SearchBackend:
             results.append(
                 SearchResultItem(
                     title=normalised_text(skill.title),
-                    search_description=body or (points[0] if points else ""),
+                    # No description on a skill result: the title and its "Skill"
+                    # label are the whole result, and the body still feeds the
+                    # score above. (The body/points are still read for scoring.)
+                    search_description="",
                     url=f"{skills_url}#{skill.slug}" if skill.slug else skills_url,
                     score=score,
                     breadcrumbs=breadcrumbs,
                     tags=tag_labels,
                     tag_keys=tag_keys,
                     last_updated=self._skill_last_updated(skill),
+                    result_type="Skill",
                 )
             )
 
         return results
+
+    def _build_role_results(
+        self, query: str, filters: dict[str, Any]
+    ) -> list[SearchResultItem]:
+        """Roles are snippets, so nothing finds them through the page tree.
+
+        Each role is served on a route under the framework main page, so a
+        result links to that route. Like the skills, roles are the Capability
+        Framework's and are reached only where the framework is switched on.
+        """
+        if not settings.FEATURE_FLAGS.get("SKILLS"):
+            return []
+
+        # include_root: on the Capability Framework the main page *is* the
+        # site's home page, and the site filter otherwise looks only below the
+        # root -- so on the one site that has roles, none was ever found.
+        main_page = self._apply_filters(
+            FrameworkMainPage.objects.all(), {**filters, "include_root": True}
+        ).first()
+        if main_page is None:
+            return []
+
+        request = filters.get("request")
+        breadcrumbs = self._page_breadcrumbs(
+            main_page,
+            request=request,
+            site_root=self._site_root_page(filters),
+            include_page=True,
+        )
+
+        results: list[SearchResultItem] = []
+        for role in self._search_roles(GovukRole.objects.all(), query):
+            body = normalised_text(role.body)
+            family = normalised_text(role.family)
+            score = self._text_relevance(
+                query,
+                (
+                    (role.title, ROLE_TITLE_WEIGHT),
+                    (body, ROLE_BODY_WEIGHT),
+                    (family, ROLE_FAMILY_TEXT_WEIGHT),
+                ),
+            )
+            if score <= 0 or not role.slug:
+                continue
+
+            results.append(
+                SearchResultItem(
+                    title=normalised_text(role.title),
+                    search_description=body,
+                    url=main_page.url
+                    + main_page.reverse_subpage("serve_role", args=[role.slug]),
+                    score=score,
+                    breadcrumbs=breadcrumbs,
+                    last_updated=self._role_last_updated(role),
+                    result_type="Role",
+                )
+            )
+
+        return results
+
+    def _role_last_updated(self, role: GovukRole) -> datetime | None:
+        """When this role itself last changed, by its published changelog.
+
+        The same reasoning as ``_skill_last_updated``: a role's own changelog
+        date rather than the framework main page's revision, so a role is not
+        dated -- and recency-boosted -- by an edit somewhere else on the page it
+        is served from.
+        """
+        changed_on = getattr(role, "last_changelog_date", None)
+        if changed_on is None:
+            return None
+
+        start_of_day = datetime.combine(changed_on, time.min)
+        if settings.USE_TZ:
+            return timezone.make_aware(start_of_day, timezone.get_current_timezone())
+        return start_of_day
 
     def _skill_last_updated(self, skill: GovukSkill) -> datetime | None:
         """When this skill itself last changed, by its published changelog.
@@ -663,6 +704,25 @@ class SearchBackend:
                     "changelog_entries__date",
                     filter=Q(changelog_entries__live=True),
                 )
+            )
+        )
+
+    def _search_roles(self, queryset: QuerySet, query: str) -> QuerySet:
+        """Narrow the roles to the plausible ones before scoring them.
+
+        Matches a role's name, its description and its family (so a search for a
+        family name surfaces the roles in it). Dated here by the role's own
+        changelog rather than a lookup per role, the way the skills are.
+        """
+        matches = (
+            Q(title__icontains=query)
+            | Q(body__icontains=query)
+            | Q(family__icontains=query)
+        )
+        return queryset.filter(matches).annotate(
+            last_changelog_date=Max(
+                "changelog_entries__date",
+                filter=Q(changelog_entries__live=True),
             )
         )
 

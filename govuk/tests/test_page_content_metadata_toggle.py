@@ -3,9 +3,10 @@ from wagtail.models import Site
 
 from govuk.models import (
     ContentPage,
-    RolePage,
+    FrameworkContentPage,
+    FrameworkMainPage,
+    FrameworkSkillsPage,
     SectionPage,
-    SkillsAZPage,
     TagListingsPage,
 )
 
@@ -20,8 +21,9 @@ class PageContentMetadataToggleTests(TestCase):
             ContentPage,
             SectionPage,
             TagListingsPage,
-            RolePage,
-            SkillsAZPage,
+            FrameworkMainPage,
+            FrameworkContentPage,
+            FrameworkSkillsPage,
         ):
             self.assertFalse(
                 model._meta.get_field("show_page_content_metadata").default

@@ -4,11 +4,10 @@ from django.test.utils import CaptureQueriesContext
 from wagtail.models import Site
 
 from govuk.models import (
+    FrameworkSkillsPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    RolePage,
-    SkillsAZPage,
 )
 
 
@@ -22,7 +21,7 @@ def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
-class SkillsAZPageTests(TestCase):
+class FrameworkSkillsPageTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
@@ -50,7 +49,7 @@ class SkillsAZPageTests(TestCase):
         )
 
         skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(
+            instance=FrameworkSkillsPage(
                 title="Skills A-Z",
                 slug="skills-az",
                 body="<p>Skill definitions in alphabetical order.</p>",
@@ -108,22 +107,62 @@ class SkillsAZPageTests(TestCase):
 
         self.assertNotContains(response, '<p class="govuk-body">You can:</p>')
 
-    def test_the_skills_index_carries_the_frameworks_side_navigation(self):
-        """It sits alongside the roles, so it is navigated the same way."""
-        role = GovukRole.objects.create(title="Data analyst", family="Data")
-        role_page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data analyst",
-                slug="data-analyst",
-                selected_roles=[{"type": "role", "value": role.pk}],
-            )
+    def test_a_level_marked_not_defined_is_printed_as_the_bare_sentence(self):
+        """The framework's "not defined" sentence is not the end of "You can:".
+
+        The published exports carry it in the level's cell, so it arrives as a
+        single point, and an editor typing it into the points box produces the
+        same thing. Tim Young found it printed under "You can:" with a bullet
+        on 11 September 2026, which reads as a broken sentence. The live
+        service prints the sentence on its own; so does this, in whichever of
+        the framework's two wordings it was written. A level with nothing
+        written at all still gets the editors' message.
+        """
+        GovukSkill.objects.all().delete()
+        GovukSkill.objects.create(
+            title="Undefined skill",
+            body="<p>Undefined body.</p>",
+            awareness_points=[
+                {"type": "point", "value": "This skill level is currently not defined."}
+            ],
+            working_points=[
+                {"type": "point", "value": "This skill level is not defined"}
+            ],
+            practitioner_points=[
+                {"type": "point", "value": "Real practitioner point."}
+            ],
         )
-        role_page.save_revision().publish()
+
+        response = self.client.get(self.skills_page.url)
+        text = response.content.decode("utf-8")
+
+        self.assertEqual(text.count('<p class="govuk-body">You can:</p>'), 1)
+        self.assertNotIn('<li class="govuk-body">This skill level', text)
+        self.assertContains(
+            response,
+            '<p class="govuk-body govuk-!-margin-bottom-0">'
+            "This skill level is currently not defined.</p>",
+        )
+        self.assertContains(
+            response,
+            '<p class="govuk-body govuk-!-margin-bottom-0">This skill level is not defined</p>',
+        )
+        self.assertContains(response, "No description provided.")
+
+    def test_the_skills_index_carries_the_frameworks_side_navigation(self):
+        """It sits alongside the roles, so it is navigated the same way.
+
+        The roles come straight from the ``GovukRole`` snippets now, grouped by
+        family, so one live role is enough to raise its family heading in the
+        side navigation the index carries. (The index is served from the site
+        root rather than as a routable child of the framework main page, so it
+        is not itself one of the navigation's entries to be marked current.)
+        """
+        GovukRole.objects.create(title="Data analyst", family="Data")
 
         response = self.client.get(self.skills_page.url)
 
         self.assertContains(response, 'aria-label="Data roles"')
-        self.assertContains(response, "role-nav__item--active")
         # The heading moves beside the navigation rather than staying in the
         # site hero above it.
         self.assertNotContains(response, "hero__title")
@@ -151,7 +190,14 @@ class SkillsAZPageTests(TestCase):
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_skills_az_page_is_not_creatable_when_skills_feature_is_disabled(self):
-        self.assertFalse(SkillsAZPage.can_create_at(self.root_page))
+        self.assertFalse(FrameworkSkillsPage.can_create_at(self.root_page))
+
+    def test_only_one_skills_page_is_allowed_per_site(self):
+        """Like the framework main page: one skills index, so the search
+        results and role links never have to guess which one they mean."""
+        self.assertEqual(FrameworkSkillsPage.max_count, 1)
+        # setUp has already created one, so a second cannot be added.
+        self.assertFalse(FrameworkSkillsPage.can_create_at(self.root_page))
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_the_a_to_z_does_not_serve_without_the_framework(self):
@@ -185,7 +231,7 @@ class SkillsAZUpdatesTests(TestCase):
             skill=self.noted_skill,
         )
         self.skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A-Z", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills A-Z", slug="skills")
         )
         self.skills_page.save_revision().publish()
 

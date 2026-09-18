@@ -23,8 +23,9 @@ from django.test import TestCase, override_settings
 from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import GroupPagePermission, Page, Site
 
-from govuk.models import GovukRole, GovukSkill, RolePage, SkillsAZPage
+from govuk.models import FrameworkSkillsPage, GovukRole, GovukSkill
 from govuk.page_import_export import PAGE_EXPORT_FORMAT, import_pages_from_payload
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -43,9 +44,15 @@ class ImportSeedsRedirectsTests(TestCase):
         self.root_page = self.site.root_page.specific
 
         self.role = GovukRole.objects.create(title="Data analyst")
+        # Roles are served on routes under the framework main page rather than
+        # on a page each, so the URL a role redirects to only resolves once the
+        # main page exists.
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.role)
+
         self.skill = GovukSkill.objects.create(title="Prototyping")
         self.skills_page = self.root_page.add_child(
-            instance=SkillsAZPage(title="Skills A to Z", slug="skills")
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
         self.skills_page.save_revision().publish()
 
@@ -57,16 +64,19 @@ class ImportSeedsRedirectsTests(TestCase):
 
     # -- helpers --------------------------------------------------------------
 
-    def _payload(self, *, slug="data-analyst"):
+    def _payload(self, *, slug="guidance"):
+        # Roles are no longer pages, so an import carries no role page. It is
+        # still the moment the redirects are written: the role and skill
+        # snippets and the framework main page that serves the roles are
+        # already in place, so seeding runs at the end of any import that
+        # brings a page in.
         return {
             "format": PAGE_EXPORT_FORMAT,
             "pages": [
                 {
-                    "model": "govuk.RolePage",
-                    "settings": {"slug": slug, "title": "Data analyst"},
-                    "fields": {
-                        "selected_roles": [{"type": "role", "value": self.role.slug}]
-                    },
+                    "model": "govuk.ContentPage",
+                    "settings": {"slug": slug, "title": "Guidance"},
+                    "fields": {"body": "<p>Guidance.</p>"},
                 }
             ],
         }
@@ -118,9 +128,7 @@ class ImportSeedsRedirectsTests(TestCase):
 
         response = self.client.get(f"/role/{self.role.slug}")
         self.assertEqual(response.status_code, 301)
-        self.assertEqual(
-            response["Location"], RolePage.objects.get(slug="data-analyst").url
-        )
+        self.assertEqual(response["Location"], self.role_url)
 
     def test_a_live_skill_url_works_without_the_runbook_step(self):
         self._import()
@@ -131,14 +139,16 @@ class ImportSeedsRedirectsTests(TestCase):
             response["Location"], f"{self.skills_page.url}#{self.skill.slug}"
         )
 
-    def test_the_redirect_follows_the_page_rather_than_its_address(self):
+    def test_a_role_redirect_is_a_link_to_its_route(self):
+        """A role has no page of its own now -- it is served on a route under
+        the framework main page -- so its redirect is a link redirect to that
+        URL, the same shape a skill's redirect has."""
         self._import()
 
         redirect = self._redirect(f"/role/{self.role.slug}")
 
-        self.assertEqual(
-            redirect.redirect_page_id, RolePage.objects.get(slug="data-analyst").pk
-        )
+        self.assertIsNone(redirect.redirect_page_id)
+        self.assertEqual(redirect.redirect_link, self.role_url)
         self.assertTrue(redirect.is_permanent)
         self.assertEqual(redirect.site_id, self.site.pk)
 
@@ -185,10 +195,9 @@ class ImportSeedsRedirectsTests(TestCase):
 
         result = self._import()
 
-        self.assertEqual(
-            self._redirect(f"/role/{self.role.slug}").redirect_page_id,
-            RolePage.objects.get(slug="data-analyst").pk,
-        )
+        repointed = self._redirect(f"/role/{self.role.slug}")
+        self.assertIsNone(repointed.redirect_page_id)
+        self.assertEqual(repointed.redirect_link, self.role_url)
         self.assertIn("1 repointed", self._redirect_notes(result)[0])
 
     def test_a_redirect_this_rule_does_not_produce_is_left_alone(self):
@@ -226,7 +235,7 @@ class ImportSeedsRedirectsTests(TestCase):
         )
         # The pages themselves still came in: half an import beats none, and
         # the message says which half is missing.
-        self.assertTrue(RolePage.objects.filter(slug="data-analyst").exists())
+        self.assertTrue(Page.objects.filter(slug="guidance").exists())
 
     def test_a_missing_skills_a_to_z_is_reported_rather_than_passed_over(self):
         self.skills_page.unpublish()

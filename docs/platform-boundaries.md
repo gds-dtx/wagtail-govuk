@@ -59,16 +59,21 @@ Present in the codebase on every instance, reachable on none but a framework:
 - **Snippets** — `GovukRole`, `GovukSkill`, `GovukChangelogEntry`.
 - **Settings** — `CapabilityFrameworkWordingSettings`, 38 fields of framework
   vocabulary, registered in the admin only under the flag.
-- **Page types** — `RolePage` and `SkillsAZPage`, which cannot be created or
-  moved without the flag (`can_create_at`, `can_exist_under`), 404 rather than
-  serve if one reaches the site another way (`serve`), and are left out of every
-  generic public listing (`without_framework_pages`).
+- **Page types** — `FrameworkMainPage`, `FrameworkContentPage` and
+  `FrameworkSkillsPage`. The main page cannot be created or moved without the
+  flag (`can_create_at`, `can_exist_under`) and its role route (`role/<slug>/`,
+  which serves every `GovukRole` snippet) 404s without it; the skills index 404s
+  rather than serves and is left out of every generic public listing
+  (`without_framework_pages`). Roles have no page type of their own any more.
 - **Downloads** — `/download/<name>.csv`, which 404s without the flag, and the
   attachment component that offers it: `rewrite_csv_download_links` in
   `govuk/attachments.py`.
-- **Fields on `ContentPage`** — `show_role_navigation`, `show_framework_updates`,
-  `show_framework_welcome` and `framework_welcome_body`. These are the awkward
-  ones: they sit on the page type every instance builds with. See below.
+- **The framework switches** — `show_role_navigation`, `show_framework_updates`,
+  `show_framework_welcome` and `framework_welcome_body`. These used to sit on
+  `ContentPage`, the page type every instance builds with, which is the leak
+  the rest of this document describes. They now live on `FrameworkFieldsMixin`,
+  shared by `FrameworkMainPage` and `FrameworkContentPage` only, and
+  `ContentPage` carries no framework field at all.
 
 ## The rule: the flag has to gate structure, not just visibility
 
@@ -111,10 +116,12 @@ stored data is not enough: the data can arrive from a framework site.
   elsewhere switched the framework on for a page whose editor had no switch to
   turn it off. The probe rendered a role navigation listing the content page
   itself. The guard now reads the flag as well as the switches.
-- **`RolePage` and `SkillsAZPage` served after an import.** Wagtail checks
-  `can_exist_under` when a page is created or moved in the admin, and the
-  import is not the admin. The importer warns, but a warning in a deployment
-  log is not the same as the page not being public. Both now 404.
+- **The framework page types (then `RolePage` and `SkillsAZPage`) served after
+  an import.** Wagtail checks `can_exist_under` when a page is created or moved
+  in the admin, and the import is not the admin. The importer warns, but a
+  warning in a deployment log is not the same as the page not being public.
+  All three framework page types now 404 without the flag (each overrides
+  `serve`), and so do the main page's role routes.
 - **The CSV attachment card rendered anywhere.** `page_body` runs
   `rewrite_csv_download_links` over every content page on every site, and the
   download URL is registered unconditionally — it is the view that 404s. So a
@@ -153,14 +160,16 @@ one way that matters: it is visible to the public.
 The pages API is the sharpest of the four. `WagtailPages` in `govuk/api.py`
 mixes in `AuthenticatedAPIViewSetMixin` and then sets
 `permission_classes = [AllowAny]`, which overrides it. The endpoint is public.
-Anything it lists is published to anyone who asks, and `?type=govuk.RolePage` is
-the obvious way to go looking.
+Anything it lists is published to anyone who asks, and
+`?type=govuk.FrameworkSkillsPage` is the obvious way to go looking.
 
 The fix is one helper, `without_framework_pages` in `govuk/models.py`. It takes a
-page queryset and returns it minus `RolePage` and `SkillsAZPage`, or returns it
-untouched when the flag is on, so the framework's own site is unaffected and
-there is no second code path to keep in step. Every generic public listing goes
-through it:
+page queryset and returns it minus the three framework page types
+(`FrameworkMainPage`, `FrameworkContentPage`, `FrameworkSkillsPage`), or returns
+it untouched when the flag is on, so the framework's own site is unaffected and
+there is no second code path to keep in step. (Roles are no longer pages, so
+there is nothing role-shaped to exclude; the main page's role routes 404
+without the flag.) Every generic public listing goes through it:
 
 | Surface | Where |
 | --- | --- |

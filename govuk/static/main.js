@@ -10,6 +10,7 @@ document.addEventListener("DOMContentLoaded", function () {
   setChangelogToggle();
   openLinkedAccordionSection();
   setPageFeedback();
+  setSiteSearchAutocomplete();
 });
 
 function setHyperlinkClasses() {
@@ -390,5 +391,134 @@ function setPageFeedback() {
     form.hidden = true;
     success.hidden = false;
     success.focus();
+  });
+}
+
+function setSiteSearchAutocomplete() {
+  // The header search box suggests roles, skills and pages as the reader
+  // types, the way the live service's box does, using GOV.UK's accessible
+  // autocomplete (CS32-3458). Without JavaScript, or if the library did not
+  // load, the box is the plain form it started as and Enter goes to the
+  // results page. With it, Enter takes the highlighted suggestion; when
+  // there are no suggestions the list is not shown, so Enter still submits
+  // the form and the results page says so.
+  const container = document.querySelector(".app-site-search[data-suggest-url]");
+  if (!container || typeof window.accessibleAutocomplete !== "function") {
+    return;
+  }
+  const input = container.querySelector("input[type='search']");
+  if (!input) {
+    return;
+  }
+  const suggestUrl = container.dataset.suggestUrl;
+  const minLength = parseInt(container.dataset.minLength || "2", 10);
+
+  // The library renders its own input, so the original gives up its place,
+  // id, name, value and placeholder. The label keeps pointing at the id.
+  const mount = document.createElement("div");
+  mount.className = "app-site-search__autocomplete";
+  input.parentNode.insertBefore(mount, input);
+  const inputId = input.id;
+  const inputName = input.name;
+  const placeholder = input.placeholder;
+  const defaultValue = input.value;
+  input.remove();
+
+  let controller = null;
+  function source(query, populate) {
+    // A keystroke cancels the request the last one started, so a slow reply
+    // cannot arrive after a faster one and put stale suggestions on top.
+    if (controller) {
+      controller.abort();
+    }
+    controller = new AbortController();
+    fetch(suggestUrl + "?q=" + encodeURIComponent(query), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((items) => populate(Array.isArray(items) ? items : []))
+      .catch((error) => {
+        if (error.name !== "AbortError") {
+          populate([]);
+        }
+      });
+  }
+
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, (character) => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    })[character]);
+  }
+
+  const form = container.querySelector("form");
+  // On the results page the box starts with the query in it, and the library
+  // offers that string back as the one suggestion until the reader types: its
+  // option list is seeded with defaultValue. It is a string where every
+  // fetched suggestion is an object, so it rendered as "undefined" and Enter
+  // on it did nothing (CS32-3458, 11 September 2026). It is plain text, and
+  // confirming it is a search for it.
+  function itemText(item) {
+    if (typeof item === "string") {
+      return item;
+    }
+    return item && item.text ? item.text : "";
+  }
+
+  window.accessibleAutocomplete({
+    element: mount,
+    id: inputId,
+    name: inputName,
+    defaultValue: defaultValue,
+    placeholder: placeholder,
+    minLength: minLength,
+    cssNamespace: "app-site-search",
+    inputClasses: "govuk-input app-site-search__input",
+    displayMenu: "overlay",
+    autoselect: true,
+    confirmOnBlur: false,
+    showNoOptionsFound: false,
+    tStatusQueryTooShort: (count) => "Type " + count + " or more characters for suggestions",
+    source: source,
+    templates: {
+      inputValue: itemText,
+      suggestion: (item) => {
+        if (!item) {
+          return "";
+        }
+        // The kind is shown for a role or a skill; a page is just its name,
+        // and so is the query offered back.
+        const type =
+          item.type === "Role" || item.type === "Skill"
+            ? '<span class="app-site-search__option-type">' + escapeHtml(item.type) + "</span>"
+            : "";
+        return '<span class="app-site-search__option-text">' + escapeHtml(itemText(item)) + "</span>" + type;
+      },
+    },
+    onConfirm: (item) => {
+      // The query offered back is a string, and .link on a string is the
+      // native String.prototype.link method, not undefined -- so a string has
+      // to be caught before the object branch, or confirming it navigates to
+      // that method's source text (CS32-3458, 14 September 2026).
+      if (typeof item === "string") {
+        // Search for it, as Enter in the plain box does.
+        if (form) {
+          if (form.requestSubmit) {
+            form.requestSubmit();
+          } else {
+            form.submit();
+          }
+        }
+      } else if (item && item.link && /^(\/|https?:)/i.test(item.link)) {
+        // A same-site path or an http(s) URL only, so a link that somehow
+        // arrived as javascript:, data: or the like cannot run on confirm.
+        window.location.assign(item.link);
+      }
+    },
   });
 }

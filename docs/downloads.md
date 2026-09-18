@@ -6,7 +6,7 @@ produced. It backs Jira CS32-3313.
 This document exists so the "check the columns against the specification" step
 on CS32-3313 can actually be done. The specification lives in a SharePoint
 document that this repository cannot reach; the schemas below are what the site
-emits, taken from `govuk/framework_csv.py`, so the two can be compared side by
+emits, taken from `govuk/capability_framework_csv.py`, so the two can be compared side by
 side without anyone having to read Python.
 
 ## How they are produced

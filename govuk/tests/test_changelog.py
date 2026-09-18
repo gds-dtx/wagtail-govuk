@@ -11,8 +11,8 @@ from govuk.models import (
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    RolePage,
 )
+from govuk.tests.framework_helpers import make_framework_main_page, role_url
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -54,15 +54,8 @@ class ChangelogEntryTests(TestCase):
             note="<p>A new role was added.</p>",
         )
 
-        page = self.root_page.add_child(
-            instance=RolePage(
-                title="Data engineer",
-                slug="data-engineer",
-                selected_roles=[{"type": "role", "value": self.role.pk}],
-            )
-        )
-        page.save_revision().publish()
-        self.role_page = page.specific
+        self.main_page = make_framework_main_page(self.root_page)
+        self.role_url = role_url(self.main_page, self.role)
 
     def test_role_changelog_returns_published_entries_newest_first(self):
         changelog = self.role.get_changelog()
@@ -105,7 +98,7 @@ class ChangelogEntryTests(TestCase):
             entry.full_clean()
 
     def test_role_page_renders_updates_section(self):
-        response = self.client.get(self.role_page.url)
+        response = self.client.get(self.role_url)
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Updates")

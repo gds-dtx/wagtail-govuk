@@ -107,7 +107,13 @@
                                                                     {% for point in level_row.points %}<li class="govuk-body">{{ point }}</li>{% endfor %}
                                                                 </ul>
                                                             {% else %}
-                                                                <p class="govuk-body govuk-!-margin-bottom-0">{{ framework_wording.skill_level_no_description_message }}</p>
+                                                                {% comment %}
+                                                                    A level the framework has marked "not defined" prints
+                                                                    that sentence on its own, as the live service does; a
+                                                                    level with nothing written at all gets the editors'
+                                                                    message.
+                                                                {% endcomment %}
+                                                                <p class="govuk-body govuk-!-margin-bottom-0">{{ level_row.placeholder|default:framework_wording.skill_level_no_description_message }}</p>
                                                             {% endif %}
                                                         </td>
                                                     </tr>

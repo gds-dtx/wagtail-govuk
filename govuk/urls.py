@@ -29,6 +29,7 @@ from govuk.views import (
     oidc_login_redirect,
     page_feedback_view,
     profile_view,
+    search_suggest_view,
     search_view,
     wagtail_logout_redirect,
 )
@@ -81,6 +82,7 @@ urlpatterns = [
     path("accounts/logout/", account_logout_redirect, name="account_logout"),
     path("accounts/", include("allauth.urls")),
     path("search/", search_view, name="search"),
+    path("search/suggest/", search_suggest_view, name="search_suggest"),
     # Before the Wagtail catch-all: /download/ itself is a page, and these are
     # the files it links to.
     path(

@@ -1,6 +1,8 @@
 import os
+import re
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
@@ -15,12 +17,13 @@ SETTINGS_MODULE = os.getenv("DJANGO_SETTINGS_MODULE") or settings.SETTINGS_MODUL
 
 
 class HeaderLayoutTests(TestCase):
-    """The site name and search can sit in the service navigation bar.
+    """The service name, search and sign in link each have their own location.
 
     GOV.UK services usually carry the service name and search on a light bar
     below the black-and-blue GOV.UK header, which is what the DDaT Capability
-    Framework does. Existing sites keep the name and search in the header, so
-    the behaviour is opt in.
+    Framework does. Each element is placed independently (header bar, service
+    navigation, or hidden), with the defaults keeping the historical layout:
+    name and search in the header, sign in link in the service navigation.
     """
 
     def setUp(self):
@@ -46,8 +49,8 @@ class HeaderLayoutTests(TestCase):
         # The search is rendered once, inside the header.
         self.assertContains(response, 'class="app-site-search"', count=1)
 
-    def test_the_site_name_and_search_move_to_the_navigation_when_asked(self):
-        self.settings.show_service_name_in_navigation = True
+    def test_the_service_name_moves_to_the_navigation_when_asked(self):
+        self.settings.service_name_location = "navigation"
         self.settings.save()
 
         response = self._get()
@@ -55,16 +58,59 @@ class HeaderLayoutTests(TestCase):
         self.assertNotContains(response, "govuk-header__product-name")
         self.assertContains(response, "govuk-service-navigation__service-name")
         self.assertContains(response, "Capability Framework")
-        self.assertContains(response, 'class="app-site-search"', count=1)
 
-    def test_the_govuk_logo_links_to_govuk(self):
-        """The Design System's header logo leaves the service for GOV.UK."""
+    def test_in_the_navigation_the_logo_links_to_govuk_on_its_own(self):
+        """With the service name in the navigation the header logo stands
+        alone and always leaves the service for GOV.UK."""
+        self.settings.service_name_location = "navigation"
+        self.settings.save()
+
         response = self._get()
 
         self.assertContains(
             response,
             '<a href="https://www.gov.uk" class="govuk-header__homepage-link">',
         )
+
+    def test_in_the_header_bar_the_logo_and_name_link_to_the_home_page(self):
+        """With the service name in the header bar (the default) the logo and
+        name are a single link, pointing at the site home by default."""
+        response = self._get()
+
+        self.assertContains(
+            response,
+            '<a href="/" class="govuk-header__homepage-link">',
+        )
+
+    def test_the_service_name_link_can_be_customised(self):
+        """The "Service name link" setting overrides where the service name
+        points, in both placements. The standalone navigation logo does not
+        follow it -- it always links to GOV.UK."""
+        self.settings.service_name_link = "https://www.gov.uk/"
+        self.settings.save()
+
+        # Header bar: the combined logo-and-name link uses the setting.
+        self.assertContains(
+            self._get(),
+            '<a href="https://www.gov.uk/" class="govuk-header__homepage-link">',
+        )
+
+        # Navigation: only the service name link uses the setting; the logo
+        # keeps its own GOV.UK link.
+        self.settings.service_name_location = "navigation"
+        self.settings.save()
+        response = self._get()
+        self.assertContains(
+            response,
+            '<a href="https://www.gov.uk" class="govuk-header__homepage-link">',
+        )
+        name = re.search(
+            r'<span class="govuk-service-navigation__service-name">(.*?)</span>',
+            response.content.decode(),
+            re.S,
+        )
+        self.assertIsNotNone(name)
+        self.assertIn('href="https://www.gov.uk/"', name.group(1))
 
     def test_every_page_carries_a_back_to_top_button(self):
         """main.js reveals it once the page has been scrolled."""
@@ -73,13 +119,83 @@ class HeaderLayoutTests(TestCase):
         self.assertContains(response, 'id="back-to-top"')
         self.assertContains(response, "Back to top")
 
-    def test_the_sign_in_link_shows_unless_it_is_hidden(self):
-        self.assertContains(self._get(), "Sign in")
-
-        self.settings.hide_sign_in_link = True
+    def test_the_search_moves_to_the_navigation_independently(self):
+        # The search location is decoupled from the service name location: the
+        # search can sit in the navigation while the name stays in the header.
+        self.settings.search_location = "navigation"
         self.settings.save()
 
-        self.assertNotContains(self._get(), "Sign in")
+        response = self._get()
+
+        self.assertContains(response, "govuk-header__product-name")
+        # Still rendered exactly once, now inside the navigation.
+        self.assertContains(response, 'class="app-site-search"', count=1)
+
+    def test_the_search_can_be_hidden(self):
+        self.settings.search_location = "hidden"
+        self.settings.save()
+
+        self.assertNotContains(self._get(), 'class="app-site-search"')
+
+    def test_the_search_box_submits_to_the_results_page_by_default(self):
+        response = self._get()
+
+        # Free-text results are on by default: a real form pointed at /search/.
+        self.assertContains(response, '<form action="/search/"')
+        self.assertContains(response, 'type="submit"')
+
+    def test_disabling_free_text_results_drops_the_submitting_form(self):
+        # With free-text results off the box keeps its jump-to-a-suggestion
+        # autocomplete (the wrapper and its suggest URL stay) but has no form to
+        # submit and no button at all, so Enter is inert. The magnifier becomes
+        # a decorative icon inside the input (the app-site-search--icon variant).
+        self.settings.enable_search_results_page = False
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertContains(response, "app-site-search--icon")
+        self.assertContains(response, "data-suggest-url")
+        self.assertNotContains(response, '<form action="/search/"')
+        self.assertNotContains(response, "app-site-search__button")
+        self.assertContains(response, "app-site-search__decoration")
+
+    def test_the_sign_in_link_sits_in_the_navigation_by_default(self):
+        response = self._get()
+
+        self.assertContains(response, "Sign in")
+        self.assertNotContains(response, "app-header__sign-in")
+
+    def test_the_sign_in_link_can_move_to_the_header(self):
+        self.settings.sign_in_location = "header"
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertContains(response, "app-header__sign-in")
+        self.assertContains(response, "Sign in")
+
+    def test_the_sign_in_link_can_be_hidden(self):
+        self.settings.sign_in_location = "hidden"
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertNotContains(response, "Sign in")
+        self.assertNotContains(response, "app-header__sign-in")
+
+    def test_the_sign_out_link_still_shows_when_hidden_for_a_signed_in_user(self):
+        """Hidden hides the sign in link for visitors who never sign in, but a
+        signed-in user (staff, say) must still be able to sign out."""
+        user = get_user_model().objects.create_user(username="staff", password="pw")
+        self.settings.sign_in_location = "hidden"
+        self.settings.save()
+        self.client.force_login(user)
+
+        response = self._get()
+
+        self.assertNotContains(response, "Sign in")
+        self.assertContains(response, "Sign out")
 
     def test_the_search_placeholder_can_be_set(self):
         self.assertContains(self._get(), 'placeholder="Search"')
@@ -96,7 +212,8 @@ class ServiceNavigationTests(TestCase):
     The Design System's JavaScript un-hides the toggle below its breakpoint
     whatever the list holds, so a site with no menu pages and no sign-in link
     used to show a Menu button on every narrow-screen page that expanded to
-    nothing.
+    nothing. The guard now reads the sign in location rather than the removed
+    hide-sign-in flag.
     """
 
     def setUp(self):
@@ -112,13 +229,14 @@ class ServiceNavigationTests(TestCase):
         return self.client.get(self.page.url)
 
     def test_the_menu_renders_for_the_sign_in_link_alone(self):
+        # Sign in link in the navigation by default, so the menu has content.
         response = self._get()
 
         self.assertContains(response, "govuk-service-navigation__toggle")
         self.assertContains(response, 'id="navigation"')
 
     def test_the_menu_goes_away_when_it_would_be_empty(self):
-        self.settings.hide_sign_in_link = True
+        self.settings.sign_in_location = "hidden"
         self.settings.save()
 
         response = self._get()
@@ -126,21 +244,44 @@ class ServiceNavigationTests(TestCase):
         self.assertNotContains(response, "govuk-service-navigation__toggle")
         self.assertNotContains(response, 'id="navigation"')
 
+    def test_a_signed_in_user_keeps_the_menu_for_the_sign_out_link(self):
+        """Even hidden, a signed-in user has a sign out link, so the menu holds
+        something and renders."""
+        user = get_user_model().objects.create_user(username="staff", password="pw")
+        self.settings.sign_in_location = "hidden"
+        self.settings.save()
+        self.client.force_login(user)
+
+        response = self._get()
+
+        self.assertContains(response, "govuk-service-navigation__toggle")
+        self.assertContains(response, "Sign out")
+
     def test_a_page_in_the_menus_brings_it_back(self):
         menu_page = self.site.root_page.specific.add_child(
-            instance=ContentPage(
-                title="Guidance", slug="guidance", show_in_menus=True
-            )
+            instance=ContentPage(title="Guidance", slug="guidance", show_in_menus=True)
         )
         menu_page.save_revision().publish()
 
-        self.settings.hide_sign_in_link = True
+        self.settings.sign_in_location = "hidden"
         self.settings.save()
 
         response = self._get()
 
         self.assertContains(response, "govuk-service-navigation__toggle")
         self.assertContains(response, "Guidance")
+
+    def test_the_search_in_the_navigation_does_not_need_the_menu(self):
+        """The search sits in the navigation bar on its own, without dragging an
+        empty menu toggle in with it."""
+        self.settings.sign_in_location = "hidden"
+        self.settings.search_location = "navigation"
+        self.settings.save()
+
+        response = self._get()
+
+        self.assertNotContains(response, "govuk-service-navigation__toggle")
+        self.assertContains(response, 'class="app-site-search"')
 
 
 class PhaseBannerWordingTests(TestCase):
