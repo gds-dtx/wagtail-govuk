@@ -2,14 +2,31 @@
     A plain search form. main.js turns the input into GOV.UK's accessible
     autocomplete, fed from data-suggest-url, when it and the library are
     present; without them the form submits to the results page as it is.
+
+    When Customise turns free-text results off (enable_search_results_page is
+    false) the wrapping <form> becomes a plain <div>: with no form, Enter and
+    the button do nothing (the box is inert without JavaScript), and main.js's
+    "if (form)" guard suppresses the free-text submit while the
+    jump-to-a-suggestion path (window.location.assign) keeps working. The
+    results page (search_view) also 404s in that state.
 {% endcomment %}
-<div class="app-site-search"
+{% if customise_settings and not customise_settings.enable_search_results_page %}
+    {% comment %}Suggestions jump straight to a page; there is no results page to submit to.{% endcomment %}
+    {% firstof False as results_enabled %}
+{% else %}
+    {% firstof True as results_enabled %}
+{% endif %}
+<div class="app-site-search{% if not results_enabled %} app-site-search--icon{% endif %}"
      data-suggest-url="{% url 'search_suggest' %}"
      data-min-length="2">
+    {% if results_enabled %}
     <form action="{% url 'search' %}"
           method="get"
           role="search"
           class="app-site-search__form">
+    {% else %}
+    <div role="search" class="app-site-search__form">
+    {% endif %}
         <label class="govuk-visually-hidden" for="app-site-search__input">
             Search
             {% if customise_settings and customise_settings.show_site_name_in_search_box %}
@@ -26,6 +43,7 @@
                type="search"
                value="{{ request.GET.query|default_if_none:'' }}"
                placeholder="{% if customise_settings and customise_settings.search_placeholder %}{{ customise_settings.search_placeholder }}{% else %}Search{% if customise_settings and customise_settings.show_site_name_in_search_box %}{% if current_site.site_name %} {{ current_site.site_name }}{% else %} this site{% endif %}{% endif %}{% endif %}" />
+        {% if results_enabled %}
         <button class="govuk-button govuk-button--inverse app-site-search__button"
                 data-module="govuk-button"
                 type="submit"
@@ -43,5 +61,23 @@
                 <line x1="17.8668" y1="17.3587" x2="26.4475" y2="25.9393" stroke="currentColor" stroke-width="3"></line>
             </svg>
         </button>
-    </form>
+        {% else %}
+        {% comment %}
+            No results page to submit to, so the magnifier is a decorative icon
+            inside the right-hand end of the input rather than a button. It
+            stays a child of the form container after the autocomplete replaces
+            the input, and main.css pins it to that container's right edge,
+            which the input (or the autocomplete's own input) fills.
+        {% endcomment %}
+        <svg class="gem-c-search__icon app-site-search__decoration"
+             viewBox="0 0 27 27"
+             fill="none"
+             xmlns="http://www.w3.org/2000/svg"
+             aria-hidden="true"
+             focusable="false">
+            <circle cx="12.0161" cy="11.0161" r="8.51613" stroke="currentColor" stroke-width="3"></circle>
+            <line x1="17.8668" y1="17.3587" x2="26.4475" y2="25.9393" stroke="currentColor" stroke-width="3"></line>
+        </svg>
+        {% endif %}
+    {% if results_enabled %}</form>{% else %}</div>{% endif %}
 </div>

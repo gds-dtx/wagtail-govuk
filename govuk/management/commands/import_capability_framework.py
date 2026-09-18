@@ -393,6 +393,10 @@ class Command(BaseCommand):
         customise.header_logo = "govuk"
         customise.service_name_location = "navigation"
         customise.search_location = "navigation"
+        # The framework's search box jumps straight to a role, skill or page as
+        # the reader types; it does not offer a free-text results page, so Enter
+        # on its own does nothing and /search/ is not served.
+        customise.enable_search_results_page = False
         customise.sign_in_location = "hidden"
         customise.save()
         self.stdout.write("Site settings: configured for the framework")

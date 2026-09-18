@@ -64,7 +64,14 @@
                             System's header requires. The service's own home
                             page is reached from the service name below.
                         {% endcomment %}
-                        <a href="https://www.gov.uk" class="govuk-header__homepage-link">
+                        {% comment %}
+                            When the service name sits in the header bar the logo
+                            and name are one link, pointing where the "Service
+                            name link" setting says (the site home by default).
+                            When the name sits in the service navigation the logo
+                            is on its own and always leaves for GOV.UK.
+                        {% endcomment %}
+                        <a href="{% if customise_settings.service_name_location == 'header' %}{{ customise_settings.service_name_link|default:'/' }}{% else %}https://www.gov.uk{% endif %}" class="govuk-header__homepage-link">
                             {% if customise_settings and customise_settings.header_logo == "uk-government" %}
                                 <svg focusable="false"
                                      role="img"
@@ -131,7 +138,7 @@
                     <div class="govuk-service-navigation__container">
                         {% if customise_settings.service_name_location == "navigation" and current_site.site_name %}
                             <span class="govuk-service-navigation__service-name">
-                                <a href="/" class="govuk-service-navigation__link">{% block service_name %}{{ current_site.site_name|cut:"GOV.UK" }}{% endblock %}</a>
+                                <a href="{{ customise_settings.service_name_link|default:'/' }}" class="govuk-service-navigation__link">{% block service_name %}{{ current_site.site_name|cut:"GOV.UK" }}{% endblock %}</a>
                             </span>
                         {% endif %}
                         {% comment %}
@@ -227,12 +234,12 @@
                         <div class="hero">
                             <div class="hero__content">
                                 {% if self.hero_title or self.title %}
-                                    <h1 class="hero__title govuk-heading-xl">{{ self.hero_title | default:self.title }}</h1>
+                                    <h1 class="hero__title">{{ self.hero_title | default:self.title }}</h1>
                                 {% endif %}
                                 {% if self.hero_intro %}
-                                    <div class="hero__description rich-text-content">{{ self.hero_intro|richtext }}</div>
+                                    <div class="hero__description rich-text-content govuk-body-l">{{ self.hero_intro|richtext }}</div>
                                 {% elif self.search_description %}
-                                    <p class="hero__description rich-text-content">{{ self.search_description }}</p>
+                                    <p class="hero__description rich-text-content govuk-body-l">{{ self.search_description }}</p>
                                 {% endif %}
                             </div>
                         </div>
@@ -370,7 +377,7 @@
         <script type="module" nonce="{{ csp_nonce }}">
     import {
       initAll
-    } from '{% static 'govuk-frontend-6.0.0.min.js' %}'
+    } from "{% static 'govuk-frontend-6.0.0.min.js' %}"
     initAll()
         </script>
         <script src="{% static 'accessible-autocomplete-3.0.1.min.js' %}"></script>

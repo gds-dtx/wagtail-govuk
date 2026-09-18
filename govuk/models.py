@@ -530,6 +530,18 @@ class CustomiseSettings(BaseSiteSetting):
         default="header",
         help_text="Where the service name appears.",
     )
+    service_name_link = models.CharField(
+        max_length=500,
+        blank=True,
+        default="/",
+        verbose_name="Service name link",
+        help_text=(
+            "Where the service name links to. In the header bar the logo and "
+            "service name form a single link to this address. In the service "
+            "navigation the logo always links to GOV.UK and only the service "
+            "name links here. Defaults to this site's home page (/)."
+        ),
+    )
     sign_in_location = models.CharField(
         max_length=20,
         choices=[
@@ -565,6 +577,17 @@ class CustomiseSettings(BaseSiteSetting):
         help_text=(
             "Wording shown in the header search box, for example "
             "Search for roles or skills. Defaults to Search."
+        ),
+    )
+    enable_search_results_page = models.BooleanField(
+        default=True,
+        verbose_name="Allow free-text search results",
+        help_text=(
+            "Let visitors search for any phrase and see a results page. Turn "
+            "this off to keep only the suggestions that jump straight to a "
+            "live page or snippet as the reader types -- pressing Enter or the "
+            "search button on its own then does nothing, and the results page "
+            "is not served."
         ),
     )
     error_contact_link_text = models.CharField(
@@ -640,11 +663,18 @@ class CustomiseSettings(BaseSiteSetting):
 
     panels = [
         FieldPanel("header_logo"),
-        FieldPanel("service_name_location"),
+        MultiFieldPanel(
+            [
+                FieldPanel("service_name_location"),
+                FieldPanel("service_name_link"),
+            ],
+            heading="Service name",
+        ),
         FieldPanel("sign_in_location"),
         MultiFieldPanel(
             [
                 FieldPanel("search_location"),
+                FieldPanel("enable_search_results_page"),
                 FieldPanel("show_site_name_in_search_box"),
                 FieldPanel("search_placeholder"),
             ],

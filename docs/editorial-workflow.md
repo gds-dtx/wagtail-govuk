@@ -120,8 +120,10 @@ after the listed ones, so nothing disappears just because it was not added.
 
 ## Settings, which are neither
 
-The footer links, the phase banner, the search placeholder and the error-page
-contact are site settings, held under `/admin/settings/`. They are per site,
+The footer links, the phase banner, the search placeholder, whether the search
+box offers a free-text results page or only jumps to a matching role, skill or
+page, and the error-page contact are site settings, held under
+`/admin/settings/`. They are per site,
 they take effect immediately, they are not versioned, and they are not covered
 by moderation — one person, one save, live everywhere on the site.
 

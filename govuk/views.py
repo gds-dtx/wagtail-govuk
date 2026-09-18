@@ -138,6 +138,12 @@ def _pagination_query(query: str, tag: str, source: str) -> str:
 
 @require_http_methods(["GET", "HEAD"])
 def search_view(request):
+    # When free-text results are turned off in Customise, the header box keeps
+    # its jump-to-a-role/skill/page suggestions (search_suggest_view) but the
+    # results page itself is not served, so a submitted or bookmarked
+    # /search/?query= URL 404s rather than showing a listing.
+    if not _customise_settings_for_request(request).enable_search_results_page:
+        raise Http404
     query = (request.GET.get("query") or "").strip()
     page_number = request.GET.get("page", 1)
     selected_tag = (request.GET.get("tag") or "").strip().lower()
