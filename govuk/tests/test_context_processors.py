@@ -34,7 +34,7 @@ class NavigationAndBreadcrumbsContextTests(SimpleTestCase):
 
         with patch.dict(
             os.environ,
-            {"DJANGO_SETTINGS_MODULE": "govuk.settings.local"},
+            {"DJANGO_SETTINGS_MODULE": "govuk.settings.dev"},
             clear=False,
         ):
             context = navigation_and_breadcrumbs(request)
@@ -43,7 +43,7 @@ class NavigationAndBreadcrumbsContextTests(SimpleTestCase):
         self.assertEqual(context["app_version"], settings.VERSION)
         self.assertEqual(context["additional_css"], [])
         self.assertEqual(context["noindex"], settings.NOINDEX)
-        self.assertEqual(context["django_settings_module"], "govuk.settings.local")
+        self.assertEqual(context["django_settings_module"], "govuk.settings.dev")
         self.assertEqual(context["service_navigation_items"], [])
         self.assertEqual(context["breadcrumbs"], [])
         self.assertIsNone(context["phase_banner_settings"])

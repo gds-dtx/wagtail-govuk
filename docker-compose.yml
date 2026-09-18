@@ -22,7 +22,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DJANGO_SETTINGS_MODULE: govuk.settings.dev
+      DJANGO_SETTINGS_MODULE: govuk.settings.production
       SECRET_KEY: change-me-in-production
       DEBUG: "True"
       DATABASE_HOST: db

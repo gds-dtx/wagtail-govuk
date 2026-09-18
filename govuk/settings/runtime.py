@@ -4,7 +4,7 @@ import sys
 
 from django.core.exceptions import ImproperlyConfigured
 
-LOCAL_SETTINGS_MODULE = "govuk.settings.local"
+DEV_SETTINGS_MODULE = "govuk.settings.dev"
 RUNSERVER_COMMANDS = {"runserver", "runserver_plus"}
 
 
@@ -113,28 +113,28 @@ def resolve_wsgi_settings_module(
         loaded_modules=loaded_modules,
     )
 
-    if configured_settings == LOCAL_SETTINGS_MODULE and (gunicorn or not runserver):
+    if configured_settings == DEV_SETTINGS_MODULE and (gunicorn or not runserver):
         raise ImproperlyConfigured(
-            "govuk.settings.local is only supported for local "
+            "govuk.settings.dev is only supported for local "
             "`python manage.py runserver`. Set DJANGO_SETTINGS_MODULE to a "
-            "non-local settings module before starting the WSGI application."
+            "deployed settings module before starting the WSGI application."
         )
 
     if configured_settings:
         return configured_settings
 
     if runserver and not gunicorn:
-        environ.setdefault("DJANGO_SETTINGS_MODULE", LOCAL_SETTINGS_MODULE)
-        return LOCAL_SETTINGS_MODULE
+        environ.setdefault("DJANGO_SETTINGS_MODULE", DEV_SETTINGS_MODULE)
+        return DEV_SETTINGS_MODULE
 
     if gunicorn:
         raise ImproperlyConfigured(
-            "DJANGO_SETTINGS_MODULE must be set to a non-local settings module "
+            "DJANGO_SETTINGS_MODULE must be set to a deployed settings module "
             "before starting Gunicorn."
         )
 
     raise ImproperlyConfigured(
         "DJANGO_SETTINGS_MODULE must be set before starting the WSGI "
-        "application. Refusing to default to govuk.settings.local outside "
+        "application. Refusing to default to govuk.settings.dev outside "
         "`python manage.py runserver`."
     )
