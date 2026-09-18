@@ -48,7 +48,7 @@
         {% endif %}
         {% block extra_head %}{% endblock %}
     </head>
-    <body class="govuk-template__body app-body-class">
+    <body class="govuk-template__body app-body-class"{% if framework_enabled %} data-rich-text-type-scale{% endif %}>
         <script nonce="{{ csp_nonce }}">
     document.body.className += ' js-enabled' + ('noModule' in HTMLScriptElement.prototype ? ' govuk-frontend-supported' : '');
         </script>
