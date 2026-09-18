@@ -593,7 +593,12 @@ main > :nth-last-child(1 of .section-cards-container) {
 .role-nav__item--active a:focus {
     color: #0b0c0c;
     background-color: #fd0;
-    border-color: #0b0c0c;
+    /* The black bar along the bottom edge comes from the box-shadow every
+       item's focus state carries. The current item also has a 4px left
+       border, and painting that black too put a second black edge on the
+       left (review round 2, T24.4). It sits on the yellow instead, as it
+       does for every other item. */
+    border-left-color: #fd0;
 }
 
 /* Welcome page role lists, which stand in for the side navigation on a narrow

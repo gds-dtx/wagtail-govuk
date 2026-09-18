@@ -149,6 +149,75 @@ class FrameworkSkillsPageTests(TestCase):
         )
         self.assertContains(response, "No description provided.")
 
+    def test_a_senior_civil_service_skill_reads_as_it_does_on_the_live_service(self):
+        """T37.2 and T37.3 (14 September 2026). A Senior Civil Service skill has
+        no levels table, so the live service heads its entry "Description,
+        including examples of leadership", introduces the leadership examples
+        with a sentence rather than a heading, and draws a rule above "Roles
+        that require this skill" where every other skill's table would end.
+        """
+        GovukSkill.objects.all().delete()
+        scs = GovukSkill.objects.create(
+            title="Capability building",
+            body="<p>You can:</p><ul><li>guide the organisation.</li></ul>",
+            is_senior_civil_service=True,
+            leadership_points=[
+                {"type": "point", "value": "prioritising capability needs."}
+            ],
+        )
+        GovukRole.objects.create(
+            title="Chief data officer",
+            family="Chief digital and data",
+            is_senior_civil_service=True,
+            scs_skills=[{"type": "skill", "value": scs.pk}],
+        )
+
+        response = self.client.get(self.skills_page.url)
+        text = response.content.decode("utf-8")
+
+        heading = text.find("Description, including examples of leadership</h3>")
+        body = text.find("guide the organisation.")
+        lead_in = text.find(
+            '<p class="govuk-body govuk-!-margin-bottom-1">'
+            "Examples of leadership using this skill:</p>"
+        )
+        rule = text.find(
+            '<hr class="govuk-section-break govuk-section-break--m '
+            'govuk-section-break--visible">'
+        )
+        roles = text.find("Roles that require this skill</h3>")
+
+        self.assertTrue(
+            0 < heading < body < lead_in < rule < roles,
+            (heading, body, lead_in, rule, roles),
+        )
+        self.assertNotIn("Examples of leadership using this skill</h3>", text)
+
+    def test_a_skill_with_levels_draws_no_extra_rule_above_its_roles(self):
+        """The rule is for Senior Civil Service skills only; the others have the
+        levels table's own edge, as on the live service."""
+        GovukRole.objects.create(
+            title="Data analyst",
+            family="Data",
+            levels=[
+                {
+                    "type": "level",
+                    "value": {
+                        "title": "Data analyst",
+                        "description": "<p>Analyses.</p>",
+                        "skills": [
+                            {"skill": self.alpha_skill.pk, "level": "awareness"}
+                        ],
+                    },
+                }
+            ],
+        )
+
+        response = self.client.get(self.skills_page.url)
+
+        self.assertContains(response, "Roles that require this skill")
+        self.assertNotContains(response, "govuk-section-break--visible")
+
     def test_the_skills_index_carries_the_frameworks_side_navigation(self):
         """It sits alongside the roles, so it is navigated the same way.
 
