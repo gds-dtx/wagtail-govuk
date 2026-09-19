@@ -58,6 +58,9 @@ MAIN_CSS = (STATIC / "main.css").read_text()
 # next, so they have to come out before a selector can be read off.
 CSS = re.sub(r"/\*.*?\*/", "", MAIN_CSS, flags=re.S)
 MAIN_JS = (STATIC / "main.js").read_text()
+# Minified, so declarations in it are written without the spaces the
+# stylesheet above has: `font-size:1rem`, not `font-size: 1rem`.
+FRONTEND_CSS = (STATIC / "govuk-frontend-6.0.0.min.css").read_text()
 
 
 def _feature_flags() -> dict[str, bool]:
@@ -480,22 +483,40 @@ class StylingChecklistTests(ReviewChecklistTestCase):
         Frontend 5, where a table is 16px below 40.0625em, which is how its
         skill tables fit 320px without splitting a word. Ours were hyphenated
         to fit instead, and split a word on most lines. The framework's tables
-        now take live's size on small screens and nothing is hyphenated.
+        now ask for live's size through the Design System's own modifier, and
+        nothing is hyphenated.
         """
         self.assertNotIn("hyphens: auto", CSS)
+        # The size is the Design System's rather than ours, so this is the
+        # thing to hear about if a Frontend upgrade drops the modifier or
+        # moves the width it applies at.
+        self.assertIn(
+            "@media (max-width:40.0525em){"
+            ".govuk-table--small-text-until-tablet{"
+            "font-size:1rem;line-height:1.25}",
+            FRONTEND_CSS,
+        )
 
-        small = _rules(CSS, ".app-framework-table")
-        self.assertIn("font-size: 1rem", small)
-        # Only the framework's own tables: an editor's table on another site
-        # keeps the Design System's sizing.
-        self.assertNotIn("font-size: 1rem", _rules(CSS, ".govuk-table"))
+    def test_mobile_1_a_paragraph_inside_a_cell_comes_down_with_its_table(self):
+        """The modifier sizes the table and the cells inherit from it, but a
+        .govuk-body or a .govuk-list item inside a cell sets its own size and
+        does not -- and a skill description is made of both."""
+        small = _small_screen_css(CSS)
 
-    def test_mobile_1_the_skill_tables_are_the_named_ones(self):
+        for selector in (
+            ".govuk-table--small-text-until-tablet .govuk-body",
+            ".govuk-table--small-text-until-tablet li",
+        ):
+            with self.subTest(selector=selector):
+                self.assertIn("font-size: 1rem", _rules(small, selector))
+
+    def test_mobile_1_the_skill_tables_ask_for_the_smaller_size(self):
         role_html = self.role_html(self.analyst)
         skills_html = self.client.get(self.skills_page.url).content.decode()
 
-        self.assertIn('<table class="govuk-table app-framework-table">', role_html)
-        self.assertIn('<table class="govuk-table app-framework-table">', skills_html)
+        modified = '<table class="govuk-table govuk-table--small-text-until-tablet">'
+        self.assertIn(modified, role_html)
+        self.assertIn(modified, skills_html)
         self.assertNotIn('<table class="govuk-table">', role_html)
 
     def test_mobile_2_the_back_to_top_button_leaves_the_fixed_layer_on_a_small_screen(
@@ -519,9 +540,17 @@ class StylingChecklistTests(ReviewChecklistTestCase):
         # button carries it, so a bare #back-to-top would lose to it.
         self.assertNotIn("display: none", docked)
 
-    def test_mobile_2_the_button_is_fixed_again_above_the_tablet_width(self):
-        """One media query, not a rewrite -- the wide layout has the gutter for
-        a fixed button and keeps it."""
+    def test_mobile_2_the_button_is_still_fixed_above_the_tablet_width(self):
+        """One media query, not a rewrite: above the tablet width the button is
+        left exactly where it was.
+
+        Not because it is clear of everything there. Measured on 19 September
+        2026 it overlaps the side navigation at 641px and above on the pages
+        that have one, and the live service's button does the same on the same
+        pages at the same widths. That is live's behaviour reproduced rather
+        than anything this change introduced, and CS32-3560 is about the
+        small-screen case, so it is left as it is.
+        """
         base = _rules(CSS, "#back-to-top")
 
         self.assertIn("position: fixed", base)

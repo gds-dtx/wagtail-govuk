@@ -847,13 +847,22 @@ main > :nth-last-child(1 of .section-cards-container) {
    breaking a word. At 19px ours did not fit, and the hyphenation that made
    it fit split a word on most lines -- 370 of them on one role page at 320px
    (Antony, 18 September 2026, "text should reflow to keep complete words").
-   So the framework's tables take live's small-screen size instead, and
-   nothing is hyphenated. Named tables only: the other sites on this image
-   keep the Design System's sizing. */
+
+   Frontend 6 keeps live's sizing as an opt-in modifier, so the framework's
+   tables carry govuk-table--small-text-until-tablet and the size itself is
+   the Design System's: same breakpoint, same declarations, and a print
+   variant we would not have thought to write. Other sites on this image are
+   unaffected unless they ask for it.
+
+   What the modifier cannot reach is left here. It sets a size on the table
+   and the cells inherit it, but a .govuk-body or a .govuk-list item inside a
+   cell sets its own size and so does not. This hangs off the modifier rather
+   than off the framework because the gap is the modifier's, not ours: a
+   table that asks for small text until tablet means the paragraphs in it
+   too. */
 @media (max-width: 40.0525em) {
-    .app-framework-table,
-    .app-framework-table .govuk-body,
-    .app-framework-table li {
+    .govuk-table--small-text-until-tablet .govuk-body,
+    .govuk-table--small-text-until-tablet li {
         font-size: 1rem;
         line-height: 1.25;
     }
