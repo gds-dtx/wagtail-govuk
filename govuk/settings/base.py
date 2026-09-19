@@ -277,6 +277,22 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
+# No wagtail-govuk instance has a shared cache tier -- there is no Redis or
+# Memcached in wagtail-iac -- so this is the local-memory cache Django would
+# fall back to anyway, written down so that what depends on it is legible.
+# Each gunicorn worker and each background task process keeps its own copy and
+# a deploy empties it, which means only values that are cheap to recompute and
+# harmless to hold twice belong here. Today that is the CSV download sizes in
+# govuk.attachments. Anything that must be consistent across workers -- rate
+# limits, locks, sessions -- needs a real tier first, which is an
+# infrastructure change rather than a settings one.
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "wagtail-govuk",
+    }
+}
+
 SESSION_ENGINE = (
     "django.contrib.sessions.backends.db"  # may in future want a separate cache db
 )

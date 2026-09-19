@@ -14,19 +14,88 @@ logger = logging.getLogger(__name__)
 
 
 class IncomingRequestDebugLoggingMiddleware:
-    """Log inbound requests and headers when explicitly enabled via settings."""
+    """Log inbound requests and headers when explicitly enabled via settings.
+
+    A debugging aid for working out what CloudFront and the load balancer
+    actually send, switched on by INCOMING_REQUEST_INFO_LOGGING and off in
+    every deployed environment. Header names are always logged in full. Values
+    are logged only for the headers named below; every other value is replaced
+    by its length, because these lines go to CloudWatch and stay there for the
+    log group's retention.
+
+    Which headers arrived, and whether one was truncated, is what anyone is
+    reading these for, and the name and the length answer that. So the list is
+    of what to log rather than of what to hide: a header nobody here has
+    thought of -- a new single sign-on scheme's, a future AWS one -- is then
+    redacted by default rather than logged by default, and adding a credential
+    to the request is not also a change to what this writes down.
+
+    Two of the headers it does log are personal data: X-Forwarded-For and
+    CloudFront-Viewer-Address carry the reader's IP address. Tracing a request
+    through the proxy chain is the reason this switch exists, so they are
+    logged -- but leave the switch on only as long as the debugging needs it.
+    """
+
+    #: Header names, lower-cased, whose values may be written to CloudWatch.
+    LOGGED_HEADERS = frozenset(
+        {
+            # What the proxy chain did with the request, which is what this
+            # switch was added to answer.
+            "host",
+            "via",
+            "x-amzn-trace-id",
+            "x-forwarded-for",
+            "x-forwarded-host",
+            "x-forwarded-port",
+            "x-forwarded-proto",
+            "x-request-id",
+            # What CloudFront tells the origin about the viewer: device and
+            # geography hints, named one by one rather than by prefix so that
+            # a header AWS adds later is redacted until someone looks at it.
+            "cloudfront-forwarded-proto",
+            "cloudfront-is-android-viewer",
+            "cloudfront-is-desktop-viewer",
+            "cloudfront-is-ios-viewer",
+            "cloudfront-is-mobile-viewer",
+            "cloudfront-is-smarttv-viewer",
+            "cloudfront-is-tablet-viewer",
+            "cloudfront-viewer-address",
+            "cloudfront-viewer-country",
+            # What the browser asked for.
+            "accept",
+            "accept-encoding",
+            "accept-language",
+            "cache-control",
+            "connection",
+            "content-length",
+            "content-type",
+            "origin",
+            "pragma",
+            "referer",
+            "upgrade-insecure-requests",
+            "user-agent",
+        }
+    )
 
     def __init__(self, get_response):
         self.get_response = get_response
 
+    @classmethod
+    def _safe_headers(cls, headers) -> dict[str, str]:
+        safe = {}
+        for name, value in headers.items():
+            if value and name.lower() not in cls.LOGGED_HEADERS:
+                value = f"[redacted, {len(value)} chars]"
+            safe[name] = value
+        return safe
+
     def __call__(self, request):
         if getattr(settings, "INCOMING_REQUEST_INFO_LOGGING", False):
-            request_headers = dict(request.headers.items())
             logger.info(
                 "Incoming request: method=%s path=%s headers=%s",
                 request.method,
                 request.get_full_path(),
-                request_headers,
+                self._safe_headers(request.headers),
             )
         return self.get_response(request)
 

@@ -48,9 +48,8 @@ SCS_ROLE_TYPE = "Senior Civil Service"
 SITE_WIDE_PAGE_NAME = "Homepage"
 
 
-def _scs_skill_description(skill_row: dict) -> str:
+def _scs_skill_description(skill_row: dict, description: str) -> str:
     """Rebuild the published prose for a Senior Civil Service skill."""
-    description = rich_html_to_text(skill_row["skill"].body)
     leadership = skill_row["leadership_points"]
     if not leadership:
         return description
@@ -60,8 +59,23 @@ def _scs_skill_description(skill_row: dict) -> str:
 
 def write_roles_csv(f) -> int:
     rows = 0
+    # A skill body is written once per role that requires the skill: 1816 rows
+    # over 185 skills. Converting rich text back to prose is the bulk of what
+    # this file costs, so each skill is converted once and reused.
+    skill_descriptions: dict[int, str] = {}
+
+    def skill_description(skill) -> str:
+        if skill.pk not in skill_descriptions:
+            skill_descriptions[skill.pk] = rich_html_to_text(skill.body)
+        return skill_descriptions[skill.pk]
+
     writer = csv.DictWriter(f, fieldnames=ROLE_COLUMNS)
     writer.writeheader()
+    # One query per role remains: reading a role's levels resolves its snippet
+    # chooser blocks, which Wagtail does per StreamField value, so no amount of
+    # prefetching on this queryset reaches it. Avoiding it means walking
+    # raw_data the way GovukRole.get_skill_ids does -- a second path through
+    # level data to keep in step with the resolved one, for 52 indexed lookups.
     for role in GovukRole.objects.order_by("title"):
         role_description = rich_html_to_text(role.body)
         levels = role.get_levels_with_skills()
@@ -77,7 +91,9 @@ def write_roles_csv(f) -> int:
                         "Role Level": NOT_IN_USE,
                         "Role Level Description": NOT_IN_USE,
                         "Skill Name": skill_row["skill"].title,
-                        "Skill Description": _scs_skill_description(skill_row),
+                        "Skill Description": _scs_skill_description(
+                            skill_row, skill_description(skill_row["skill"])
+                        ),
                         "Skill Level": NOT_IN_USE,
                         "Skill Level Description": NOT_IN_USE,
                         "Role Type": SCS_ROLE_TYPE,
@@ -96,6 +112,8 @@ def write_roles_csv(f) -> int:
             rows += 1
             continue
         for level in levels:
+            # One level description, repeated on every skill row of the level.
+            level_description = rich_html_to_text(level["description"])
             for skill_row in level["skills"]:
                 skill = skill_row["skill"]
                 writer.writerow(
@@ -104,11 +122,9 @@ def write_roles_csv(f) -> int:
                         "Role": role.title,
                         "Role Description": role_description,
                         "Role Level": level["title"],
-                        "Role Level Description": rich_html_to_text(
-                            level["description"]
-                        ),
+                        "Role Level Description": level_description,
                         "Skill Name": skill.title,
-                        "Skill Description": rich_html_to_text(skill.body),
+                        "Skill Description": skill_description(skill),
                         "Skill Level": skill_row["required_level_label"],
                         "Skill Level Description": points_to_text(skill_row["points"]),
                     }

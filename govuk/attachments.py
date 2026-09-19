@@ -20,8 +20,10 @@ generated at the moment of asking (``govuk.views.framework_csv_view``), and
 that is exactly what keeps them in sync with the published content -- the
 live service's copies are rebuilt on a schedule and were 16 days stale when
 this was written. So the size is measured by generating the file and counting
-the bytes, and cached, because generating the roles CSV costs about 160ms and
-the download page should not pay that on every view.
+the bytes, and cached, because generating the roles CSV costs tens of
+milliseconds and the download page should not pay that for all three files on
+every view. The cache is per process (see CACHES in govuk.settings.base), so
+the first view each worker serves after a deploy pays it once.
 """
 
 from __future__ import annotations
