@@ -191,7 +191,7 @@ class RolePageLayoutTests(TestCase):
 
         html = response.content.decode()
         title = " ".join(html.split("<title>", 1)[1].split("</title>", 1)[0].split())
-        self.assertEqual(title, "Data analyst | Capability Framework")
+        self.assertEqual(title, "Data analyst - Capability Framework")
 
     def test_the_title_uses_the_standard_heading_rather_than_the_site_hero(self):
         response = self.client.get(self.data_analyst_url)

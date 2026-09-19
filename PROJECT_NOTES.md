@@ -207,15 +207,18 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
 
 ## Tests
 
-Around 870 tests across 70 test modules under `govuk/tests/`, all `test_*.py`
-(`ls govuk/tests/test_*.py | wc -l` and the test run give the current numbers). A shared
+Tests live under `govuk/tests/`, all `test_*.py`. The numbers here go stale
+every week, so read them rather than trusting this line:
+`ls govuk/tests/test_*.py | wc -l` for the modules and the test run's own
+summary for the count (74 modules, 981 tests on 19 September 2026). A shared
 test helper (`govuk/tests/framework_helpers.py`) provides `make_framework_main_page`
 and `role_url` for the framework-specific tests.
 
 ## CI / Deploy (`.github/workflows/`)
 
-- **`pr-test.yml`** — on PR: Python 3.13, `pip install`, `manage.py check`, then
-  `manage.py test`.
+- **`pr-test.yml`** — on PR: Python 3.13, `pip install`, `ruff check`,
+  `manage.py check`, then `manage.py test`. Note it runs `ruff check` only, not
+  `ruff format --check`, so formatting is not enforced by CI.
 - **`deploy.yml`** — builds & pushes Docker image to
   `ghcr.io/gds-dtx/wagtail-govuk:<version>`. Version from app.
 - `dependabot.yml` present.
@@ -229,8 +232,8 @@ and `role_url` for the framework-specific tests.
   `wagtail_hooks.py` for how a file is referenced before adding one. Static
   changes need `collectstatic` + hard refresh to show in a running admin.
 - **Migrations:** numbered with gaps; `ls govuk/migrations | tail -1` is the
-  leaf (`0074_customisesettings_content_max_width_and_more` when this was
-  written). `0071` and `0072` convert an existing instance's framework content
+  leaf (`0075_customisesettings_enable_search_results_page_and_more` on
+  19 September 2026). `0071` and `0072` convert an existing instance's framework content
   in place and delete its role pages (two migrations because Postgres will not
   alter a table in the same transaction that changed its rows) — see `docs/cutover.md`, "Upgrading an instance
   that already has content". Data migrations walk RichTextField/JSONField

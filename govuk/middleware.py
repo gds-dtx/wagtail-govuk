@@ -14,19 +14,51 @@ logger = logging.getLogger(__name__)
 
 
 class IncomingRequestDebugLoggingMiddleware:
-    """Log inbound requests and headers when explicitly enabled via settings."""
+    """Log inbound requests and headers when explicitly enabled via settings.
+
+    A debugging aid for working out what CloudFront and the load balancer
+    actually send, switched on by INCOMING_REQUEST_INFO_LOGGING and off in
+    every deployed environment. Header names are logged in full; the values
+    that carry a credential are replaced with their length, because these
+    lines go to CloudWatch and stay there for the log group's retention.
+    Which headers arrived, and whether one was truncated, is what anyone is
+    reading these for -- the token itself never is.
+
+    X-Forwarded-For is left intact: a reader's IP address is personal data,
+    but tracing a request through the proxy chain is the reason this switch
+    exists, so leave it on only as long as the debugging needs it.
+    """
+
+    #: Header names, lower-cased, whose values are credentials.
+    REDACTED_HEADERS = frozenset(
+        {
+            "authorization",
+            "cookie",
+            "proxy-authorization",
+            "x-api-key",
+            "x-csrftoken",
+        }
+    )
 
     def __init__(self, get_response):
         self.get_response = get_response
 
+    @classmethod
+    def _safe_headers(cls, headers) -> dict[str, str]:
+        safe = {}
+        for name, value in headers.items():
+            if value and name.lower() in cls.REDACTED_HEADERS:
+                value = f"[redacted, {len(value)} chars]"
+            safe[name] = value
+        return safe
+
     def __call__(self, request):
         if getattr(settings, "INCOMING_REQUEST_INFO_LOGGING", False):
-            request_headers = dict(request.headers.items())
             logger.info(
                 "Incoming request: method=%s path=%s headers=%s",
                 request.method,
                 request.get_full_path(),
-                request_headers,
+                self._safe_headers(request.headers),
             )
         return self.get_response(request)
 
