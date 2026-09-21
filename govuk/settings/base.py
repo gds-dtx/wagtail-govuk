@@ -486,6 +486,7 @@ REST_FRAMEWORK = {
         "govuk.authentication.InternalAccessJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
 }
 
 LOGIN_REDIRECT_URL = "/accounts/profile/"
