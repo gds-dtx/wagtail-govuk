@@ -3,6 +3,7 @@ import os
 import sys
 from unittest.mock import patch
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, TestCase, override_settings
 from wagtail.models import Site
 
@@ -71,6 +72,90 @@ class ResolveOidcTokenAudienceTests(SimpleTestCase):
             audience = base_settings._resolve_oidc_token_audience(None)
 
         self.assertIsNone(audience)
+
+
+class CacheConfigTests(SimpleTestCase):
+    """CACHE_URL, added at Ollie's suggestion on PR #106 so a deployment can
+    put a real tier behind the cache without a code change."""
+
+    def _config(self, environ, redis_installed=True):
+        spec = object() if redis_installed else None
+        with patch.dict(os.environ, environ, clear=True):
+            with patch.object(base_settings, "find_spec", return_value=spec):
+                return base_settings._cache_config()
+
+    def test_unset_gives_the_local_memory_cache_every_instance_runs_today(self):
+        config = self._config({})
+
+        self.assertEqual(
+            config,
+            {
+                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                "LOCATION": "wagtail-govuk",
+            },
+        )
+
+    def test_a_redis_url_gives_a_shared_tier(self):
+        config = self._config(
+            {"CACHE_URL": "rediss://cache.example.gov.uk:6379", "DOMAIN": "a.gov.uk"}
+        )
+
+        self.assertEqual(config["BACKEND"], "django.core.cache.backends.redis.RedisCache")
+        self.assertEqual(config["LOCATION"], "rediss://cache.example.gov.uk:6379")
+
+    def test_several_urls_are_passed_through_as_primary_then_replicas(self):
+        """The shape ElastiCache presents, and the shape Django's RedisCache
+        reads a list as."""
+        config = self._config(
+            {"CACHE_URL": "redis://primary:6379, redis://replica:6379"}
+        )
+
+        self.assertEqual(
+            config["LOCATION"], ["redis://primary:6379", "redis://replica:6379"]
+        )
+
+    def test_the_key_prefix_keeps_two_services_on_one_tier_apart(self):
+        """Six services run this image and "wagtail-govuk" is the same string
+        in all of them, so a shared tier needs the keyspace split by site."""
+        self.assertEqual(
+            self._config({"CACHE_URL": "redis://c:6379", "DOMAIN": "cyber.gov.uk"})[
+                "KEY_PREFIX"
+            ],
+            "cyber.gov.uk",
+        )
+        self.assertEqual(
+            self._config(
+                {
+                    "CACHE_URL": "redis://c:6379",
+                    "DOMAIN": "cyber.gov.uk",
+                    "CACHE_KEY_PREFIX": "chosen-by-hand",
+                }
+            )["KEY_PREFIX"],
+            "chosen-by-hand",
+        )
+
+    def test_a_cache_url_without_redis_py_installed_stops_the_app(self):
+        """redis-py is not a dependency, because nothing has a tier to talk to
+        yet. Django builds a cache backend lazily, so without this the
+        instance would start, pass its health check and look well until
+        something touched the cache."""
+        with self.assertRaises(ImproperlyConfigured) as raised:
+            self._config({"CACHE_URL": "redis://c:6379"}, redis_installed=False)
+
+        self.assertIn("redis-py is not installed", str(raised.exception))
+
+    def test_an_unsupported_scheme_stops_the_app_rather_than_silently_not_caching(self):
+        with self.assertRaises(ImproperlyConfigured) as raised:
+            self._config({"CACHE_URL": "memcached://cache:11211"})
+
+        self.assertIn("memcached", str(raised.exception))
+
+    def test_the_url_is_not_repeated_in_the_error_because_it_may_carry_a_token(self):
+        with self.assertRaises(ImproperlyConfigured) as raised:
+            self._config({"CACHE_URL": "https://:s3cr3t-auth-token@cache:6379"})
+
+        self.assertNotIn("s3cr3t-auth-token", str(raised.exception))
+        self.assertIn("https", str(raised.exception))
 
 
 class BoolEnvTests(SimpleTestCase):

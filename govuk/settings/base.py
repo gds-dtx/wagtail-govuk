@@ -16,8 +16,11 @@ import re
 import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
+from importlib.util import find_spec
 from pathlib import Path
+from urllib.parse import urlsplit
 
+from django.core.exceptions import ImproperlyConfigured
 from django.utils.csp import CSP
 
 VERSION = os.environ.get("VERSION", "dev")
@@ -277,21 +280,70 @@ MIDDLEWARE = [
     "allauth.account.middleware.AccountMiddleware",
 ]
 
-# No wagtail-govuk instance has a shared cache tier -- there is no Redis or
-# Memcached in wagtail-iac -- so this is the local-memory cache Django would
-# fall back to anyway, written down so that what depends on it is legible.
-# Each gunicorn worker and each background task process keeps its own copy and
-# a deploy empties it, which means only values that are cheap to recompute and
-# harmless to hold twice belong here. Today that is the CSV download sizes in
-# govuk.attachments. Anything that must be consistent across workers -- rate
-# limits, locks, sessions -- needs a real tier first, which is an
-# infrastructure change rather than a settings one.
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "wagtail-govuk",
+_REDIS_SCHEMES = frozenset({"redis", "rediss"})
+
+
+def _cache_config() -> dict[str, object]:
+    """The default cache, chosen by CACHE_URL.
+
+    Unset, which is every instance today -- there is no Redis or Memcached in
+    wagtail-iac -- gives the local-memory cache Django would fall back to
+    anyway, written down so that what depends on it is legible. Each gunicorn
+    worker and each background task process then keeps its own copy and a
+    deploy empties it, so only values that are cheap to recompute and harmless
+    to hold twice belong in it. Today that is the CSV download sizes in
+    govuk.attachments.
+
+    Set to a redis:// or rediss:// URL -- an ElastiCache endpoint -- it
+    becomes one tier shared by every worker, and the things that have to be
+    consistent across them can start to live in it: rate limits, locks,
+    sessions. Several comma-separated URLs are read as primary then replicas,
+    which is the shape ElastiCache presents.
+
+    KEY_PREFIX matters on a shared tier and only there. This image runs six
+    services, "wagtail-govuk" is the same string in all of them, and two
+    services pointed at one ElastiCache would otherwise answer each other's
+    reads. It defaults to the site's own domain, so that is right without
+    anyone having to remember it.
+    """
+    urls = _parse_csv_env("CACHE_URL")
+    if not urls:
+        return {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "wagtail-govuk",
+        }
+
+    unsupported = sorted(
+        {urlsplit(url).scheme or "(none)" for url in urls} - _REDIS_SCHEMES
+    )
+    if unsupported:
+        # Deliberately without the URL itself: an ElastiCache endpoint can
+        # carry an auth token, and this message goes to the log.
+        raise ImproperlyConfigured(
+            "CACHE_URL must be one or more comma-separated redis:// or "
+            f"rediss:// URLs. Unsupported scheme: {', '.join(unsupported)}."
+        )
+
+    # Django's RedisCache needs redis-py, which this project does not depend
+    # on because no instance has a tier to talk to yet. Refuse here rather
+    # than let the first cache read fail in production: Django builds a cache
+    # backend lazily, so an instance would otherwise start, pass its health
+    # check and look entirely well until something touched the cache.
+    if find_spec("redis") is None:
+        raise ImproperlyConfigured(
+            "CACHE_URL is set but redis-py is not installed. Add `redis` to "
+            "the dependencies in pyproject.toml before pointing an instance "
+            "at a cache tier."
+        )
+
+    return {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": urls if len(urls) > 1 else urls[0],
+        "KEY_PREFIX": os.getenv("CACHE_KEY_PREFIX", os.getenv("DOMAIN", "")),
     }
-}
+
+
+CACHES = {"default": _cache_config()}
 
 SESSION_ENGINE = (
     "django.contrib.sessions.backends.db"  # may in future want a separate cache db
