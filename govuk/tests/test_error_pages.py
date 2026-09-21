@@ -1,4 +1,5 @@
-"""The three GOV.UK error pages: not found, problem, and unavailable.
+"""The four GOV.UK error pages: not found, problem, unavailable, and the
+sign-in failure.
 
 Until now there were none: production answered with Django's bare defaults.
 Each follows the Design System's wording, carries the site's own header, and
@@ -8,6 +9,8 @@ what the other sites sharing this codebase get by default.
 
 from unittest.mock import patch
 
+from allauth.socialaccount.helpers import render_authentication_error
+from allauth.socialaccount.providers.base import AuthError
 from django.test import RequestFactory, TestCase, override_settings
 from wagtail.models import Site
 
@@ -184,3 +187,85 @@ class MaintenanceModeTests(TestCase):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
+
+
+class SignInErrorPageTests(TestCase):
+    """django-allauth's authentication_error page, dressed as this service.
+
+    allauth renders it at status 401 and, left alone, in its own bare HTML:
+    "Third-Party Login Failure" with a "Menu:" list and no stylesheet. The
+    override has to keep the status -- CloudFront and the load balancer
+    count it -- while looking like the rest of the site.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+
+    def _render(self, error=AuthError.UNKNOWN):
+        request = RequestFactory().get(
+            "/accounts/oidc/internal-access/login/callback/?code=abc&state=xyz"
+        )
+        return render_authentication_error(request, "openid_connect", error=error)
+
+    def test_a_failed_sign_in_still_answers_unauthorised(self):
+        response = self._render()
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_allauths_bare_default_no_longer_reaches_the_reader(self):
+        body = self._render().content.decode()
+
+        self.assertNotIn("Third-Party Login Failure", body)
+        self.assertNotIn("<strong>Menu:</strong>", body)
+
+    def test_it_is_the_services_own_page(self):
+        body = self._render().content.decode()
+
+        self.assertIn("There is a problem signing you in", body)
+        self.assertIn("govuk-heading-l", body)
+        self.assertIn("govuk-template", body)
+
+    def test_an_expired_or_replayed_link_is_named_as_the_likely_cause(self):
+        """The commonest arrival is a reloaded callback URL, whose one-use
+        code is already spent. Saying so stops a reader concluding their
+        account is the problem."""
+        body = self._render().content.decode()
+
+        self.assertIn(
+            "The sign-in link you used has expired or has already been used.", body
+        )
+
+    def test_a_refusal_is_not_described_as_an_expired_link(self):
+        body = self._render(error=AuthError.DENIED).content.decode()
+
+        self.assertIn("You did not give permission to sign in", body)
+        self.assertNotIn("has already been used", body)
+
+    def test_the_reader_is_offered_the_way_back_in(self):
+        body = self._render().content.decode()
+
+        # The same entry point the header's "Sign in" link uses, which
+        # starts the OIDC round trip again rather than replaying the
+        # spent callback URL.
+        self.assertIn('href="/accounts/login/"', body)
+        self.assertIn("Try signing in again", body)
+
+    def test_no_contact_is_offered_until_one_is_configured(self):
+        self.assertNotIn("mailto:", self._render().content.decode())
+
+    def test_the_configured_contact_closes_the_page(self):
+        customise = CustomiseSettings.for_site(self.site)
+        customise.error_contact_link_text = (
+            "Digital and Data Profession Capability Framework team"
+        )
+        customise.error_contact_email = (
+            "digitalanddatacapabilityframework@dsit.gov.uk"
+        )
+        customise.save()
+
+        body = self._render().content.decode()
+
+        self.assertIn("If this keeps happening, contact the", body)
+        self.assertIn(
+            'href="mailto:digitalanddatacapabilityframework@dsit.gov.uk"', body
+        )
