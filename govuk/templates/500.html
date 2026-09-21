@@ -5,14 +5,25 @@
     own header and contact; the handler falls back to a bare page when the
     problem is deep enough that this template cannot render either.
 {% endcomment %}
-{% block title %}Sorry, there is a problem with the service{% endblock %}
+{% load wagtailcore_tags %}
+{% block title %}{{ error_pages_settings.problem_heading|default:"Sorry, there is a problem with the service" }}{% endblock %}
 {% block page_feedback %}{% endblock %}
 {% block content %}
     <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
         <div class="govuk-grid-row">
             <div class="govuk-grid-column-two-thirds">
-                <h1 class="govuk-heading-l">Sorry, there is a problem with the service</h1>
-                <p class="govuk-body">Try again later.</p>
+                <h1 class="govuk-heading-l">{{ error_pages_settings.problem_heading|default:"Sorry, there is a problem with the service" }}</h1>
+                {% if error_pages_settings %}
+                    {% comment %}
+                        An editor who clears the body means it: the page then
+                        shows its heading and whatever contact is configured.
+                    {% endcomment %}
+                    {% if error_pages_settings.problem_body %}
+                        <div class="govuk-body rich-text-content">{{ error_pages_settings.problem_body|richtext }}</div>
+                    {% endif %}
+                {% else %}
+                    <p class="govuk-body">Try again later.</p>
+                {% endif %}
                 {% include "includes/error_contact.html" with contact_lead="Contact the" %}
             </div>
         </div>

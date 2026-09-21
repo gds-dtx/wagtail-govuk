@@ -6,6 +6,7 @@ from wagtail.models import Page, Site
 
 from govuk.models import (
     CustomiseSettings,
+    ErrorPagesSettings,
     FooterSettings,
     PhaseBannerSettings,
     without_framework_pages,
@@ -46,6 +47,7 @@ def navigation_and_breadcrumbs(request):
             "phase_banner_settings": None,
             "footer_settings": None,
             "customise_settings": None,
+            "error_pages_settings": None,
         }
 
     site_root = site.root_page.specific
@@ -100,4 +102,5 @@ def navigation_and_breadcrumbs(request):
         "phase_banner_settings": PhaseBannerSettings.for_site(site),
         "footer_settings": FooterSettings.for_site(site),
         "customise_settings": customise_settings,
+        "error_pages_settings": ErrorPagesSettings.for_site(site),
     }

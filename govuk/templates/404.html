@@ -4,26 +4,26 @@
     The GOV.UK Design System's "page not found" page. Django renders this
     for every 404 once DEBUG is off, Wagtail's page misses included.
 
-    The heading and body come from Customise settings so an editor can say
+    The heading and body come from settings so an editor can say
     something truer to their own service than the Design System's default --
     which is what the fields ship with, and what is used here when there is
     no site to read settings from. A 404 is rendered for addresses that
     match no site at all, so this template cannot assume it has any.
 {% endcomment %}
-{% block title %}{{ customise_settings.not_found_heading|default:"Page not found" }}{% endblock %}
+{% block title %}{{ error_pages_settings.not_found_heading|default:"Page not found" }}{% endblock %}
 {% block page_feedback %}{% endblock %}
 {% block content %}
     <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
         <div class="govuk-grid-row">
             <div class="govuk-grid-column-two-thirds">
-                <h1 class="govuk-heading-l">{{ customise_settings.not_found_heading|default:"Page not found" }}</h1>
-                {% if customise_settings %}
+                <h1 class="govuk-heading-l">{{ error_pages_settings.not_found_heading|default:"Page not found" }}</h1>
+                {% if error_pages_settings %}
                     {% comment %}
                         An editor who clears the body means it: the page then
                         shows its heading and whatever contact is configured.
                     {% endcomment %}
-                    {% if customise_settings.not_found_body %}
-                        <div class="govuk-body rich-text-content">{{ customise_settings.not_found_body|richtext }}</div>
+                    {% if error_pages_settings.not_found_body %}
+                        <div class="govuk-body rich-text-content">{{ error_pages_settings.not_found_body|richtext }}</div>
                     {% endif %}
                 {% else %}
                     <p class="govuk-body">If you typed the web address, check it is correct.</p>
