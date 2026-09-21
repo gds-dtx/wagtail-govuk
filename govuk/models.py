@@ -5235,6 +5235,36 @@ class Feedback(models.Model):
     comments_preview.short_description = "Feedback"
 
 
+class PageUsefulnessVote(models.Model):
+    """One reader's yes/no answer to "Is this page useful?".
+
+    Stores no PII: just the answer, the page path it was given on, the site,
+    and when. The answer is also written to the ``govuk.page_feedback`` log by
+    ``page_feedback_view``; this row is the durable record the admin
+    "Page usefulness" report reads. Rows are pruned by
+    ``prune_page_usefulness_votes``.
+    """
+
+    ANSWERS = [("yes", "Yes"), ("no", "No")]
+
+    answer = models.CharField(max_length=3, choices=ANSWERS)
+    path = models.CharField(max_length=500, db_index=True)
+    site = models.ForeignKey(
+        "wagtailcore.Site",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.path} - {self.get_answer_display()}"
+
+
 __all__ = [
     "AuthenticatedRedirectRule",
     "AuthenticatedRedirectSettings",
@@ -5257,6 +5287,7 @@ __all__ = [
     "GovukTag",
     "GovukSkill",
     "GovukRole",
+    "PageUsefulnessVote",
     "PhaseBannerSettings",
     "FrameworkSkillsPage",
     "SectionPage",

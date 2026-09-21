@@ -77,7 +77,9 @@ Big files first — these are where most work lands:
 
   Snippets / other models: `GovukSkill`, `GovukRole` (slug, title, family,
   levels, SCS fields, progression), `GovukTag`, `ExternalContentItem`,
-  `ContentDiscoverySource`, `Feedback`, `EdDSAKeyPair`.
+  `ContentDiscoverySource`, `Feedback`, `EdDSAKeyPair`, `PageUsefulnessVote`
+  (one row per "Is this page useful?" yes/no answer — answer, path, site,
+  created_at; no PII).
 
   Site settings (`BaseSiteSetting`): `CustomiseSettings` (order 1 — leads the
   Settings menu), `FooterSettings` (order 2), `PhaseBannerSettings` (order 3),
@@ -145,6 +147,14 @@ Subsystem modules (smaller, single-purpose):
   `AuthenticatedUserRedirectMiddleware`). JWKS/JWT via PyJWT (RS256).
 - **API:** `api.py` (DRF + Wagtail API v2 router), served under `/api/`.
   JSON-only — the DRF browsable UI is disabled (`base.py`).
+- **Admin reports:** `reports.py` — `PageUsefulnessReportView` (Wagtail
+  `ReportView`) reads `PageUsefulnessVote` rows and shows yes/no counts per page
+  path (pooled across sites), with a date-range filter and CSV/XLSX export.
+  Registered in `wagtail_hooks.py` (its URLs under `register_admin_urls`, its
+  menu item via `register_reports_menu_item` at `order=100` so it sits at the
+  top of the admin Reports menu). Votes are written by `page_feedback_view`
+  (`views.py`) — the "Is this page useful?" answer is now stored as a row *and*
+  logged. The `prune_page_usefulness_votes --days N` command bounds the table.
 - **Framework CSV downloads:** `capability_framework_csv.py` writes the three
   published CSVs (skills, roles, …) to any file-like object; `views.framework_csv_view`
   serves each at `/download/<name>.csv`, generated at request time (not stored);
@@ -180,7 +190,9 @@ OIDC login routes → `/login/`, `/accounts/…`; Wagtail admin → `/admin/`;
 `/django-admin/`; API → `/api/` (+ `/api/health/`); `.well-known/jwks.json` &
 `security.txt`; `/gen/custom.css`; `/search/`; `/download/<name>.csv`
 (framework CSVs, before the Wagtail catch-all); `/robots.txt`;
-`/feedback` (flag-gated); Wagtail page serving at `/`.
+`/feedback` (flag-gated); `/page-feedback/` (records an "Is this page useful?"
+answer); Wagtail page serving at `/`. Admin-only: the Page usefulness report at
+`/admin/reports/page-usefulness/`.
 
 ## Capability Framework subsystem
 
@@ -240,7 +252,7 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
 
 ## Tests
 
-Around 1000 tests across 75 test modules under `govuk/tests/`, all `test_*.py`
+Around 1000 tests across 77 test modules under `govuk/tests/`, all `test_*.py`
 (`ls govuk/tests/test_*.py | wc -l` and the test run give the current numbers). A shared
 test helper (`govuk/tests/framework_helpers.py`) provides `make_framework_main_page`
 and `role_url` for the framework-specific tests.
@@ -262,9 +274,9 @@ and `role_url` for the framework-specific tests.
   `wagtail_hooks.py` for how a file is referenced before adding one. Static
   changes need `collectstatic` + hard refresh to show in a running admin.
 - **Migrations:** numbered with gaps; `ls govuk/migrations | tail -1` is the
-  leaf (`0077_remove_customisesettings_error_contact_about_and_more` when this
-  was written; 0077 moves the error-contact fields off `CustomiseSettings` onto
-  the new `ErrorPagesSettings`). `0071` and `0072` convert an existing instance's framework content
+  leaf (`0078_pageusefulnessvote` when this was written; 0077 moves the
+  error-contact fields off `CustomiseSettings` onto the new
+  `ErrorPagesSettings`, 0078 adds the `PageUsefulnessVote` table). `0071` and `0072` convert an existing instance's framework content
   in place and delete its role pages (two migrations because Postgres will not
   alter a table in the same transaction that changed its rows) — see `docs/cutover.md`, "Upgrading an instance
   that already has content". Data migrations walk RichTextField/JSONField

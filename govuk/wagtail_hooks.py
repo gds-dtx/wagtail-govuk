@@ -70,6 +70,7 @@ from govuk.page_import_export import (
     dump_payload_as_json,
     import_pages_from_payload,
 )
+from govuk.reports import PageUsefulnessReportView
 from govuk.utils import row_id_from_text
 
 GOVUK_BUTTON_FEATURE = "govuk-button"
@@ -1335,7 +1336,29 @@ def register_content_discovery_admin_urls():
             delete_eddsa_key_pair_view,
             name="govuk_eddsa_delete_key",
         ),
+        path(
+            "reports/page-usefulness/",
+            PageUsefulnessReportView.as_view(),
+            name="govuk_page_usefulness_report",
+        ),
+        path(
+            "reports/page-usefulness/results/",
+            PageUsefulnessReportView.as_view(results_only=True),
+            name="govuk_page_usefulness_report_results",
+        ),
     ]
+
+
+@hooks.register("register_reports_menu_item")
+def register_page_usefulness_report_menu_item():
+    # order < 700 (the first built-in report) puts it at the top of Reports.
+    return MenuItem(
+        "Page usefulness",
+        reverse("govuk_page_usefulness_report"),
+        name="page-usefulness",
+        icon_name="help",
+        order=100,
+    )
 
 
 def _register_snippet_if_needed(viewset):
