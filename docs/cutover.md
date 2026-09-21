@@ -340,6 +340,12 @@ in the CMS afterwards, and fill in anything the import does not cover:
 | Search placeholder | "Search for roles or skills" (the live service's wording, per the search box specification) |
 | Show page feedback prompt | On |
 | Page feedback — Follow up URL | `/feedback` |
+| Show "Back to top" link | On |
+
+The "Back to top" link is off by default for other sites; `import_capability_framework`
+switches it on, but only on a first import. An instance that was cut over
+before this setting existed will not have had it set, so tick it on by hand in
+**Customise → Show "Back to top" link**.
 
 Also set the error-page contact name and email. Confirm the contact address
 with the service team before entering it; the address carried in the migration

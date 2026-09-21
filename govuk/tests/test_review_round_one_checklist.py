@@ -374,6 +374,11 @@ class NavigationChecklistTests(ReviewChecklistTestCase):
         self.assertIn("display: none", _rules(CSS, ".app-breadcrumbs--mobile-only"))
 
     def test_t29_a_back_to_top_control_is_on_the_page_and_shown_by_scrolling(self):
+        # The control is opt-in; the framework turns it on, as the import does.
+        settings = CustomiseSettings.for_site(self.site)
+        settings.show_back_to_top = True
+        settings.save()
+
         html = self.role_html(self.analyst)
 
         self.assertIn('id="back-to-top"', html)
@@ -564,6 +569,7 @@ class StylingChecklistTests(ReviewChecklistTestCase):
         which is where GOV.UK puts it."""
         customise = CustomiseSettings.for_site(self.site)
         customise.show_page_feedback_prompt = True
+        customise.show_back_to_top = True
         customise.save()
 
         html = self.role_html(self.analyst)
