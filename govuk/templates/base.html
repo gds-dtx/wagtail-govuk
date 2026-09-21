@@ -270,22 +270,24 @@
                     {% include "includes/page_feedback.html" %}
                 {% endif %}
             {% endblock %}
-            {% comment %}
-                Hidden until main.js reveals it, so it is never offered where it
-                could not work.
-            {% endcomment %}
-            <button type="button" id="back-to-top" class="govuk-link">
-                <svg role="presentation"
-                     focusable="false"
-                     class="back-to-top__icon"
-                     xmlns="http://www.w3.org/2000/svg"
-                     width="13"
-                     height="17"
-                     viewBox="0 0 13 17">
-                <path fill="currentColor" d="M6.5 0L0 6.5 1.4 8l4-4v12.7h2V4l4.3 4L13 6.4z" />
-                </svg>
-                Back to top
-            </button>
+            {% if customise_settings and customise_settings.show_back_to_top %}
+                {% comment %}
+                    Hidden until main.js reveals it, so it is never offered where
+                    it could not work; a site opts into it in Customise settings.
+                {% endcomment %}
+                <button type="button" id="back-to-top" class="govuk-link">
+                    <svg role="presentation"
+                         focusable="false"
+                         class="back-to-top__icon"
+                         xmlns="http://www.w3.org/2000/svg"
+                         width="13"
+                         height="17"
+                         viewBox="0 0 13 17">
+                    <path fill="currentColor" d="M6.5 0L0 6.5 1.4 8l4-4v12.7h2V4l4.3 4L13 6.4z" />
+                    </svg>
+                    Back to top
+                </button>
+            {% endif %}
         </main>
         <footer class="govuk-template__footer">
             <div class="govuk-footer">

@@ -660,6 +660,14 @@ class CustomiseSettings(BaseSiteSetting):
         verbose_name="Feedback follow-up link text",
         help_text="The wording of the link shown after someone answers.",
     )
+    show_back_to_top = models.BooleanField(
+        default=False,
+        verbose_name="Show a “Back to top” link",
+        help_text=(
+            "Offer a “Back to top” link at the bottom-left of the page once the reader has "
+            "scrolled past the first screen of a long page."
+        ),
+    )
 
     panels = [
         FieldPanel("header_logo"),
@@ -700,6 +708,7 @@ class CustomiseSettings(BaseSiteSetting):
             ],
             heading="Page feedback",
         ),
+        FieldPanel("show_back_to_top"),
         FieldPanel("content_max_width"),
         FieldPanel("extra_css", heading="Extra CSS"),
     ]
