@@ -29,11 +29,11 @@ discovery** subsystem that ingests external feeds. A major subsystem is the
 | Module | Use | DB | Notes |
 |---|---|---|---|
 | `base.py` | shared base, imported by all | — | env-var helpers `_bool_env`, `_parse_csv_env`; `FEATURE_FLAGS`; MIDDLEWARE; OIDC_TOKEN_AUTH |
-| `local.py` | **default** for `manage.py` locally | SQLite (`db.sqlite3`) | `DEBUG=True`, dummy `SECRET_KEY="abc123"`, verbose logging on |
-| `dev.py` | server / container | PostgreSQL (env vars) | requires `SECRET_KEY`, `DATABASE_*`, `BASE_URL`, `DOMAIN`, `OIDC_*` |
-| `runtime.py` | picks local vs non-local | — | `runserver` defaults to local; gunicorn must set `DJANGO_SETTINGS_MODULE` explicitly |
+| `development.py` | **default** for `manage.py` locally; also the dev environment | SQLite (`db.sqlite3`) | `DEBUG=True`, dummy `SECRET_KEY="abc123"`, verbose logging on |
+| `production.py` | staging / production (server / container) | PostgreSQL (env vars) | requires `SECRET_KEY`, `DATABASE_*`, `BASE_URL`, `DOMAIN`, `OIDC_*` |
+| `runtime.py` | picks development vs deployed | — | `runserver` defaults to development; gunicorn must set `DJANGO_SETTINGS_MODULE` explicitly |
 
-`DJANGO_SETTINGS_MODULE` defaults to `govuk.settings.local` for local workflows.
+`DJANGO_SETTINGS_MODULE` defaults to `govuk.settings.development` for local workflows.
 
 ### Common commands
 
