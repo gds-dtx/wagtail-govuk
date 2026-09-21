@@ -13,6 +13,6 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='customisesettings',
             name='show_back_to_top',
-            field=models.BooleanField(default=False, help_text='Offer a “Back to top” link once the reader has scrolled past the first screen of a long page, as GOV.UK guidance pages do. It appears only where JavaScript can reveal it, so it is never offered where it could not work.', verbose_name='Show a “Back to top” link'),
+            field=models.BooleanField(default=False, help_text='Offer a “Back to top” link at the bottom-left of the page once the reader has scrolled past the first screen of a long page.', verbose_name='Show a “Back to top” link'),
         ),
     ]

@@ -30,5 +30,8 @@ jobs:
       - name: Run Django system checks
         run: python manage.py check
 
+      - name: Check the migrations match the models
+        run: python manage.py makemigrations --check --dry-run
+
       - name: Run Django tests
         run: python manage.py test
