@@ -569,6 +569,7 @@ class StylingChecklistTests(ReviewChecklistTestCase):
         which is where GOV.UK puts it."""
         customise = CustomiseSettings.for_site(self.site)
         customise.show_page_feedback_prompt = True
+        customise.show_back_to_top = True
         customise.save()
 
         html = self.role_html(self.analyst)
