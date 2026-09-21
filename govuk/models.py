@@ -590,6 +590,31 @@ class CustomiseSettings(BaseSiteSetting):
             "is not served."
         ),
     )
+    not_found_heading = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Page not found",
+        verbose_name="Page not found: heading",
+        help_text=(
+            "The heading on the page a reader reaches when a web address does "
+            "not exist. Leave blank for the Design System's \u201cPage not "
+            "found\u201d."
+        ),
+    )
+    not_found_body = RichTextField(
+        blank=True,
+        default=(
+            "<p>If you typed the web address, check it is correct.</p>"
+            "<p>If you pasted the web address, check you copied the entire "
+            "address.</p>"
+        ),
+        verbose_name="Page not found: body",
+        help_text=(
+            "What the page not found page says above the contact sentence. "
+            "Clear it to say nothing. The contact sentence below is added "
+            "separately."
+        ),
+    )
     error_contact_link_text = models.CharField(
         max_length=255,
         blank=True,
@@ -687,6 +712,13 @@ class CustomiseSettings(BaseSiteSetting):
                 FieldPanel("search_placeholder"),
             ],
             heading="Search box",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("not_found_heading"),
+                FieldPanel("not_found_body"),
+            ],
+            heading="Page not found",
         ),
         MultiFieldPanel(
             [

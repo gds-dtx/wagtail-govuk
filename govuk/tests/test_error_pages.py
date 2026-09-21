@@ -82,6 +82,94 @@ class NotFoundPageTests(TestCase):
         )
 
 
+class NotFoundPageWordingTests(TestCase):
+    """The heading and body an editor controls from Customise settings.
+
+    The Design System's wording is the field default, so a site that has
+    never been touched reads exactly as it did before these fields existed.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.client.raise_request_exception = False
+
+    def _get_missing_page(self):
+        return self.client.get("/this-page-does-not-exist/")
+
+    def test_an_editors_heading_replaces_the_design_systems(self):
+        customise = CustomiseSettings.for_site(self.site)
+        customise.not_found_heading = "We cannot find that page"
+        customise.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(response, "We cannot find that page", status_code=404)
+        self.assertNotContains(response, "Page not found", status_code=404)
+
+    def test_an_editors_body_replaces_the_design_systems(self):
+        customise = CustomiseSettings.for_site(self.site)
+        customise.not_found_body = "<p>Try the A to Z of skills instead.</p>"
+        customise.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(response, "Try the A to Z of skills instead.", status_code=404)
+        self.assertNotContains(
+            response, "If you typed the web address", status_code=404
+        )
+
+    def test_clearing_the_body_leaves_the_heading_standing_alone(self):
+        """A cleared field means the editor wants nothing there, not the
+        default back again."""
+        customise = CustomiseSettings.for_site(self.site)
+        customise.not_found_body = ""
+        customise.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(response, "Page not found", status_code=404)
+        self.assertNotContains(
+            response, "If you typed the web address", status_code=404
+        )
+
+    def test_a_cleared_heading_falls_back_rather_than_leaving_no_h1(self):
+        """A page with no heading at all fails WCAG, so the default stands in."""
+        customise = CustomiseSettings.for_site(self.site)
+        customise.not_found_heading = ""
+        customise.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(response, "Page not found", status_code=404)
+
+    def test_the_heading_is_also_the_browser_title(self):
+        customise = CustomiseSettings.for_site(self.site)
+        customise.not_found_heading = "We cannot find that page"
+        customise.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(
+            response, "<title>", status_code=404
+        )
+        self.assertIn(
+            "We cannot find that page",
+            response.content.decode().split("</title>")[0],
+        )
+
+    def test_a_request_with_no_site_still_gets_the_design_systems_page(self):
+        """With no site there are no settings to read, and the template has
+        to stand on its own rather than render a headless page."""
+        Site.objects.all().delete()
+
+        response = self._get_missing_page()
+
+        self.assertEqual(response.status_code, 404)
+        body = response.content.decode()
+        self.assertIn("Page not found", body)
+        self.assertIn("If you typed the web address, check it is correct.", body)
+
+
 class ServerErrorPageTests(TestCase):
     def test_the_branded_page_renders_with_the_request(self):
         request = RequestFactory().get("/whatever/")
