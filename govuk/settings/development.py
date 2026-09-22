@@ -1,8 +1,7 @@
 from .base import *
 
-# Local development settings: SQLite, DEBUG on and a fixed SECRET_KEY. Never point
-# a deployed instance at this module; dev, staging and production all use
-# govuk.settings.production (see wagtail-instances).
+# Development settings - these are used, as a default, for local development
+# and any deployed dev environments.
 
 DEBUG = True
 WHITENOISE_USE_FINDERS = True
