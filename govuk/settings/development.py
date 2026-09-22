@@ -1,6 +1,7 @@
 from .base import *
 
-# Development settings - these are used for local development and the dev environment
+# Development settings - these are used, as a default, for local development
+# and any deployed dev environments.
 
 DEBUG = True
 WHITENOISE_USE_FINDERS = True
