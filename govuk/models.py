@@ -590,29 +590,6 @@ class CustomiseSettings(BaseSiteSetting):
             "is not served."
         ),
     )
-    error_contact_link_text = models.CharField(
-        max_length=255,
-        blank=True,
-        default="",
-        help_text=(
-            "Who the error pages offer to put a reader in touch with, for "
-            "example a team's name. Leave blank for no contact sentence."
-        ),
-    )
-    error_contact_email = models.EmailField(
-        blank=True,
-        default="",
-        help_text="Where the error pages' contact link points.",
-    )
-    error_contact_about = models.CharField(
-        max_length=255,
-        blank=True,
-        default="",
-        help_text=(
-            "What the reader would be speaking to someone about, closing the "
-            "contact sentence: 'if you need to speak to someone about the …'."
-        ),
-    )
     content_max_width = models.PositiveIntegerField(
         null=True,
         blank=True,
@@ -690,14 +667,6 @@ class CustomiseSettings(BaseSiteSetting):
         ),
         MultiFieldPanel(
             [
-                FieldPanel("error_contact_link_text"),
-                FieldPanel("error_contact_email"),
-                FieldPanel("error_contact_about"),
-            ],
-            heading="Error contact",
-        ),
-        MultiFieldPanel(
-            [
                 FieldPanel("show_page_feedback_prompt"),
                 # No heading overrides: the fields' own labels ("Feedback
                 # follow-up sentence" and so on) are what the revision-compare
@@ -751,6 +720,135 @@ class CustomiseSettings(BaseSiteSetting):
     @property
     def has_custom_css(self) -> bool:
         return bool(self.render_custom_css())
+
+
+@register_setting(icon="error", order=4)
+class ErrorPagesSettings(BaseSiteSetting):
+    not_found_heading = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Page not found",
+        verbose_name="Page not found: heading",
+        help_text=(
+            "The heading on the page a reader reaches when a web address does "
+            "not exist. Leave blank for the Design System's “Page not "
+            "found”."
+        ),
+    )
+    not_found_body = RichTextField(
+        blank=True,
+        default=(
+            "<p>If you typed the web address, check it is correct.</p>"
+            "<p>If you pasted the web address, check you copied the entire "
+            "address.</p>"
+        ),
+        verbose_name="Page not found: body",
+        help_text=(
+            "What the page not found page says above the contact sentence. "
+            "Clear it to say nothing. The contact sentence below is added "
+            "separately."
+        ),
+    )
+    problem_heading = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Sorry, there is a problem with the service",
+        verbose_name="Problem with the service: heading",
+        help_text=(
+            "The heading on the page a reader reaches when the service hits an "
+            "error. Leave blank for the Design System's “Sorry, there is a "
+            "problem with the service”."
+        ),
+    )
+    problem_body = RichTextField(
+        blank=True,
+        default="<p>Try again later.</p>",
+        verbose_name="Problem with the service: body",
+        help_text=(
+            "What the problem page says above the contact sentence. Clear it "
+            "to say nothing. The contact sentence below is added separately."
+        ),
+    )
+    unavailable_heading = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Sorry, the service is unavailable",
+        verbose_name="Service unavailable: heading",
+        help_text=(
+            "The heading on the page a reader reaches while the service is "
+            "closed for maintenance. Leave blank for the Design System's "
+            "“Sorry, the service is unavailable”."
+        ),
+    )
+    unavailable_body = RichTextField(
+        blank=True,
+        default="<p>You will be able to use the service later.</p>",
+        verbose_name="Service unavailable: body",
+        help_text=(
+            "What the unavailable page says above the contact sentence when no "
+            "maintenance return time is set. Clear it to say nothing. The "
+            "contact sentence below is added separately."
+        ),
+    )
+    error_contact_link_text = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "Who the error pages offer to put a reader in touch with, for "
+            "example a team's name. Leave blank for no contact sentence."
+        ),
+    )
+    error_contact_email = models.EmailField(
+        blank=True,
+        default="",
+        help_text="Where the error pages' contact link points.",
+    )
+    error_contact_about = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+        help_text=(
+            "What the reader would be speaking to someone about, closing the "
+            "contact sentence: 'if you need to speak to someone about the …'."
+        ),
+    )
+
+    panels = [
+        MultiFieldPanel(
+            [
+                FieldPanel("not_found_heading"),
+                FieldPanel("not_found_body"),
+            ],
+            heading="404: Page not found",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("problem_heading"),
+                FieldPanel("problem_body"),
+            ],
+            heading="500: Problem with the service",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("unavailable_heading"),
+                FieldPanel("unavailable_body"),
+            ],
+            heading="503: Service unavailable",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("error_contact_link_text"),
+                FieldPanel("error_contact_email"),
+                FieldPanel("error_contact_about"),
+            ],
+            heading="Error contact",
+        ),
+    ]
+
+    class Meta:
+        verbose_name = "Error pages"
+        verbose_name_plural = "Error pages"
 
 
 @register_setting(icon="search")
