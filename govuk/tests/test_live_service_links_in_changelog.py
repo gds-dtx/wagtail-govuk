@@ -16,7 +16,7 @@ from django.template import Context, Template
 from django.test import RequestFactory, TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.live_service_links import (
+from govuk.capability_framework.live_service_links import (
     live_service_link_map,
     rewrite_live_service_links,
 )

@@ -19,7 +19,7 @@ from wagtail.permission_policies import ModelPermissionPolicy
 from wagtail.rich_text import RichText
 
 from govuk.capability_framework import repair_changelog_html
-from govuk.live_service_links import (
+from govuk.capability_framework.live_service_links import (
     seed_live_service_redirects,
     unseeded_live_service_redirects,
 )

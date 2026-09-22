@@ -105,10 +105,6 @@ class BaseContentPage(Page):
 class ContentPage(BaseContentPage):
     parent_page_types = [
         "govuk.ContentPage",
-        # The framework's home page is the site's home page on the Capability
-        # Framework, so the privacy notice, the cookie statement and the other
-        # pages that are not about the framework live under it too. They are
-        # plain content pages: no role navigation, and not in the side menu.
         "govuk.FrameworkMainPage",
         "govuk.FrameworkContentPage",
         "govuk.SectionPage",

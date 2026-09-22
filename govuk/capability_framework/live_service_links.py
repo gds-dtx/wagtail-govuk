@@ -1,6 +1,6 @@
 """This is a shim for cutover compatability from the old Capability Framework site.
 
-The live service's URL shapes, mapped onto the pages this site serves.
+The older service's URL shapes, mapped onto the pages this site serves.
 
 The previous framework site publishes a role at ``/role/<slug>`` and a skill at
 ``/skill/<slug>``. This site serves a role as a route under the framework main
