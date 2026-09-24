@@ -77,7 +77,7 @@ class GovukSkillViewSet(SnippetViewSet):
     add_to_admin_menu = False
     menu_label = "Skills"
     menu_name = "govuk-skills"
-    list_display = ["title", "slug"]
+    list_display = ["title", "slug", "live"]
     search_fields = ["title", "slug", "body"]
 
 
@@ -87,7 +87,7 @@ class GovukRoleViewSet(SnippetViewSet):
     add_to_admin_menu = False
     menu_label = "Roles"
     menu_name = "govuk-roles"
-    list_display = ["title", "family", "slug"]
+    list_display = ["title", "family", "slug", "live"]
     list_filter = ["family"]
     search_fields = ["title", "slug", "body", "family"]
 

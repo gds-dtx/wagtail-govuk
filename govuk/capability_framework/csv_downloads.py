@@ -63,7 +63,7 @@ def write_roles_csv(f) -> int:
     rows = 0
     writer = csv.DictWriter(f, fieldnames=ROLE_COLUMNS)
     writer.writeheader()
-    for role in GovukRole.objects.order_by("title"):
+    for role in GovukRole.objects.filter(live=True).order_by("title"):
         role_description = rich_html_to_text(role.body)
         levels = role.get_levels_with_skills()
         if role.is_senior_civil_service:
@@ -123,7 +123,7 @@ def write_skills_csv(f) -> int:
     rows = 0
     writer = csv.DictWriter(f, fieldnames=SKILL_COLUMNS)
     writer.writeheader()
-    for skill in GovukSkill.objects.order_by("title"):
+    for skill in GovukSkill.objects.filter(live=True).order_by("title"):
         leadership = skill.get_leadership_points()
         description = rich_html_to_text(skill.body)
         if leadership:

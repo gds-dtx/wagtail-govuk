@@ -667,7 +667,7 @@ class FrameworkMainPage(
         """
         if not settings.FEATURE_FLAGS.get("SKILLS"):
             raise Http404
-        role = GovukRole.objects.filter(slug=role_slug).first()
+        role = GovukRole.objects.filter(slug=role_slug, live=True).first()
         if role is None:
             raise Http404
         return self.render(
@@ -831,7 +831,9 @@ class FrameworkSkillsPage(Page):
 
     def get_skill_sections(self) -> list[dict]:
         # One query for every skill's entries, not one per skill.
-        skills = list(GovukSkill.objects.prefetch_related("changelog_entries"))
+        skills = list(
+            GovukSkill.objects.filter(live=True).prefetch_related("changelog_entries")
+        )
         skills.sort(
             key=lambda skill: (
                 (skill.title or "").strip().lower(),

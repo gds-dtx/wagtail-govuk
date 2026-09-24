@@ -115,12 +115,15 @@ class SkillsWagtailHooksTests(SimpleTestCase):
         # "Capability framework".
         self.assertFalse(hooks_module.GovukSkillViewSet.add_to_admin_menu)
         self.assertEqual(hooks_module.GovukSkillViewSet.menu_label, "Skills")
-        self.assertEqual(hooks_module.GovukSkillViewSet.list_display, ["title", "slug"])
+        self.assertEqual(
+            hooks_module.GovukSkillViewSet.list_display, ["title", "slug", "live"]
+        )
 
         self.assertFalse(hooks_module.GovukRoleViewSet.add_to_admin_menu)
         self.assertEqual(hooks_module.GovukRoleViewSet.menu_label, "Roles")
         self.assertEqual(
-            hooks_module.GovukRoleViewSet.list_display, ["title", "family", "slug"]
+            hooks_module.GovukRoleViewSet.list_display,
+            ["title", "family", "slug", "live"],
         )
 
         self.assertFalse(hooks_module.GovukChangelogEntryViewSet.add_to_admin_menu)
