@@ -61,7 +61,7 @@ Three things are outside it:
 
 | Not in the export | Where it lives | How it gets to production |
 | --- | --- | --- |
-| Redirects | `wagtail.contrib.redirects.Redirect` rows | Seeded by the import itself; `manage.py seed_live_service_redirects` afterwards |
+| Redirects | `wagtail.contrib.redirects.Redirect` rows | Not needed in bulk — the framework's live URLs are served natively (see step 4); add one by hand in the CMS only for a retired or renamed page |
 | Site settings | `BaseSiteSetting` subclasses in `govuk/models.py` | Re-entered in the CMS |
 | Uploaded images and documents | The media volume | Re-uploaded, or copied at the storage layer |
 
@@ -149,8 +149,8 @@ python manage.py import_role_grades --save grades.json
 
 `--save` keeps what it fetched, so the same order can be re-applied later with
 `--json grades.json` once the live site is gone. Run it on the instance itself
-(over `aws ecs execute-command`, like the redirect check), where the live site's
-certificate chain is trusted. From a laptop behind TLS inspection every fetch
+(over `aws ecs execute-command`), where the live site's certificate chain is
+trusted. From a laptop behind TLS inspection every fetch
 fails with `CERTIFICATE_VERIFY_FAILED` and the command reports "Updated 0 roles
 (0 reordered)" — read that line; a zero here after a refresh means the order is
 still wrong. On 10 September the refreshed rehearsal database needed
@@ -193,42 +193,35 @@ delete. Three different things land in it:
 Work through every line. A line nobody has looked at is a page still being
 served that nobody intends to serve.
 
-### Then re-check the redirects
+### Then re-check the URLs
 
-Content changes move the target of a redirect, so the redirect pass has to come
-after the refresh, not before:
-
-```bash
-python manage.py seed_live_service_redirects --hostname <host>
-python manage.py seed_live_service_redirects --hostname <host> --check
-```
-
-Any new role acquires its `/role/<slug>` redirect; any role whose page moved has
-its redirect corrected. `--check` then proves it, and a `nothing to point at`
-line names a live URL that would 404 on the first day.
+A new role imported by the refresh is served at its own `/role/<slug>` straight
+away, so it needs no redirect. The one thing to watch is a role that was
+**renamed or retired** at the source: its old URL now answers 404, so add a
+redirect from the old path to the new page by hand in the CMS
+(`/admin/redirects/`). `redirect_coverage.mjs` (step 6) names any live URL that
+would 404 on the first day.
 
 ### A caveat on slugs
 
-Wagtail derives a slug from the title, and the live service's slugs are not
-always what that derivation produces — bracketed abbreviations are the usual
-cause. `Data and artificial intelligence (AI) ethicist` slugifies to
-`data-and-artificial-intelligence-ai-ethicist` only if the brackets are handled
-the same way at both ends. After a refresh that adds roles, compare the new
-pages' URLs against the live service's before assuming the redirects cover them:
-a redirect built from our slug points at our page, which is no help to somebody
-following a link built from theirs.
+Because a role is served at its own `/role/<slug>`, a link into the live
+service only resolves here when our slug matches theirs. Wagtail derives a slug
+from the title, and the live service's slugs are not always what that derivation
+produces — bracketed abbreviations are the usual cause. `Data and artificial
+intelligence (AI) ethicist` slugifies to `data-and-artificial-intelligence-ai-ethicist`
+only if the brackets are handled the same way at both ends. After a refresh that
+adds roles, compare the new pages' URLs against the live service's: where they
+differ, the live URL 404s here.
 
 This is not hypothetical. On 10 September 2026 the live CSV titled the role
 "Data and artificial intelligence ethicist", so the refresh created the slug
 `data-and-artificial-intelligence-ethicist`; the live site publishes it at
 `/role/data-and-artificial-intelligence-ai-ethicist`, and that URL answered 404
-on the refreshed instance while `seed_live_service_redirects --check` reported
-everything fine, because the check can only know our slugs. Fix it in the CMS by
-editing the role's slug to match live's, or add a redirect by hand. The list to
-check against is the set of `/role/...` links on live's home page; the old
-`data-ethicist` role the refresh reports as "in the CMS but not in this file"
-is the same role under its previous name and should be unpublished with a
-redirect to the new one.
+on the refreshed instance. Fix it in the CMS by editing the role's slug to match
+live's, or add a redirect by hand. The list to check against is the set of
+`/role/...` links on live's home page; the old `data-ethicist` role the refresh
+reports as "in the CMS but not in this file" is the same role under its previous
+name and should be unpublished with a redirect to the new one.
 
 ## 1. Bring up the instance
 
@@ -282,42 +275,19 @@ level down and every URL gains a `/home/` prefix.
 
 ## 4. Check the redirects
 
-The live service publishes roles at `/role/<slug>` and skills at
-`/skill/<slug>`. Wagtail serves a role at `/<framework-main-page>/role/<slug>/`
-and every skill as a section of the Framework Skills page. When the framework
-main page is the site's home page, as it is for the Capability Framework, a
-role is therefore served at its live address (`/role/<slug>` answers with
-Django's own redirect to the slashed form) and **no role redirects are needed
-or written**. The skills still need theirs. Without those, every bookmark,
-every search result and every link inside the migrated content itself answers
-404 — the welcome copy alone links 37 roles the old way.
+This site serves the live service's own URL shapes natively, so there is no
+bulk redirect step. The live service publishes roles at `/role/<slug>` and
+skills as sections of its `/skills` A to Z. When the framework main page is the
+site's home page, as it is for the Capability Framework, this site serves a role
+at that same `/role/<slug>` address (with Django's own redirect to the slashed
+form) and the skills A to Z at `/skills` — so a bookmark, a search result or a
+link inside the migrated content reaches the right page without a redirect.
 
-**The import in step 3 seeds these itself**, so on a clean run there is nothing
-to do here but confirm it. The import report says how many it wrote. If the
-account that ran the import does not administer redirects, the report says that
-instead, in the "some items were skipped" line — read it.
-
-```bash
-aws ecs execute-command --cluster <cluster> --task <task-id> \
-  --container <container> --interactive \
-  --command "python manage.py seed_live_service_redirects --hostname <production-host> --check"
-```
-
-`--check` writes nothing and exits non-zero listing anything that would not
-reach the right page. Two different failures, and they need different things
-doing:
-
-- **`no redirect: /role/…`** — run the same command without `--check`.
-- **`nothing to point at: /role/…`** — no live page on this site carries that
-  role, so no redirect can be built for it. That is a content problem: find out
-  whether the page failed to import or was never meant to exist.
-
-Without `--check`, the command creates or corrects and deletes nothing, so it is
-safe to run again after content moves — and it should be, because each redirect
-points at whichever page carries that role or skill at the time it runs.
-
-`--hostname` scopes the redirects to one site, so a shared instance leaves its
-other sites alone.
+There is therefore nothing to seed here. Individual pages are the only exception,
+and they are handled in the refresh below: a role or skill **retired or renamed**
+at the source leaves its old URL with nothing to answer it, so add a redirect for
+that one page by hand in the CMS (`/admin/redirects/`). Check coverage over HTTP
+with `redirect_coverage.mjs` in step 6.
 
 ## 5. Re-enter the site settings
 
@@ -414,10 +384,6 @@ directory rather than in this repository.
 # Every URL the old service publishes still resolves
 node redirect_coverage.mjs                      # against the production host
 
-# The same question asked of the database rather than over HTTP, so it names
-# what is wrong rather than counting what is
-python manage.py seed_live_service_redirects --hostname <production-host> --check
-
 # The robots directive, which is the NOINDEX check
 curl -s https://<production-host>/robots.txt    # expect "Disallow:", NOT "Disallow: /"
 
@@ -445,9 +411,9 @@ Only once step 6 is clean. For the Capability Framework this step is not a DNS
 move: `understand-digital-data-roles-skills.service.gov.uk` is its own Route 53
 zone and has been serving the production instance since 16 September. Go-live
 is `ddat-capability-framework.service.gov.uk` starting to answer every path
-with a 301 to the same path on the new host, so that the 237 legacy `/role/`
-and `/skill/` URLs land on the redirects seeded in step 4 rather than on a
-dead host.
+with a 301 to the same path on the new host, so that the legacy `/role/` and
+`/skills` URLs land on the pages this site serves them at rather than on a dead
+host.
 
 That redirect lives in the old service's hosting account, in front of the
 Strapi frontend, not in `wagtail-iac`: the module's CloudFront distribution
@@ -488,10 +454,10 @@ same transaction that changed its rows):
   `/role/<slug>/` from then on. Anything an editor wrote on a role *page*
   (rather than on the role) does not survive: export first if that matters.
 
-Redirects that pointed at a role page go with it. With the main page as the
-home page the roles are served at the live service's own URLs and need none;
-the skill redirects point at the renamed A to Z page and survive. Run
-`seed_live_service_redirects --check` afterwards all the same.
+Redirects that pointed at a role page go with it, and none is needed in their
+place: with the main page as the home page the roles are served at the live
+service's own `/role/<slug>` URLs, and the skills A to Z keeps its `/skills`
+address. Spot-check a couple of live URLs afterwards all the same.
 
 ## Rolling back
 

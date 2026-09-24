@@ -193,18 +193,6 @@ remove an element, stop indexing the collection.
 with these pages needs to see them in the explorer to delete them. Hiding them
 there would leave a site with pages nobody can find and nobody can remove.
 
-The same sweep turned up one more, away from the listings: `/role/<slug>` and
-`/skill/<slug>` are the live Capability Framework's URL shapes, and
-`seed_live_service_redirects` writes a couple of hundred permanent redirects
-from them onto whatever pages carry those roles today. The import already
-declined to seed without the flag; the management command did not, so an
-operator working a shared runbook on another service could fill its redirects
-admin with somebody else's URLs, each pointing at a page that now 404s — and
-`--check` would then print its cutover all-clear over the top. The guard is in
-`live_service_redirect_targets`, which is the rule both routes and the cutover
-check reach through, so a third caller inherits it; the command says the flag is
-off rather than reporting three zeros.
-
 These are held by `PagesApiWithoutTheFrameworkTests` in
 `govuk/tests/test_api.py`, `ServiceNavigationWithoutTheFrameworkTests` in
 `govuk/tests/test_context_processors.py`,
