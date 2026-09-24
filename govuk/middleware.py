@@ -160,10 +160,16 @@ class AuthenticatedUserRedirectMiddleware:
 class MaintenanceModeMiddleware:
     """Answer everything but the essentials with the service-unavailable page.
 
-    Switched by the MAINTENANCE_MODE environment variable, so closing the
-    service for a cutover is a configuration change, not a deployment. The
-    health check stays open or the orchestrator would replace the instance,
-    and the admin stays open so the people doing the work can see it.
+    Two switches close the service. The MaintenanceModeSettings.enabled toggle
+    in the admin is planned maintenance: signed-in staff are let through so they
+    can keep working, while everyone else meets the service-unavailable page.
+    The MAINTENANCE_MODE environment variable is the emergency override: a
+    code-free hard close for everyone but the exempt paths, for when the admin
+    or database cannot be relied on. Either one closes the site.
+
+    The health check stays open or the orchestrator would replace the instance,
+    and the admin stays open so the people doing the work can sign in. This
+    middleware runs after the auth middleware so request.user is populated.
     """
 
     # Every prefix ends in its separator. Without the trailing slash "/admin"
@@ -210,17 +216,38 @@ class MaintenanceModeMiddleware:
     def __call__(self, request):
         from django.conf import settings
         from django.shortcuts import render
+        from wagtail.models import Site
 
-        if not getattr(settings, "MAINTENANCE_MODE", False):
+        from govuk.models import MaintenanceModeSettings
+
+        env_on = getattr(settings, "MAINTENANCE_MODE", False)
+        site = Site.find_for_request(request)
+        maintenance = MaintenanceModeSettings.for_site(site) if site else None
+        toggle_on = bool(maintenance and maintenance.enabled)
+
+        if not (env_on or toggle_on):
             return self.get_response(request)
+
+        # Planned maintenance (the admin toggle) lets signed-in staff carry on;
+        # the emergency env override is a hard close for everyone but the
+        # exempt paths.
+        if toggle_on and not env_on and request.user.is_authenticated:
+            return self.get_response(request)
+
         if request.path in self.EXEMPT_PATHS or request.path.startswith(
             self.EXEMPT_PREFIXES
         ):
             return self.get_response(request)
+
         response = render(
             request,
             "503.html",
-            {"maintenance_resume_text": getattr(settings, "MAINTENANCE_RESUME_TEXT", "")},
+            {
+                "maintenance_settings": maintenance,
+                "maintenance_resume_text": getattr(
+                    settings, "MAINTENANCE_RESUME_TEXT", ""
+                ),
+            },
             status=503,
         )
         response["Retry-After"] = str(

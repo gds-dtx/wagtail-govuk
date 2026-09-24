@@ -264,12 +264,15 @@ MIDDLEWARE = [
     "govuk.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "govuk.middleware.MaintenanceModeMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "govuk.middleware.AdminOIDCLoginMiddleware",
+    # After the auth middleware so the planned-maintenance toggle can read
+    # request.user and let signed-in staff through; after AdminOIDCLoginMiddleware
+    # so an admin visitor is still redirected to sign in rather than closed out.
+    "govuk.middleware.MaintenanceModeMiddleware",
     "govuk.middleware.AuthenticatedUserRedirectMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -439,10 +442,13 @@ FEATURE_FLAGS = {
 # exists; nothing else has to change.
 SCHEDULED_PUBLISHING = _bool_env("SCHEDULED_PUBLISHING", default=False)
 
-# Closes the service behind the GOV.UK service-unavailable page for a cutover
-# or an outage, leaving the health check and the admin open. The resume text
-# names the moment the service comes back, in the pattern's own form:
-# "9am on Monday 19 November 2018".
+# The emergency override for closing the service behind the GOV.UK
+# service-unavailable page: a code-free hard close for everyone but the exempt
+# paths (health check, admin), for when the admin or database cannot be relied
+# on. The normal, editor-driven switch is the "Maintenance mode" admin setting
+# (MaintenanceModeSettings), which also lets signed-in staff through; this env
+# var does not. The resume text names the moment the service comes back, in the
+# pattern's own form: "9am on Monday 19 November 2018".
 MAINTENANCE_MODE = _bool_env("MAINTENANCE_MODE", default=False)
 MAINTENANCE_RESUME_TEXT = os.getenv("MAINTENANCE_RESUME_TEXT", "")
 # Seconds, sent as the 503's Retry-After header. The resume text above is
