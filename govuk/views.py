@@ -22,7 +22,12 @@ from wagtail.models import Site
 
 from govuk import capability_framework_csv
 from govuk.forms import FeedbackForm
-from govuk.models import CustomiseSettings, EdDSAKeySettings, Feedback
+from govuk.models import (
+    CustomiseSettings,
+    EdDSAKeySettings,
+    Feedback,
+    PageUsefulnessVote,
+)
 from govuk.oidc import (
     ADMIN_OIDC_NEXT_URL_KEY,
     OIDC_ID_TOKEN_SESSION_KEY,
@@ -337,6 +342,7 @@ def page_feedback_view(request):
             "site_hostname": site.hostname,
         },
     )
+    PageUsefulnessVote.objects.create(answer=answer, path=path, site=site)
 
     if request.headers.get("X-Requested-With") == "fetch":
         return HttpResponse(status=204)
