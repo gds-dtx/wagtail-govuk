@@ -5,11 +5,19 @@ shows, per page path, how many readers answered "Yes" and how many "No". Counts
 are pooled across sites (the report groups by ``path`` alone). The report lives
 under the admin Reports menu; ``wagtail_hooks`` registers its URLs and menu item.
 
-The queryset is a grouped ``.values("path").annotate(...)`` — Wagtail resolves
-column and export values with ``multigetattr``, which does dictionary lookups
-first, so the annotated dict rows render and export without wrapper objects. The
+The on-screen table's queryset is a grouped ``.values("path").annotate(...)`` —
+Wagtail resolves column values with ``multigetattr``, which does dictionary
+lookups first, so the annotated dict rows render without wrapper objects. The
 date filter references the plain ``created_at`` column, so it is applied as a
 WHERE clause before the GROUP BY and the counts reflect the chosen range.
+
+The export is different: rather than the aggregated counts, it returns one row
+per vote (page, answer, time), so the raw votes for the selected period can be
+analysed elsewhere. ``get_queryset`` branches on ``self.is_export`` (set by
+Wagtail's spreadsheet mixin in ``setup()``, before ``get_queryset`` runs), and
+``list_export``/``export_headings`` name the per-vote fields — those only affect
+the export, so the displayed columns are unchanged. The same date filter narrows
+the exported rows to the chosen range.
 """
 
 import django_filters
@@ -46,23 +54,28 @@ class PageUsefulnessReportView(ReportView):
         Column("no_count", label=_("No")),
         Column("total", label=_("Total")),
     ]
-    list_export = ["path", "yes_count", "no_count", "total"]
+    # The export is one row per vote, not the aggregated counts shown on screen.
+    list_export = ["path", "get_answer_display", "created_at"]
     export_headings = {
         "path": _("Page"),
-        "yes_count": _("Yes"),
-        "no_count": _("No"),
-        "total": _("Total"),
+        "get_answer_display": _("Answer"),
+        "created_at": _("Time"),
     }
     export_filename = "page-usefulness-report"
 
     def get_queryset(self):
-        self.queryset = (
-            PageUsefulnessVote.objects.values("path")
-            .annotate(
-                yes_count=Count("pk", filter=Q(answer="yes")),
-                no_count=Count("pk", filter=Q(answer="no")),
-                total=Count("pk"),
+        if self.is_export:
+            # One PageUsefulnessVote per row: page, answer, and time. The date
+            # filter still applies, narrowing the export to the chosen range.
+            self.queryset = PageUsefulnessVote.objects.order_by("-created_at", "-id")
+        else:
+            self.queryset = (
+                PageUsefulnessVote.objects.values("path")
+                .annotate(
+                    yes_count=Count("pk", filter=Q(answer="yes")),
+                    no_count=Count("pk", filter=Q(answer="no")),
+                    total=Count("pk"),
+                )
+                .order_by("-total", "path")
             )
-            .order_by("-total", "path")
-        )
         return super().get_queryset()

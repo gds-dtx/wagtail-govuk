@@ -68,14 +68,38 @@ class PageUsefulnessReportTests(TestCase):
         rows = {row["path"]: row for row in response.context["object_list"]}
         self.assertEqual(rows["/job-grades/"]["total"], 1)
 
-    def test_it_exports_to_csv(self):
+    def test_the_export_has_one_row_per_vote_with_page_answer_and_time(self):
         self._vote("yes", "/job-grades/")
+        self._vote("no", "/job-grades/")
+        self._vote("yes", "/pay/")
 
         response = self.client.get(self.url, {"export": "csv"})
 
         self.assertEqual(response.status_code, 200)
         body = b"".join(response.streaming_content).decode()
-        self.assertIn("/job-grades/", body)
+        rows = [line for line in body.splitlines() if line]
+        # One header row plus one row per vote (not one aggregated row per page).
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(rows[0], "Page,Answer,Time")
+        self.assertEqual(sum("/job-grades/" in row for row in rows[1:]), 2)
+        self.assertEqual(sum("/pay/" in row for row in rows[1:]), 1)
+        self.assertEqual(sum(",Yes," in row for row in rows[1:]), 2)
+        self.assertEqual(sum(",No," in row for row in rows[1:]), 1)
+
+    def test_the_date_filter_narrows_the_export(self):
+        now = timezone.now()
+        self._vote("yes", "/job-grades/", created_at=now - timedelta(days=10))
+        self._vote("yes", "/job-grades/", created_at=now - timedelta(days=1))
+
+        since = (now - timedelta(days=3)).date().isoformat()
+        response = self.client.get(
+            self.url, {"export": "csv", "created_at_from": since}
+        )
+
+        body = b"".join(response.streaming_content).decode()
+        rows = [line for line in body.splitlines() if line]
+        # Header plus the single in-range vote.
+        self.assertEqual(len(rows), 2)
 
     def test_the_menu_item_is_at_the_top_of_the_reports_menu(self):
         items = []
