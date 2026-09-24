@@ -12,7 +12,7 @@ from django.test import TestCase, override_settings
 from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Page, Site
 
-from govuk.live_service_links import (
+from govuk.capability_framework.live_service_links import (
     live_service_link_map,
     live_service_redirect_targets,
 )

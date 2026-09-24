@@ -8,17 +8,18 @@ drift from the site the way a file regenerated on a schedule can.
 
 import csv
 
-from govuk.capability_framework import (
-    LEADERSHIP_HEADING,
-    changelog_html_to_note,
-    points_to_text,
-    rich_html_to_text,
-)
 from govuk.models import (
     SKILL_LEVEL_CHOICES,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
+)
+
+from .conversions import (
+    LEADERSHIP_HEADING,
+    changelog_html_to_note,
+    points_to_text,
+    rich_html_to_text,
 )
 
 ROLE_COLUMNS = [

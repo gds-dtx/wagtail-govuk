@@ -12,7 +12,7 @@ import io
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from govuk.capability_framework_csv import (
+from govuk.capability_framework.csv_downloads import (
     CHANGELOG_COLUMNS,
     ROLE_COLUMNS,
     SKILL_COLUMNS,

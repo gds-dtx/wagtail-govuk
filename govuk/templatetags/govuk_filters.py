@@ -3,8 +3,8 @@ from django.utils.safestring import mark_safe
 from wagtail.models import Site
 from wagtail.rich_text import expand_db_html
 
-from govuk.attachments import rewrite_csv_download_links
-from govuk.live_service_links import (
+from govuk.capability_framework.attachments import rewrite_csv_download_links
+from govuk.capability_framework.live_service_links import (
     live_service_link_map,
     rewrite_live_service_links,
 )
@@ -60,7 +60,7 @@ def changelog_note(context, entry):
     way -- ``/role/data-engineer`` rather than ``/data-engineer/`` -- and
     ``changelog_note_to_html`` stored them as it found them. They resolve only
     while the seeded redirects are in place, so this makes the content right
-    on its own terms; see ``govuk.live_service_links``.
+    on its own terms; see ``govuk.capability_framework.live_service_links``.
 
     A tag rather than a filter because the map has to be built once per render
     and only a tag can reach ``render_context`` to keep it there.
@@ -93,7 +93,7 @@ def page_body(value):
     ``|richtext`` does still happens -- Wagtail's own page, document and embed
     links are resolved -- and then a paragraph holding nothing but a link to
     one of the framework's CSVs becomes the GOV.UK attachment component, which
-    CS32-3313 asks for. See ``govuk.attachments`` for why that is done here
+    CS32-3313 asks for. See ``govuk.capability_framework.attachments`` for why that is done here
     rather than asking an editor to write the markup.
     """
     return mark_safe(rewrite_csv_download_links(expand_db_html(str(value or ""))))

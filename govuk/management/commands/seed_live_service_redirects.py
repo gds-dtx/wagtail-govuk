@@ -2,7 +2,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from wagtail.models import Site
 
-from govuk.live_service_links import (
+from govuk.capability_framework.live_service_links import (
     seed_live_service_redirects,
     unanswerable_live_service_urls,
     unseeded_live_service_redirects,
@@ -12,7 +12,7 @@ from govuk.live_service_links import (
 class Command(BaseCommand):
     """Redirect the live service's URLs onto the pages this site serves.
 
-    The live framework publishes a role at /role/<slug> and a skill at
+    The old framework site publishes a role at /role/<slug> and a skill at
     /skill/<slug>; Wagtail serves a role page at /<slug> and every skill as a
     section of the skills A to Z. Cutting over without these leaves every
     bookmark, every search result and every link in the migrated content
@@ -28,8 +28,9 @@ class Command(BaseCommand):
     --check writes nothing and fails if any live-service URL would not reach
     the right page, which is what CS32-1579 asks be tested before cutover.
 
-    The rule itself lives in govuk.live_service_links, which the changelog
-    notes are also rewritten through, so the three cannot drift apart.
+    The rule itself lives in govuk.capability_framework.live_service_links,
+    which the changelog notes are also rewritten through, so the three cannot
+    drift apart.
     """
 
     help = (

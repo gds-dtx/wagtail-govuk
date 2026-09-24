@@ -1,19 +1,16 @@
 """The GOV.UK attachment component, for the framework's CSV downloads.
 
-CS32-3313 asks that "attachments follow GOV.UK's attachment component". That
-is how every publication on GOV.UK signposts a file: a thumbnail showing the
-kind of file it is, the title as the link, and the format and size beside it,
-so somebody knows what they are about to open before they open it. The live
-service does not do this -- its download page is three bare links to S3 -- so
-this is the acceptance criterion rather than a copy of what is there now.
+This is how every publication on GOV.UK signposts a file: a thumbnail showing
+the kind of file it is, the title as the link, and the format and size beside
+it, so somebody knows what they are about to open before they open it.
 
 The links themselves stay ordinary links in the download page's rich text.
 An editor writes ``Role content (CSV)`` pointing at ``/download/roles.csv``
 and this turns it into the component when the page renders, which is the same
-shape as the changelog fix in ``govuk.live_service_links``: the content stays
-something an editor can write and read, and the component is a property of
-how a CSV link is shown rather than markup they have to hand-build and keep
-right.
+shape as the changelog fix in ``govuk.capability_framework.live_service_links``:
+the content stays something an editor can write and read, and the component is
+a property of how a CSV link is shown rather than markup they have to hand-build
+and keep right.
 
 Size is the awkward part. These CSVs have no stored size, because they are
 generated at the moment of asking (``govuk.views.framework_csv_view``), and
@@ -34,7 +31,7 @@ from django.template.loader import render_to_string
 from django.urls import NoReverseMatch, reverse
 from django.utils.safestring import mark_safe
 
-from govuk.capability_framework_csv import FRAMEWORK_CSV_DOWNLOADS
+from .csv_downloads import FRAMEWORK_CSV_DOWNLOADS
 
 # Long enough that the download page is not regenerating three CSVs for every
 # reader, short enough that an afternoon's editing is reflected the same day.

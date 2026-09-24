@@ -28,7 +28,7 @@ from django.utils import timezone
 from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Page, ReferenceIndex, Revision, Site
 
-from govuk.live_service_links import (
+from govuk.capability_framework.live_service_links import (
     unanswerable_live_service_urls,
     unseeded_live_service_redirects,
 )
