@@ -1,4 +1,5 @@
-"""The three GOV.UK error pages: not found, problem, and unavailable.
+"""The four GOV.UK error pages: not found, problem, unavailable, and the
+sign-in failure.
 
 Until now there were none: production answered with Django's bare defaults.
 Each follows the Design System's wording, carries the site's own header, and
@@ -8,10 +9,13 @@ what the other sites sharing this codebase get by default.
 
 from unittest.mock import patch
 
+from allauth.socialaccount.helpers import render_authentication_error
+from allauth.socialaccount.providers.base import AuthError
+from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import CustomiseSettings
+from govuk.models import ErrorPagesSettings, MaintenanceModeSettings
 from govuk.views import server_error
 
 
@@ -46,17 +50,17 @@ class NotFoundPageTests(TestCase):
         self.assertNotContains(response, "mailto:", status_code=404)
 
     def test_the_configured_contact_closes_the_page(self):
-        customise = CustomiseSettings.for_site(self.site)
-        customise.error_contact_link_text = (
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.error_contact_link_text = (
             "Digital and Data Profession Capability Framework team"
         )
-        customise.error_contact_email = (
+        error_pages.error_contact_email = (
             "digitalanddatacapabilityframework@dsit.gov.uk"
         )
-        customise.error_contact_about = (
+        error_pages.error_contact_about = (
             "Government Digital and Data Capability Framework"
         )
-        customise.save()
+        error_pages.save()
 
         response = self._get_missing_page()
 
@@ -79,7 +83,98 @@ class NotFoundPageTests(TestCase):
         )
 
 
+class NotFoundPageWordingTests(TestCase):
+    """The heading and body an editor controls from Error pages settings.
+
+    The Design System's wording is the field default, so a site that has
+    never been touched reads exactly as it did before these fields existed.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.client.raise_request_exception = False
+
+    def _get_missing_page(self):
+        return self.client.get("/this-page-does-not-exist/")
+
+    def test_an_editors_heading_replaces_the_design_systems(self):
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.not_found_heading = "We cannot find that page"
+        error_pages.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(response, "We cannot find that page", status_code=404)
+        self.assertNotContains(response, "Page not found", status_code=404)
+
+    def test_an_editors_body_replaces_the_design_systems(self):
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.not_found_body = "<p>Try the A to Z of skills instead.</p>"
+        error_pages.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(response, "Try the A to Z of skills instead.", status_code=404)
+        self.assertNotContains(
+            response, "If you typed the web address", status_code=404
+        )
+
+    def test_clearing_the_body_leaves_the_heading_standing_alone(self):
+        """A cleared field means the editor wants nothing there, not the
+        default back again."""
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.not_found_body = ""
+        error_pages.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(response, "Page not found", status_code=404)
+        self.assertNotContains(
+            response, "If you typed the web address", status_code=404
+        )
+
+    def test_a_cleared_heading_falls_back_rather_than_leaving_no_h1(self):
+        """A page with no heading at all fails WCAG, so the default stands in."""
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.not_found_heading = ""
+        error_pages.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(response, "Page not found", status_code=404)
+
+    def test_the_heading_is_also_the_browser_title(self):
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.not_found_heading = "We cannot find that page"
+        error_pages.save()
+
+        response = self._get_missing_page()
+
+        self.assertContains(
+            response, "<title>", status_code=404
+        )
+        self.assertIn(
+            "We cannot find that page",
+            response.content.decode().split("</title>")[0],
+        )
+
+    def test_a_request_with_no_site_still_gets_the_design_systems_page(self):
+        """With no site there are no settings to read, and the template has
+        to stand on its own rather than render a headless page."""
+        Site.objects.all().delete()
+
+        response = self._get_missing_page()
+
+        self.assertEqual(response.status_code, 404)
+        body = response.content.decode()
+        self.assertIn("Page not found", body)
+        self.assertIn("If you typed the web address, check it is correct.", body)
+
+
 class ServerErrorPageTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+
     def test_the_branded_page_renders_with_the_request(self):
         request = RequestFactory().get("/whatever/")
 
@@ -102,9 +197,49 @@ class ServerErrorPageTests(TestCase):
         self.assertIn("Sorry, there is a problem with the service", body)
         self.assertIn("Try again later.", body)
 
+    def test_an_editors_heading_replaces_the_design_systems(self):
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.problem_heading = "Something has gone wrong at our end"
+        error_pages.save()
+
+        body = server_error(RequestFactory().get("/whatever/")).content.decode()
+
+        self.assertIn("Something has gone wrong at our end", body)
+        self.assertNotIn("Sorry, there is a problem with the service", body)
+
+    def test_an_editors_body_replaces_the_design_systems(self):
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.problem_body = "<p>Please try again in a few minutes.</p>"
+        error_pages.save()
+
+        body = server_error(RequestFactory().get("/whatever/")).content.decode()
+
+        self.assertIn("Please try again in a few minutes.", body)
+        self.assertNotIn("Try again later.", body)
+
+    def test_a_cleared_heading_falls_back_rather_than_leaving_no_h1(self):
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.problem_heading = ""
+        error_pages.save()
+
+        body = server_error(RequestFactory().get("/whatever/")).content.decode()
+
+        self.assertIn("Sorry, there is a problem with the service", body)
+
 
 @override_settings(MAINTENANCE_MODE=True)
 class MaintenanceModeTests(TestCase):
+    """The MAINTENANCE_MODE env var: the emergency hard close.
+
+    It closes the service to everyone but the exempt paths -- signed-in staff
+    included -- for when the admin or database cannot be relied on. The
+    editor-driven toggle that lets staff through is covered by
+    MaintenanceToggleTests.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+
     def test_the_service_answers_unavailable(self):
         response = self.client.get("/")
 
@@ -125,6 +260,54 @@ class MaintenanceModeTests(TestCase):
             "You will be able to use the service from 9am on "
             "Monday 19 November 2018.",
             status_code=503,
+        )
+
+    def test_an_editors_heading_replaces_the_design_systems(self):
+        unavailable = MaintenanceModeSettings.for_site(self.site)
+        unavailable.heading = "The framework is down for maintenance"
+        unavailable.save()
+
+        response = self.client.get("/")
+
+        self.assertContains(
+            response, "The framework is down for maintenance", status_code=503
+        )
+        self.assertNotContains(
+            response, "Sorry, the service is unavailable", status_code=503
+        )
+
+    def test_an_editors_body_shows_when_no_return_time_is_set(self):
+        unavailable = MaintenanceModeSettings.for_site(self.site)
+        unavailable.body = "<p>We are making some improvements.</p>"
+        unavailable.save()
+
+        response = self.client.get("/")
+
+        self.assertContains(
+            response, "We are making some improvements.", status_code=503
+        )
+        self.assertNotContains(
+            response, "You will be able to use the service later.", status_code=503
+        )
+
+    @override_settings(MAINTENANCE_RESUME_TEXT="9am on Monday 19 November 2018")
+    def test_a_known_return_time_wins_over_the_editors_body(self):
+        """The return time is set for this outage, so it takes precedence over
+        any standing body wording an editor has left."""
+        unavailable = MaintenanceModeSettings.for_site(self.site)
+        unavailable.body = "<p>We are making some improvements.</p>"
+        unavailable.save()
+
+        response = self.client.get("/")
+
+        self.assertContains(
+            response,
+            "You will be able to use the service from 9am on "
+            "Monday 19 November 2018.",
+            status_code=503,
+        )
+        self.assertNotContains(
+            response, "We are making some improvements.", status_code=503
         )
 
     def test_the_health_check_stays_open(self):
@@ -179,8 +362,172 @@ class MaintenanceModeTests(TestCase):
 
         self.assertEqual(response["Retry-After"], "120")
 
+    def test_the_env_override_closes_the_site_even_to_signed_in_users(self):
+        """The emergency override is a hard close: unlike the admin toggle it
+        does not let signed-in staff through."""
+        user = get_user_model().objects.create_user(
+            username="staff", password="unused-password"
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 503)
+
     @override_settings(MAINTENANCE_MODE=False)
     def test_switched_off_the_service_answers_normally(self):
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)
+
+
+class MaintenanceToggleTests(TestCase):
+    """The "Maintenance mode" admin setting: planned maintenance.
+
+    Closing the site from the admin answers readers with the unavailable page
+    but lets signed-in staff carry on, and keeps the health check and the
+    page's own dressing open.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        maintenance = MaintenanceModeSettings.for_site(self.site)
+        maintenance.enabled = True
+        maintenance.save()
+
+    def test_readers_meet_the_unavailable_page(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(
+            response, "Sorry, the service is unavailable", status_code=503
+        )
+        self.assertContains(
+            response, "You will be able to use the service later.", status_code=503
+        )
+
+    def test_signed_in_staff_are_let_through(self):
+        user = get_user_model().objects.create_user(
+            username="staff", password="unused-password"
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_the_editors_wording_shows(self):
+        maintenance = MaintenanceModeSettings.for_site(self.site)
+        maintenance.heading = "The framework is down for maintenance"
+        maintenance.body = "<p>We are making some improvements.</p>"
+        maintenance.save()
+
+        response = self.client.get("/")
+
+        self.assertContains(
+            response, "The framework is down for maintenance", status_code=503
+        )
+        self.assertContains(
+            response, "We are making some improvements.", status_code=503
+        )
+
+    def test_the_health_check_and_dressing_stay_open(self):
+        for path in (
+            "/api/health/",
+            "/assets/images/govuk-crest.svg",
+            "/gen/custom.css",
+            "/static/main.css",
+        ):
+            response = self.client.get(path)
+            self.assertNotEqual(response.status_code, 503, path)
+
+    def test_switched_off_the_service_answers_normally(self):
+        maintenance = MaintenanceModeSettings.for_site(self.site)
+        maintenance.enabled = False
+        maintenance.save()
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+
+
+class SignInErrorPageTests(TestCase):
+    """django-allauth's authentication_error page, dressed as this service.
+
+    allauth renders it at status 401 and, left alone, in its own bare HTML:
+    "Third-Party Login Failure" with a "Menu:" list and no stylesheet. The
+    override has to keep the status -- CloudFront and the load balancer
+    count it -- while looking like the rest of the site.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+
+    def _render(self, error=AuthError.UNKNOWN):
+        request = RequestFactory().get(
+            "/accounts/oidc/internal-access/login/callback/?code=abc&state=xyz"
+        )
+        return render_authentication_error(request, "openid_connect", error=error)
+
+    def test_a_failed_sign_in_still_answers_unauthorised(self):
+        response = self._render()
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_allauths_bare_default_no_longer_reaches_the_reader(self):
+        body = self._render().content.decode()
+
+        self.assertNotIn("Third-Party Login Failure", body)
+        self.assertNotIn("<strong>Menu:</strong>", body)
+
+    def test_it_is_the_services_own_page(self):
+        body = self._render().content.decode()
+
+        self.assertIn("There is a problem signing you in", body)
+        self.assertIn("govuk-heading-l", body)
+        self.assertIn("govuk-template", body)
+
+    def test_an_expired_or_replayed_link_is_named_as_the_likely_cause(self):
+        """The commonest arrival is a reloaded callback URL, whose one-use
+        code is already spent. Saying so stops a reader concluding their
+        account is the problem."""
+        body = self._render().content.decode()
+
+        self.assertIn(
+            "The sign-in link you used has expired or has already been used.", body
+        )
+
+    def test_a_refusal_is_not_described_as_an_expired_link(self):
+        body = self._render(error=AuthError.DENIED).content.decode()
+
+        self.assertIn("You did not give permission to sign in", body)
+        self.assertNotIn("has already been used", body)
+
+    def test_the_reader_is_offered_the_way_back_in(self):
+        body = self._render().content.decode()
+
+        # The same entry point the header's "Sign in" link uses, which
+        # starts the OIDC round trip again rather than replaying the
+        # spent callback URL.
+        self.assertIn('href="/accounts/login/"', body)
+        self.assertIn("Try signing in again", body)
+
+    def test_no_contact_is_offered_until_one_is_configured(self):
+        self.assertNotIn("mailto:", self._render().content.decode())
+
+    def test_the_configured_contact_closes_the_page(self):
+        error_pages = ErrorPagesSettings.for_site(self.site)
+        error_pages.error_contact_link_text = (
+            "Digital and Data Profession Capability Framework team"
+        )
+        error_pages.error_contact_email = (
+            "digitalanddatacapabilityframework@dsit.gov.uk"
+        )
+        error_pages.save()
+
+        body = self._render().content.decode()
+
+        self.assertIn("If this keeps happening, contact the", body)
+        self.assertIn(
+            'href="mailto:digitalanddatacapabilityframework@dsit.gov.uk"', body
+        )

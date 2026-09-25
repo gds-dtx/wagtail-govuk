@@ -6,7 +6,7 @@
 
 ## What it is
 
-A **Wagtail 7.4.3 / Django ≥6.0** CMS themed with the **GOV.UK Design System**
+A **Wagtail 8.0 / Django 6.1.1** CMS themed with the **GOV.UK Design System**
 (`govuk-frontend` 6.0.0). Single Django app named **`govuk`** — there is no
 `home` app despite Wagtail's default template leaving `home`-named fossils
 around (see "Gotchas"). Owned by `gds-dtx`, deployed as a container to GHCR.
@@ -21,19 +21,20 @@ discovery** subsystem that ingests external feeds. A major subsystem is the
 - **Python ≥3.12** (CI uses 3.13). Prod image per Dockerfile.
 - **No global `python`** on this machine — always use `.venv/bin/python`.
 - Install: `pip install -e .` (deps live in `pyproject.toml`, not requirements.txt).
-- Package deps: Django, wagtail==7.4.3, gunicorn, whitenoise, django-allauth
-  (socialaccount+openid), djangorestframework, pyjwt[crypto], psycopg2-binary.
+- Package deps (pinned in `pyproject.toml`): Django==6.1.1, wagtail==8.0,
+  gunicorn, whitenoise, django-allauth (socialaccount+openid),
+  djangorestframework, pyjwt[crypto], psycopg2-binary.
 
 ### Settings layout (`govuk/settings/`)
 
 | Module | Use | DB | Notes |
 |---|---|---|---|
 | `base.py` | shared base, imported by all | — | env-var helpers `_bool_env`, `_parse_csv_env`; `FEATURE_FLAGS`; MIDDLEWARE; OIDC_TOKEN_AUTH |
-| `local.py` | **default** for `manage.py` locally | SQLite (`db.sqlite3`) | `DEBUG=True`, dummy `SECRET_KEY="abc123"`, verbose logging on |
-| `dev.py` | server / container | PostgreSQL (env vars) | requires `SECRET_KEY`, `DATABASE_*`, `BASE_URL`, `DOMAIN`, `OIDC_*` |
-| `runtime.py` | picks local vs non-local | — | `runserver` defaults to local; gunicorn must set `DJANGO_SETTINGS_MODULE` explicitly |
+| `development.py` | **default** for `manage.py` locally; also the dev environment | SQLite (`db.sqlite3`) | `DEBUG=True`, dummy `SECRET_KEY="abc123"`, verbose logging on |
+| `production.py` | staging / production (server / container) | PostgreSQL (env vars) | requires `SECRET_KEY`, `DATABASE_*`, `BASE_URL`, `DOMAIN`, `OIDC_*` |
+| `runtime.py` | picks development vs deployed | — | `runserver` defaults to development; gunicorn must set `DJANGO_SETTINGS_MODULE` explicitly |
 
-`DJANGO_SETTINGS_MODULE` defaults to `govuk.settings.local` for local workflows.
+`DJANGO_SETTINGS_MODULE` defaults to `govuk.settings.development` for local workflows.
 
 ### Common commands
 
@@ -53,7 +54,7 @@ discovery** subsystem that ingests external feeds. A major subsystem is the
 
 Big files first — these are where most work lands:
 
-- **`models.py`** (~5 500 lines) — all content types + settings models.
+- **`models.py`** (~5 300 lines) — all content types + settings models.
 
   **Page type hierarchy** (all subclass `Page` directly or via abstract bases):
   - `BaseContentPage` (abstract) — the ~12 shared hero/body/settings fields.
@@ -76,11 +77,13 @@ Big files first — these are where most work lands:
 
   Snippets / other models: `GovukSkill`, `GovukRole` (slug, title, family,
   levels, SCS fields, progression), `GovukTag`, `ExternalContentItem`,
-  `ContentDiscoverySource`, `Feedback`, `EdDSAKeyPair`.
+  `ContentDiscoverySource`, `Feedback`, `EdDSAKeyPair`, `PageUsefulnessVote`
+  (one row per "Is this page useful?" yes/no answer — answer, path, site,
+  created_at; no PII).
 
-  Site settings (`BaseSiteSetting`): `PhaseBannerSettings` (order 3),
-  `FooterSettings` (order 2), `CustomiseSettings` (order 1 — leads the Settings
-  menu). `CustomiseSettings` holds **location dropdowns** for `service_name_location`,
+  Site settings (`BaseSiteSetting`): `CustomiseSettings` (order 1 — leads the
+  Settings menu), `FooterSettings` (order 2), `PhaseBannerSettings` (order 3),
+  `ErrorPagesSettings` (order 4). `CustomiseSettings` holds **location dropdowns** for `service_name_location`,
   `sign_in_location` (header / navigation / hidden — "hidden" still shows Sign Out
   for authenticated users), `search_location`, and `header_logo`.
   `service_name_link` (default `/`, grouped with `service_name_location` under a
@@ -92,12 +95,31 @@ Big files first — these are where most work lands:
   it off and the header box keeps its jump-to-a-role/skill/page autocomplete but
   submits nothing (no `<form>`, so Enter is inert and the magnifier is a
   decorative in-input icon) and `search_view` 404s. The
-  `import_capability_framework` command sets it off on first import. Hero colour
+  `import_capability_framework` command sets it off on first import.
+  `show_page_feedback_prompt` and `show_back_to_top` (both default off) toggle,
+  respectively, the per-page feedback prompt and a "Back to top" link that
+  appears bottom-left once the reader scrolls past the first screen. Hero colour
   fields were removed; migration 0072 carries a site's colours into `extra_css`
   as the CSS they produced. `content_max_width` (optional px) feeds
   `render_custom_css`, which sets `--govuk-content-width` and shifts main.css's
   1030px centring breakpoint to width + 80. `render_custom_css` (served at
-  `/gen/custom.css`, gated by `has_custom_css`) also passes through `extra_css`. `CapabilityFrameworkWordingSettings` and
+  `/gen/custom.css`, gated by `has_custom_css`) also passes through `extra_css`.
+  `ErrorPagesSettings` (order 4) makes the **404 / 500 pages editor-editable**:
+  per-page heading + `RichTextField` body (each blank = the Design System's
+  default wording), plus the shared **Error contact** fields
+  (`error_contact_link_text`, `error_contact_email`, `error_contact_about` — the
+  optional contact sentence) that used to live on `CustomiseSettings`. Exposed to
+  templates as `error_pages_settings` by
+  `context_processors.navigation_and_breadcrumbs`.
+  `MaintenanceModeSettings` (order 5, "Maintenance mode") holds the site-close
+  switch and the 503 page's heading + body (moved here from `ErrorPagesSettings`
+  by migration 0079). Its `enabled` toggle is **planned maintenance**: readers
+  meet the 503 page while signed-in staff are let through. The `MAINTENANCE_MODE`
+  env var remains as an **emergency override** — a hard close for everyone but
+  the exempt paths (health check, admin), for when the admin/DB can't be relied
+  on. `MaintenanceModeMiddleware` reads both; it now runs after the auth
+  middleware so it can see `request.user`.
+  `CapabilityFrameworkWordingSettings` and
   `SidebarSettings` (both BaseSiteSetting, gated by `FEATURE_FLAGS["SKILLS"]`)
   live in the Capability Framework admin group, not Settings. `SidebarSettings`
   (ClusterableModel + `SidebarNavigationItem` Orderable rows) is the editor's
@@ -123,7 +145,8 @@ Big files first — these are where most work lands:
   box's accessible-autocomplete (`setSiteSearchAutocomplete` in `main.js`;
   library vendored as `accessible-autocomplete-3.0.1.min.js`).
 
-- **`views.py`** (~450 lines) — custom views (search, profile, custom CSS, etc.).
+- **`views.py`** (~500 lines) — custom views (search, profile, custom CSS,
+  framework CSV downloads, etc.).
 
 Subsystem modules (smaller, single-purpose):
 
@@ -131,13 +154,30 @@ Subsystem modules (smaller, single-purpose):
   `jwt_tokens.py`, `middleware.py` (`AdminOIDCLoginMiddleware`,
   `AuthenticatedUserRedirectMiddleware`). JWKS/JWT via PyJWT (RS256).
 - **API:** `api.py` (DRF + Wagtail API v2 router), served under `/api/`.
+  JSON-only — the DRF browsable UI is disabled (`base.py`).
+- **Admin reports:** `reports.py` — `PageUsefulnessReportView` (Wagtail
+  `ReportView`) reads `PageUsefulnessVote` rows and shows yes/no counts per page
+  path (pooled across sites), with a date-range filter and CSV/XLSX export.
+  Registered in `wagtail_hooks.py` (its URLs under `register_admin_urls`, its
+  menu item via `register_reports_menu_item` at `order=100` so it sits at the
+  top of the admin Reports menu). Votes are written by `page_feedback_view`
+  (`views.py`) — the "Is this page useful?" answer is now stored as a row *and*
+  logged. The `prune_page_usefulness_votes --days N` command bounds the table.
+- **Framework CSV downloads:** `capability_framework_csv.py` writes the three
+  published CSVs (skills, roles, …) to any file-like object; `views.framework_csv_view`
+  serves each at `/download/<name>.csv`, generated at request time (not stored);
+  `attachments.py` renders them as GOV.UK attachment components on the download page.
+  `capability_framework.py` converts framework CSV content ↔ Wagtail rich text
+  (used by the import command and CSV round-tripping).
 - **Content discovery:** `content_discovery.py`, `content_discovery_import.py`
-  (CSV upsert by `(site_id, url)`), management command
-  `sync_external_content.py`. Ingests external feeds into `ExternalContentItem`.
+  (CSV upsert by `(site_id, url)`), management commands
+  `sync_external_content.py` and `import_content_discovery_sources.py`. Ingests
+  external feeds into `ExternalContentItem`.
 - **Import/export:** `page_import_export.py` (admin views for page import/export);
-  `import_capability_framework.py` (management command — seeds skills, roles,
+  management commands `import_capability_framework.py` (seeds skills, roles,
   `FrameworkMainPage` home, `FrameworkSkillsPage`, and on first run sets
-  customise settings and home-page switches).
+  customise settings and home-page switches) and `export_capability_framework.py`
+  (writes the framework back out to CSV).
 - **Misc:** `context_processors.py`, `middleware.py` (security headers, CSP,
   CORS), `logging_utils.py`, `utils.py`, `forms.py`, `view_robots.py`,
   `view_securitytxt.py`, `templatetags/{govuk_admin,govuk_filters}.py`.
@@ -153,8 +193,11 @@ with Django/whitenoise/allauth/wagtail-redirects middleware.
 
 OIDC login routes → `/login/`, `/accounts/…`; Wagtail admin → `/admin/`;
 `/django-admin/`; API → `/api/` (+ `/api/health/`); `.well-known/jwks.json` &
-`security.txt`; `/gen/custom.css`; `/search/`; `/robots.txt`;
-`/feedback` (flag-gated); Wagtail page serving at `/`.
+`security.txt`; `/gen/custom.css`; `/search/`; `/download/<name>.csv`
+(framework CSVs, before the Wagtail catch-all); `/robots.txt`;
+`/feedback` (flag-gated); `/page-feedback/` (records an "Is this page useful?"
+answer); Wagtail page serving at `/`. Admin-only: the Page usefulness report at
+`/admin/reports/page-usefulness/`.
 
 ## Capability Framework subsystem
 
@@ -164,6 +207,16 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
   SCS fields) is the data model. Each role is served at
   `/<FrameworkMainPage-url>/role/<slug>/` by `FrameworkMainPage.serve_role` —
   a `RoutablePageMixin` route. There is no `RolePage` model.
+- **Roles and Skills carry Wagtail workflow.** `GovukRole` and `GovukSkill` are
+  `WorkflowMixin`/`DraftStateMixin`/`LockableMixin`/`RevisionMixin` snippets
+  (roles are also `PreviewableMixin`, previewing through `role_page.html`), so an
+  edit is a draft until published. The default "Moderators approval" workflow is
+  bound to both content types by migration `0081`. **Every public read filters
+  `live=True`** (serve_role, skills A-Z, `role_navigation`, search, CSV
+  downloads, and the `roles_by_skill_id`/`senior_roles_by_source_role_id`/
+  `get_related_roles` index builders); admin, import and management-command reads
+  are left unfiltered. Rows created directly (as the CSV import does) default to
+  `live=True`, so an import still produces a published, served site.
 - **Sidebar nav** is fully data-driven. `role_navigation_groups()` enumerates all
   live `GovukRole` snippets grouped by `family`. The "Further resources" group
   lists live children of the `FrameworkMainPage` (i.e. `FrameworkContentPage`s
@@ -183,8 +236,10 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
   `FrameworkSkillsPage`, and on first run writes customise settings (service name
   in navigation, search in navigation, sign-in hidden, GOV.UK logo) and sets the
   three framework switches on the home page. Re-runnable safely.
-- **Live-service redirects:** `/role/<slug>` and `/skill/<slug>` — seed with
-  `seed_live_service_redirects` after import.
+- **Live-service URLs:** no redirect seeding — this site serves the old
+  service's shapes natively (a role at `/role/<slug>` with the framework main
+  page as home; the skills A to Z at `/skills`). Only a role/skill retired or
+  renamed at the source needs a manual redirect in the CMS.
 - **Role grades (SCS):** not in the public CSV; need `import_role_grades` separately.
 
 ## Feature flags (env-driven, `base.py`)
@@ -204,13 +259,19 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
   Key framework templates: `govuk/role_page.html` (served by the role route),
   `govuk/framework_skills_page.html`, `govuk/content_page.html` (shared by
   framework page types), `includes/role_navigation.html`.
+- **Error pages:** `404.html` and `500.html` render their heading/body from
+  `ErrorPagesSettings`, and `503.html` from `MaintenanceModeSettings` (all
+  falling back to Design System wording); they share `includes/error_contact.html`
+  for the contact sentence.
+  `socialaccount/authentication_error.html` overrides allauth's default failed
+  sign-in page (a spent/re-used OIDC callback code) with a GOV.UK-styled page;
+  the override is by template precedence only (govuk/templates ahead of app
+  dirs), the 401 status is unchanged.
 
 ## Tests
 
-Tests live under `govuk/tests/`, all `test_*.py`. The numbers here go stale
-every week, so read them rather than trusting this line:
-`ls govuk/tests/test_*.py | wc -l` for the modules and the test run's own
-summary for the count (74 modules, 981 tests on 19 September 2026). A shared
+Around 1000 tests across 77 test modules under `govuk/tests/`, all `test_*.py`
+(`ls govuk/tests/test_*.py | wc -l` and the test run give the current numbers). A shared
 test helper (`govuk/tests/framework_helpers.py`) provides `make_framework_main_page`
 and `role_url` for the framework-specific tests.
 
@@ -232,8 +293,11 @@ and `role_url` for the framework-specific tests.
   `wagtail_hooks.py` for how a file is referenced before adding one. Static
   changes need `collectstatic` + hard refresh to show in a running admin.
 - **Migrations:** numbered with gaps; `ls govuk/migrations | tail -1` is the
-  leaf (`0075_customisesettings_enable_search_results_page_and_more` on
-  19 September 2026). `0071` and `0072` convert an existing instance's framework content
+  leaf (`0081_assign_workflow_to_roles_and_skills` when this was written; 0077
+  moves the error-contact fields off `CustomiseSettings` onto the new
+  `ErrorPagesSettings`, 0078 adds the `PageUsefulnessVote` table, 0079 moves the
+  503 wording into `MaintenanceModeSettings`, 0080-0081 add draft/workflow to
+  roles and skills). `0071` and `0072` convert an existing instance's framework content
   in place and delete its role pages (two migrations because Postgres will not
   alter a table in the same transaction that changed its rows) — see `docs/cutover.md`, "Upgrading an instance
   that already has content". Data migrations walk RichTextField/JSONField
@@ -244,8 +308,8 @@ and `role_url` for the framework-specific tests.
   `FrameworkMainPage.serve_role`. The route is at `role/<slug>/` (NOT bare
   `<slug>/` — that would shadow the main page's child pages; the one slug it
   does shadow is a child page called `role`). Singular `role` because that is
-  the live service's URL: `govuk.live_service_links` writes no redirect for a
-  role whose route URL already is its live path.
+  the live service's URL, so with the framework main page as home a role is
+  served at its live path (`/role/<slug>`) and needs no redirect.
 - **`FrameworkMainPage` and `FrameworkSkillsPage` are each limited to one per
   instance** (`max_count = 1`, which Wagtail counts across the whole tree, not
   per site; the admin enforces it through `can_create_at` and the page import

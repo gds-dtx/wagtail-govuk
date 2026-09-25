@@ -748,6 +748,27 @@ main > :nth-last-child(1 of .section-cards-container) {
     bottom: 20px;
 }
 
+/* Below the Design System's tablet width there is no gutter beside the text,
+   so a button fixed at the left edge sits on the content at every scroll
+   position -- CS32-3560 reports it over the last line of a page, and measured
+   at 320px it was over a line at any depth, on seven of eight pages. The live
+   service answers this by hiding the button under 641px, but the ticket asks
+   for both "user can read all content on page" and "user can still use the
+   back to top link", so here it leaves the fixed layer instead and takes its
+   place in the flow at the end of the content, as GOV.UK's own guidance pages
+   do on a small screen. Nothing can then be underneath it.
+
+   main.js still sets `bottom` on the element, which a statically positioned
+   box ignores, and still only reveals it once the page has been scrolled by a
+   screen -- by which point the end of the document is well below the fold, so
+   nothing visible moves when it appears. */
+@media (max-width: 40.0525em) {
+    #back-to-top.back-to-top--visible {
+        position: static;
+        margin: 10px 15px 20px;
+    }
+}
+
 .back-to-top__icon {
     float: left;
     width: 0.8em;
@@ -820,19 +841,30 @@ main > :nth-last-child(1 of .section-cards-container) {
     overflow-wrap: break-word;
 }
 
-/* The two-column skill tables still demand 324px at the 320px reflow width,
-   because `overflow-wrap` breaks a word only once the line is laid out — it
-   does not lower the table's intrinsic minimum. Hyphenation does, and it
-   breaks between syllables rather than mid-word, so the table fits without
-   the sideways scrolling that fails WCAG 1.4.10. Above this width the
-   columns have room and are left alone. A hair below the breakpoint the
-   min-width queries use, because a max-width query includes the width it
-   names and both would otherwise apply at exactly 40.0625em. */
+/* GOV.UK Frontend 6 sets .govuk-table at 19px on every screen. The live
+   service runs Frontend 5, where a table drops to 16px below 40.0625em, and
+   that is what lets its two-column skill tables fit a 320px screen without
+   breaking a word. At 19px ours did not fit, and the hyphenation that made
+   it fit split a word on most lines -- 370 of them on one role page at 320px
+   (Antony, 18 September 2026, "text should reflow to keep complete words").
+
+   Frontend 6 keeps live's sizing as an opt-in modifier, so the framework's
+   tables carry govuk-table--small-text-until-tablet and the size itself is
+   the Design System's: same breakpoint, same declarations, and a print
+   variant we would not have thought to write. Other sites on this image are
+   unaffected unless they ask for it.
+
+   What the modifier cannot reach is left here. It sets a size on the table
+   and the cells inherit it, but a .govuk-body or a .govuk-list item inside a
+   cell sets its own size and so does not. This hangs off the modifier rather
+   than off the framework because the gap is the modifier's, not ours: a
+   table that asks for small text until tablet means the paragraphs in it
+   too. */
 @media (max-width: 40.0525em) {
-    .govuk-table__header,
-    .govuk-table__cell {
-        -webkit-hyphens: auto;
-        hyphens: auto;
+    .govuk-table--small-text-until-tablet .govuk-body,
+    .govuk-table--small-text-until-tablet li {
+        font-size: 1rem;
+        line-height: 1.25;
     }
 }
 

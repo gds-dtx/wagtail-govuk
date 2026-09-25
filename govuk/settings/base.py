@@ -267,12 +267,15 @@ MIDDLEWARE = [
     "govuk.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "govuk.middleware.MaintenanceModeMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "govuk.middleware.AdminOIDCLoginMiddleware",
+    # After the auth middleware so the planned-maintenance toggle can read
+    # request.user and let signed-in staff through; after AdminOIDCLoginMiddleware
+    # so an admin visitor is still redirected to sign in rather than closed out.
+    "govuk.middleware.MaintenanceModeMiddleware",
     "govuk.middleware.AuthenticatedUserRedirectMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -426,6 +429,15 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
+# Sign-in is OIDC/SSO only, so users never have a local password: the admin
+# accounts seeded from ADMIN_USER_EMAILS get an unusable one. The user
+# add/edit forms drop their password fields (new users get an unusable
+# password), account settings hide "change password", and the password-reset
+# flow is disabled.
+WAGTAILUSERS_PASSWORD_ENABLED = False
+WAGTAIL_PASSWORD_MANAGEMENT_ENABLED = False
+WAGTAIL_PASSWORD_RESET_ENABLED = False
+
 
 ADDITIONAL_CSS = _parse_csv_env("ADDITIONAL_CSS")
 
@@ -507,10 +519,13 @@ FEATURE_FLAGS = {
 # exists; nothing else has to change.
 SCHEDULED_PUBLISHING = _bool_env("SCHEDULED_PUBLISHING", default=False)
 
-# Closes the service behind the GOV.UK service-unavailable page for a cutover
-# or an outage, leaving the health check and the admin open. The resume text
-# names the moment the service comes back, in the pattern's own form:
-# "9am on Monday 19 November 2018".
+# The emergency override for closing the service behind the GOV.UK
+# service-unavailable page: a code-free hard close for everyone but the exempt
+# paths (health check, admin), for when the admin or database cannot be relied
+# on. The normal, editor-driven switch is the "Maintenance mode" admin setting
+# (MaintenanceModeSettings), which also lets signed-in staff through; this env
+# var does not. The resume text names the moment the service comes back, in the
+# pattern's own form: "9am on Monday 19 November 2018".
 MAINTENANCE_MODE = _bool_env("MAINTENANCE_MODE", default=False)
 MAINTENANCE_RESUME_TEXT = os.getenv("MAINTENANCE_RESUME_TEXT", "")
 # Seconds, sent as the 503's Retry-After header. The resume text above is
@@ -554,6 +569,7 @@ REST_FRAMEWORK = {
         "govuk.authentication.InternalAccessJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
 }
 
 LOGIN_REDIRECT_URL = "/accounts/profile/"
@@ -655,10 +671,11 @@ STORAGES = {
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10_000
 
 
-# Wagtail settings
+# Wagtail admin settings
 
-WAGTAIL_SITE_NAME = "govuk"
+WAGTAIL_SITE_NAME = os.getenv("WAGTAIL_SITE_NAME", "govuk")
 WAGTAIL_FRONTEND_LOGIN_URL = "/login/"
+
 
 # Search
 # https://docs.wagtail.org/en/stable/topics/search/backends.html

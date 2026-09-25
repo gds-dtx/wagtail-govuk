@@ -2,7 +2,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand, CommandError
 
-from govuk.content_discovery_import import (
+from govuk.content_discovery.csv_import import (
     ContentDiscoverySourceImportError,
     import_content_discovery_sources_from_csv,
 )

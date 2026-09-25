@@ -122,12 +122,16 @@ class ProgressionSeedReferenceIndexTests(TestCase):
         )
 
     def _historical_apps(self):
-        """The models as they stood at 0060, which is what 0061 is given."""
+        """The models at their latest migration state.
+
+        ``_register_references`` reads roles back through the registered model
+        and refuses to write the index when that model is ahead of the state it
+        was handed, logging a rebuild instead (the 0059 test below covers that
+        path). Roles gained the draft/workflow columns in 0080, so exercising
+        the reference-writing path here needs a state that has them.
+        """
         loader = MigrationLoader(connection)
-        state = loader.project_state(
-            ("govuk", "0060_govukrole_roles_that_could_lead_here")
-        )
-        return state.apps
+        return loader.project_state().apps
 
     def test_the_seeded_blocks_are_written_to_the_reference_index(self):
         seed(self._historical_apps(), None)

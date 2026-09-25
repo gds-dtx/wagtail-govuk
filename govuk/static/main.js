@@ -11,7 +11,23 @@ document.addEventListener("DOMContentLoaded", function () {
   openLinkedAccordionSection();
   setPageFeedback();
   setSiteSearchAutocomplete();
+  setSkipLink();
 });
+
+function setSkipLink() {
+  const skipLink = document.querySelector(".govuk-skip-link");
+  if (skipLink) {
+    skipLink.addEventListener("click", function (event) {
+      // if there's any H1 elements, focus/tab to the first one
+      const h1s = document.getElementsByTagName("h1");
+      if (h1s.length > 0) {
+        h1s[0].setAttribute("tabindex", "-1");
+        h1s[0].focus();
+        event.preventDefault();
+      }
+    });
+  }
+}
 
 function setHyperlinkClasses() {
   const richTextContents = document.querySelectorAll(".rich-text-content");
@@ -414,7 +430,9 @@ function setSiteSearchAutocomplete() {
   // results page. With it, Enter takes the highlighted suggestion; when
   // there are no suggestions the list is not shown, so Enter still submits
   // the form and the results page says so.
-  const container = document.querySelector(".app-site-search[data-suggest-url]");
+  const container = document.querySelector(
+    ".app-site-search[data-suggest-url]",
+  );
   if (!container || typeof window.accessibleAutocomplete !== "function") {
     return;
   }
@@ -459,13 +477,17 @@ function setSiteSearchAutocomplete() {
   }
 
   function escapeHtml(text) {
-    return String(text).replace(/[&<>"']/g, (character) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      '"': "&quot;",
-      "'": "&#39;",
-    })[character]);
+    return String(text).replace(
+      /[&<>"']/g,
+      (character) =>
+        ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          '"': "&quot;",
+          "'": "&#39;",
+        })[character],
+    );
   }
 
   const form = container.querySelector("form");
@@ -495,7 +517,8 @@ function setSiteSearchAutocomplete() {
     autoselect: true,
     confirmOnBlur: false,
     showNoOptionsFound: false,
-    tStatusQueryTooShort: (count) => "Type " + count + " or more characters for suggestions",
+    tStatusQueryTooShort: (count) =>
+      "Type " + count + " or more characters for suggestions",
     source: source,
     templates: {
       inputValue: itemText,
@@ -507,9 +530,16 @@ function setSiteSearchAutocomplete() {
         // and so is the query offered back.
         const type =
           item.type === "Role" || item.type === "Skill"
-            ? '<span class="app-site-search__option-type">' + escapeHtml(item.type) + "</span>"
+            ? '<span class="app-site-search__option-type">' +
+              escapeHtml(item.type) +
+              "</span>"
             : "";
-        return '<span class="app-site-search__option-text">' + escapeHtml(itemText(item)) + "</span>" + type;
+        return (
+          '<span class="app-site-search__option-text">' +
+          escapeHtml(itemText(item)) +
+          "</span>" +
+          type
+        );
       },
     },
     onConfirm: (item) => {

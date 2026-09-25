@@ -398,5 +398,8 @@ class Command(BaseCommand):
         # on its own does nothing and /search/ is not served.
         customise.enable_search_results_page = False
         customise.sign_in_location = "hidden"
+        # The live service offers a "Back to top" link on its long role and
+        # skill pages; the setting is off by default for other sites.
+        customise.show_back_to_top = True
         customise.save()
         self.stdout.write("Site settings: configured for the framework")

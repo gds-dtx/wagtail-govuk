@@ -20,9 +20,14 @@ from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods, require_POST
 from wagtail.models import Site
 
-from govuk import capability_framework_csv
+from govuk.capability_framework import csv_downloads
 from govuk.forms import FeedbackForm
-from govuk.models import CustomiseSettings, EdDSAKeySettings, Feedback
+from govuk.models import (
+    CustomiseSettings,
+    EdDSAKeySettings,
+    Feedback,
+    PageUsefulnessVote,
+)
 from govuk.oidc import (
     ADMIN_OIDC_NEXT_URL_KEY,
     OIDC_ID_TOKEN_SESSION_KEY,
@@ -35,10 +40,7 @@ from govuk.oidc import (
 from govuk.search_backend import search_backend
 
 # Every "Is this page useful?" answer is one line on this logger, which the
-# JSON formatter carries to CloudWatch alongside every other request. That is
-# the server-side record CS32-3543 asks for: nothing is stored in the database
-# and nothing identifies the visitor, so there is no personal data to look
-# after -- only a count of yes and no against a path.
+# JSON formatter carries to CloudWatch alongside every other request.
 page_feedback_logger = logging.getLogger("govuk.page_feedback")
 
 PAGE_FEEDBACK_ANSWERS = ("yes", "no")
@@ -250,7 +252,7 @@ def framework_csv_view(request, name):
     if not settings.FEATURE_FLAGS.get("SKILLS"):
         raise Http404
     try:
-        label, write = capability_framework_csv.FRAMEWORK_CSV_DOWNLOADS[name]
+        label, write = csv_downloads.FRAMEWORK_CSV_DOWNLOADS[name]
     except KeyError:
         raise Http404
 
@@ -337,6 +339,7 @@ def page_feedback_view(request):
             "site_hostname": site.hostname,
         },
     )
+    PageUsefulnessVote.objects.create(answer=answer, path=path, site=site)
 
     if request.headers.get("X-Requested-With") == "fetch":
         return HttpResponse(status=204)

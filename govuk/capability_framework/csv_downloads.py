@@ -8,17 +8,18 @@ drift from the site the way a file regenerated on a schedule can.
 
 import csv
 
-from govuk.capability_framework import (
-    LEADERSHIP_HEADING,
-    changelog_html_to_note,
-    points_to_text,
-    rich_html_to_text,
-)
 from govuk.models import (
     SKILL_LEVEL_CHOICES,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
+)
+
+from .conversions import (
+    LEADERSHIP_HEADING,
+    changelog_html_to_note,
+    points_to_text,
+    rich_html_to_text,
 )
 
 ROLE_COLUMNS = [
@@ -76,7 +77,7 @@ def write_roles_csv(f) -> int:
     # prefetching on this queryset reaches it. Avoiding it means walking
     # raw_data the way GovukRole.get_skill_ids does -- a second path through
     # level data to keep in step with the resolved one, for 52 indexed lookups.
-    for role in GovukRole.objects.order_by("title"):
+    for role in GovukRole.objects.filter(live=True).order_by("title"):
         role_description = rich_html_to_text(role.body)
         levels = role.get_levels_with_skills()
         if role.is_senior_civil_service:
@@ -138,7 +139,7 @@ def write_skills_csv(f) -> int:
     rows = 0
     writer = csv.DictWriter(f, fieldnames=SKILL_COLUMNS)
     writer.writeheader()
-    for skill in GovukSkill.objects.order_by("title"):
+    for skill in GovukSkill.objects.filter(live=True).order_by("title"):
         leadership = skill.get_leadership_points()
         description = rich_html_to_text(skill.body)
         if leadership:

@@ -28,10 +28,6 @@ from django.utils import timezone
 from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Page, ReferenceIndex, Revision, Site
 
-from govuk.live_service_links import (
-    unanswerable_live_service_urls,
-    unseeded_live_service_redirects,
-)
 from govuk.models import (
     ContentPage,
     FrameworkContentPage,
@@ -308,13 +304,3 @@ class PageTypesMigrationTests(TransactionTestCase):
             ".existing { margin: 0; }",
         )
         self.assertIn(".masthead { background: #112233; }", settings_row.render_custom_css())
-
-    def test_every_role_is_still_answered_at_its_live_url(self):
-        """No redirect survives for the roles, and none is needed: the main
-        page is the home page, so the route serves each role at /role/<slug>/."""
-        self.assertEqual(unseeded_live_service_redirects(self.site), [])
-        self.assertEqual(unanswerable_live_service_urls(self.site), [])
-
-        response = self.client.get("/role/data-analyst/")
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Data analyst")

@@ -392,7 +392,7 @@ class SearchBackend:
         tag_keys = [tag["key"] for tag in tag_items]
 
         results: list[SearchResultItem] = []
-        for skill in self._search_skills(GovukSkill.objects.all(), query):
+        for skill in self._search_skills(GovukSkill.objects.filter(live=True), query):
             body = normalised_text(skill.body)
             points = self._skill_points(skill)
             score = self._text_relevance(
@@ -456,7 +456,7 @@ class SearchBackend:
         )
 
         results: list[SearchResultItem] = []
-        for role in self._search_roles(GovukRole.objects.all(), query):
+        for role in self._search_roles(GovukRole.objects.filter(live=True), query):
             body = normalised_text(role.body)
             family = normalised_text(role.family)
             score = self._text_relevance(
