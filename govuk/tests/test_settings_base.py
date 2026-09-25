@@ -107,7 +107,10 @@ class CacheConfigTests(SimpleTestCase):
         """The shape ElastiCache presents, and the shape Django's RedisCache
         reads a list as."""
         config = self._config(
-            {"CACHE_URL": "redis://primary:6379, redis://replica:6379"}
+            {
+                "CACHE_URL": "redis://primary:6379, redis://replica:6379",
+                "DOMAIN": "a.gov.uk",
+            }
         )
 
         self.assertEqual(
@@ -143,6 +146,14 @@ class CacheConfigTests(SimpleTestCase):
             self._config({"CACHE_URL": "redis://c:6379"}, redis_installed=False)
 
         self.assertIn("redis-py is not installed", str(raised.exception))
+
+    def test_a_cache_url_without_a_key_prefix_stops_the_app(self):
+        """A shared tier with no per-service prefix would have services answer
+        each other's reads, so it refuses to start rather than misbehave."""
+        with self.assertRaises(ImproperlyConfigured) as raised:
+            self._config({"CACHE_URL": "redis://c:6379"})
+
+        self.assertIn("keyspace", str(raised.exception))
 
     def test_an_unsupported_scheme_stops_the_app_rather_than_silently_not_caching(self):
         with self.assertRaises(ImproperlyConfigured) as raised:

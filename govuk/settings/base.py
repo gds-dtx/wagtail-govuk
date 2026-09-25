@@ -339,10 +339,18 @@ def _cache_config() -> dict[str, object]:
             "at a cache tier."
         )
 
+    key_prefix = os.getenv("CACHE_KEY_PREFIX", os.getenv("DOMAIN", ""))
+    if not key_prefix:
+        raise ImproperlyConfigured(
+            "CACHE_URL is set but neither CACHE_KEY_PREFIX nor DOMAIN is, so a "
+            "shared cache tier would have no per-service keyspace. Set DOMAIN "
+            "(or CACHE_KEY_PREFIX) before pointing an instance at a cache tier."
+        )
+
     return {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": urls if len(urls) > 1 else urls[0],
-        "KEY_PREFIX": os.getenv("CACHE_KEY_PREFIX", os.getenv("DOMAIN", "")),
+        "KEY_PREFIX": key_prefix,
     }
 
 
