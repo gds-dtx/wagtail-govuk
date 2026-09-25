@@ -12,6 +12,7 @@ from unittest.mock import patch
 from allauth.socialaccount.helpers import render_authentication_error
 from allauth.socialaccount.providers.base import AuthError
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.test import RequestFactory, TestCase, override_settings
 from wagtail.models import Site
 
@@ -385,8 +386,9 @@ class MaintenanceToggleTests(TestCase):
     """The "Maintenance mode" admin setting: planned maintenance.
 
     Closing the site from the admin answers readers with the unavailable page
-    but lets signed-in staff carry on, and keeps the health check and the
-    page's own dressing open.
+    but lets CMS staff (admins, moderators, editors) carry on, and keeps the
+    health check and the page's own dressing open. A visitor who has only
+    passed SSO, with no admin access, is closed out like any other reader.
     """
 
     def setUp(self):
@@ -406,15 +408,29 @@ class MaintenanceToggleTests(TestCase):
             response, "You will be able to use the service later.", status_code=503
         )
 
-    def test_signed_in_staff_are_let_through(self):
+    def test_cms_staff_are_let_through(self):
+        editor = get_user_model().objects.create_user(
+            username="editor", password="unused-password"
+        )
+        # The Editors group carries wagtailadmin.access_admin, which is what
+        # the middleware checks -- as Moderators and superusers also do.
+        editor.groups.add(Group.objects.get(name="Editors"))
+        self.client.force_login(editor)
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_plain_sso_user_without_admin_access_is_closed_out(self):
+        """Passing SSO is not enough: someone with no CMS access is a reader."""
         user = get_user_model().objects.create_user(
-            username="staff", password="unused-password"
+            username="sso-only", password="unused-password"
         )
         self.client.force_login(user)
 
         response = self.client.get("/")
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 503)
 
     def test_the_editors_wording_shows(self):
         maintenance = MaintenanceModeSettings.for_site(self.site)

@@ -228,10 +228,17 @@ class MaintenanceModeMiddleware:
         if not (env_on or toggle_on):
             return self.get_response(request)
 
-        # Planned maintenance (the admin toggle) lets signed-in staff carry on;
-        # the emergency env override is a hard close for everyone but the
-        # exempt paths.
-        if toggle_on and not env_on and request.user.is_authenticated:
+        # Planned maintenance (the admin toggle) lets CMS staff carry on --
+        # admins, moderators and editors, i.e. anyone who can reach the Wagtail
+        # admin (the access_admin permission, held by those groups and
+        # superusers). A visitor who has only passed SSO but has no admin access
+        # is not let through. The emergency env override is a hard close for
+        # everyone but the exempt paths.
+        if (
+            toggle_on
+            and not env_on
+            and request.user.has_perm("wagtailadmin.access_admin")
+        ):
             return self.get_response(request)
 
         if request.path in self.EXEMPT_PATHS or request.path.startswith(
