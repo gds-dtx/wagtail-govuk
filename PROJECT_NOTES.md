@@ -277,8 +277,9 @@ and `role_url` for the framework-specific tests.
 
 ## CI / Deploy (`.github/workflows/`)
 
-- **`pr-test.yml`** — on PR: Python 3.13, `pip install`, `manage.py check`, then
-  `manage.py test`.
+- **`pr-test.yml`** — on PR: Python 3.13, `pip install`, `ruff check`,
+  `manage.py check`, then `manage.py test`. Note it runs `ruff check` only, not
+  `ruff format --check`, so formatting is not enforced by CI.
 - **`deploy.yml`** — builds & pushes Docker image to
   `ghcr.io/gds-dtx/wagtail-govuk:<version>`. Version from app.
 - `dependabot.yml` present.
@@ -292,9 +293,11 @@ and `role_url` for the framework-specific tests.
   `wagtail_hooks.py` for how a file is referenced before adding one. Static
   changes need `collectstatic` + hard refresh to show in a running admin.
 - **Migrations:** numbered with gaps; `ls govuk/migrations | tail -1` is the
-  leaf (`0078_pageusefulnessvote` when this was written; 0077 moves the
-  error-contact fields off `CustomiseSettings` onto the new
-  `ErrorPagesSettings`, 0078 adds the `PageUsefulnessVote` table). `0071` and `0072` convert an existing instance's framework content
+  leaf (`0081_assign_workflow_to_roles_and_skills` when this was written; 0077
+  moves the error-contact fields off `CustomiseSettings` onto the new
+  `ErrorPagesSettings`, 0078 adds the `PageUsefulnessVote` table, 0079 moves the
+  503 wording into `MaintenanceModeSettings`, 0080-0081 add draft/workflow to
+  roles and skills). `0071` and `0072` convert an existing instance's framework content
   in place and delete its role pages (two migrations because Postgres will not
   alter a table in the same transaction that changed its rows) — see `docs/cutover.md`, "Upgrading an instance
   that already has content". Data migrations walk RichTextField/JSONField

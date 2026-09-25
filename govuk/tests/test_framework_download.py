@@ -105,6 +105,43 @@ class FrameworkCsvDownloadTests(TestCase):
         response = self.client.get(reverse("govuk_framework_csv", args=["roles"]))
         self.assertEqual(response.status_code, 404)
 
+    def test_a_shared_skill_body_is_converted_once_not_once_per_row(self):
+        # The published roles CSV writes a skill's description on every row
+        # that requires the skill -- 1816 rows over 185 skills on live content
+        # -- and converting rich text back to prose is the bulk of what the
+        # file costs. One conversion per distinct skill, not per row.
+        from unittest import mock
+
+        from govuk.capability_framework import csv_downloads as capability_framework_csv
+
+        for title in ("Content designer", "Service designer"):
+            GovukRole.objects.create(
+                title=title,
+                family="User-centred design",
+                body="<p>Designs things.</p>",
+                levels=[
+                    {
+                        "type": "level",
+                        "value": {
+                            "title": "Senior",
+                            "description": "<p>Leads design.</p>",
+                            "skills": [{"skill": self.skill.pk, "level": "working"}],
+                        },
+                    }
+                ],
+            )
+
+        real = capability_framework_csv.rich_html_to_text
+        with mock.patch.object(
+            capability_framework_csv, "rich_html_to_text", side_effect=real
+        ) as convert:
+            rows = self._rows("roles")
+
+        prototyping_rows = [row for row in rows[1:] if row[5] == "Prototyping"]
+        self.assertEqual(len(prototyping_rows), 3)
+        bodies = [call.args[0] for call in convert.call_args_list]
+        self.assertEqual(bodies.count(self.skill.body), 1)
+
     def test_the_command_and_the_download_write_the_same_file(self):
         import pathlib
         import tempfile

@@ -5,10 +5,13 @@
 <html lang="en" class="govuk-template app-html-class">
     <head>
         <meta charset="utf-8">
-        <title>
-            {% block title %}GOV.UK{% endblock %}
-            {% if current_site.site_name %}| {{ current_site.site_name }}{% endif %}
-        </title>
+        {% comment %}
+            "<page> - <service>". A hyphen with a space either side is the
+            separator GOV.UK uses and the one the live capability framework
+            sends; a pipe was ours alone. Written on one line so the title
+            carries no newlines of its own.
+        {% endcomment %}
+        <title>{% block title %}GOV.UK{% endblock %}{% if current_site.site_name %} - {{ current_site.site_name }}{% endif %}</title>
         <meta name="viewport"
               content="width=device-width, initial-scale=1, viewport-fit=cover">
         {% comment %}
