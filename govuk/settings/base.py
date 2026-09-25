@@ -361,6 +361,15 @@ SOCIALACCOUNT_PROVIDERS = {
     }
 }
 
+# Sign-in is OIDC/SSO only, so users never have a local password: the admin
+# accounts seeded from ADMIN_USER_EMAILS get an unusable one. The user
+# add/edit forms drop their password fields (new users get an unusable
+# password), account settings hide "change password", and the password-reset
+# flow is disabled.
+WAGTAILUSERS_PASSWORD_ENABLED = False
+WAGTAIL_PASSWORD_MANAGEMENT_ENABLED = False
+WAGTAIL_PASSWORD_RESET_ENABLED = False
+
 
 ADDITIONAL_CSS = _parse_csv_env("ADDITIONAL_CSS")
 
@@ -594,10 +603,11 @@ STORAGES = {
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10_000
 
 
-# Wagtail settings
+# Wagtail admin settings
 
 WAGTAIL_SITE_NAME = os.getenv("WAGTAIL_SITE_NAME", "govuk")
 WAGTAIL_FRONTEND_LOGIN_URL = "/login/"
+
 
 # Search
 # https://docs.wagtail.org/en/stable/topics/search/backends.html
