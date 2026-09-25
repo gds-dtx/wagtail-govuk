@@ -112,7 +112,7 @@ class FrameworkCsvDownloadTests(TestCase):
         # file costs. One conversion per distinct skill, not per row.
         from unittest import mock
 
-        from govuk import capability_framework_csv
+        from govuk.capability_framework import csv_downloads as capability_framework_csv
 
         for title in ("Content designer", "Service designer"):
             GovukRole.objects.create(
