@@ -364,6 +364,28 @@ class ErrorPagesSettings(BaseSiteSetting):
             "to say nothing. The contact sentence below is added separately."
         ),
     )
+    no_access_heading = models.CharField(
+        max_length=255,
+        blank=True,
+        default="You do not have access to the admin",
+        verbose_name="No access: heading",
+        help_text=(
+            "The heading on the page a signed-in reader reaches when they open "
+            "the admin but have no CMS access. Leave blank for the default."
+        ),
+    )
+    no_access_body = RichTextField(
+        blank=True,
+        default=(
+            "<p>You are signed in, but your account does not have access to "
+            "manage this service's content.</p>"
+        ),
+        verbose_name="No access: body",
+        help_text=(
+            "What the no-access page says above the contact sentence. Clear it "
+            "to say nothing. The contact sentence below is added separately."
+        ),
+    )
     error_contact_link_text = models.CharField(
         max_length=255,
         blank=True,
@@ -402,6 +424,13 @@ class ErrorPagesSettings(BaseSiteSetting):
                 FieldPanel("problem_body"),
             ],
             heading="500: Problem with the service",
+        ),
+        MultiFieldPanel(
+            [
+                FieldPanel("no_access_heading"),
+                FieldPanel("no_access_body"),
+            ],
+            heading="403: No access to the admin",
         ),
         MultiFieldPanel(
             [
