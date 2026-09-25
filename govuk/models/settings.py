@@ -367,7 +367,7 @@ class ErrorPagesSettings(BaseSiteSetting):
     no_access_heading = models.CharField(
         max_length=255,
         blank=True,
-        default="You do not have access to the admin",
+        default="You do not have access",
         verbose_name="No access: heading",
         help_text=(
             "The heading on the page a signed-in reader reaches when they open "
@@ -378,7 +378,7 @@ class ErrorPagesSettings(BaseSiteSetting):
         blank=True,
         default=(
             "<p>You are signed in, but your account does not have access to "
-            "manage this service's content.</p>"
+            "this resource.</p>"
         ),
         verbose_name="No access: body",
         help_text=(
