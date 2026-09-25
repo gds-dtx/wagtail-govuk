@@ -596,7 +596,7 @@ DATA_UPLOAD_MAX_NUMBER_FIELDS = 10_000
 
 # Wagtail settings
 
-WAGTAIL_SITE_NAME = "govuk"
+WAGTAIL_SITE_NAME = os.getenv("WAGTAIL_SITE_NAME", "govuk")
 WAGTAIL_FRONTEND_LOGIN_URL = "/login/"
 
 # Search
