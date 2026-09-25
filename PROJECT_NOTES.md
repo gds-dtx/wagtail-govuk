@@ -207,6 +207,16 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
   SCS fields) is the data model. Each role is served at
   `/<FrameworkMainPage-url>/role/<slug>/` by `FrameworkMainPage.serve_role` —
   a `RoutablePageMixin` route. There is no `RolePage` model.
+- **Roles and Skills carry Wagtail workflow.** `GovukRole` and `GovukSkill` are
+  `WorkflowMixin`/`DraftStateMixin`/`LockableMixin`/`RevisionMixin` snippets
+  (roles are also `PreviewableMixin`, previewing through `role_page.html`), so an
+  edit is a draft until published. The default "Moderators approval" workflow is
+  bound to both content types by migration `0081`. **Every public read filters
+  `live=True`** (serve_role, skills A-Z, `role_navigation`, search, CSV
+  downloads, and the `roles_by_skill_id`/`senior_roles_by_source_role_id`/
+  `get_related_roles` index builders); admin, import and management-command reads
+  are left unfiltered. Rows created directly (as the CSV import does) default to
+  `live=True`, so an import still produces a published, served site.
 - **Sidebar nav** is fully data-driven. `role_navigation_groups()` enumerates all
   live `GovukRole` snippets grouped by `family`. The "Further resources" group
   lists live children of the `FrameworkMainPage` (i.e. `FrameworkContentPage`s

@@ -490,6 +490,25 @@ def oidc_login_redirect(request):
     return redirect(build_oidc_login_url(next_url))
 
 
+def admin_login(request):
+    """Stand in for Wagtail's admin sign-in page, which we do not use.
+
+    Sign-in is SSO only, so there is no local password form. Registered under
+    the ``wagtailadmin_login`` name, this catches both routes to that page: an
+    unauthenticated visitor (normally already redirected to SSO by
+    ``AdminOIDCLoginMiddleware``) is sent to SSO, an authenticated user with CMS
+    access is sent on to the admin, and an authenticated user without CMS
+    access -- who has passed SSO but is not staff -- gets the editable
+    "no access" page (403) rather than a password form they cannot use.
+    """
+    user = request.user
+    if not user.is_authenticated:
+        return oidc_login_redirect(request)
+    if user.has_perm("wagtailadmin.access_admin"):
+        return redirect("wagtailadmin_home")
+    return render(request, "403.html", status=403)
+
+
 def oidc_callback(request, provider_id):
     return allauth_oidc_callback(request, provider_id)
 

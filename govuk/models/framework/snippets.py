@@ -5,6 +5,13 @@ from django.utils.text import slugify
 from wagtail import blocks
 from wagtail.admin.panels import FieldPanel
 from wagtail.fields import RichTextField, StreamField
+from wagtail.models import (
+    DraftStateMixin,
+    LockableMixin,
+    PreviewableMixin,
+    RevisionMixin,
+    WorkflowMixin,
+)
 from wagtail.snippets.blocks import SnippetChooserBlock
 
 from govuk.capability_framework import is_level_not_defined
@@ -38,7 +45,9 @@ def _normalised_skill_level(value: str | None) -> str:
 
 
 
-class GovukSkill(models.Model):
+class GovukSkill(
+    WorkflowMixin, DraftStateMixin, LockableMixin, RevisionMixin, models.Model
+):
     slug = models.SlugField(
         max_length=120,
         unique=True,
@@ -288,7 +297,14 @@ class GovukSkill(models.Model):
         super().save(*args, **kwargs)
 
 
-class GovukRole(models.Model):
+class GovukRole(
+    WorkflowMixin,
+    DraftStateMixin,
+    LockableMixin,
+    RevisionMixin,
+    PreviewableMixin,
+    models.Model,
+):
     slug = models.SlugField(
         max_length=120,
         unique=True,
@@ -530,7 +546,9 @@ class GovukRole(models.Model):
         from .pages import RoleRenderingMixin
 
         index: dict[int, list[GovukRole]] = {}
-        for senior_role in cls.objects.filter(is_senior_civil_service=True):
+        for senior_role in cls.objects.filter(
+            is_senior_civil_service=True, live=True
+        ):
             seen: set[int] = set()
             raw_blocks = (
                 getattr(senior_role.roles_that_could_lead_here, "raw_data", None) or []
@@ -594,7 +612,7 @@ class GovukRole(models.Model):
             return []
 
         matches: list[tuple[GovukRole, set[int]]] = []
-        for role in type(self).objects.exclude(pk=self.pk):
+        for role in type(self).objects.filter(live=True).exclude(pk=self.pk):
             shared_ids = own_skill_ids & role.get_skill_ids()
             if shared_ids:
                 matches.append((role, shared_ids))
@@ -604,7 +622,7 @@ class GovukRole(models.Model):
         )
         matches = matches[:count]
 
-        skills_by_id = GovukSkill.objects.in_bulk(
+        skills_by_id = GovukSkill.objects.filter(live=True).in_bulk(
             {skill_id for _, shared_ids in matches for skill_id in shared_ids}
         )
         return [
@@ -635,7 +653,7 @@ class GovukRole(models.Model):
         every role's StreamField repeatedly.
         """
         index: dict[int, list[GovukRole]] = {}
-        for role in cls.objects.all():
+        for role in cls.objects.filter(live=True):
             for skill_id in role.get_skill_ids():
                 index.setdefault(skill_id, []).append(role)
         for roles in index.values():
@@ -713,6 +731,27 @@ class GovukRole(models.Model):
             fallback="role",
         )
         super().save(*args, **kwargs)
+
+    def get_preview_template(self, request, mode_name):
+        return "govuk/role_page.html"
+
+    def get_preview_context(self, request, mode_name):
+        """Render a role draft as its live page would look.
+
+        A role has no page of its own; it is served by
+        ``FrameworkMainPage.serve_role``, which builds the context. Preview
+        borrows the first live framework main page to build the same context
+        for this (possibly unsaved) role, so an editor previews the real page.
+        Falls back to a bare heading where no framework main page exists yet.
+        """
+        # Imported here rather than at module load to avoid a models import
+        # cycle (pages imports the snippets).
+        from .pages import FrameworkMainPage
+
+        main_page = FrameworkMainPage.objects.live().first()
+        if main_page is None:
+            return {"page_heading": self.title, "role_sections": [], "breadcrumbs": []}
+        return main_page.build_role_context(request, self)
 
 
 class GovukChangelogEntry(models.Model):

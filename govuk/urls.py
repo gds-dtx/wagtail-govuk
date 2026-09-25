@@ -19,6 +19,7 @@ from govuk.view_robots import robots_txt_view
 from govuk.view_securitytxt import security_txt_view
 from govuk.views import (
     account_logout_redirect,
+    admin_login,
     assets_alias_view,
     custom_css_view,
     feedback_view,
@@ -53,6 +54,9 @@ urlpatterns = [
     ),
     path("_util/login/", oidc_login_redirect, name="wagtailcore_login"),
     path("admin/logout/", wagtail_logout_redirect, name="wagtailadmin_logout"),
+    # Before the admin include so it wins over Wagtail's own sign-in page:
+    # sign-in is SSO only, and Wagtail sends unauthorised users to this name.
+    path("admin/login/", admin_login, name="wagtailadmin_login"),
     path("django-admin/", admin.site.urls),
     path("admin/", include(wagtailadmin_urls)),
     path("documents/", include(wagtaildocs_urls)),

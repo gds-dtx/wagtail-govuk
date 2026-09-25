@@ -94,7 +94,7 @@ def role_page_urls_by_role_id() -> dict[int, str]:
         return {}
     return {
         role.pk: base + main_page.reverse_subpage("serve_role", args=[role.slug])
-        for role in GovukRole.objects.all()
+        for role in GovukRole.objects.filter(live=True)
     }
 
 
@@ -195,7 +195,7 @@ def role_navigation_groups(
     base = main_page.url if main_page else ""
 
     groups: dict[str, list[dict]] = {}
-    for role in GovukRole.objects.all():
+    for role in GovukRole.objects.filter(live=True):
         family = (role.family or "").strip()
         if not family:
             continue
