@@ -11,10 +11,12 @@ from unittest.mock import patch
 
 from allauth.socialaccount.helpers import render_authentication_error
 from allauth.socialaccount.providers.base import AuthError
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.test import RequestFactory, TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import ErrorPagesSettings
+from govuk.models import ErrorPagesSettings, MaintenanceModeSettings
 from govuk.views import server_error
 
 
@@ -228,6 +230,14 @@ class ServerErrorPageTests(TestCase):
 
 @override_settings(MAINTENANCE_MODE=True)
 class MaintenanceModeTests(TestCase):
+    """The MAINTENANCE_MODE env var: the emergency hard close.
+
+    It closes the service to everyone but the exempt paths -- signed-in staff
+    included -- for when the admin or database cannot be relied on. The
+    editor-driven toggle that lets staff through is covered by
+    MaintenanceToggleTests.
+    """
+
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
 
@@ -254,8 +264,8 @@ class MaintenanceModeTests(TestCase):
         )
 
     def test_an_editors_heading_replaces_the_design_systems(self):
-        unavailable = ErrorPagesSettings.for_site(self.site)
-        unavailable.unavailable_heading = "The framework is down for maintenance"
+        unavailable = MaintenanceModeSettings.for_site(self.site)
+        unavailable.heading = "The framework is down for maintenance"
         unavailable.save()
 
         response = self.client.get("/")
@@ -268,8 +278,8 @@ class MaintenanceModeTests(TestCase):
         )
 
     def test_an_editors_body_shows_when_no_return_time_is_set(self):
-        unavailable = ErrorPagesSettings.for_site(self.site)
-        unavailable.unavailable_body = "<p>We are making some improvements.</p>"
+        unavailable = MaintenanceModeSettings.for_site(self.site)
+        unavailable.body = "<p>We are making some improvements.</p>"
         unavailable.save()
 
         response = self.client.get("/")
@@ -285,8 +295,8 @@ class MaintenanceModeTests(TestCase):
     def test_a_known_return_time_wins_over_the_editors_body(self):
         """The return time is set for this outage, so it takes precedence over
         any standing body wording an editor has left."""
-        unavailable = ErrorPagesSettings.for_site(self.site)
-        unavailable.unavailable_body = "<p>We are making some improvements.</p>"
+        unavailable = MaintenanceModeSettings.for_site(self.site)
+        unavailable.body = "<p>We are making some improvements.</p>"
         unavailable.save()
 
         response = self.client.get("/")
@@ -353,8 +363,105 @@ class MaintenanceModeTests(TestCase):
 
         self.assertEqual(response["Retry-After"], "120")
 
+    def test_the_env_override_closes_the_site_even_to_signed_in_users(self):
+        """The emergency override is a hard close: unlike the admin toggle it
+        does not let signed-in staff through."""
+        user = get_user_model().objects.create_user(
+            username="staff", password="unused-password"
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 503)
+
     @override_settings(MAINTENANCE_MODE=False)
     def test_switched_off_the_service_answers_normally(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+
+
+class MaintenanceToggleTests(TestCase):
+    """The "Maintenance mode" admin setting: planned maintenance.
+
+    Closing the site from the admin answers readers with the unavailable page
+    but lets CMS staff (admins, moderators, editors) carry on, and keeps the
+    health check and the page's own dressing open. A visitor who has only
+    passed SSO, with no admin access, is closed out like any other reader.
+    """
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        maintenance = MaintenanceModeSettings.for_site(self.site)
+        maintenance.enabled = True
+        maintenance.save()
+
+    def test_readers_meet_the_unavailable_page(self):
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 503)
+        self.assertContains(
+            response, "Sorry, the service is unavailable", status_code=503
+        )
+        self.assertContains(
+            response, "You will be able to use the service later.", status_code=503
+        )
+
+    def test_cms_staff_are_let_through(self):
+        editor = get_user_model().objects.create_user(
+            username="editor", password="unused-password"
+        )
+        # The Editors group carries wagtailadmin.access_admin, which is what
+        # the middleware checks -- as Moderators and superusers also do.
+        editor.groups.add(Group.objects.get(name="Editors"))
+        self.client.force_login(editor)
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_plain_sso_user_without_admin_access_is_closed_out(self):
+        """Passing SSO is not enough: someone with no CMS access is a reader."""
+        user = get_user_model().objects.create_user(
+            username="sso-only", password="unused-password"
+        )
+        self.client.force_login(user)
+
+        response = self.client.get("/")
+
+        self.assertEqual(response.status_code, 503)
+
+    def test_the_editors_wording_shows(self):
+        maintenance = MaintenanceModeSettings.for_site(self.site)
+        maintenance.heading = "The framework is down for maintenance"
+        maintenance.body = "<p>We are making some improvements.</p>"
+        maintenance.save()
+
+        response = self.client.get("/")
+
+        self.assertContains(
+            response, "The framework is down for maintenance", status_code=503
+        )
+        self.assertContains(
+            response, "We are making some improvements.", status_code=503
+        )
+
+    def test_the_health_check_and_dressing_stay_open(self):
+        for path in (
+            "/api/health/",
+            "/assets/images/govuk-crest.svg",
+            "/gen/custom.css",
+            "/static/main.css",
+        ):
+            response = self.client.get(path)
+            self.assertNotEqual(response.status_code, 503, path)
+
+    def test_switched_off_the_service_answers_normally(self):
+        maintenance = MaintenanceModeSettings.for_site(self.site)
+        maintenance.enabled = False
+        maintenance.save()
+
         response = self.client.get("/")
 
         self.assertEqual(response.status_code, 200)

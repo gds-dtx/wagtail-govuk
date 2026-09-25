@@ -96,6 +96,7 @@ from .settings import (
     EdDSAKeySettings,
     ErrorPagesSettings,
     FooterSettings,
+    MaintenanceModeSettings,
     PhaseBannerSettings,
 )
 from .signing import JWTGenerationError, SecretTextarea
@@ -162,6 +163,7 @@ __all__ = [
     "JWTGenerationError",
     "LinkBlock",
     "LinkStructValue",
+    "MaintenanceModeSettings",
     "PageUsefulnessVote",
     "PhaseBannerSettings",
     "RELATED_ROLES_COUNT",

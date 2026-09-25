@@ -6,9 +6,8 @@ rather than loose at the app root.
 
 ``conversions`` is the framework's main API (CSV text <-> Wagtail rich text), so
 its public names are re-exported here: ``from govuk.capability_framework import
-text_to_rich_html`` keeps working unchanged. The CSV writers and live-service
-links are addressed through their own submodules
-(``govuk.capability_framework.csv_downloads`` and ``.live_service_links``).
+text_to_rich_html`` keeps working unchanged. The CSV writers are addressed
+through their own submodule (``govuk.capability_framework.csv_downloads``).
 """
 
 from .conversions import (

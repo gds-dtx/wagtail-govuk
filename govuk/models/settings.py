@@ -364,27 +364,6 @@ class ErrorPagesSettings(BaseSiteSetting):
             "to say nothing. The contact sentence below is added separately."
         ),
     )
-    unavailable_heading = models.CharField(
-        max_length=255,
-        blank=True,
-        default="Sorry, the service is unavailable",
-        verbose_name="Service unavailable: heading",
-        help_text=(
-            "The heading on the page a reader reaches while the service is "
-            "closed for maintenance. Leave blank for the Design System's "
-            "“Sorry, the service is unavailable”."
-        ),
-    )
-    unavailable_body = RichTextField(
-        blank=True,
-        default="<p>You will be able to use the service later.</p>",
-        verbose_name="Service unavailable: body",
-        help_text=(
-            "What the unavailable page says above the contact sentence when no "
-            "maintenance return time is set. Clear it to say nothing. The "
-            "contact sentence below is added separately."
-        ),
-    )
     error_contact_link_text = models.CharField(
         max_length=255,
         blank=True,
@@ -426,13 +405,6 @@ class ErrorPagesSettings(BaseSiteSetting):
         ),
         MultiFieldPanel(
             [
-                FieldPanel("unavailable_heading"),
-                FieldPanel("unavailable_body"),
-            ],
-            heading="503: Service unavailable",
-        ),
-        MultiFieldPanel(
-            [
                 FieldPanel("error_contact_link_text"),
                 FieldPanel("error_contact_email"),
                 FieldPanel("error_contact_about"),
@@ -446,6 +418,58 @@ class ErrorPagesSettings(BaseSiteSetting):
         verbose_name_plural = "Error pages"
 
 
+@register_setting(icon="cog", order=5)
+class MaintenanceModeSettings(BaseSiteSetting):
+    """The admin switch that closes the service behind the 503 page.
+
+    ``enabled`` is planned maintenance: the public site answers with the
+    service-unavailable page, but signed-in staff are let through so they can
+    keep working. The ``MAINTENANCE_MODE`` environment variable remains as an
+    emergency override that closes the site to everyone but the exempt paths;
+    ``MaintenanceModeMiddleware`` reads both. The heading and body here are the
+    503 page's wording, moved out of the Error pages setting so every
+    maintenance control lives in one menu.
+    """
+
+    enabled = models.BooleanField(
+        default=False,
+        verbose_name="Maintenance mode",
+        help_text=(
+            "Close the site behind the service-unavailable page. Signed-in "
+            "users are still let through; the health check and admin stay open."
+        ),
+    )
+    heading = models.CharField(
+        max_length=255,
+        blank=True,
+        default="Sorry, the service is unavailable",
+        verbose_name="Service unavailable: heading",
+        help_text=(
+            "The heading on the page a reader reaches while the service is "
+            "closed for maintenance. Leave blank for the Design System's "
+            "“Sorry, the service is unavailable”."
+        ),
+    )
+    body = RichTextField(
+        blank=True,
+        default="<p>You will be able to use the service later.</p>",
+        verbose_name="Service unavailable: body",
+        help_text=(
+            "What the unavailable page says above the contact sentence when no "
+            "maintenance return time is set. Clear it to say nothing. The "
+            "contact sentence below is added separately."
+        ),
+    )
+
+    panels = [
+        FieldPanel("enabled"),
+        FieldPanel("heading"),
+        FieldPanel("body"),
+    ]
+
+    class Meta:
+        verbose_name = "Maintenance mode"
+        verbose_name_plural = "Maintenance mode"
 
 
 @register_setting(icon="redirect")

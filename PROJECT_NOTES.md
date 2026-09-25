@@ -104,13 +104,21 @@ Big files first — these are where most work lands:
   `render_custom_css`, which sets `--govuk-content-width` and shifts main.css's
   1030px centring breakpoint to width + 80. `render_custom_css` (served at
   `/gen/custom.css`, gated by `has_custom_css`) also passes through `extra_css`.
-  `ErrorPagesSettings` (order 4) makes the **404 / 500 / 503 pages
-  editor-editable**: per-page heading + `RichTextField` body (each blank = the
-  Design System's default wording), plus the shared **Error contact** fields
+  `ErrorPagesSettings` (order 4) makes the **404 / 500 pages editor-editable**:
+  per-page heading + `RichTextField` body (each blank = the Design System's
+  default wording), plus the shared **Error contact** fields
   (`error_contact_link_text`, `error_contact_email`, `error_contact_about` — the
   optional contact sentence) that used to live on `CustomiseSettings`. Exposed to
   templates as `error_pages_settings` by
   `context_processors.navigation_and_breadcrumbs`.
+  `MaintenanceModeSettings` (order 5, "Maintenance mode") holds the site-close
+  switch and the 503 page's heading + body (moved here from `ErrorPagesSettings`
+  by migration 0079). Its `enabled` toggle is **planned maintenance**: readers
+  meet the 503 page while signed-in staff are let through. The `MAINTENANCE_MODE`
+  env var remains as an **emergency override** — a hard close for everyone but
+  the exempt paths (health check, admin), for when the admin/DB can't be relied
+  on. `MaintenanceModeMiddleware` reads both; it now runs after the auth
+  middleware so it can see `request.user`.
   `CapabilityFrameworkWordingSettings` and
   `SidebarSettings` (both BaseSiteSetting, gated by `FEATURE_FLAGS["SKILLS"]`)
   live in the Capability Framework admin group, not Settings. `SidebarSettings`
@@ -170,9 +178,6 @@ Subsystem modules (smaller, single-purpose):
   `FrameworkMainPage` home, `FrameworkSkillsPage`, and on first run sets
   customise settings and home-page switches) and `export_capability_framework.py`
   (writes the framework back out to CSV).
-- **Cutover shim:** `live_service_links.py` — redirects from the old Capability
-  Framework site's URLs (`/role/<slug>`, `/skill/<slug>`); seeded by
-  `seed_live_service_redirects`.
 - **Misc:** `context_processors.py`, `middleware.py` (security headers, CSP,
   CORS), `logging_utils.py`, `utils.py`, `forms.py`, `view_robots.py`,
   `view_securitytxt.py`, `templatetags/{govuk_admin,govuk_filters}.py`.
@@ -221,8 +226,10 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
   `FrameworkSkillsPage`, and on first run writes customise settings (service name
   in navigation, search in navigation, sign-in hidden, GOV.UK logo) and sets the
   three framework switches on the home page. Re-runnable safely.
-- **Live-service redirects:** `/role/<slug>` and `/skill/<slug>` — seed with
-  `seed_live_service_redirects` after import.
+- **Live-service URLs:** no redirect seeding — this site serves the old
+  service's shapes natively (a role at `/role/<slug>` with the framework main
+  page as home; the skills A to Z at `/skills`). Only a role/skill retired or
+  renamed at the source needs a manual redirect in the CMS.
 - **Role grades (SCS):** not in the public CSV; need `import_role_grades` separately.
 
 ## Feature flags (env-driven, `base.py`)
@@ -242,9 +249,10 @@ The framework is a gated subsystem (`FEATURE_FLAGS["SKILLS"]`). Key concepts:
   Key framework templates: `govuk/role_page.html` (served by the role route),
   `govuk/framework_skills_page.html`, `govuk/content_page.html` (shared by
   framework page types), `includes/role_navigation.html`.
-- **Error pages:** `404.html`, `500.html`, `503.html` render their heading/body
-  from `ErrorPagesSettings` (falling back to Design System wording) and share
-  `includes/error_contact.html` for the contact sentence.
+- **Error pages:** `404.html` and `500.html` render their heading/body from
+  `ErrorPagesSettings`, and `503.html` from `MaintenanceModeSettings` (all
+  falling back to Design System wording); they share `includes/error_contact.html`
+  for the contact sentence.
   `socialaccount/authentication_error.html` overrides allauth's default failed
   sign-in page (a spent/re-used OIDC callback code) with a GOV.UK-styled page;
   the override is by template precedence only (govuk/templates ahead of app
@@ -287,8 +295,8 @@ and `role_url` for the framework-specific tests.
   `FrameworkMainPage.serve_role`. The route is at `role/<slug>/` (NOT bare
   `<slug>/` — that would shadow the main page's child pages; the one slug it
   does shadow is a child page called `role`). Singular `role` because that is
-  the live service's URL: `govuk.live_service_links` writes no redirect for a
-  role whose route URL already is its live path.
+  the live service's URL, so with the framework main page as home a role is
+  served at its live path (`/role/<slug>`) and needs no redirect.
 - **`FrameworkMainPage` and `FrameworkSkillsPage` are each limited to one per
   instance** (`max_count = 1`, which Wagtail counts across the whole tree, not
   per site; the admin enforces it through `can_create_at` and the page import

@@ -6,11 +6,9 @@ it, so somebody knows what they are about to open before they open it.
 
 The links themselves stay ordinary links in the download page's rich text.
 An editor writes ``Role content (CSV)`` pointing at ``/download/roles.csv``
-and this turns it into the component when the page renders, which is the same
-shape as the changelog fix in ``govuk.capability_framework.live_service_links``:
-the content stays something an editor can write and read, and the component is
-a property of how a CSV link is shown rather than markup they have to hand-build
-and keep right.
+and this turns it into the component when the page renders: the content stays
+something an editor can write and read, and the component is a property of how
+a CSV link is shown rather than markup they have to hand-build and keep right.
 
 Size is the awkward part. These CSVs have no stored size, because they are
 generated at the moment of asking (``govuk.views.framework_csv_view``), and
