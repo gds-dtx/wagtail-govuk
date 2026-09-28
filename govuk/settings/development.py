@@ -32,4 +32,5 @@ FEATURE_FLAGS = {
     "ORGANISATIONS": True,
     "PEOPLE_FINDER": True,
     "FEEDBACK": True,
+    "NEWS": True,
 }

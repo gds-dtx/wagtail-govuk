@@ -117,6 +117,7 @@ class ContentPage(BaseContentPage):
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.NewsIndexPage",
     ]
     tags = ClusterTaggableManager(through="govuk.ContentPageTag", blank=True)
 
@@ -239,6 +240,7 @@ class TagListingsPage(Page):
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.NewsIndexPage",
     ]
 
     content_panels = Page.content_panels + [
@@ -773,6 +775,7 @@ class SectionPage(Page):
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.NewsIndexPage",
     ]
 
     content_panels = Page.content_panels + [
