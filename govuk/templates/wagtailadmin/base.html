@@ -8,3 +8,60 @@
 {% block branding_logo %}
     {% include "includes/govuk_admin_crown.html" %}
 {% endblock %}
+
+{% comment %}
+    Disable the admin sidebar collapse feature so the wagtail_sidebar_collapsed
+    cookie is never set. Wagtail persists the collapsed/expanded state in that
+    cookie; with no way to collapse, there is nothing to persist. Both triggers
+    are removed: the toggle button (hidden below) and its "[" keyboard shortcut
+    (aria-keyshortcuts on the button; swallowed below). Inline CSS/JS is allowed
+    here because AdminCSPMiddleware serves /admin/ with unsafe-inline in
+    script-src and style-src (SECURE_CSP_ADMIN).
+{% endcomment %}
+
+{% block extra_css %}
+    {{ block.super }}
+    <style>
+        .sidebar__collapse-toggle,
+        .sidebar-loading__collapse-toggle {
+            display: none !important;
+        }
+    </style>
+{% endblock %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script>
+        (function () {
+            // Clear any cookie a user set before the feature was disabled.
+            try {
+                document.cookie =
+                    "wagtail_sidebar_collapsed=; Max-Age=0; Path=/; SameSite=Lax";
+            } catch (e) {}
+
+            // Swallow the "[" shortcut before Wagtail's document-level handler,
+            // but never while the user is typing into a field or rich-text area.
+            document.addEventListener(
+                "keydown",
+                function (event) {
+                    if (event.key !== "[") {
+                        return;
+                    }
+                    var el = document.activeElement;
+                    var tag = el && el.tagName;
+                    if (
+                        tag === "INPUT" ||
+                        tag === "TEXTAREA" ||
+                        tag === "SELECT" ||
+                        (el && el.isContentEditable)
+                    ) {
+                        return;
+                    }
+                    event.stopImmediatePropagation();
+                    event.preventDefault();
+                },
+                true
+            );
+        })();
+    </script>
+{% endblock %}
