@@ -7,7 +7,7 @@ Wagtail so the download stays in step with what is published.
 Also useful as a migration check: exporting and diffing against the source
 files shows exactly what survived an import.
 
-The rows themselves live in ``govuk.capability_framework_csv``, shared with the
+The rows themselves live in ``govuk.capability_framework.csv_downloads``, shared with the
 download views so the file on disk and the file a reader downloads cannot
 disagree.
 
@@ -19,7 +19,7 @@ from pathlib import Path
 
 from django.core.management.base import BaseCommand
 
-from govuk.capability_framework_csv import (
+from govuk.capability_framework.csv_downloads import (
     write_changelog_csv,
     write_roles_csv,
     write_skills_csv,

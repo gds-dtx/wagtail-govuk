@@ -1,0 +1,10 @@
+{% extends "wagtailadmin/base.html" %}
+
+{% comment %}
+    Overrides Wagtail's admin logo (top-left of the sidebar) with the GOV.UK
+    crown.
+{% endcomment %}
+
+{% block branding_logo %}
+    {% include "includes/govuk_admin_crown.html" %}
+{% endblock %}

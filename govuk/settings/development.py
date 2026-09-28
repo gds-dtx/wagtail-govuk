@@ -1,6 +1,7 @@
 from .base import *
 
-# Local settings - these are used for local development and testing
+# Development settings - these are used, as a default, for local development
+# and any deployed dev environments.
 
 DEBUG = True
 WHITENOISE_USE_FINDERS = True
@@ -14,7 +15,7 @@ SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 
 # This is a secret key used for cryptographic signing and is not suitable
-# for production use. This govuk.settings.local is for local development only.
+# for production use. This govuk.settings.development is for local development only.
 SECRET_KEY = "abc123"
 
 DATABASES = {

@@ -115,7 +115,15 @@ class EditorSnippetAdminAccessTests(TestCase):
         )
         self.assertEqual(response.status_code, 302, self._form_errors(response))
         self.role.refresh_from_db()
-        self.assertEqual(self.role.title, "Probe role, edited")
+        # Roles are draft/publish snippets, so an editor's save is a draft: the
+        # edit is captured in a revision and the live row keeps its published
+        # title until a moderator publishes it.
+        self.assertTrue(self.role.has_unpublished_changes)
+        self.assertIsNotNone(self.role.latest_revision)
+        self.assertEqual(
+            self.role.latest_revision.content["title"], "Probe role, edited"
+        )
+        self.assertEqual(self.role.title, "Probe role")
 
     @staticmethod
     def _form_errors(response):

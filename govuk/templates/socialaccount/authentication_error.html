@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% comment %}
+    The GOV.UK "problem signing you in" page. django-allauth renders
+    socialaccount/authentication_error.html whenever the trip out to the
+    single sign-on provider comes back unusable, and it renders it with
+    status 401 (allauth.socialaccount.helpers.render_authentication_error).
+    Without this override the reader gets allauth's own default: an
+    unstyled "Third-Party Login Failure" with a bare "Menu:" list, no
+    header, no crest and no stylesheet. It is a real error page, it just
+    does not look like one belonging to this service.
+
+    The commonest way to arrive is to reload, share or go back to a
+    /accounts/<provider>/login/callback/ URL. The authorisation code in it
+    is single-use and short-lived, so the second visit fails even though
+    nothing is wrong with the account -- which is why the first line says
+    so rather than implying the reader was refused.
+{% endcomment %}
+{% block title %}There is a problem signing you in{% endblock %}
+{% block page_feedback %}{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
+        <div class="govuk-grid-row">
+            <div class="govuk-grid-column-two-thirds">
+                <h1 class="govuk-heading-l">There is a problem signing you in</h1>
+                {% if auth_error.code == "denied" %}
+                    <p class="govuk-body">You did not give permission to sign in, or the sign-in was refused.</p>
+                {% else %}
+                    <p class="govuk-body">The sign-in link you used has expired or has already been used.</p>
+                    <p class="govuk-body">This happens if you reload the page you are returned to after signing in, or open that address a second time.</p>
+                {% endif %}
+                <p class="govuk-body">
+                    <a class="govuk-link" href="{% url 'account_login' %}">Try signing in again</a>
+                </p>
+                {% include "includes/error_contact.html" with contact_lead="If this keeps happening, contact the" %}
+            </div>
+        </div>
+    </div>
+{% endblock %}

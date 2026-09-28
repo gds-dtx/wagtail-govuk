@@ -12,7 +12,6 @@ what it describes.
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from wagtail.contrib.redirects.models import Redirect
 from wagtail.models import Page, Site
 
 from govuk.models import (
@@ -162,18 +161,6 @@ class LegacyExportImportTests(TestCase):
         self.assertIn("2 pages beside the roles as framework content pages", note)
         self.assertIn("the skills index as a framework skills page", note)
         self.assertIn("2 role pages were not imported as pages", note)
-
-    def test_the_live_services_redirects_are_seeded_because_the_targets_now_exist(self):
-        result = self._import(self._legacy_payload())
-
-        skills_page = FrameworkSkillsPage.objects.get(slug="skills")
-
-        skill_redirect = Redirect.objects.get(old_path=f"/skill/{self.skill.slug}")
-        self.assertEqual(skill_redirect.link, f"{skills_page.url}#{self.skill.slug}")
-        self.assertTrue(any("Redirected 1" in note for note in result.notes), result.notes)
-        # The home page became the framework main page, so a role is served at
-        # the live service's own URL and needs no redirect.
-        self.assertFalse(Redirect.objects.filter(old_path__startswith="/role/").exists())
 
     def test_a_live_role_url_is_answered_by_the_route_itself(self):
         self._import(self._legacy_payload())

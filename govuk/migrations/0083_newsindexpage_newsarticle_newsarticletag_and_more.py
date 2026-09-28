@@ -14,7 +14,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('govuk', '0075_customisesettings_enable_search_results_page_and_more'),
+        ('govuk', '0082_errorpagessettings_no_access_body_and_more'),
         ('wagtailcore', '0097_baselogentry_uuid_action_timestamp_indexes'),
         ('wagtailimages', '0027_image_description'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),

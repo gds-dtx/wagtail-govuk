@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% load wagtailcore_tags %}
+{% comment %}
+    Shown when someone who has signed in through SSO but has no CMS access
+    reaches the admin. Sign-in is SSO only -- there is no local password page --
+    so rather than a sign-in form they get this page, served with a 403 by
+    admin_login in views.py. The heading and body come from ErrorPagesSettings
+    (Settings -> Error pages), like the 404 and 500 pages, falling back to the
+    defaults here when there is no site to read settings from.
+{% endcomment %}
+{% block title %}{{ error_pages_settings.no_access_heading|default:"You do not have access to the admin" }}{% endblock %}
+{% block page_feedback %}{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
+        <div class="govuk-grid-row">
+            <div class="govuk-grid-column-two-thirds">
+                <h1 class="govuk-heading-l">{{ error_pages_settings.no_access_heading|default:"You do not have access" }}</h1>
+                {% if error_pages_settings %}
+                    {% if error_pages_settings.no_access_body %}
+                        <div class="govuk-body rich-text-content">{{ error_pages_settings.no_access_body|richtext }}</div>
+                    {% endif %}
+                {% else %}
+                    <p class="govuk-body">You are signed in, but your account does not have access to this resource.</p>
+                {% endif %}
+                {% include "includes/error_contact.html" with contact_lead="If you think you should have access, contact the" %}
+            </div>
+        </div>
+    </div>
+{% endblock %}

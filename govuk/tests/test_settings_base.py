@@ -3,6 +3,7 @@ import os
 import sys
 from unittest.mock import patch
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, TestCase, override_settings
 from wagtail.models import Site
 
@@ -71,6 +72,101 @@ class ResolveOidcTokenAudienceTests(SimpleTestCase):
             audience = base_settings._resolve_oidc_token_audience(None)
 
         self.assertIsNone(audience)
+
+
+class CacheConfigTests(SimpleTestCase):
+    """CACHE_URL, added at Ollie's suggestion on PR #106 so a deployment can
+    put a real tier behind the cache without a code change."""
+
+    def _config(self, environ, redis_installed=True):
+        spec = object() if redis_installed else None
+        with patch.dict(os.environ, environ, clear=True):
+            with patch.object(base_settings, "find_spec", return_value=spec):
+                return base_settings._cache_config()
+
+    def test_unset_gives_the_local_memory_cache_every_instance_runs_today(self):
+        config = self._config({})
+
+        self.assertEqual(
+            config,
+            {
+                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                "LOCATION": "wagtail-govuk",
+            },
+        )
+
+    def test_a_redis_url_gives_a_shared_tier(self):
+        config = self._config(
+            {"CACHE_URL": "rediss://cache.example.gov.uk:6379", "DOMAIN": "a.gov.uk"}
+        )
+
+        self.assertEqual(config["BACKEND"], "django.core.cache.backends.redis.RedisCache")
+        self.assertEqual(config["LOCATION"], "rediss://cache.example.gov.uk:6379")
+
+    def test_several_urls_are_passed_through_as_primary_then_replicas(self):
+        """The shape ElastiCache presents, and the shape Django's RedisCache
+        reads a list as."""
+        config = self._config(
+            {
+                "CACHE_URL": "redis://primary:6379, redis://replica:6379",
+                "DOMAIN": "a.gov.uk",
+            }
+        )
+
+        self.assertEqual(
+            config["LOCATION"], ["redis://primary:6379", "redis://replica:6379"]
+        )
+
+    def test_the_key_prefix_keeps_two_services_on_one_tier_apart(self):
+        """Six services run this image and "wagtail-govuk" is the same string
+        in all of them, so a shared tier needs the keyspace split by site."""
+        self.assertEqual(
+            self._config({"CACHE_URL": "redis://c:6379", "DOMAIN": "cyber.gov.uk"})[
+                "KEY_PREFIX"
+            ],
+            "cyber.gov.uk",
+        )
+        self.assertEqual(
+            self._config(
+                {
+                    "CACHE_URL": "redis://c:6379",
+                    "DOMAIN": "cyber.gov.uk",
+                    "CACHE_KEY_PREFIX": "chosen-by-hand",
+                }
+            )["KEY_PREFIX"],
+            "chosen-by-hand",
+        )
+
+    def test_a_cache_url_without_redis_py_installed_stops_the_app(self):
+        """redis-py is not a dependency, because nothing has a tier to talk to
+        yet. Django builds a cache backend lazily, so without this the
+        instance would start, pass its health check and look well until
+        something touched the cache."""
+        with self.assertRaises(ImproperlyConfigured) as raised:
+            self._config({"CACHE_URL": "redis://c:6379"}, redis_installed=False)
+
+        self.assertIn("redis-py is not installed", str(raised.exception))
+
+    def test_a_cache_url_without_a_key_prefix_stops_the_app(self):
+        """A shared tier with no per-service prefix would have services answer
+        each other's reads, so it refuses to start rather than misbehave."""
+        with self.assertRaises(ImproperlyConfigured) as raised:
+            self._config({"CACHE_URL": "redis://c:6379"})
+
+        self.assertIn("keyspace", str(raised.exception))
+
+    def test_an_unsupported_scheme_stops_the_app_rather_than_silently_not_caching(self):
+        with self.assertRaises(ImproperlyConfigured) as raised:
+            self._config({"CACHE_URL": "memcached://cache:11211"})
+
+        self.assertIn("memcached", str(raised.exception))
+
+    def test_the_url_is_not_repeated_in_the_error_because_it_may_carry_a_token(self):
+        with self.assertRaises(ImproperlyConfigured) as raised:
+            self._config({"CACHE_URL": "https://:s3cr3t-auth-token@cache:6379"})
+
+        self.assertNotIn("s3cr3t-auth-token", str(raised.exception))
+        self.assertIn("https", str(raised.exception))
 
 
 class BoolEnvTests(SimpleTestCase):
@@ -151,9 +247,9 @@ class ResolveLogLevelTests(SimpleTestCase):
         self.assertEqual(base_settings._resolve_log_level("TRACE"), "INFO")
 
 
-class DevSettingsTests(SimpleTestCase):
+class ProductionSettingsTests(SimpleTestCase):
     def test_exposes_base_url_from_environment(self):
-        module_name = "govuk.settings.dev"
+        module_name = "govuk.settings.production"
         original_module = sys.modules.pop(module_name, None)
 
         try:
@@ -162,14 +258,14 @@ class DevSettingsTests(SimpleTestCase):
                 {"BASE_URL": "https://gds-cyber-001.dev.wagtail.ukps.digital/"},
                 clear=False,
             ):
-                dev_settings = importlib.import_module(module_name)
+                production_settings = importlib.import_module(module_name)
 
             self.assertEqual(
-                dev_settings.BASE_URL,
+                production_settings.BASE_URL,
                 "https://gds-cyber-001.dev.wagtail.ukps.digital",
             )
             self.assertEqual(
-                dev_settings.WAGTAILADMIN_BASE_URL,
+                production_settings.WAGTAILADMIN_BASE_URL,
                 "https://gds-cyber-001.dev.wagtail.ukps.digital",
             )
         finally:
@@ -178,11 +274,11 @@ class DevSettingsTests(SimpleTestCase):
                 sys.modules[module_name] = original_module
 
 
-class DevSecuritySettingsTests(SimpleTestCase):
-    """dev.py is the deployed settings module, so it must be secure by default."""
+class ProductionSecuritySettingsTests(SimpleTestCase):
+    """production.py is the deployed settings module, so it must be secure by default."""
 
-    def _import_dev(self, env):
-        module_name = "govuk.settings.dev"
+    def _import_production(self, env):
+        module_name = "govuk.settings.production"
         original_module = sys.modules.pop(module_name, None)
         try:
             with patch.dict(os.environ, env, clear=True):
@@ -198,30 +294,31 @@ class DevSecuritySettingsTests(SimpleTestCase):
         """The configured hosts, plus the address the health check arrives on.
 
         The load balancer connects to the task by IP and sends that IP as the
-        Host header, so ``dev.py`` adds it -- see ``deployment_allowed_hosts``.
+        Host header, so ``production.py`` adds it -- see
+        ``deployment_allowed_hosts``.
         """
         own_address = own_ipv4_address()
         return [*hosts, own_address] if own_address else list(hosts)
 
     def test_debug_defaults_to_false_when_unset(self):
-        dev = self._import_dev(self._BASE_ENV)
+        production = self._import_production(self._BASE_ENV)
 
-        self.assertFalse(dev.DEBUG)
+        self.assertFalse(production.DEBUG)
 
     def test_debug_can_be_switched_on_explicitly(self):
-        dev = self._import_dev({**self._BASE_ENV, "DEBUG": "True"})
+        production = self._import_production({**self._BASE_ENV, "DEBUG": "True"})
 
-        self.assertTrue(dev.DEBUG)
+        self.assertTrue(production.DEBUG)
 
     def test_allowed_hosts_never_contains_a_wildcard(self):
-        dev = self._import_dev(
+        production = self._import_production(
             {**self._BASE_ENV, "ALLOWED_HOSTS": "service.example.gov.uk"}
         )
 
-        self.assertNotIn("*", dev.ALLOWED_HOSTS)
+        self.assertNotIn("*", production.ALLOWED_HOSTS)
 
     def test_allowed_hosts_reads_a_comma_separated_list(self):
-        dev = self._import_dev(
+        production = self._import_production(
             {
                 **self._BASE_ENV,
                 "ALLOWED_HOSTS": "service.example.gov.uk, health.internal",
@@ -229,30 +326,31 @@ class DevSecuritySettingsTests(SimpleTestCase):
         )
 
         self.assertEqual(
-            dev.ALLOWED_HOSTS,
+            production.ALLOWED_HOSTS,
             self._with_own_address(["service.example.gov.uk", "health.internal"]),
         )
 
     def test_allowed_hosts_falls_back_to_domain_when_unset(self):
-        dev = self._import_dev(
+        production = self._import_production(
             {**self._BASE_ENV, "DOMAIN": "service.example.gov.uk"}
         )
 
         self.assertEqual(
-            dev.ALLOWED_HOSTS, self._with_own_address(["service.example.gov.uk"])
+            production.ALLOWED_HOSTS,
+            self._with_own_address(["service.example.gov.uk"]),
         )
 
     def test_the_load_balancer_health_check_host_is_allowed(self):
         """It arrives as the task's own IP, and a 400 gets the task replaced."""
-        dev = self._import_dev(
+        production = self._import_production(
             {**self._BASE_ENV, "DOMAIN": "service.example.gov.uk"}
         )
 
         own_address = own_ipv4_address()
         if own_address is None:
             self.skipTest("No resolvable address on this machine")
-        self.assertIn(own_address, dev.ALLOWED_HOSTS)
-        self.assertNotIn("*", dev.ALLOWED_HOSTS)
+        self.assertIn(own_address, production.ALLOWED_HOSTS)
+        self.assertNotIn("*", production.ALLOWED_HOSTS)
 
 
 class SyncDefaultSiteFromEnvTests(TestCase):

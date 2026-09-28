@@ -16,8 +16,11 @@ import re
 import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
+from importlib.util import find_spec
 from pathlib import Path
+from urllib.parse import urlsplit
 
+from django.core.exceptions import ImproperlyConfigured
 from django.utils.csp import CSP
 
 VERSION = os.environ.get("VERSION", "dev")
@@ -264,18 +267,94 @@ MIDDLEWARE = [
     "govuk.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-    "govuk.middleware.MaintenanceModeMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "govuk.middleware.AdminOIDCLoginMiddleware",
+    # After the auth middleware so the planned-maintenance toggle can read
+    # request.user and let signed-in staff through; after AdminOIDCLoginMiddleware
+    # so an admin visitor is still redirected to sign in rather than closed out.
+    "govuk.middleware.MaintenanceModeMiddleware",
     "govuk.middleware.AuthenticatedUserRedirectMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "wagtail.contrib.redirects.middleware.RedirectMiddleware",
     "allauth.account.middleware.AccountMiddleware",
 ]
+
+_REDIS_SCHEMES = frozenset({"redis", "rediss"})
+
+
+def _cache_config() -> dict[str, object]:
+    """The default cache, chosen by CACHE_URL.
+
+    Unset, which is every instance today -- there is no Redis or Memcached in
+    wagtail-iac -- gives the local-memory cache Django would fall back to
+    anyway, written down so that what depends on it is legible. Each gunicorn
+    worker and each background task process then keeps its own copy and a
+    deploy empties it, so only values that are cheap to recompute and harmless
+    to hold twice belong in it. Today that is the CSV download sizes in
+    govuk.attachments.
+
+    Set to a redis:// or rediss:// URL -- an ElastiCache endpoint -- it
+    becomes one tier shared by every worker, and the things that have to be
+    consistent across them can start to live in it: rate limits, locks,
+    sessions. Several comma-separated URLs are read as primary then replicas,
+    which is the shape ElastiCache presents.
+
+    KEY_PREFIX matters on a shared tier and only there. This image runs six
+    services, "wagtail-govuk" is the same string in all of them, and two
+    services pointed at one ElastiCache would otherwise answer each other's
+    reads. It defaults to the site's own domain, so that is right without
+    anyone having to remember it.
+    """
+    urls = _parse_csv_env("CACHE_URL")
+    if not urls:
+        return {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "wagtail-govuk",
+        }
+
+    unsupported = sorted(
+        {urlsplit(url).scheme or "(none)" for url in urls} - _REDIS_SCHEMES
+    )
+    if unsupported:
+        # Deliberately without the URL itself: an ElastiCache endpoint can
+        # carry an auth token, and this message goes to the log.
+        raise ImproperlyConfigured(
+            "CACHE_URL must be one or more comma-separated redis:// or "
+            f"rediss:// URLs. Unsupported scheme: {', '.join(unsupported)}."
+        )
+
+    # Django's RedisCache needs redis-py, which this project does not depend
+    # on because no instance has a tier to talk to yet. Refuse here rather
+    # than let the first cache read fail in production: Django builds a cache
+    # backend lazily, so an instance would otherwise start, pass its health
+    # check and look entirely well until something touched the cache.
+    if find_spec("redis") is None:
+        raise ImproperlyConfigured(
+            "CACHE_URL is set but redis-py is not installed. Add `redis` to "
+            "the dependencies in pyproject.toml before pointing an instance "
+            "at a cache tier."
+        )
+
+    key_prefix = os.getenv("CACHE_KEY_PREFIX", os.getenv("DOMAIN", ""))
+    if not key_prefix:
+        raise ImproperlyConfigured(
+            "CACHE_URL is set but neither CACHE_KEY_PREFIX nor DOMAIN is, so a "
+            "shared cache tier would have no per-service keyspace. Set DOMAIN "
+            "(or CACHE_KEY_PREFIX) before pointing an instance at a cache tier."
+        )
+
+    return {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": urls if len(urls) > 1 else urls[0],
+        "KEY_PREFIX": key_prefix,
+    }
+
+
+CACHES = {"default": _cache_config()}
 
 SESSION_ENGINE = (
     "django.contrib.sessions.backends.db"  # may in future want a separate cache db
@@ -357,6 +436,15 @@ SOCIALACCOUNT_PROVIDERS = {
         ],
     }
 }
+
+# Sign-in is OIDC/SSO only, so users never have a local password: the admin
+# accounts seeded from ADMIN_USER_EMAILS get an unusable one. The user
+# add/edit forms drop their password fields (new users get an unusable
+# password), account settings hide "change password", and the password-reset
+# flow is disabled.
+WAGTAILUSERS_PASSWORD_ENABLED = False
+WAGTAIL_PASSWORD_MANAGEMENT_ENABLED = False
+WAGTAIL_PASSWORD_RESET_ENABLED = False
 
 
 ADDITIONAL_CSS = _parse_csv_env("ADDITIONAL_CSS")
@@ -440,10 +528,13 @@ FEATURE_FLAGS = {
 # exists; nothing else has to change.
 SCHEDULED_PUBLISHING = _bool_env("SCHEDULED_PUBLISHING", default=False)
 
-# Closes the service behind the GOV.UK service-unavailable page for a cutover
-# or an outage, leaving the health check and the admin open. The resume text
-# names the moment the service comes back, in the pattern's own form:
-# "9am on Monday 19 November 2018".
+# The emergency override for closing the service behind the GOV.UK
+# service-unavailable page: a code-free hard close for everyone but the exempt
+# paths (health check, admin), for when the admin or database cannot be relied
+# on. The normal, editor-driven switch is the "Maintenance mode" admin setting
+# (MaintenanceModeSettings), which also lets signed-in staff through; this env
+# var does not. The resume text names the moment the service comes back, in the
+# pattern's own form: "9am on Monday 19 November 2018".
 MAINTENANCE_MODE = _bool_env("MAINTENANCE_MODE", default=False)
 MAINTENANCE_RESUME_TEXT = os.getenv("MAINTENANCE_RESUME_TEXT", "")
 # Seconds, sent as the 503's Retry-After header. The resume text above is
@@ -487,6 +578,7 @@ REST_FRAMEWORK = {
         "govuk.authentication.InternalAccessJWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
 }
 
 LOGIN_REDIRECT_URL = "/accounts/profile/"
@@ -588,10 +680,11 @@ STORAGES = {
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 10_000
 
 
-# Wagtail settings
+# Wagtail admin settings
 
-WAGTAIL_SITE_NAME = "govuk"
+WAGTAIL_SITE_NAME = os.getenv("WAGTAIL_SITE_NAME", "govuk")
 WAGTAIL_FRONTEND_LOGIN_URL = "/login/"
+
 
 # Search
 # https://docs.wagtail.org/en/stable/topics/search/backends.html

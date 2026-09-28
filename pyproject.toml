@@ -30,7 +30,7 @@ dependencies = [
 [dependency-groups]
 # Not needed to run the site, only to check it. CI installs this group.
 dev = [
-  "ruff==0.16.4",
+  "ruff==0.16.8",
 ]
 
 [tool.ruff]

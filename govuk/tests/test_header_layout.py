@@ -112,8 +112,12 @@ class HeaderLayoutTests(TestCase):
         self.assertIsNotNone(name)
         self.assertIn('href="https://www.gov.uk/"', name.group(1))
 
-    def test_every_page_carries_a_back_to_top_button(self):
-        """main.js reveals it once the page has been scrolled."""
+    def test_a_site_that_opts_in_shows_a_back_to_top_button(self):
+        """Off by default; a site turns it on in Customise settings, and then
+        main.js reveals it once the page has been scrolled."""
+        self.settings.show_back_to_top = True
+        self.settings.save()
+
         response = self._get()
 
         self.assertContains(response, 'id="back-to-top"')

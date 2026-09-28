@@ -3,14 +3,15 @@
 The ticket asks for three things: that it appears and behaves as it does on
 the live service, that it is accessible, and that answers are recorded
 server-side. The first two are the template and the form; the third is the
-view, which writes one log line per answer and stores nothing else.
+view, which writes one log line per answer and stores it as a
+PageUsefulnessVote row (which the admin "Page usefulness" report reads).
 """
 
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import Site
 
-from govuk.models import ContentPage, CustomiseSettings
+from govuk.models import ContentPage, CustomiseSettings, PageUsefulnessVote
 
 
 def _feature_flags() -> dict[str, bool]:
@@ -143,7 +144,7 @@ class PageFeedbackViewTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_the_answer_is_recorded_and_the_reader_sent_back(self):
-        """This log line is the server-side record the ticket asks for."""
+        """The log line and the stored row are both the server-side record."""
         with self.assertLogs("govuk.page_feedback", level="INFO") as logs:
             response = self.client.post(
                 self.url, {"answer": "Yes", "page": "/job-grades/"}
@@ -157,6 +158,11 @@ class PageFeedbackViewTests(TestCase):
         self.assertEqual(record.page_feedback_answer, "yes")
         self.assertEqual(record.page_feedback_path, "/job-grades/")
         self.assertEqual(record.site_hostname, self.site.hostname)
+
+        vote = PageUsefulnessVote.objects.get()
+        self.assertEqual(vote.answer, "yes")
+        self.assertEqual(vote.path, "/job-grades/")
+        self.assertEqual(vote.site, self.site)
 
     def test_a_background_post_gets_no_content_and_no_redirect(self):
         response = self.client.post(

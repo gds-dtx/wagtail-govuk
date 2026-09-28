@@ -14,19 +14,88 @@ logger = logging.getLogger(__name__)
 
 
 class IncomingRequestDebugLoggingMiddleware:
-    """Log inbound requests and headers when explicitly enabled via settings."""
+    """Log inbound requests and headers when explicitly enabled via settings.
+
+    A debugging aid for working out what CloudFront and the load balancer
+    actually send, switched on by INCOMING_REQUEST_INFO_LOGGING and off in
+    every deployed environment. Header names are always logged in full. Values
+    are logged only for the headers named below; every other value is replaced
+    by its length, because these lines go to CloudWatch and stay there for the
+    log group's retention.
+
+    Which headers arrived, and whether one was truncated, is what anyone is
+    reading these for, and the name and the length answer that. So the list is
+    of what to log rather than of what to hide: a header nobody here has
+    thought of -- a new single sign-on scheme's, a future AWS one -- is then
+    redacted by default rather than logged by default, and adding a credential
+    to the request is not also a change to what this writes down.
+
+    Two of the headers it does log are personal data: X-Forwarded-For and
+    CloudFront-Viewer-Address carry the reader's IP address. Tracing a request
+    through the proxy chain is the reason this switch exists, so they are
+    logged -- but leave the switch on only as long as the debugging needs it.
+    """
+
+    #: Header names, lower-cased, whose values may be written to CloudWatch.
+    LOGGED_HEADERS = frozenset(
+        {
+            # What the proxy chain did with the request, which is what this
+            # switch was added to answer.
+            "host",
+            "via",
+            "x-amzn-trace-id",
+            "x-forwarded-for",
+            "x-forwarded-host",
+            "x-forwarded-port",
+            "x-forwarded-proto",
+            "x-request-id",
+            # What CloudFront tells the origin about the viewer: device and
+            # geography hints, named one by one rather than by prefix so that
+            # a header AWS adds later is redacted until someone looks at it.
+            "cloudfront-forwarded-proto",
+            "cloudfront-is-android-viewer",
+            "cloudfront-is-desktop-viewer",
+            "cloudfront-is-ios-viewer",
+            "cloudfront-is-mobile-viewer",
+            "cloudfront-is-smarttv-viewer",
+            "cloudfront-is-tablet-viewer",
+            "cloudfront-viewer-address",
+            "cloudfront-viewer-country",
+            # What the browser asked for.
+            "accept",
+            "accept-encoding",
+            "accept-language",
+            "cache-control",
+            "connection",
+            "content-length",
+            "content-type",
+            "origin",
+            "pragma",
+            "referer",
+            "upgrade-insecure-requests",
+            "user-agent",
+        }
+    )
 
     def __init__(self, get_response):
         self.get_response = get_response
 
+    @classmethod
+    def _safe_headers(cls, headers) -> dict[str, str]:
+        safe = {}
+        for name, value in headers.items():
+            if value and name.lower() not in cls.LOGGED_HEADERS:
+                value = f"[redacted, {len(value)} chars]"
+            safe[name] = value
+        return safe
+
     def __call__(self, request):
         if getattr(settings, "INCOMING_REQUEST_INFO_LOGGING", False):
-            request_headers = dict(request.headers.items())
             logger.info(
                 "Incoming request: method=%s path=%s headers=%s",
                 request.method,
                 request.get_full_path(),
-                request_headers,
+                self._safe_headers(request.headers),
             )
         return self.get_response(request)
 
@@ -160,10 +229,16 @@ class AuthenticatedUserRedirectMiddleware:
 class MaintenanceModeMiddleware:
     """Answer everything but the essentials with the service-unavailable page.
 
-    Switched by the MAINTENANCE_MODE environment variable, so closing the
-    service for a cutover is a configuration change, not a deployment. The
-    health check stays open or the orchestrator would replace the instance,
-    and the admin stays open so the people doing the work can see it.
+    Two switches close the service. The MaintenanceModeSettings.enabled toggle
+    in the admin is planned maintenance: signed-in staff are let through so they
+    can keep working, while everyone else meets the service-unavailable page.
+    The MAINTENANCE_MODE environment variable is the emergency override: a
+    code-free hard close for everyone but the exempt paths, for when the admin
+    or database cannot be relied on. Either one closes the site.
+
+    The health check stays open or the orchestrator would replace the instance,
+    and the admin stays open so the people doing the work can sign in. This
+    middleware runs after the auth middleware so request.user is populated.
     """
 
     # Every prefix ends in its separator. Without the trailing slash "/admin"
@@ -210,17 +285,45 @@ class MaintenanceModeMiddleware:
     def __call__(self, request):
         from django.conf import settings
         from django.shortcuts import render
+        from wagtail.models import Site
 
-        if not getattr(settings, "MAINTENANCE_MODE", False):
+        from govuk.models import MaintenanceModeSettings
+
+        env_on = getattr(settings, "MAINTENANCE_MODE", False)
+        site = Site.find_for_request(request)
+        maintenance = MaintenanceModeSettings.for_site(site) if site else None
+        toggle_on = bool(maintenance and maintenance.enabled)
+
+        if not (env_on or toggle_on):
             return self.get_response(request)
+
+        # Planned maintenance (the admin toggle) lets CMS staff carry on --
+        # admins, moderators and editors, i.e. anyone who can reach the Wagtail
+        # admin (the access_admin permission, held by those groups and
+        # superusers). A visitor who has only passed SSO but has no admin access
+        # is not let through. The emergency env override is a hard close for
+        # everyone but the exempt paths.
+        if (
+            toggle_on
+            and not env_on
+            and request.user.has_perm("wagtailadmin.access_admin")
+        ):
+            return self.get_response(request)
+
         if request.path in self.EXEMPT_PATHS or request.path.startswith(
             self.EXEMPT_PREFIXES
         ):
             return self.get_response(request)
+
         response = render(
             request,
             "503.html",
-            {"maintenance_resume_text": getattr(settings, "MAINTENANCE_RESUME_TEXT", "")},
+            {
+                "maintenance_settings": maintenance,
+                "maintenance_resume_text": getattr(
+                    settings, "MAINTENANCE_RESUME_TEXT", ""
+                ),
+            },
             status=503,
         )
         response["Retry-After"] = str(

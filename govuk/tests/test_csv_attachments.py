@@ -19,7 +19,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import Site
 
-from govuk.attachments import (
+from govuk.capability_framework.attachments import (
     csv_download_size,
     format_file_size,
     measure_csv_download,

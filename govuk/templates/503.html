@@ -1,19 +1,31 @@
 {% extends "base.html" %}
 {% comment %}
     The GOV.UK Design System's "service unavailable" page, served by the
-    maintenance middleware while MAINTENANCE_MODE is set. The resume line
-    names the day and time where MAINTENANCE_RESUME_TEXT gives one, and
+    maintenance middleware while the site is closed. The heading and body come
+    from the Maintenance mode admin setting (maintenance_settings). The resume
+    line names the day and time where MAINTENANCE_RESUME_TEXT gives one, and
     stays general where it does not, which is what the pattern asks.
 {% endcomment %}
-{% block title %}Sorry, the service is unavailable{% endblock %}
+{% load wagtailcore_tags %}
+{% block title %}{{ maintenance_settings.heading|default:"Sorry, the service is unavailable" }}{% endblock %}
 {% block page_feedback %}{% endblock %}
 {% block content %}
     <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
         <div class="govuk-grid-row">
             <div class="govuk-grid-column-two-thirds">
-                <h1 class="govuk-heading-l">Sorry, the service is unavailable</h1>
+                <h1 class="govuk-heading-l">{{ maintenance_settings.heading|default:"Sorry, the service is unavailable" }}</h1>
+                {% comment %}
+                    A known return time is set at maintenance time and is more
+                    specific than any standing wording, so it wins. Otherwise
+                    the editor's body stands (cleared means nothing), and with
+                    no site to read settings from the Design System line does.
+                {% endcomment %}
                 {% if maintenance_resume_text %}
                     <p class="govuk-body">You will be able to use the service from {{ maintenance_resume_text }}.</p>
+                {% elif maintenance_settings %}
+                    {% if maintenance_settings.body %}
+                        <div class="govuk-body rich-text-content">{{ maintenance_settings.body|richtext }}</div>
+                    {% endif %}
                 {% else %}
                     <p class="govuk-body">You will be able to use the service later.</p>
                 {% endif %}

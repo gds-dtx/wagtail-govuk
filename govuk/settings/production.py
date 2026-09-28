@@ -3,7 +3,7 @@ import os
 from .base import *
 from .runtime import deployment_allowed_hosts
 
-# Development settings - these are used in development and test environments
+# Production settings - these are used in the staging and production environments
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
 SECRET_KEY = os.getenv("SECRET_KEY")
