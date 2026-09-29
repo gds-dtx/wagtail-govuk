@@ -22,6 +22,14 @@ from .conversions import (
     rich_html_to_text,
 )
 
+# Excel decides a CSV's encoding from its first bytes. With no byte order
+# mark it falls back to the platform's legacy encoding -- Mac Roman on
+# macOS -- so the curly quotes in the change notes open as "‚ÄòHEO‚Äô"
+# instead of "‘HEO’". The mark says UTF-8, costs three bytes, and is
+# what the published downloads are opened in. A reader that does not want
+# it strips it with utf-8-sig, which is what our own import does.
+UTF8_BOM = "\ufeff"
+
 ROLE_COLUMNS = [
     "Role Family",
     "Role",
@@ -59,6 +67,7 @@ def _scs_skill_description(skill_row: dict, description: str) -> str:
 
 
 def write_roles_csv(f) -> int:
+    f.write(UTF8_BOM)
     rows = 0
     # A skill body is written once per role that requires the skill: 1816 rows
     # over 185 skills. Converting rich text back to prose is the bulk of what
@@ -135,6 +144,7 @@ def write_roles_csv(f) -> int:
 
 
 def write_skills_csv(f) -> int:
+    f.write(UTF8_BOM)
     roles_by_skill = GovukRole.roles_by_skill_id()
     rows = 0
     writer = csv.DictWriter(f, fieldnames=SKILL_COLUMNS)
@@ -160,6 +170,7 @@ def write_skills_csv(f) -> int:
 
 
 def write_changelog_csv(f) -> int:
+    f.write(UTF8_BOM)
     rows = 0
     entries = GovukChangelogEntry.objects.filter(live=True).select_related(
         "role", "skill"

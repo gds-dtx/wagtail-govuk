@@ -124,7 +124,7 @@ class Command(BaseCommand):
 
         created = skipped = 0
         unmatched: set[str] = set()
-        with open(changelog_csv) as f:
+        with open(changelog_csv, encoding="utf-8-sig") as f:
             for row in csv.DictReader(f):
                 entry_date = parse_iso_date(row.get("Timestamp", ""))
                 note_html = changelog_note_to_html(row.get("Change note", ""))
@@ -163,7 +163,7 @@ class Command(BaseCommand):
     def import_skills(self, skills_csv: Path) -> dict[str, GovukSkill]:
         created = updated = 0
         skills_by_slug: dict[str, GovukSkill] = {}
-        with open(skills_csv) as f:
+        with open(skills_csv, encoding="utf-8-sig") as f:
             for row in csv.DictReader(f):
                 title = row["Skill Name"].strip()
                 if not title:
@@ -199,7 +199,7 @@ class Command(BaseCommand):
     def import_roles(self, roles_csv: Path, skills_by_slug: dict) -> list[dict]:
         # Group the flat (role, level, skill) rows back into a hierarchy.
         roles: dict[str, dict] = {}
-        with open(roles_csv) as f:
+        with open(roles_csv, encoding="utf-8-sig") as f:
             for row in csv.DictReader(f):
                 role_title = row["Role"].strip()
                 if not role_title:

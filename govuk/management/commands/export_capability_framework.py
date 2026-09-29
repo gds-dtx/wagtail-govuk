@@ -42,6 +42,6 @@ class Command(BaseCommand):
             ("changelog.csv", write_changelog_csv),
         ):
             path = output_dir / name
-            with open(path, "w", newline="") as f:
+            with open(path, "w", newline="", encoding="utf-8") as f:
                 rows = write(f)
             self.stdout.write(f"{name}: {rows} rows -> {path}")

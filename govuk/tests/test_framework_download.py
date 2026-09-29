@@ -6,6 +6,7 @@ the published content at the moment of asking, so what a reader downloads is
 what the site says, always.
 """
 
+import codecs
 import csv
 import io
 
@@ -62,7 +63,9 @@ class FrameworkCsvDownloadTests(TestCase):
         self.assertEqual(response["Content-Type"], "text/csv; charset=utf-8")
         self.assertIn("attachment", response["Content-Disposition"])
         self.assertIn(".csv", response["Content-Disposition"])
-        return list(csv.reader(io.StringIO(response.content.decode())))
+        # utf-8-sig: the file carries a byte order mark for Excel, and a
+        # reader that does not want it strips it the way this one does.
+        return list(csv.reader(io.StringIO(response.content.decode("utf-8-sig"))))
 
     def test_the_roles_csv_carries_the_published_columns_and_the_role(self):
         rows = self._rows("roles")
@@ -95,6 +98,40 @@ class FrameworkCsvDownloadTests(TestCase):
 
         self.assertEqual(len(after), len(before) + 1)
         self.assertIn("Zonal networking", {row[0] for row in after[1:]})
+
+    def test_every_download_opens_as_utf_8_in_excel(self):
+        """Excel guesses a CSV's encoding from its first bytes.
+
+        With no byte order mark it falls back to the platform's legacy
+        encoding, and on macOS that is Mac Roman -- which is how a change
+        note reading "from 'HEO' to 'HEO and SEO'" reached a reader as
+        "from \u2018HEO\u2019..." mangled into Mac Roman. The mark is three
+        bytes and settles it.
+        """
+        for name in ("roles", "skills", "changelog"):
+            with self.subTest(name=name):
+                response = self.client.get(
+                    reverse("govuk_framework_csv", args=[name])
+                )
+                self.assertTrue(
+                    response.content.startswith(codecs.BOM_UTF8),
+                    f"{name}.csv has no byte order mark",
+                )
+
+    def test_the_curly_quotes_in_a_change_note_survive_the_round_trip(self):
+        """The symptom as it was reported: grade changes are written with
+        curly quotes, and those are the characters that came out mangled."""
+        GovukChangelogEntry.objects.create(
+            date="2026-08-02",
+            skill=self.skill,
+            note="<p>from \u2018HEO\u2019 to \u2018HEO and SEO\u2019</p>",
+        )
+
+        response = self.client.get(reverse("govuk_framework_csv", args=["changelog"]))
+        text = response.content.decode("utf-8-sig")
+
+        self.assertIn("\u2018HEO\u2019", text)
+        self.assertNotIn("\u2018HEO\u2019".encode().decode("mac-roman"), text)
 
     def test_a_name_that_is_not_a_download_is_not_found(self):
         response = self.client.get("/download/passwords.csv")

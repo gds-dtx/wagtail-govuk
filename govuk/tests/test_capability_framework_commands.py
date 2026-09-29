@@ -449,7 +449,9 @@ class ExportCapabilityFrameworkTests(TestCase):
         )
 
     def _rows(self, name: str) -> list[dict]:
-        with open(self.out_dir / name) as f:
+        # utf-8-sig: the export carries a byte order mark so Excel opens it
+        # as UTF-8, and a reader strips it the way the import command does.
+        with open(self.out_dir / name, encoding="utf-8-sig") as f:
             return list(csv.DictReader(f))
 
     def test_exports_every_skill_with_round_tripped_levels(self):
