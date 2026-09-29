@@ -25,6 +25,11 @@ dependencies = [
   # cryptography for the RS256 signature check.
   "pyjwt[crypto]==2.14.0",
   "psycopg2-binary==2.9.13",
+  # S3 backend for user-uploaded media. ECS task storage is ephemeral and
+  # per-task, so media must live in a shared, durable bucket rather than on
+  # the container filesystem. [s3] pulls in boto3. Only exercised when
+  # MEDIA_S3_BUCKET is set (see govuk/settings/production.py).
+  "django-storages[s3]==1.14.4",
 ]
 
 [dependency-groups]
