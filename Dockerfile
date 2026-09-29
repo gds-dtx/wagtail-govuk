@@ -1,8 +1,8 @@
 # Use an official Python runtime based on Debian 12 "bookworm" as a parent image.
 FROM python:3.13-slim-trixie
 
-# Add user that will be used in the container.
-RUN useradd wagtail
+# Add user that will be used in the container, with a home directory.
+RUN useradd --create-home wagtail
 
 # Port used by this container to serve HTTP.
 EXPOSE 8000
