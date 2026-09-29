@@ -13,6 +13,15 @@
     below it does, with the question and buttons aligned to the content
     column -- inside a narrower column a boxed band sat as an island on
     wide screens.
+
+    A second deliberate difference: each button carries the question as
+    visually hidden text, so it is announced as "Is this page useful: Yes"
+    rather than a bare "Yes". Someone moving between buttons does not
+    necessarily hear the heading above them, and "Yes" on its own says
+    nothing about what is being agreed to. Live has a hidden span here too
+    but it repeats the word ("Yes Yes"), which is why this is not copied
+    from live. The visible label is still exactly "Yes" / "No", so the
+    accessible name contains it (WCAG 2.5.3 Label in Name).
 {% endcomment %}
 {% with sent=request.GET.page_feedback %}
     <div class="gem-c-feedback" id="page-feedback" data-module="page-feedback">
@@ -32,14 +41,14 @@
                                         name="answer"
                                         value="yes"
                                         class="govuk-button gem-c-feedback__prompt-link js-page-is-useful"
-                                        data-module="govuk-button">Yes</button>
+                                        data-module="govuk-button"><span class="govuk-visually-hidden">Is this page useful: </span>Yes</button>
                             </li>
                             <li class="gem-c-feedback__option-list-item">
                                 <button type="submit"
                                         name="answer"
                                         value="no"
                                         class="govuk-button gem-c-feedback__prompt-link js-page-is-not-useful"
-                                        data-module="govuk-button">No</button>
+                                        data-module="govuk-button"><span class="govuk-visually-hidden">Is this page useful: </span>No</button>
                             </li>
                         </ul>
                     </div>

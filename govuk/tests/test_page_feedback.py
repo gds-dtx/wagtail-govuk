@@ -70,6 +70,26 @@ class PageFeedbackPromptTests(TestCase):
         self.assertContains(response, 'name="page" value="/job-grades/"')
         self.assertContains(response, "csrfmiddlewaretoken")
 
+    def test_each_button_is_announced_with_the_question(self):
+        """A bare "Yes" or "No" says nothing on its own.
+
+        Someone moving from button to button does not necessarily hear the
+        heading above them, so the question travels with each answer as
+        visually hidden text and is announced as "Is this page useful: Yes".
+        The visible label is still exactly "Yes", so the accessible name
+        contains it (WCAG 2.5.3 Label in Name).
+        """
+        _switch_on(self.site)
+
+        response = self.client.get(self.url)
+
+        for word in ("Yes", "No"):
+            self.assertContains(
+                response,
+                '<span class="govuk-visually-hidden">Is this page useful: '
+                f"</span>{word}</button>",
+            )
+
     def test_the_thank_you_shows_after_a_post_without_javascript(self):
         """The view redirects back with ?page_feedback=sent; the template then
         hides the question and shows the thank-you, as the script would have."""
