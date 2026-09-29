@@ -43,6 +43,75 @@ for are accounts with more rights than the person needs, accounts belonging to
 people who have moved on, and the same person holding two accounts because they
 signed in through two different identities.
 
+## The things you will actually do
+
+The common jobs, and where each one is done. Everything here assumes you are
+signed in and in a group; see **Getting access** above if the admin looks empty.
+
+**Change the words on a role.** Snippets → Roles → the role. Edit, **Save
+draft**, then **Submit for moderation**. A moderator approves it and that
+publishes it. Nothing reaches the public until that approval.
+
+**Change a skill, or what a skill says at a level.** Snippets → Skills → the
+skill. Same submit-and-approve route. A skill appears on every role that
+requires it, so a wording change lands in several places at once — worth
+previewing before you submit.
+
+**Change which skills a role requires.** Edit the role, not the skill. The
+requirements are chooser references held on the role.
+
+**Add a change note.** Snippets → Change notes. Attach it to a role or a skill
+to have it appear in that page's **Updates** section, or leave both blank for a
+site-wide note on the framework home page. These publish as soon as you save —
+there is no review step — so re-read before saving.
+
+**Edit one of the supporting pages** (Job grades, Propose a change, Roadmap,
+Context and challenges, the privacy or accessibility statements). Pages → find
+it in the tree → edit → **Submit for moderation**.
+
+**Add a new page.** Choose the type deliberately, because it decides whether
+the page joins the side menu and it cannot be changed afterwards:
+- **Framework content page** — appears in **Further resources** in the side
+  menu. Use it for anything about the framework itself.
+- **Content page** — does not. Use it for the privacy notice, cookie
+  statement, accessibility statement and anything else that sits outside the
+  framework.
+
+**Reorder Further resources, or hide a page from it.** Capability framework →
+Sidebar settings. Add pages in the order you want; untick to hide. A framework
+page you do not list still appears, after the ones you did — so nothing vanishes
+because it was forgotten.
+
+**Change a footer link.** Settings → Footer. Takes effect immediately, with no
+review.
+
+**Change the phase banner.** Settings → Phase banner.
+
+**Change what a visitor sees when a page is missing.** Settings → Error pages.
+
+**Close the site for planned work.** Settings → Maintenance mode. Editors still
+get through; the public sees the 503 page. Remember to turn it off.
+
+**See what visitors think.** Reports → Page usefulness, which counts the yes and
+no answers to "Is this page useful?" by page, with a date filter and a CSV or
+Excel export.
+
+**See what changed and who changed it.** Reports → Site history, or the History
+tab on the item itself, which is usually faster.
+
+**Undo a bad edit.** History tab → preview an earlier revision → restore it.
+Every save is a revision, so this is the normal way to fix a mistake, not
+retyping.
+
+**Get the content out as a spreadsheet.** The CSV downloads on the Download page
+are generated from the CMS when they are requested, so they are never out of
+date and there is nothing to regenerate after publishing.
+
+Two things to be careful with, both covered in full below: **deleting a skill**,
+which silently removes it from every role that requires it, and the **JSON
+import**, which replaces a role's or skill's change notes rather than adding to
+them.
+
 ## Publishing a page
 
 The site has one moderation workflow, **Moderators approval**, applied to the
@@ -85,10 +154,27 @@ Some of what the site publishes lives in snippets rather than in the page tree,
 under **Snippets** in the admin. Roles, skills and change notes are the main
 ones.
 
-Snippets are **not covered by the moderation workflow**. A change to a skill is
-live as soon as it is saved. Where a snippet has a `live` flag — change notes do
-— unticking it is how you keep something out of the published output while you
-work on it.
+**Roles and skills now go through the same review as pages.** They carry
+drafts, revisions, locking and the **Moderators approval** workflow, so editing
+a skill is submit-and-approve, not save-and-live. A save creates a revision and
+leaves the published version alone; **Submit for moderation** sends it for
+review; a moderator approves it and that publishes it. A moderator can publish
+directly, as on a page.
+
+This changed recently. If you were told that a change to a skill is live the
+moment you save it, that is no longer true, and it is the difference most
+likely to catch someone out: an edit that looks finished may simply be waiting
+for approval. The snippet listing shows the state, and the History tab lists
+every revision so a bad edit is undone by restoring an earlier one.
+
+Scheduling is not offered on roles and skills, for the same reason it is not
+offered on pages: nothing in the deployment runs `publish_scheduled`, so a
+go-live date would be a date the service cannot honour. The fields exist on the
+model but no panel exposes them.
+
+**Change notes are not in the workflow.** They have no draft state; a change
+note is live as soon as it is saved, and its `live` tick is how you keep one out
+of the published output while you work on it.
 
 Deleting a snippet is the one genuinely destructive action in the CMS, because
 of what else refers to it. A role stores its skill requirements as chooser
@@ -120,12 +206,29 @@ after the listed ones, so nothing disappears just because it was not added.
 
 ## Settings, which are neither
 
-The footer links, the phase banner, the search placeholder, whether the search
-box offers a free-text results page or only jumps to a matching role, skill or
-page, and the error-page contact are site settings, held under
-`/admin/settings/`. They are per site,
-they take effect immediately, they are not versioned, and they are not covered
-by moderation — one person, one save, live everywhere on the site.
+Some of what the site shows is neither a page nor a snippet but a site
+setting, held under `/admin/settings/`. They are per site, they take effect
+immediately, they are not versioned, and they are not covered by moderation —
+one person, one save, live everywhere on the site. Treat them accordingly.
+
+| Setting | What it holds |
+| --- | --- |
+| **Customise** | Header logo, where the service name, sign-in and search box sit, the search placeholder, whether search offers a free-text results page, the "Is this page useful?" prompt, the back-to-top link, maximum content width, extra CSS |
+| **Footer** | The footer support links |
+| **Phase banner** | Whether the banner shows, and its wording |
+| **Error pages** | The wording of the page not found, forbidden and problem pages, and the contact they offer |
+| **Maintenance mode** | The switch that closes the site behind the 503 page, and that page's wording |
+| **Capability framework → Sidebar settings** | The order of Further resources, and which framework pages are hidden |
+| **Capability framework → Wording** | The framework's repeated headings and labels |
+
+**Maintenance mode deserves care.** Turning it on closes the whole site to the
+public behind the "Sorry, the service is unavailable" page. Signed-in people
+with editor access still get through, which is what makes it useful for planned
+work — but it means the person who turned it on may not notice it is still on.
+The health check stays open either way. There is also a `MAINTENANCE_MODE`
+environment variable, which is a harder close that shuts out everyone including
+editors; that one is for incidents and is changed by the platform team, not from
+the CMS.
 
 They also do not travel in the content export, so they have to be re-entered by
 hand on a new instance. See [cutover.md](cutover.md).
