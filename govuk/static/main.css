@@ -9,12 +9,12 @@
     padding-bottom: 10px;
     margin-top: 10px;
     margin-bottom: 20px;
-    background-color: var(--govuk-secondary-colour, #b5cd1e);
+    background-color: var(--govuk-secondary-colour, #d2e2f1);
 }
 
 .masthead--combined {
-    background-color: var(--govuk-brand-colour, rgb(29, 112, 184)) !important;
-    border-bottom: 1px solid  var(--govuk-brand-colour, rgb(41, 131, 210));
+    background-color: var(--govuk-brand-colour, #1d70b8) !important;
+    border-bottom: 1px solid  var(--govuk-brand-colour, #1d70b8);
     color: #fff !important;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
@@ -205,11 +205,11 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 .section-card:hover {
-  border-color: var(--govuk-brand-colour, rgb(29, 112, 184));
+  border-color: var(--govuk-brand-colour, #1d70b8);
 }
 
 .section-card:focus-within {
-  border-color: var(--govuk-brand-colour, rgb(29, 112, 184));
+  border-color: var(--govuk-brand-colour, #1d70b8);
 }
 
 .section-card__link--stretched::after {
@@ -287,7 +287,7 @@ main > :nth-last-child(1 of .section-cards-container) {
     width: 20px;
     height: 20px;
     transform: translateY(-50%);
-    color: #0b0c0c;
+    color: var(--govuk-text-colour, #0b0c0c);
     pointer-events: none;
 }
 
@@ -396,20 +396,20 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 .govuk-service-navigation .app-site-search__form {
-    border: 2px solid #0b0c0c;
+    border: 2px solid var(--govuk-text-colour, #0b0c0c);
     background-color: #fff;
 }
 
 .govuk-service-navigation .app-site-search__input {
     background-color: #fff;
-    color: #0b0c0c;
+    color: var(--govuk-text-colour, #0b0c0c);
 }
 
 .govuk-service-navigation .app-site-search__button,
 .govuk-service-navigation .app-site-search__button:link,
 .govuk-service-navigation .app-site-search__button:visited {
     background-color: #fff;
-    color: #0b0c0c;
+    color: var(--govuk-text-colour, #0b0c0c);
     border-left: 0;
 }
 
@@ -418,7 +418,7 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 .govuk-service-navigation .app-site-search__button:focus {
-    background-color: #fd0;
+    background-color: var(--govuk-focus-colour, #fd0);
 }
 
 .govuk-service-navigation .app-site-search {
@@ -496,7 +496,7 @@ main > :nth-last-child(1 of .section-cards-container) {
 .role-nav__item a:link,
 .role-nav__item a:visited {
     background-color: inherit;
-    color: var(--govuk-link-colour, #1d70b8);
+    color: var(--govuk-link-colour, #1a65a6);
     display: block;
     /* Fill the row so the link -- with its background, hover and active
        states -- spans the whole width of the navigation column rather than
@@ -509,17 +509,17 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 .role-nav__item a:hover {
-    color: var(--govuk-link-hover-colour, #003078);
+    color: var(--govuk-link-hover-colour, #0f385c);
     border-color: #5694ca;
 }
 
 .role-nav__item a:focus {
     outline: 3px solid transparent;
-    color: #0b0c0c;
-    background-color: #fd0;
-    box-shadow: 0 -2px #fd0, 0 4px #0b0c0c;
-    border-color: #0b0c0c;
-    border-left-color: #fd0;
+    color: var(--govuk-text-colour, #0b0c0c);
+    background-color: var(--govuk-focus-colour, #fd0);
+    box-shadow: 0 -2px var(--govuk-focus-colour, #fd0), 0 4px var(--govuk-text-colour, #0b0c0c);
+    border-color: var(--govuk-text-colour, #0b0c0c);
+    border-left-color: var(--govuk-focus-colour, #fd0);
     text-decoration: none;
     position: relative;
 }
@@ -527,20 +527,20 @@ main > :nth-last-child(1 of .section-cards-container) {
 .role-nav__item--active a:link,
 .role-nav__item--active a:visited {
     background-color: #f3f2f1;
-    border-color: var(--govuk-link-colour, #1d70b8);
-    color: var(--govuk-link-colour, #1d70b8);
+    border-color: var(--govuk-link-colour, #1a65a6);
+    color: var(--govuk-link-colour, #1a65a6);
     font-weight: bold;
 }
 
 .role-nav__item--active a:hover {
-    color: var(--govuk-link-hover-colour, #003078);
-    border-color: var(--govuk-link-hover-colour, #003078);
+    color: var(--govuk-link-hover-colour, #0f385c);
+    border-color: var(--govuk-link-hover-colour, #0f385c);
 }
 
 .role-nav__item--active a:focus {
-    color: #0b0c0c;
-    background-color: #fd0;
-    border-left-color: #fd0;
+    color: var(--govuk-text-colour, #0b0c0c);
+    background-color: var(--govuk-focus-colour, #fd0);
+    border-left-color: var(--govuk-focus-colour, #fd0);
 }
 
 .mobile-homepage {
@@ -650,7 +650,7 @@ main > :nth-last-child(1 of .section-cards-container) {
     border: 0;
     outline: 0;
     background-color: #fff;
-    color: var(--govuk-link-colour, #1d70b8);
+    color: var(--govuk-link-colour, #1a65a6);
     font-family: "GDS Transport", arial, sans-serif;
     font-size: 1.125rem;
     line-height: 1.25;
@@ -659,14 +659,14 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 #back-to-top:hover {
-    color: var(--govuk-link-hover-colour, #003078);
+    color: var(--govuk-link-hover-colour, #0f385c);
     text-decoration-thickness: 3px;
 }
 
 #back-to-top:focus {
-    background-color: #fd0;
-    box-shadow: 0 -2px #fd0, 0 4px #0b0c0c;
-    color: #0b0c0c;
+    background-color: var(--govuk-focus-colour, #fd0);
+    box-shadow: 0 -2px var(--govuk-focus-colour, #fd0), 0 4px var(--govuk-text-colour, #0b0c0c);
+    color: var(--govuk-text-colour, #0b0c0c);
     outline: 3px solid transparent;
     text-decoration: none;
 }
@@ -898,8 +898,8 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 .gem-c-feedback {
-    background-color: #f4f8fb;
-    color: #0b0c0c;
+    background-color: var(--govuk-template-background-colour, #f4f8fb);
+    color: var(--govuk-text-colour, #0b0c0c);
     border-top: 1px solid #b1b4b6;
     margin-top: 20px;
 }
@@ -1012,9 +1012,9 @@ main > :nth-last-child(1 of .section-cards-container) {
     font-size: 1rem;
     line-height: 1.25;
     background: transparent;
-    color: #0b0c0c;
-    box-shadow: 0 3px 0 #0b0c0c;
-    border: 1px #0b0c0c solid;
+    color: var(--govuk-text-colour, #0b0c0c);
+    box-shadow: 0 3px 0 var(--govuk-text-colour, #0b0c0c);
+    border: 1px var(--govuk-text-colour, #0b0c0c) solid;
     margin-bottom: 0;
     width: 100%;
     min-width: 80px;
@@ -1028,19 +1028,19 @@ main > :nth-last-child(1 of .section-cards-container) {
 
 .gem-c-feedback__prompt-link:hover {
     background: #b1b4b6;
-    color: #0b0c0c;
+    color: var(--govuk-text-colour, #0b0c0c);
 }
 
 .gem-c-feedback__prompt-link:focus,
 .gem-c-feedback__prompt-link:focus:not(:active):not(:hover) {
-    background: #fd0;
-    border-color: #0b0c0c;
-    box-shadow: 0 5px 0 #0b0c0c;
-    color: #0b0c0c;
+    background: var(--govuk-focus-colour, #fd0);
+    border-color: var(--govuk-text-colour, #0b0c0c);
+    box-shadow: 0 5px 0 var(--govuk-text-colour, #0b0c0c);
+    color: var(--govuk-text-colour, #0b0c0c);
 }
 
 .gem-c-feedback__prompt-link:active {
-    color: #0b0c0c;
+    color: var(--govuk-text-colour, #0b0c0c);
 }
 
 .app-site-search__autocomplete {
@@ -1069,10 +1069,10 @@ main > :nth-last-child(1 of .section-cards-container) {
     padding: 0;
     overflow-x: hidden;
     overflow-y: auto;
-    border: 2px solid #0b0c0c;
+    border: 2px solid var(--govuk-text-colour, #0b0c0c);
     border-top: 0;
     background-color: #ffffff;
-    color: #0b0c0c;
+    color: var(--govuk-text-colour, #0b0c0c);
     list-style: none;
     text-align: left;
 }
@@ -1094,7 +1094,7 @@ main > :nth-last-child(1 of .section-cards-container) {
     border-bottom: 0;
 }
 .app-site-search__option-text {
-    color: #1d70b8;
+    color: var(--govuk-brand-colour, #1d70b8);
 }
 .app-site-search__option-type {
     display: block;
@@ -1104,7 +1104,7 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 .app-site-search__option--focused,
 .app-site-search__option:hover {
-    background-color: #1d70b8;
+    background-color: var(--govuk-brand-colour, #1d70b8);
     color: #ffffff;
     outline: none;
 }
