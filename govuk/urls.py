@@ -5,6 +5,7 @@ from django.contrib import admin
 from django.urls import include, path
 from wagtail import urls as wagtail_urls
 from wagtail.admin import urls as wagtailadmin_urls
+from wagtail.contrib.sitemaps.views import sitemap
 from wagtail.documents import urls as wagtaildocs_urls
 
 from govuk.api import (
@@ -95,6 +96,7 @@ urlpatterns = [
         name="govuk_framework_csv",
     ),
     path("robots.txt", robots_txt_view, name="govuk_robots_txt"),
+    path("sitemap.xml", sitemap, name="sitemap"),
     # The "Is this page useful?" answer. Registered on every site; the view
     # answers 404 unless the site has the prompt switched on.
     path("page-feedback/", page_feedback_view, name="page_feedback"),
