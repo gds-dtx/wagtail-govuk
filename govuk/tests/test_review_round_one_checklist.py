@@ -798,9 +798,12 @@ class RemainingChecklistTests(ReviewChecklistTestCase):
 
     def test_t12_the_heading_stands_off_the_service_navigation(self):
         """ "Space between page title and service navigation component should be
-        larger... check current site for example." The live service leaves 25px
-        between the phase banner and the heading."""
-        self.assertIn("padding: 25px 0 0", _rules(CSS, ".govuk-main-wrapper"))
+        larger... check current site for example." One wrapper top gap now gives
+        every non-masthead page the same stand-off: 20px, 30px at tablet and up
+        (GOV.UK spacing point 6). Masthead pages hold the wrapper flush instead."""
+        wrapper = _rules(CSS, ".govuk-main-wrapper")
+        self.assertIn("padding: 20px 0 0", wrapper)
+        self.assertIn("padding-top: 30px", wrapper)
 
     def test_t19_a_table_an_editor_pastes_is_styled_like_a_design_system_one(self):
         """Wagtail's rich text has no table feature, so a table arrives as raw

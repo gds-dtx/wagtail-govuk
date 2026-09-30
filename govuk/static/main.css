@@ -1,17 +1,14 @@
-/* The Design System's own wrapper padding is more than these pages want —
-   they carry their own spacing — but zero left the h1 touching the service
-   navigation. 25px is what the live service leaves between the phase banner
-   and the heading (T12). Pages that join the navigation to the hero override
-   this with govuk-!-padding-0, so their flush edge is unaffected. */
+
 .govuk-main-wrapper {
     display: block;
-    padding: 25px 0 0;
+    padding: 20px 0 0;
 }
 
 .masthead {
-    padding-top: 20px;
-    padding-bottom: 20px;
+    padding-top: 30px;
+    padding-bottom: 10px;
     margin-top: 10px;
+    margin-bottom: 20px;
     background-color: var(--govuk-secondary-colour, #b5cd1e);
 }
 
@@ -23,9 +20,11 @@
     margin-bottom: 0 !important;
 }
 
-/* The white set on .masthead--combined is only inherited and loses
-   to govuk classes. White has to be set on those elements themselves — including the
-   description's descendants, since its text lives in child. */
+.masthead--combined + .govuk-phase-banner {
+    margin-bottom: 20px;
+}
+
+
 .masthead--combined .hero__title,
 .masthead--combined .hero__description,
 .masthead--combined .hero__description * {
@@ -49,7 +48,11 @@
     padding: 0 0 10px;
 }
 
-.hero__description { 
+.hero__title {
+    margin-top: 0;
+}
+
+.hero__description {
     font-family: GDS Transport, arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -120,13 +123,20 @@ img.full-width {
 }
 
 @media (min-width: 40.0625em) {
+    .govuk-main-wrapper {
+        padding-top: 30px;
+    }
     .hero__content {
         width: 66.6%;
     }
     .masthead {
-        padding-top: 30px;
+        padding-top: 50px;
         padding-bottom: 30px;
         margin-top: 14px;
+        margin-bottom: 30px;
+    }
+    .masthead--combined + .govuk-phase-banner {
+        margin-bottom: 30px;
     }
     .govuk-width-container, .hero {
         margin-right: 30px;
@@ -260,11 +270,7 @@ main > :nth-last-child(1 of .section-cards-container) {
     display: block;
 }
 
-/* Free-text results turned off: no submit button. The magnifier is a
-   decorative icon at the right-hand end of the input instead. It is pinned to
-   the form container's right edge -- which the flex input, or the
-   autocomplete's replacement input, fills -- and the input gains right padding
-   so typed text clears it. pointer-events: none keeps clicks on the field. */
+
 .app-site-search--icon .app-site-search__form {
     position: relative;
 }
@@ -296,8 +302,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     max-width: 100%;
 }
 
-/* Search results use the same card grid as the rest of the site, which is the
-   design the service ships today. */
 
 .listing-filters {
     display: flex;
@@ -349,9 +353,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     scroll-margin-top: 20px;
 }
 
-/* Sign in / out link sitting in the GOV.UK header rather than the service
-   navigation. The header is dark blue, so the link keeps the white header ink
-   rather than the navigation's dark ink. */
 .app-header__sign-in {
     margin-top: 12px;
     margin-bottom: 12px;
@@ -379,8 +380,6 @@ main > :nth-last-child(1 of .section-cards-container) {
         margin-bottom: 0;
         margin-left: auto;
     }
-    /* When the search is present it already pushes right, so the sign in link
-       only needs a gap after it rather than its own auto margin. */
     .app-site-search + .app-header__sign-in {
         margin-left: 15px;
     }
@@ -396,9 +395,6 @@ main > :nth-last-child(1 of .section-cards-container) {
         flex: 1 0 auto;
     }
 }
-/* Search sitting in the service navigation bar rather than the GOV.UK header.
-   The header version is on a blue background and uses the inverse button; here
-   the background is light, so the input and button need ordinary GOV.UK ink. */
 .govuk-service-navigation .app-site-search__form {
     border: 2px solid #0b0c0c;
     background-color: #fff;
@@ -425,19 +421,10 @@ main > :nth-last-child(1 of .section-cards-container) {
     background-color: #fd0;
 }
 
-/* Below 40.0625em the nav container is a flex column aligned to the start, so
-   the search would otherwise shrink to its content width. Stretch it to fill
-   the width, matching the header search's full-width behaviour on narrow
-   screens. Above this width the row-mode rule below overrides align-self. */
 .govuk-service-navigation .app-site-search {
     align-self: stretch;
 }
 
-/* Once the nav container is a flex row (40.0625em up) it aligns children to
-   the top, and the search still carries the header's own top/bottom margin.
-   The row height is set by the taller nav links, so centre the search and drop
-   that margin. Below this width the container is a column, where the margin
-   gives useful spacing between stacked items. */
 @media (min-width: 40.0625em) {
     .govuk-service-navigation .app-site-search {
         align-self: center;
@@ -447,70 +434,37 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 @media (min-width: 48.0625em) {
-    /* The bar holds three things on one row: the service name, the navigation
-       links, then the search box against the right edge. Frontend lets the
-       links wrapper grow into whatever space is left, which pushed the search
-       box down onto a second row; the free space belongs to the search box.
-       Only when the box is actually on the row: on a bar without it the
-       wrapper must keep growing, or the featured sign-in link that aligns
-       right inside it ends up at the bar's left edge. */
     .govuk-service-navigation .govuk-service-navigation__container:has(.app-site-search) .govuk-service-navigation__wrapper {
         flex-grow: 0;
     }
 
-    /* Flex wraps on flex-basis before it shrinks, so a box asking for 20rem
-       drops to a row of its own rather than taking the 18rem that are going.
-       A smaller basis that grows into what is left keeps it on the row, and
-       the cap stops it stretching across the bar when it does wrap. */
     .govuk-service-navigation .app-site-search {
         flex: 1 1 16rem;
         min-width: 16rem;
         max-width: 20rem;
-        /* The box is shorter than the service name beside it and the bar aligns
-           its contents to the top, so without these it hangs off the bar's top
-           border. They also keep it clear of the bar's edges on the narrower
-           widths where it still wraps to a row of its own. */
         margin-top: 7px;
         margin-bottom: 7px;
     }
 
-    /* The search box is pushed right by `margin-left: auto`, which collapses to
-       nothing once the row is full — leaving it touching "Sign in". A column
-       gap holds the two apart whatever the auto margin does. */
     .govuk-service-navigation__container {
         column-gap: 20px;
     }
 }
 
-/* On a narrow screen the box has a row to itself, but the bar aligns its
-   contents to the start, so it takes only the width of its content and stops
-   short of the margin the rest of the page lines up with. A hair below the
-   breakpoint above, because a max-width query includes the width it names and
-   both would otherwise apply at exactly 48.0625em. */
 @media (max-width: 48.0525em) {
     .govuk-service-navigation .app-site-search {
         width: 100%;
     }
 }
 
-/* Role page side navigation.
-   The DDaT Capability Framework borrows the MoJ Frontend side navigation for
-   this, but every colour in it is stock GOV.UK, so it is cheaper to keep the
-   twenty lines here than to take on another design system. */
 .role-nav {
     display: none;
     font-family: "GDS Transport", arial, sans-serif;
     font-weight: normal;
-    /* 1rem is what the live service and the Design System's own sub-navigation
-       both use for the items at desktop. Live's 14px, which an earlier version
-       of this comment cited, is its mobile value below 641px, where this
-       navigation is hidden altogether. */
     font-size: 1rem;
     line-height: 1.25;
 }
 
-/* Space each group from the next so the family headings read as separate
-   sections rather than one run of links. The last group needs no trailing gap. */
 .role-nav__group {
     margin-bottom: 20px;
 }
@@ -520,10 +474,6 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 .role-nav__title {
-    /* The group headings ("Architecture roles", "Data roles") are a size up
-       from the items, as they are on the live service and in the Design
-       System's sub-navigation: 1.1875rem against 1rem. Review round 2 (T24)
-       asked for exactly this. */
     font-size: 1.1875rem;
     line-height: 1.25;
     color: #505a5f;
@@ -564,9 +514,6 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 .role-nav__item a:focus {
-    /* The Design System's link focus, asked for in review round 1 (T20/T24):
-       yellow behind, black text, and the black line along the bottom edge
-       that the yellow alone does not give. */
     outline: 3px solid transparent;
     color: #0b0c0c;
     background-color: #fd0;
@@ -593,16 +540,9 @@ main > :nth-last-child(1 of .section-cards-container) {
 .role-nav__item--active a:focus {
     color: #0b0c0c;
     background-color: #fd0;
-    /* The black bar along the bottom edge comes from the box-shadow every
-       item's focus state carries. The current item also has a 4px left
-       border, and painting that black too put a second black edge on the
-       left (review round 2, T24.4). It sits on the yellow instead, as it
-       does for every other item. */
     border-left-color: #fd0;
 }
 
-/* Welcome page role lists, which stand in for the side navigation on a narrow
-   screen and are hidden once the navigation appears. */
 .mobile-homepage {
     font-size: 1rem;
     margin: 20px 0 15px 0;
@@ -621,9 +561,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     text-decoration: underline;
 }
 
-/* Skill level definitions on the welcome page: four bars, filled up to the
-   level being described. Hidden from assistive technology, which is given the
-   wording instead. */
 .skill-definitions__container > .progress-bar__container {
     width: 50%;
     height: 11px;
@@ -633,9 +570,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     width: 5%;
 }
 
-/* The bar is an indicator, not a measure, so it takes a share of the column
-   rather than filling it. The percentages step up as the column narrows,
-   which is how the framework sizes them. */
 .progress-bar__container {
     display: table;
     table-layout: fixed;
@@ -706,8 +640,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     max-width: 38em;
 }
 
-/* "Back to top", revealed by main.js once the page has been scrolled. It stays
-   hidden without JavaScript, where the browser's own controls do the job. */
 #back-to-top {
     display: none;
     position: fixed;
@@ -748,20 +680,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     bottom: 20px;
 }
 
-/* Below the Design System's tablet width there is no gutter beside the text,
-   so a button fixed at the left edge sits on the content at every scroll
-   position -- CS32-3560 reports it over the last line of a page, and measured
-   at 320px it was over a line at any depth, on seven of eight pages. The live
-   service answers this by hiding the button under 641px, but the ticket asks
-   for both "user can read all content on page" and "user can still use the
-   back to top link", so here it leaves the fixed layer instead and takes its
-   place in the flow at the end of the content, as GOV.UK's own guidance pages
-   do on a small screen. Nothing can then be underneath it.
-
-   main.js still sets `bottom` on the element, which a statically positioned
-   box ignores, and still only reveals it once the page has been scrolled by a
-   screen -- by which point the end of the document is well below the fold, so
-   nothing visible moves when it appears. */
 @media (max-width: 40.0525em) {
     #back-to-top.back-to-top--visible {
         position: static;
@@ -776,11 +694,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     margin-right: 0.3em;
 }
 
-/* The breadcrumb stands in for the side navigation once that is hidden, so it
-   only shows at the widths where the navigation does not. The class is ours
-   rather than a GOV.UK Frontend modifier, which ships only
-   govuk-breadcrumbs--collapse-on-mobile and govuk-breadcrumbs--inverse, so it
-   carries the app prefix the Design System asks bespoke classes to use. */
 @media (min-width: 40.0625em) {
     .app-breadcrumbs--mobile-only {
         display: none;
@@ -808,8 +721,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     .role-nav {
         display: block;
         float: left;
-        /* Float shrink-wraps to the widest link; the navigation should take the
-           full width of its column so the links fill it. */
         width: 100%;
         box-sizing: border-box;
     }
@@ -823,10 +734,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
-/* A long unbroken string, such as the support email address in the welcome
-   content, otherwise pushes a horizontal scrollbar onto the page at 320px,
-   which fails WCAG 1.4.10 Reflow. Only a word that cannot fit is broken, so
-   ordinary copy is unaffected. */
 .govuk-body,
 .govuk-body-l,
 .govuk-body-m,
@@ -841,25 +748,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     overflow-wrap: break-word;
 }
 
-/* GOV.UK Frontend 6 sets .govuk-table at 19px on every screen. The live
-   service runs Frontend 5, where a table drops to 16px below 40.0625em, and
-   that is what lets its two-column skill tables fit a 320px screen without
-   breaking a word. At 19px ours did not fit, and the hyphenation that made
-   it fit split a word on most lines -- 370 of them on one role page at 320px
-   (Antony, 18 September 2026, "text should reflow to keep complete words").
-
-   Frontend 6 keeps live's sizing as an opt-in modifier, so the framework's
-   tables carry govuk-table--small-text-until-tablet and the size itself is
-   the Design System's: same breakpoint, same declarations, and a print
-   variant we would not have thought to write. Other sites on this image are
-   unaffected unless they ask for it.
-
-   What the modifier cannot reach is left here. It sets a size on the table
-   and the cells inherit it, but a .govuk-body or a .govuk-list item inside a
-   cell sets its own size and so does not. This hangs off the modifier rather
-   than off the framework because the gap is the modifier's, not ours: a
-   table that asks for small text until tablet means the paragraphs in it
-   too. */
 @media (max-width: 40.0525em) {
     .govuk-table--small-text-until-tablet .govuk-body,
     .govuk-table--small-text-until-tablet li {
@@ -868,18 +756,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
-/* A skill table is one link per row, so the rows read as a list and the
-   underlines stack up into noise — which is why the live service leaves them
-   off (T31.2). The column heading and the link colour carry the meaning at
-   rest; hover and focus put the underline back, so a pointer or the keyboard
-   still marks out what is clickable.
-
-   Both rules set text-decoration-line rather than the text-decoration
-   shorthand. The shorthand also resets text-decoration-thickness, and these
-   selectors outweigh govuk-link's, so writing it that way threw away the
-   Design System's thicker hover underline — max(3px, 0.1875rem, 0.12em) —
-   and left a hairline where the live service has a heavy one (T31.3). The
-   longhand leaves the thickness to govuk-link, which is where it belongs. */
 .govuk-table a.skill-name {
     text-decoration-line: none;
 }
@@ -889,16 +765,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     text-decoration-line: underline;
 }
 
-/* Rich text has no table feature in Wagtail, so a table reaches a content
-   page as a raw HTML embed, and an editor pasting one from a document rarely
-   brings the Design System's classes with it. Style a bare table to match
-   govuk-table so both routes look the same (T56).
-
-   Every rule below excludes tables that already carry govuk-table. Matching
-   on the element makes these selectors heavier than the Design System's own
-   single-class ones, so without the guard they would quietly outrank the
-   modifiers an editor did remember to use - govuk-table__cell--numeric would
-   lose its right alignment to the text-align below. */
 .rich-text-content table:not(.govuk-table) {
     width: 100%;
     margin-bottom: 20px;
@@ -924,11 +790,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     font-weight: 700;
 }
 
-/* That guard only reaches a table carrying govuk-table. One without it whose
-   cells still carry the modifiers - hand-written markup, or a paste that kept
-   the classes on the cells but lost the one on the table - would hand its
-   right alignment to the rule above, which the element in its selector makes
-   the heavier of the two. Name the modifiers to give it back. */
 .rich-text-content table:not(.govuk-table) th.govuk-table__header--numeric,
 .rich-text-content table:not(.govuk-table) td.govuk-table__cell--numeric {
     text-align: right;
@@ -945,19 +806,9 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
-/* Hyphenation above lowers a two-column table's intrinsic minimum enough to
-   fit 320px. A table of four columns of full sentences — the contextual
-   challenge levels — cannot be made to fit, and left alone it drags the whole
-   document sideways, which fails WCAG 1.4.10. The criterion exempts content
-   that genuinely needs two dimensions, so the table keeps its shape and
-   scrolls inside this region while the page itself stops overflowing.
-
-   The region is given tabindex="0" and a name from the table's caption where
-   it is written, so a keyboard can reach and scroll it. */
 .table-scroll {
     overflow-x: auto;
     max-width: 100%;
-    /* Momentum scrolling on iOS, and a focus ring that is not clipped. */
     -webkit-overflow-scrolling: touch;
 }
 
@@ -966,30 +817,15 @@ main > :nth-last-child(1 of .section-cards-container) {
     outline-offset: 0;
 }
 
-/* The scrolled table should not also try to shrink to the viewport, or the
-   columns collapse into unreadable slivers instead of scrolling. */
 .table-scroll > table {
     min-width: 100%;
     width: auto;
 }
 
-/* The GOV.UK attachment component, for the framework's CSV downloads
-   (CS32-3313). Rules follow govuk_publishing_components' gem-c-attachment so
-   the card looks like the ones on GOV.UK, which is the point of the AC: a
-   reader who has downloaded a spreadsheet from a department before should
-   recognise this one without reading it.
-
-   The gem is not a dependency here -- it belongs to the Rails publishing
-   stack -- so the handful of rules the component needs are written out. The
-   font sizes and the thumbnail geometry are the gem's, and the colours come
-   from the Design System's own custom properties, which govuk-frontend 6
-   defines. */
 .gem-c-attachment {
     position: relative;
 }
 
-/* The thumbnail floats, so the section has to contain it or the next
-   paragraph rides up alongside the spreadsheet icon. */
 .gem-c-attachment::after {
     content: "";
     display: block;
@@ -1029,9 +865,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
-/* The title is a heading, so it inherits the heading font weight from the
-   Design System; the gem sets it back to normal weight and sizes it between
-   govuk-heading-s and govuk-heading-m. */
 .gem-c-attachment__title {
     margin: 0 0 15px;
     font-size: 1.3125rem;
@@ -1055,29 +888,15 @@ main > :nth-last-child(1 of .section-cards-container) {
     overflow-wrap: break-word;
 }
 
-/* "CSV" is an abbreviation with a title, so the pointer says so rather than
-   underlining it as if it were a link. */
 .gem-c-attachment__abbr {
     cursor: help;
     text-decoration: none;
 }
 
-/* A download title is a filename-ish phrase and can be long, so it wraps
-   rather than pushing the card past the viewport at 320px. */
 .gem-c-attachment__link.govuk-link {
     word-break: break-word;
 }
 
-/* "Is this page useful?" -- GOV.UK's feedback prompt, at the foot of every
-   page as the live service shows it (CS32-3543). The rules are the
-   component's own from govuk_publishing_components, cut down to the parts
-   this markup uses, so the question, the two bordered buttons and the
-   thank-you match the live page.
-
-   The band itself runs the full width of the page, as the footer below it
-   does, with the content held to the page column by the width container
-   inside it. Live boxes the band to its 1100px column instead; inside our
-   narrower column that left it sitting as an island on wide screens. */
 .gem-c-feedback {
     background-color: #f4f8fb;
     color: #0b0c0c;
@@ -1085,9 +904,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     margin-top: 20px;
 }
 
-/* On live the gap above the prompt is the main wrapper's own bottom padding,
-   40px at tablet and up. Ours has none (see .govuk-main-wrapper at the top of
-   this file), so the same gap is carried here. */
 @media (min-width: 40.0625em) {
     .gem-c-feedback {
         margin-top: 40px;
@@ -1154,8 +970,6 @@ main > :nth-last-child(1 of .section-cards-container) {
 
 .gem-c-feedback__prompt-question {
     padding-bottom: 10px;
-    /* Never let the question touch the first button when the row does not
-       wrap: on a 375px screen the two fit on one line with 9px to spare. */
     margin-right: 10px;
 }
 
@@ -1191,8 +1005,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
-/* The buttons are govuk-button for its focus and press behaviour, restyled
-   as the component's bordered light buttons. */
 .gem-c-feedback__prompt-link {
     font-family: "GDS Transport", arial, sans-serif;
     -webkit-font-smoothing: antialiased;
@@ -1231,13 +1043,6 @@ main > :nth-last-child(1 of .section-cards-container) {
     color: #0b0c0c;
 }
 
-/* Suggestions under the header search box. accessible-autocomplete 3.0.1
-   (MIT, Crown Copyright) is vendored as accessible-autocomplete-3.0.1.min.js
-   and mounted with cssNamespace "app-site-search", so its default stylesheet
-   does not apply and these rules are the whole of its styling. The look
-   follows the Design System site's own search: name in link blue, kind in
-   smaller grey beneath it, colours reversed on the focused or hovered option
-   (CS32-3458's spec). */
 .app-site-search__autocomplete {
     flex: 1 1 auto;
     min-width: 0;
@@ -1288,9 +1093,6 @@ main > :nth-last-child(1 of .section-cards-container) {
 .app-site-search__option:last-child {
     border-bottom: 0;
 }
-/* Suggestion text is not underlined: an option in the list is understood to
-   be somewhere to go, and other autocompletes leave it plain. Underlining it
-   was picked up in review (CS32-3458, 11 September 2026). */
 .app-site-search__option-text {
     color: #1d70b8;
 }
