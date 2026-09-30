@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Feedback{% endblock %}
 {% block content %}
-    <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
+    <div class="govuk-width-container govuk-!-padding-bottom-6">
         <h1 class="govuk-heading-l">Feedback</h1>
         {% if not request.user.is_authenticated %}
             <p class="govuk-body">You need to sign in before you can send feedback.</p>

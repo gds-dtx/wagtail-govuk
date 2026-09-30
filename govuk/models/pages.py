@@ -32,6 +32,54 @@ from .tags import (
 )
 
 
+class HeroStyle(models.TextChoices):
+    """The five mutually-exclusive ways a page can present its hero."""
+
+    HIDDEN = "hidden", "Not visible"
+    NONE = "none", "No styling"
+    LARGE_TEXT = "large_text", "Large text"
+    STYLED = "styled", "Hero styling"
+    COMBINED = "combined", "Combined service navigation and hero styling"
+
+
+class HeroStyleMixin(models.Model):
+    """A single ``hero_style`` choice in place of the old on/off hero toggles.
+
+    Replaces the ``enable_hero_styling`` and
+    ``enable_combined_service_navigation_and_hero_styling`` booleans, whose two
+    checkboxes described mutually-exclusive modes. The properties are read by
+    ``base.html``; Django templates return empty for a missing attribute, so a
+    page without this mixin falls through to the plain-hero branch unchanged.
+    """
+
+    hero_style = models.CharField(
+        max_length=20,
+        choices=HeroStyle.choices,
+        default=HeroStyle.NONE,
+        verbose_name="Hero style",
+        help_text="How the hero (page title and intro) is shown at the top of the page.",
+    )
+
+    class Meta:
+        abstract = True
+
+    @property
+    def hero_is_large_text(self) -> bool:
+        return self.hero_style == HeroStyle.LARGE_TEXT
+
+    @property
+    def hero_is_styled(self) -> bool:
+        return self.hero_style == HeroStyle.STYLED
+
+    @property
+    def hero_is_combined(self) -> bool:
+        return self.hero_style == HeroStyle.COMBINED
+
+    @property
+    def hero_uses_masthead(self) -> bool:
+        return self.hero_style in {HeroStyle.STYLED, HeroStyle.COMBINED}
+
+
 class BaseContentPage(Page):
     """Shared hero, body and settings fields for the content-style page types.
 
@@ -41,18 +89,12 @@ class BaseContentPage(Page):
     writing the same twelve fields out. Being abstract, the base contributes its
     columns to each subclass's own table, so every page type keeps its own
     concrete columns -- exactly what Wagtail's multi-table inheritance needs.
+
+    Hero *presentation* (``hero_style``) is not here: plain ``ContentPage`` adds
+    ``HeroStyleMixin`` for it, while the framework page types render their hero
+    in-column and never expose it, so they stay without the field.
     """
 
-    enable_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable hero styling",
-        help_text="When enabled, this page uses hero styling.",
-    )
-    enable_combined_service_navigation_and_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable combined service navigation and hero styling",
-        help_text="When enabled, this page uses a combined service navigation and hero styling.",
-    )
     hero_title = models.CharField(
         max_length=255,
         blank=True,
@@ -102,7 +144,7 @@ class BaseContentPage(Page):
 
 
 
-class ContentPage(BaseContentPage):
+class ContentPage(HeroStyleMixin, BaseContentPage):
     parent_page_types = [
         "govuk.ContentPage",
         "govuk.FrameworkMainPage",
@@ -135,21 +177,11 @@ class ContentPage(BaseContentPage):
 
 
 
-class TagListingsPage(Page):
+class TagListingsPage(HeroStyleMixin, Page):
     class SortOrder(models.TextChoices):
         NEWEST_FIRST = "newest_first", "Newest first"
         ALPHABETICAL = "alphabetical_az", "Alphabetical (A-Z)"
 
-    enable_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable hero styling",
-        help_text="When enabled, this page uses hero styling.",
-    )
-    enable_combined_service_navigation_and_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable combined service navigation and hero styling",
-        help_text="When enabled, this page uses a combined service navigation and hero styling.",
-    )
     hero_title = models.CharField(
         max_length=255,
         blank=True,
@@ -252,8 +284,7 @@ class TagListingsPage(Page):
     ]
 
     settings_panels = page_settings_panels() + [
-        FieldPanel("enable_hero_styling"),
-        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("hero_style"),
         FieldPanel("show_last_updated_date"),
         FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_source_filter"),
@@ -612,17 +643,7 @@ class TagListingsPage(Page):
         return context
 
 
-class SectionPage(Page):
-    enable_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable hero styling",
-        help_text="When enabled, this page uses hero styling.",
-    )
-    enable_combined_service_navigation_and_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable combined service navigation and hero styling",
-        help_text="When enabled, this page uses a combined service navigation and hero styling.",
-    )
+class SectionPage(HeroStyleMixin, Page):
     hero_title = models.CharField(
         max_length=255,
         blank=True,
@@ -787,8 +808,7 @@ class SectionPage(Page):
     ]
 
     settings_panels = page_settings_panels() + [
-        FieldPanel("enable_hero_styling"),
-        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("hero_style"),
         FieldPanel("show_last_updated_date"),
         FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_tag_filter"),

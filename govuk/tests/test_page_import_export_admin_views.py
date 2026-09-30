@@ -68,7 +68,7 @@ class PageImportExportAdminViewTests(TestCase):
         self.content_page.show_in_menus = True
         self.content_page.seo_title = "Apply for support"
         self.content_page.search_description = "How to apply"
-        self.content_page.enable_combined_service_navigation_and_hero_styling = True
+        self.content_page.hero_style = "combined"
         self.content_page.save()
 
         group = Group.objects.create(name="Import editors")
@@ -183,8 +183,7 @@ class PageImportExportAdminViewTests(TestCase):
                         "hero_intro": "<p>Updated intro</p>",
                         "rows": [],
                         "free_text": "<p>Updated section content</p>",
-                        "enable_hero_styling": True,
-                        "enable_combined_service_navigation_and_hero_styling": False,
+                        "hero_style": "styled",
                         "enable_free_text_heading_navigation": False,
                     },
                     "tags": [],
@@ -206,8 +205,7 @@ class PageImportExportAdminViewTests(TestCase):
                                 "hero_title": "Apply for support",
                                 "hero_intro": "<p>Step by step</p>",
                                 "body": "<p>Updated content body</p>",
-                                "enable_hero_styling": False,
-                                "enable_combined_service_navigation_and_hero_styling": True,
+                                "hero_style": "combined",
                                 "enable_free_text_heading_navigation": True,
                             },
                             "tags": [
@@ -263,9 +261,7 @@ class PageImportExportAdminViewTests(TestCase):
         self.assertEqual(self.content_page.body, "<p>Updated content body</p>")
         self.assertEqual(self.content_page.seo_title, "Apply SEO")
         self.assertTrue(self.content_page.show_in_menus)
-        self.assertTrue(
-            self.content_page.enable_combined_service_navigation_and_hero_styling
-        )
+        self.assertEqual(self.content_page.hero_style, "combined")
         self.assertEqual(
             list(self.content_page.tags.values_list("slug", flat=True)),
             ["housing-benefit"],
@@ -514,8 +510,7 @@ class PageImportExportAdminViewTests(TestCase):
                         "expire_at": None,
                     },
                     "fields": {
-                        "enable_hero_styling": False,
-                        "enable_combined_service_navigation_and_hero_styling": False,
+                        "hero_style": "none",
                         "hero_title": "Tagged section",
                         "hero_intro": "<p>Intro</p>",
                         "rows": [

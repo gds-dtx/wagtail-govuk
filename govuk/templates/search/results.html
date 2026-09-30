@@ -4,7 +4,7 @@
 {% block title %}Search{% endblock %}
 {% block content %}
     <div class="section-cards-container">
-        <div class="govuk-width-container govuk-!-padding-top-6 govuk-!-padding-bottom-6">
+        <div class="govuk-width-container govuk-!-padding-bottom-6">
                 <h1 class="govuk-heading-l">Search result{{ results.paginator.count|pluralize }}</h1>
                 {% if query %}
                     {% if available_tags or available_sources %}

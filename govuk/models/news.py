@@ -31,6 +31,7 @@ from wagtail.models import (
 
 from .constants import SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES
 from .helpers import _next_unique_slug
+from .pages import HeroStyleMixin
 from .panels import page_settings_panels
 
 
@@ -155,7 +156,7 @@ class NewsArticle(
         return context
 
 
-class NewsIndexPage(RoutablePageMixin, Page):
+class NewsIndexPage(RoutablePageMixin, HeroStyleMixin, Page):
     """Lists news articles and serves each at ``article/<slug>/``.
 
     Any number may exist, placed anywhere the general containers allow. Each can
@@ -205,6 +206,7 @@ class NewsIndexPage(RoutablePageMixin, Page):
     ]
 
     settings_panels = page_settings_panels() + [
+        FieldPanel("hero_style"),
         FieldPanel("show_featured_first"),
     ]
 
