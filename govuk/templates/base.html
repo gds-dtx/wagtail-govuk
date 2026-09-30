@@ -210,22 +210,9 @@
             than inside the header, which is where the Design System puts it and
             which keeps it out of the banner landmark.
         {% endcomment %}
-        {% if breadcrumbs and not self.hero_is_combined %}
+        {% if breadcrumbs and show_breadcrumbs and not self.hero_is_combined %}
             <div class="govuk-width-container">
-                <nav class="govuk-breadcrumbs{% if breadcrumbs_mobile_only %} app-breadcrumbs--mobile-only{% endif %}"
-                     aria-label="Breadcrumb">
-                    <ol class="govuk-breadcrumbs__list">
-                        {% for item in breadcrumbs %}
-                            {% if item.is_current %}
-                                <li class="govuk-breadcrumbs__list-item" aria-current="page">{{ item.title }}</li>
-                            {% else %}
-                                <li class="govuk-breadcrumbs__list-item">
-                                    <a class="govuk-breadcrumbs__link" href="{{ item.url }}">{{ item.title }}</a>
-                                </li>
-                            {% endif %}
-                        {% endfor %}
-                    </ol>
-                </nav>
+                {% include "includes/breadcrumbs.html" %}
             </div>
         {% endif %}
         <main class="govuk-main-wrapper{% if self.hero_is_combined and not role_navigation %} govuk-!-padding-0{% elif self.hero_is_styled and not role_navigation %} govuk-!-padding-top-0{% endif %}"
@@ -239,6 +226,13 @@
                         <h1 class="govuk-visually-hidden">{{ self.hero_title|default:self.title }}</h1>
                     {% endif %}
                 {% elif self.hero_title or self.title or self.search_description or self.hero_intro %}
+                    {% if self.hero_is_combined and breadcrumbs and show_breadcrumbs %}
+                        <div class="masthead-breadcrumbs">
+                            <div class="hero">
+                                {% include "includes/breadcrumbs.html" with inverse=True %}
+                            </div>
+                        </div>
+                    {% endif %}
                     <div class="{% if self.hero_uses_masthead %}masthead {% if self.hero_is_combined %}masthead--combined{% endif %}{% endif %}">
                         <div class="hero">
                             <div class="hero__content">
