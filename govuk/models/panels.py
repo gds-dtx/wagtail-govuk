@@ -83,6 +83,7 @@ def content_settings_panels() -> list:
     navigation, tags. The hero-style dropdown is offered here only."""
     return page_settings_panels() + [
         FieldPanel("hero_style"),
+        FieldPanel("show_breadcrumbs"),
         FieldPanel("show_last_updated_date"),
         FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_free_text_heading_navigation"),

@@ -24,6 +24,19 @@
     margin-bottom: 20px;
 }
 
+.masthead-breadcrumbs {
+    background-color: var(--govuk-brand-colour, #1d70b8);
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+.masthead-breadcrumbs .hero {
+    padding: 0;
+}
+.masthead-breadcrumbs .govuk-breadcrumbs {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
 
 .masthead--combined .hero__title,
 .masthead--combined .hero__description,

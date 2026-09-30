@@ -44,6 +44,7 @@ def navigation_and_breadcrumbs(request):
             **template_context,
             "service_navigation_items": [],
             "breadcrumbs": [],
+            "show_breadcrumbs": True,
             "phase_banner_settings": None,
             "footer_settings": None,
             "customise_settings": None,
@@ -93,12 +94,16 @@ def navigation_and_breadcrumbs(request):
                 }
             )
 
+    current_page_specific = current_page.specific if current_page else None
+    show_breadcrumbs = getattr(current_page_specific, "show_breadcrumbs", True)
+
     customise_settings = CustomiseSettings.for_site(site)
 
     return {
         **template_context,
         "service_navigation_items": service_navigation_items,
         "breadcrumbs": breadcrumbs,
+        "show_breadcrumbs": show_breadcrumbs,
         "phase_banner_settings": PhaseBannerSettings.for_site(site),
         "footer_settings": FooterSettings.for_site(site),
         "customise_settings": customise_settings,

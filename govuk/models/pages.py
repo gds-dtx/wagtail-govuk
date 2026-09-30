@@ -80,6 +80,27 @@ class HeroStyleMixin(models.Model):
         return self.hero_style in {HeroStyle.STYLED, HeroStyle.COMBINED}
 
 
+class BreadcrumbMixin(models.Model):
+    """Per-page switch for the breadcrumb trail on the non-framework page types.
+
+    The trail itself is still assembled by the context processor; this only
+    decides whether it renders. On a combined service-navigation/hero page it
+    renders above the hero on the dark background (govuk-breadcrumbs--inverse);
+    everywhere else it renders in its usual place between header and main. The
+    framework page types keep their own fixed breadcrumb rules and do not use
+    this.
+    """
+
+    show_breadcrumbs = models.BooleanField(
+        default=True,
+        verbose_name="Show breadcrumbs",
+        help_text="Show the breadcrumb trail at the top of the page.",
+    )
+
+    class Meta:
+        abstract = True
+
+
 class BaseContentPage(Page):
     """Shared hero, body and settings fields for the content-style page types.
 
@@ -144,7 +165,7 @@ class BaseContentPage(Page):
 
 
 
-class ContentPage(HeroStyleMixin, BaseContentPage):
+class ContentPage(HeroStyleMixin, BreadcrumbMixin, BaseContentPage):
     parent_page_types = [
         "govuk.ContentPage",
         "govuk.FrameworkMainPage",
@@ -177,7 +198,7 @@ class ContentPage(HeroStyleMixin, BaseContentPage):
 
 
 
-class TagListingsPage(HeroStyleMixin, Page):
+class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
     class SortOrder(models.TextChoices):
         NEWEST_FIRST = "newest_first", "Newest first"
         ALPHABETICAL = "alphabetical_az", "Alphabetical (A-Z)"
@@ -285,6 +306,7 @@ class TagListingsPage(HeroStyleMixin, Page):
 
     settings_panels = page_settings_panels() + [
         FieldPanel("hero_style"),
+        FieldPanel("show_breadcrumbs"),
         FieldPanel("show_last_updated_date"),
         FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_source_filter"),
@@ -643,7 +665,7 @@ class TagListingsPage(HeroStyleMixin, Page):
         return context
 
 
-class SectionPage(HeroStyleMixin, Page):
+class SectionPage(HeroStyleMixin, BreadcrumbMixin, Page):
     hero_title = models.CharField(
         max_length=255,
         blank=True,
@@ -809,6 +831,7 @@ class SectionPage(HeroStyleMixin, Page):
 
     settings_panels = page_settings_panels() + [
         FieldPanel("hero_style"),
+        FieldPanel("show_breadcrumbs"),
         FieldPanel("show_last_updated_date"),
         FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_tag_filter"),
