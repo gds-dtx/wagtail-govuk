@@ -16,6 +16,7 @@ def robots_txt_view(request):
         lines = [
             "User-agent: *",
             "Disallow: /admin",
+            "Allow: /",
         ]
     robots_txt = "\n".join(lines) + "\n"
     return HttpResponse(robots_txt, content_type="text/plain; charset=utf-8")

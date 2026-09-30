@@ -27,7 +27,7 @@ class RobotsTxtViewTests(TestCase):
         self.assertEqual(response["Content-Type"], "text/plain; charset=utf-8")
         self.assertEqual(
             response.content.decode("utf-8"),
-            "User-agent: *\nDisallow: /admin\n",
+            "User-agent: *\nDisallow: /admin\nAllow: /\n",
         )
 
     def test_head_request_is_allowed(self):
