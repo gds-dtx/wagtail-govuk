@@ -15,14 +15,8 @@ def robots_txt_view(request):
     else:
         lines = [
             "User-agent: *",
-            "User-agent: Googlebot",
-            "User-agent: AdsBot-Google",
-            "Disallow:",
-            "\n",
-            "User-agent: *",
-            "User-agent: Googlebot",
-            "User-agent: AdsBot-Google",
-            "Allow:",
+            "Disallow: /admin",
+            "Allow: /",
         ]
     robots_txt = "\n".join(lines) + "\n"
     return HttpResponse(robots_txt, content_type="text/plain; charset=utf-8")
