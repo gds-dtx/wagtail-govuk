@@ -421,9 +421,13 @@ class NavigationChecklistTests(ReviewChecklistTestCase):
         Yellow behind, black text, and the black bar along the bottom edge."""
         focus = _rules(CSS, ".role-nav__item a:focus")
 
-        self.assertIn("background-color: #fd0", focus)
-        self.assertIn("color: #0b0c0c", focus)
-        self.assertIn("box-shadow: 0 -2px #fd0, 0 4px #0b0c0c", focus)
+        self.assertIn("background-color: var(--govuk-focus-colour, #fd0)", focus)
+        self.assertIn("color: var(--govuk-text-colour, #0b0c0c)", focus)
+        self.assertIn(
+            "box-shadow: 0 -2px var(--govuk-focus-colour, #fd0), "
+            "0 4px var(--govuk-text-colour, #0b0c0c)",
+            focus,
+        )
 
     def test_t24_4_the_current_items_focus_state_has_no_black_left_edge(self):
         """ "When focusing on the menu item for the current page, the focus state
@@ -432,8 +436,8 @@ class NavigationChecklistTests(ReviewChecklistTestCase):
         the yellow, as every other item's does; the bottom bar is the shadow."""
         active_focus = _rules(CSS, ".role-nav__item--active a:focus")
 
-        self.assertIn("border-left-color: #fd0", active_focus)
-        self.assertNotIn("border-color: #0b0c0c", active_focus)
+        self.assertIn("border-left-color: var(--govuk-focus-colour, #fd0)", active_focus)
+        self.assertNotIn("border-color: var(--govuk-text-colour, #0b0c0c)", active_focus)
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
@@ -460,7 +464,11 @@ class StylingChecklistTests(ReviewChecklistTestCase):
         System's own rule is what the bundle ships, so this is the local
         overrides not undoing it."""
         for selector in (".role-nav__item a:focus", ".role-nav__item--active a:focus"):
-            self.assertIn("background-color: #fd0", _rules(CSS, selector), selector)
+            self.assertIn(
+                "background-color: var(--govuk-focus-colour, #fd0)",
+                _rules(CSS, selector),
+                selector,
+            )
 
     def test_t22_a_skill_level_bar_is_a_fixed_size_not_the_cell_width(self):
         """ "The 'skill level indicator' bars need to be smaller, and a fixed
