@@ -8,6 +8,7 @@ from govuk.models import (
     NewsIndexPage,
     SectionPage,
 )
+from govuk.models.pages import HeroStyle
 
 
 def _feature_flags(*, news_enabled: bool) -> dict[str, bool]:
@@ -122,3 +123,44 @@ class NewsIndexPageTests(TestCase):
     def test_the_route_404s_without_the_feature(self):
         response = self.client.get(_article_url(self.index, self.published))
         self.assertEqual(response.status_code, 404)
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags(news_enabled=True))
+class NewsArticleLayoutTests(TestCase):
+    """An article has its own plain large-text hero, so it must not inherit the
+    index page's masthead chrome (which would flush the top with no band to fill
+    it). Breadcrumbs still follow the index page's show_breadcrumbs switch."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+        self.article = NewsArticle.objects.create(
+            title="Published article",
+            standfirst="<p>The lead sentence.</p>",
+            body="<p>Body copy.</p>",
+        )
+
+    def _article_under(self, *, slug, **index_kwargs):
+        index = _make_index(self.root_page, slug=slug, title=slug, **index_kwargs)
+        return self.client.get(_article_url(index, self.article))
+
+    def test_a_styled_index_leaves_the_article_top_unflushed(self):
+        response = self._article_under(slug="styled", hero_style=HeroStyle.STYLED)
+        self.assertContains(response, "hero__title")  # the plain hero still renders
+        self.assertNotContains(response, "masthead")
+        self.assertNotContains(response, "govuk-!-padding-top-0")
+
+    def test_a_combined_index_does_not_flush_or_invert_the_article(self):
+        response = self._article_under(slug="combined", hero_style=HeroStyle.COMBINED)
+        self.assertContains(response, "hero__title")
+        self.assertNotContains(response, "masthead--combined")
+        self.assertNotContains(response, "govuk-service-navigation--inverse")
+        self.assertNotContains(response, "govuk-!-padding-0")
+
+    def test_article_breadcrumbs_show_even_when_the_index_disables_them(self):
+        shown = self._article_under(slug="with-crumbs", show_breadcrumbs=True)
+        self.assertContains(shown, "govuk-breadcrumbs")
+
+        # The article keeps its own trail even if the index page hides breadcrumbs.
+        still_shown = self._article_under(slug="no-crumbs", show_breadcrumbs=False)
+        self.assertContains(still_shown, "govuk-breadcrumbs")

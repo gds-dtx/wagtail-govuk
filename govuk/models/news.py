@@ -31,7 +31,7 @@ from wagtail.models import (
 
 from .constants import SKILLS_AND_ROLES_BODY_RICH_TEXT_FEATURES
 from .helpers import _next_unique_slug
-from .pages import BreadcrumbMixin, HeroStyleMixin
+from .pages import BreadcrumbMixin, HeroStyle, HeroStyleMixin
 from .panels import page_settings_panels
 
 
@@ -263,6 +263,10 @@ class NewsIndexPage(RoutablePageMixin, HeroStyleMixin, BreadcrumbMixin, Page):
             "article": article,
             "page_heading": article.title,
             "breadcrumbs": breadcrumbs,
+            # An article always carries its own trail (Home > index > article),
+            # whatever the index page's own breadcrumb switch is set to. This
+            # overrides the context processor's value for this render.
+            "show_breadcrumbs": True,
         }
 
     def get_context(self, request, *args, **kwargs):
@@ -287,6 +291,7 @@ class NewsIndexPage(RoutablePageMixin, HeroStyleMixin, BreadcrumbMixin, Page):
         article = self.listed_articles().filter(slug=slug).first()
         if article is None:
             raise Http404
+        self.hero_style = HeroStyle.NONE
         return self.render(
             request,
             template="govuk/news_article.html",
