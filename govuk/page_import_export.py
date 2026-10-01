@@ -1875,6 +1875,33 @@ def _apply_page_settings(page: Page, settings_data: dict):
     page.draft_title = page.draft_title or page.title
 
 
+def _normalise_legacy_hero_fields(page: Page, fields_data: dict) -> dict:
+    """Map the old hero-styling booleans onto ``hero_style`` for older exports.
+
+    Exports taken before hero_style replaced ``enable_hero_styling`` /
+    ``enable_combined_service_navigation_and_hero_styling`` carry the two boolean
+    keys, which no longer resolve to a field (and would be dropped). Translate
+    them so an older export still imports with its hero styling intact.
+    """
+    try:
+        page._meta.get_field("hero_style")
+    except FieldDoesNotExist:
+        return fields_data
+    if "hero_style" in fields_data:
+        return fields_data
+    styled = "enable_hero_styling"
+    combined = "enable_combined_service_navigation_and_hero_styling"
+    if styled not in fields_data and combined not in fields_data:
+        return fields_data
+    if fields_data.get(combined):
+        style = "combined"
+    elif fields_data.get(styled):
+        style = "styled"
+    else:
+        style = "none"
+    return {**fields_data, "hero_style": style}
+
+
 def _apply_page_fields(
     page: Page,
     fields_data,
@@ -1884,6 +1911,8 @@ def _apply_page_fields(
 ):
     if not isinstance(fields_data, dict):
         return
+
+    fields_data = _normalise_legacy_hero_fields(page, fields_data)
 
     for field_name, raw_value in fields_data.items():
         try:

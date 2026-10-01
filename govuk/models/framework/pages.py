@@ -758,16 +758,6 @@ class FrameworkSkillsPage(Page):
         "govuk.TagListingsPage",
         "govuk.NewsIndexPage",
     ]
-    enable_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable hero styling",
-        help_text="When enabled, this page uses hero styling.",
-    )
-    enable_combined_service_navigation_and_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable combined service navigation and hero styling",
-        help_text="When enabled, this page uses a combined service navigation and hero styling.",
-    )
     hero_title = models.CharField(
         max_length=255,
         blank=True,
