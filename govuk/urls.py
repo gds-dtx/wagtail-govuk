@@ -16,6 +16,7 @@ from govuk.api import (
     api_root_view,
     api_router,
 )
+from govuk.view_legacy_skill_urls import legacy_skill_url_view
 from govuk.view_robots import robots_txt_view
 from govuk.view_securitytxt import security_txt_view
 from govuk.views import (
@@ -86,6 +87,11 @@ urlpatterns = [
     path("accounts/profile/", profile_view, name="account_profile"),
     path("accounts/logout/", account_logout_redirect, name="account_logout"),
     path("accounts/", include("allauth.urls")),
+    # The live service's skill addresses, redirected here path for path by the
+    # old domain. Both shapes, so the bare one is answered in a single hop
+    # rather than via APPEND_SLASH.
+    path("skill/<slug:slug>", legacy_skill_url_view),
+    path("skill/<slug:slug>/", legacy_skill_url_view, name="legacy_skill_url"),
     path("search/", search_view, name="search"),
     path("search/suggest/", search_suggest_view, name="search_suggest"),
     # Before the Wagtail catch-all: /download/ itself is a page, and these are
