@@ -19,11 +19,11 @@ dependencies = [
   "wagtail==8.0",
   "gunicorn==26.2.0",
   "whitenoise==6.12.0",
-  "django-allauth[socialaccount,openid]==65.19.4",
+  "django-allauth[socialaccount,openid]==65.19.7",
   "djangorestframework==3.18.1",
   # Verifies OIDC ID tokens against the issuer's JWKS. [crypto] pulls in
   # cryptography for the RS256 signature check.
-  "pyjwt[crypto]==2.15.0",
+  "pyjwt[crypto]==2.15.1",
   "psycopg2-binary==2.9.13",
   # S3 backend for user-uploaded media. ECS task storage is ephemeral and
   # per-task, so media must live in a shared, durable bucket rather than on
@@ -35,7 +35,7 @@ dependencies = [
 [dependency-groups]
 # Not needed to run the site, only to check it. CI installs this group.
 dev = [
-  "ruff==0.16.9",
+  "ruff==0.16.10",
 ]
 
 [tool.ruff]
