@@ -315,8 +315,7 @@ class FrameworkPagesOnASiteWithoutTheFrameworkTests(TestCase):
     creates any page whose model it can resolve, so a framework export landed
     on another service leaves them in its tree. The skills index already 404ed
     there and stayed out of the generic listings; the main page and the
-    framework content pages served and were listed. Now all three behave alike,
-    which is what docs/platform-boundaries.md promises.
+    framework content pages served and were listed. Now all three behave alike.
     """
 
     def setUp(self):

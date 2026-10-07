@@ -118,8 +118,8 @@ def further_resources_group(
     which is what a newly built site gets.
 
     It used to append the unlisted children to the configured ones instead, so
-    that a new page could never silently vanish. Antony found on 10 Sep 2026
-    that this makes the setting unable to express live's menu at all: picking
+    that a new page could never silently vanish. That made the setting unable
+    to express live's menu at all: picking
     the six pages live shows still left the other eight on the page, and the
     only way to get live's menu was to list all fourteen and untick eight.
     Choosing pages has to mean choosing pages.

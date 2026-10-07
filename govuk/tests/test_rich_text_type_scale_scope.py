@@ -3,7 +3,7 @@
 main.js runs on every page of every service this image serves, and every
 service renders the same ``.rich-text-content``. Giving an editor's headings,
 paragraphs and lists the Design System's sizes is the Capability Framework's
-house style (review round 2, T18 and T57); it is not a change other services
+house style; it is not a change other services
 asked for. base.html marks the body on a framework instance and the script
 reads the mark, so this is the boundary those two halves meet at.
 """
