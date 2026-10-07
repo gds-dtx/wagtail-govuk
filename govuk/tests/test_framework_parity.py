@@ -55,8 +55,6 @@ FRONTEND_CSS = (STATIC / "govuk-frontend-6.0.0.min.css").read_text()
 def _feature_flags() -> dict[str, bool]:
     return {
         "SKILLS": True,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

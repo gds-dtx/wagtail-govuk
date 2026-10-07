@@ -17,8 +17,6 @@ from govuk.models import ContentPage
 def _flags(*, skills: bool) -> dict[str, bool]:
     return {
         "SKILLS": skills,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

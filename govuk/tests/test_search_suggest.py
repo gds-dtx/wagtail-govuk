@@ -31,8 +31,6 @@ STATIC = Path(__file__).resolve().parents[1] / "static"
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
     return {
         "SKILLS": skills_enabled,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

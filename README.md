@@ -66,7 +66,7 @@ Optional:
 - `OIDC_JWKS_URL`: JWKS URL for API bearer token verification. Defaults to `https://sso.service.security.gov.uk/.well-known/jwks.json`.
 - `OIDC_ISSUER`: Expected JWT issuer for API bearer token verification. Defaults to `https://sso.service.security.gov.uk`.
 - `OIDC_TOKEN_AUDIENCE` / `OIDC_TOKEN_AUDIENCES`: Expected JWT audience, or a comma-separated list of them, for API bearer token verification. Defaults to `OIDC_CLIENT_ID`.
-- `FEATURE_SKILLS`, `FEATURE_NEWS`, `FEATURE_FEEDBACK`, `FEATURE_ORGANISATIONS`, `FEATURE_PEOPLE_FINDER`: Feature flags, all off by default. See [Feature flags](#feature-flags).
+- `FEATURE_SKILLS`, `FEATURE_NEWS`, `FEATURE_FEEDBACK`: Feature flags, all off by default. See [Feature flags](#feature-flags).
 - `SCHEDULED_PUBLISHING`: Defaults to `false`, which hides the go-live and expiry fields in the admin. Turn it on only once something runs `manage.py publish_scheduled` on a timer.
 - `MAINTENANCE_MODE`: Emergency close of the whole site behind the 503 page, for everyone including editors. `MAINTENANCE_RESUME_TEXT` sets the "back at" wording and `MAINTENANCE_RETRY_AFTER` the `Retry-After` header in seconds (defaults to `3600`). Planned maintenance is the **Maintenance mode** site setting instead.
 - `MEDIA_S3_BUCKET`: Store uploaded images and documents in this S3 bucket instead of on the local filesystem. `MEDIA_S3_REGION`, `MEDIA_S3_LOCATION` (key prefix, defaults to `media`), `MEDIA_S3_CUSTOM_DOMAIN` and `MEDIA_S3_QUERYSTRING_AUTH` configure it further. Credentials come from the task role.
@@ -86,9 +86,6 @@ Read once at startup from the environment into `settings.FEATURE_FLAGS`
 | `SKILLS` | `FEATURE_SKILLS` | The Capability Framework: roles, skills, changelog, its page types, wording and sidebar settings, and the CSV downloads |
 | `NEWS` | `FEATURE_NEWS` | News articles and the news index page type |
 | `FEEDBACK` | `FEATURE_FEEDBACK` | The built-in feedback form at `/feedback`, and its snippet listing. When on, it shadows any CMS page at `/feedback` |
-| `ORGANISATIONS` | `FEATURE_ORGANISATIONS` | Nothing. No code reads it |
-| `PEOPLE_FINDER` | `FEATURE_PEOPLE_FINDER` | Nothing. No code reads it |
-
 A flag gates structure only. With it off, the feature's page
 types cannot be created, return 404 if the page import puts one in the tree,
 and are left out of search, the pages API, the service navigation and tag

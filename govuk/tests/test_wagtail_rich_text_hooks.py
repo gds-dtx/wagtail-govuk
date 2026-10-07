@@ -7,8 +7,6 @@ from django.test import SimpleTestCase, override_settings
 
 def _feature_flags() -> dict[str, bool]:
     return {
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 
