@@ -1,7 +1,6 @@
-"""CSV downloads shown as the GOV.UK attachment component -- CS32-3313.
+"""CSV downloads shown as the GOV.UK attachment component.
 
-The acceptance criterion is that "attachments follow GOV.UK's attachment
-component". The live service does not: its download page is three bare links
+The live service does not use the component: its download page is three bare links
 to S3 files rebuilt on a schedule, which were 16 days stale when this was
 written. So these tests are against the component as GOV.UK defines it rather
 than against what is there now.

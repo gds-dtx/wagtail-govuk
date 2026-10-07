@@ -425,7 +425,7 @@ function setPageFeedback() {
 function setSiteSearchAutocomplete() {
   // The header search box suggests roles, skills and pages as the reader
   // types, the way the live service's box does, using GOV.UK's accessible
-  // autocomplete (CS32-3458). Without JavaScript, or if the library did not
+  // autocomplete. Without JavaScript, or if the library did not
   // load, the box is the plain form it started as and Enter goes to the
   // results page. With it, Enter takes the highlighted suggestion; when
   // there are no suggestions the list is not shown, so Enter still submits
@@ -494,8 +494,7 @@ function setSiteSearchAutocomplete() {
   // On the results page the box starts with the query in it, and the library
   // offers that string back as the one suggestion until the reader types: its
   // option list is seeded with defaultValue. It is a string where every
-  // fetched suggestion is an object, so it rendered as "undefined" and Enter
-  // on it did nothing (CS32-3458, 11 September 2026). It is plain text, and
+  // fetched suggestion is an object. It is plain text, and
   // confirming it is a search for it.
   function itemText(item) {
     if (typeof item === "string") {
@@ -546,7 +545,7 @@ function setSiteSearchAutocomplete() {
       // The query offered back is a string, and .link on a string is the
       // native String.prototype.link method, not undefined -- so a string has
       // to be caught before the object branch, or confirming it navigates to
-      // that method's source text (CS32-3458, 14 September 2026).
+      // that method's source text.
       if (typeof item === "string") {
         // Search for it, as Enter in the plain box does.
         if (form) {

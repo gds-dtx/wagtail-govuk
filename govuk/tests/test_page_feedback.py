@@ -1,6 +1,6 @@
-"""The "Is this page useful?" prompt at the foot of every page -- CS32-3543.
+"""The "Is this page useful?" prompt at the foot of every page.
 
-The ticket asks for three things: that it appears and behaves as it does on
+It has to do three things: that it appears and behaves as it does on
 the live service, that it is accessible, and that answers are recorded
 server-side. The first two are the template and the form; the third is the
 view, which writes one log line per answer and stores it as a

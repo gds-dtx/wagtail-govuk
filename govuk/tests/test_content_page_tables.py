@@ -1,10 +1,9 @@
-"""Tables on a simple content page -- CS32-3527.
+"""Tables on a simple content page.
 
-"Tables can be added to the page" was the last unticked box on that ticket
-while everything around it was done. Wagtail's rich text has no table feature,
-so the only route was hand-written HTML in a raw HTML embed, which is not a
-formatting option a content designer has. ContentPage.body_blocks gives them a
-grid instead.
+Wagtail's rich text has no table feature, so without a block the only route
+would be hand-written HTML in a raw HTML embed, which is not a formatting
+option a content designer has. ContentPage.body_blocks gives them a grid
+instead.
 
 Two things are checked beyond "a table appears". It has to be a GOV.UK table,
 because the rest of the service is, and it has to scroll rather than drag the
