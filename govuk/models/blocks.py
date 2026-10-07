@@ -46,9 +46,7 @@ class GovukTableBlock(TableBlock):
 
     Wagtail's rich text has no table feature, so before this the only way to
     put one on a content page was to hand-write the HTML into a raw HTML
-    embed. That is not a formatting option a content designer has, which is
-    what left "tables can be added to the page" as the last unticked box on
-    CS32-3527 while everything around it was done.
+    embed. That is not a formatting option a content designer has.
 
     Cells hold text, not HTML: the renderer stays on Wagtail's default, so
     whatever is typed is escaped. A table is a place a paste from a document

@@ -28,6 +28,7 @@ from govuk.models import (
     FrameworkContentPage,
     FrameworkMainPage,
     FrameworkSkillsPage,
+    NewsIndexPage,
     SectionPage,
     TagListingsPage,
     page_settings_panels,
@@ -42,6 +43,7 @@ PAGE_MODELS = (
     FrameworkSkillsPage,
     TagListingsPage,
     SectionPage,
+    NewsIndexPage,
 )
 
 
@@ -76,7 +78,7 @@ class PageSettingsPanelsTests(TestCase):
 
 
 class EveryPageModelTests(TestCase):
-    """All five of them. A model that kept the panel would still take dates."""
+    """Every one of them. A model that kept the panel would still take dates."""
 
     def test_no_page_model_offers_scheduling(self):
         for model in PAGE_MODELS:

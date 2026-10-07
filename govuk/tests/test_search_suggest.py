@@ -1,9 +1,9 @@
-"""The header search box suggests as the reader types -- CS32-3458.
+"""The header search box suggests as the reader types.
 
 The live service's box is an autocomplete fed by a JSON list of roles and
-skills; its specification (17 August 2026) asks for the same here, with the
-supporting pages added, ranked roles, then skills, then pages, each linking
-where the results page would send the reader. These tests are the endpoint
+skills. This one is the same, with the supporting pages added, ranked roles,
+then skills, then pages, each linking where the results page would send the
+reader. These tests are the endpoint
 that feeds it, and that the box in every page's header knows where it is.
 """
 
@@ -31,8 +31,6 @@ STATIC = Path(__file__).resolve().parents[1] / "static"
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
     return {
         "SKILLS": skills_enabled,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 
@@ -183,7 +181,7 @@ class SearchSuggestWithoutTheFrameworkTests(TestCase):
 
 
 class SuggestionPresentationTests(SimpleTestCase):
-    """Antony's review notes of 11 September 2026 on CS32-3458.
+    """How the suggestion list looks and reads.
 
     The box is the library's; these read the two files that shape it, since
     nothing here runs a browser.

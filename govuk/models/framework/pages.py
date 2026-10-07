@@ -608,6 +608,7 @@ class FrameworkMainPage(
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.NewsIndexPage",
     ]
     # The framework page types render the same page as the old framework
     # content page did; only the role route swaps in the role template.
@@ -695,6 +696,7 @@ class FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage):
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.NewsIndexPage",
     ]
     template = "govuk/content_page.html"
     tags = ClusterTaggableManager(through="govuk.FrameworkContentPageTag", blank=True)
@@ -754,17 +756,8 @@ class FrameworkSkillsPage(Page):
         "govuk.ContentPage",
         "govuk.SectionPage",
         "govuk.TagListingsPage",
+        "govuk.NewsIndexPage",
     ]
-    enable_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable hero styling",
-        help_text="When enabled, this page uses hero styling.",
-    )
-    enable_combined_service_navigation_and_hero_styling = models.BooleanField(
-        default=False,
-        verbose_name="Enable combined service navigation and hero styling",
-        help_text="When enabled, this page uses a combined service navigation and hero styling.",
-    )
     hero_title = models.CharField(
         max_length=255,
         blank=True,

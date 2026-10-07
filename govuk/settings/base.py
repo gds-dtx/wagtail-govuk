@@ -229,7 +229,7 @@ INSTALLED_APPS = [
     "wagtail.contrib.settings",
     # The grid editor behind ContentPage.body_blocks. Without it a table
     # reaches a content page only as hand-written HTML, which is not a
-    # formatting option a content designer has (CS32-3527).
+    # formatting option a content designer has.
     "wagtail.contrib.table_block",
     "wagtail.embeds",
     "wagtail.sites",
@@ -514,9 +514,8 @@ LOGGING = {
 
 FEATURE_FLAGS = {
     "SKILLS": _bool_env("FEATURE_SKILLS"),
-    "ORGANISATIONS": _bool_env("FEATURE_ORGANISATIONS"),
-    "PEOPLE_FINDER": _bool_env("FEATURE_PEOPLE_FINDER"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
+    "NEWS": _bool_env("FEATURE_NEWS"),
 }
 
 # Wagtail's go-live and expiry dates only fire if something runs the

@@ -26,8 +26,6 @@ from govuk.page_import_export import PAGE_EXPORT_FORMAT, import_pages_from_paylo
 def _feature_flags() -> dict[str, bool]:
     return {
         "SKILLS": True,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

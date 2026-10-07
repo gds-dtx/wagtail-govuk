@@ -1,33 +1,22 @@
-"""Antony's first review of the migration, 11 August to 7 September 2026.
+"""The Capability Framework working as the live service does.
 
-The review compared this build against the live DDaT Capability Framework page
-by page and asked, for 48 numbered items, for "the exact same functionality"
-unless a difference was stated. Every item he marked "Fix needed" was fixed
-somewhere between PRs #44 and #88, but the fixes are scattered across
-templates, CSS and the JavaScript bundle, and the re-architecture in #72
-rewrote most of those templates. A fix nobody is testing is a fix the next
-rewrite silently drops.
+The framework is meant to behave as the live DDaT Capability Framework does,
+page by page, unless a difference is deliberate. What makes it match is spread
+across templates, CSS and the JavaScript bundle, so a rewrite of any of them
+could drop part of it without anything failing. These tests check each part
+that can be decided from what the site renders or ships.
 
-So this module is the checklist itself, executable: one test per item that can
-be decided from what the site renders or ships, named after the item and
-quoting what was asked for.
-
-What is asserted elsewhere rather than here, so that the review's rows are all
-accounted for: the feedback journey and the record it writes (T46, T47) in
+Covered elsewhere: the feedback journey and the record it writes in
 ``test_page_feedback.py`` and ``test_feedback_view.py``; who may edit which
-snippet (T50 to T55) in ``test_editor_snippet_permissions.py``; the CSV
-contents and sizes behind the download page (T49) in
-``test_csv_attachments.py`` and ``test_framework_download.py``; the search
-endpoint's ranking and shape (T42 to T44) in ``test_search_suggest.py`` and
-``test_search_backend.py``; tables (T19) in ``test_content_page_tables.py``;
-and the automated part of WCAG (T35) by axe-core against a running instance,
-which no unit test can stand in for.
+snippet in ``test_editor_snippet_permissions.py``; the CSV contents and sizes
+behind the download page in ``test_csv_attachments.py`` and
+``test_framework_download.py``; the search endpoint's ranking and shape in
+``test_search_suggest.py`` and ``test_search_backend.py``; tables an editor
+builds in ``test_content_page_tables.py``; and the automated part of WCAG by
+axe-core against a running instance, which no unit test can stand in for.
 
-What is not asserted at all, because it is a judgement about content or a
-question the review left with the designer rather than anything the code
-decides: T11, T13, T39 and T45 (wording that matches live, checked by reading
-both), T40 (withdrawn -- the fallback is now editorial), and the three
-designer questions under T11.
+Not asserted at all: wording that matches live, which is content rather than
+anything the code decides.
 """
 
 from __future__ import annotations
@@ -66,8 +55,6 @@ FRONTEND_CSS = (STATIC / "govuk-frontend-6.0.0.min.css").read_text()
 def _feature_flags() -> dict[str, bool]:
     return {
         "SKILLS": True,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 
@@ -112,7 +99,7 @@ def _strip_tags(html: str) -> str:
     return " ".join(re.sub(r"<[^>]+>", " ", html).split())
 
 
-class ReviewChecklistTestCase(TestCase):
+class FrameworkParityTestCase(TestCase):
     """One framework with two roles, two skills and a supporting page."""
 
     def setUp(self):
@@ -168,12 +155,10 @@ class ReviewChecklistTestCase(TestCase):
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
-class RolePageChecklistTests(ReviewChecklistTestCase):
-    """T12 and T14 to T17, T30 to T32: what a role page has to show."""
+class RolePageTests(FrameworkParityTestCase):
+    """What a role page has to show."""
 
-    def test_t14_1_the_role_lead_says_what_the_role_does(self):
-        """ "Find out what a {role} in government does and the skills you need
-        to do the role at each level.\""""
+    def test_the_role_lead_says_what_the_role_does(self):
         html = self.role_html(self.analyst)
 
         self.assertIn(
@@ -182,26 +167,24 @@ class RolePageChecklistTests(ReviewChecklistTestCase):
             html,
         )
 
-    def test_t14_2_the_role_levels_intro_counts_the_levels(self):
-        """ "There are 4 [role] role levels, from [first] to [last]." -- the
-        hardcoded sentence the review found missing from the template."""
+    def test_the_role_levels_intro_counts_the_levels(self):
+        """ "There are {n} {role} role levels, from {first} to {last}." """
         html = self.role_html(self.analyst)
 
         self.assertIn("There are 2 data analyst role levels", html)
         self.assertIn("from associate data analyst to lead data analyst", html)
 
-    def test_t14_3_an_scs_role_introduces_its_skills_table(self):
-        """The sentence above an SCS role's skills, missing at review time."""
+    def test_an_scs_role_introduces_its_skills_table(self):
         html = self.role_html(self.chief)
 
         self.assertIn("context and challenges in your organisation", html)
 
-    def test_t15_a_role_lists_the_skills_it_shares_with_others(self):
+    def test_a_role_lists_the_skills_it_shares_with_others(self):
         html = self.role_html(self.analyst)
 
         self.assertIn("Data visualisation", html)
 
-    def test_t16_1_an_scs_role_names_the_roles_that_lead_to_it(self):
+    def test_an_scs_role_names_the_roles_that_lead_to_it(self):
         """ "Roles that could lead to {SCS role name}\"."""
         self.chief.roles_that_could_lead_here = [
             {"type": "role", "value": self.analyst.pk}
@@ -213,7 +196,7 @@ class RolePageChecklistTests(ReviewChecklistTestCase):
         self.assertIn("Roles that could lead to chief data officer", html)
         self.assertIn(role_url(self.main_page, self.analyst), html)
 
-    def test_t16_2_a_role_names_the_scs_roles_it_could_lead_to(self):
+    def test_a_role_names_the_scs_roles_it_could_lead_to(self):
         """ "Senior Civil Service roles that {role name} could lead to\"."""
         self.chief.roles_that_could_lead_here = [
             {"type": "role", "value": self.analyst.pk}
@@ -227,9 +210,8 @@ class RolePageChecklistTests(ReviewChecklistTestCase):
         )
         self.assertIn(role_url(self.main_page, self.chief), html)
 
-    def test_t17_changelog_entries_are_a_size_down_from_the_role_content(self):
-        """ "Text size for changelog entries should be smaller, using
-        'class=govuk-body-s', to help differentiate from main role content\"."""
+    def test_changelog_entries_are_a_size_down_from_the_role_content(self):
+        """govuk-body-s, so the changelog reads as apart from the role."""
         GovukChangelogEntry.objects.create(
             role=self.analyst,
             date=date(2026, 8, 28),
@@ -243,7 +225,7 @@ class RolePageChecklistTests(ReviewChecklistTestCase):
         self.assertIn("Updated the levels.", block.group(1))
         self.assertIn("A bullet.", block.group(1))
 
-    def test_t30_the_contents_links_point_at_anchors_that_exist(self):
+    def test_the_contents_links_point_at_anchors_that_exist(self):
         html = self.role_html(self.analyst)
         anchors = set(re.findall(r'id="([^"]+)"', html))
         contents = re.findall(r'href="#([^"]+)"', html)
@@ -255,9 +237,9 @@ class RolePageChecklistTests(ReviewChecklistTestCase):
             "every contents link lands on an id that is on the page",
         )
 
-    def test_t31_1_skill_names_are_links_on_a_role_that_is_not_scs(self):
-        """ "Skill names should be clickable - currently only SCS roles have
-        clickable skills\"."""
+    def test_skill_names_are_links_on_a_role_that_is_not_scs(self):
+        """Every role's skill names link to Skills A to Z, not only an SCS
+        role's."""
         html = self.role_html(self.analyst)
 
         self.assertIn(
@@ -266,10 +248,9 @@ class RolePageChecklistTests(ReviewChecklistTestCase):
             "the skill in a role level's table deep-links to Skills A to Z",
         )
 
-    def test_t31_2_a_link_in_a_table_is_not_underlined_until_it_is_used(self):
-        """ "Links in tables (skill names and role names) should not be
-        underlined when not focused or clicked", with a thicker underline on
-        hover."""
+    def test_a_link_in_a_table_is_not_underlined_until_it_is_used(self):
+        """Skill and role names in a table are not underlined until hovered
+        or focused, and hovering gives a thicker underline."""
         self.assertIn(
             "text-decoration-line: none", _rules(CSS, ".govuk-table a.skill-name")
         )
@@ -278,7 +259,7 @@ class RolePageChecklistTests(ReviewChecklistTestCase):
             _rules(CSS, ".govuk-table a.skill-name:hover"),
         )
 
-    def test_t32_see_all_updates_jumps_to_the_updates_at_the_foot(self):
+    def test_see_all_updates_jumps_to_the_updates_at_the_foot(self):
         GovukChangelogEntry.objects.create(
             role=self.analyst, date=date(2026, 8, 28), note="<p>Updated.</p>"
         )
@@ -289,20 +270,20 @@ class RolePageChecklistTests(ReviewChecklistTestCase):
         self.assertIsNotNone(link, "the role page links to its own updates")
         self.assertIn(f'id="{link.group(1)}"', html)
 
-    def test_t32_a_role_never_updated_has_no_see_all_updates_link(self):
+    def test_a_role_never_updated_has_no_see_all_updates_link(self):
         html = self.role_html(self.analyst)
 
         self.assertNotIn("See all updates", html)
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
-class NavigationChecklistTests(ReviewChecklistTestCase):
-    """T24 to T29, T34 and T41: the side navigation and what replaces it."""
+class NavigationTests(FrameworkParityTestCase):
+    """The side navigation and what replaces it on a small screen."""
 
-    def test_t25_the_security_architect_link_is_the_role_not_security_txt(self):
-        """The reviewer found this link going to a security.txt disclosure page.
-        That was an edge redirect in front of the service, but the navigation
-        the application renders has to be right for fixing the edge to help."""
+    def test_the_security_architect_link_is_the_role_not_security_txt(self):
+        """An edge redirect in front of the service has sent this link to a
+        security.txt disclosure page. The navigation the application renders
+        has to be right for fixing the edge to help."""
         GovukRole.objects.create(title="Security architect", family="Architecture")
 
         html = self.role_html(self.analyst)
@@ -310,7 +291,7 @@ class NavigationChecklistTests(ReviewChecklistTestCase):
         self.assertIn(role_url(self.main_page, "security-architect"), html)
         self.assertNotIn("security.txt", html)
 
-    def test_t26_the_further_resources_group_links_the_supporting_pages(self):
+    def test_the_further_resources_group_links_the_supporting_pages(self):
         page = self.main_page.add_child(
             instance=FrameworkContentPage(title="Job grades", slug="job-grades")
         )
@@ -323,14 +304,14 @@ class NavigationChecklistTests(ReviewChecklistTestCase):
         self.assertIn(page.url, group.group(1))
         self.assertIn(self.skills_page.url, group.group(1))
 
-    def test_t27_the_home_link_in_the_navigation_points_at_the_home_page(self):
+    def test_the_home_link_in_the_navigation_points_at_the_home_page(self):
         html = self.role_html(self.analyst)
         group = re.search(r'aria-label="Home">(.*?)</nav>', html, re.S)
 
         self.assertIsNotNone(group, "the navigation opens with a Home group")
         self.assertIn(f'href="{self.main_page.url}"', group.group(1))
 
-    def test_t28_1_a_role_reads_home_then_family_then_role_on_a_small_screen(self):
+    def test_a_role_reads_home_then_family_then_role_on_a_small_screen(self):
         """ "Home > {Role family} > {Role name}", the family linking to its
         heading on the home page. Different from the live service on purpose:
         it replaces the navigation the small screen hides."""
@@ -348,7 +329,7 @@ class NavigationChecklistTests(ReviewChecklistTestCase):
         home_url = self.site.root_page.get_url()
         self.assertIn(f'href="{home_url}#data-roles"', crumbs.group(1))
 
-    def test_t28_2_a_supporting_page_reads_home_then_its_own_title(self):
+    def test_a_supporting_page_reads_home_then_its_own_title(self):
         page = self.main_page.add_child(
             instance=FrameworkContentPage(title="Job grades", slug="job-grades")
         )
@@ -366,14 +347,14 @@ class NavigationChecklistTests(ReviewChecklistTestCase):
         ]
         self.assertEqual(titles, ["Home", "Job grades"])
 
-    def test_t28_3_the_breadcrumbs_are_hidden_where_the_navigation_shows(self):
+    def test_the_breadcrumbs_are_hidden_where_the_navigation_shows(self):
         """They stand in for the navigation, so the two never show at once."""
         html = self.role_html(self.analyst)
 
         self.assertIn("app-breadcrumbs--mobile-only", html)
         self.assertIn("display: none", _rules(CSS, ".app-breadcrumbs--mobile-only"))
 
-    def test_t29_a_back_to_top_control_is_on_the_page_and_shown_by_scrolling(self):
+    def test_a_back_to_top_control_is_on_the_page_and_shown_by_scrolling(self):
         # The control is opt-in; the framework turns it on, as the import does.
         settings = CustomiseSettings.for_site(self.site)
         settings.show_back_to_top = True
@@ -385,7 +366,7 @@ class NavigationChecklistTests(ReviewChecklistTestCase):
         self.assertIn("back-to-top--visible", MAIN_JS)
         self.assertIn("back-to-top--visible", MAIN_CSS)
 
-    def test_t34_the_service_name_in_the_navigation_links_to_the_home_page(self):
+    def test_the_service_name_in_the_navigation_links_to_the_home_page(self):
         settings = CustomiseSettings.for_site(self.site)
         settings.service_name_location = "navigation"
         settings.save()
@@ -402,52 +383,53 @@ class NavigationChecklistTests(ReviewChecklistTestCase):
         self.assertIsNotNone(name, "the service name sits in the service navigation")
         self.assertIn('href="/"', name.group(1))
 
-    def test_t41_the_navigation_is_on_the_skills_a_to_z_page(self):
+    def test_the_navigation_is_on_the_skills_a_to_z_page(self):
         html = self.client.get(self.skills_page.url).content.decode()
 
         self.assertIn('class="role-nav', html)
         self.assertIn("Data roles", html)
 
-    def test_t24_1_the_navigation_group_headings_are_a_size_up_from_the_items(self):
-        """ "Menu item text should be slightly larger... Can be same as Design
-        System site sub menu." The Design System's sub-navigation, and the live
-        service at desktop, put the group headings at 1.1875rem and the items
-        at 1rem."""
+    def test_the_navigation_group_headings_are_a_size_up_from_the_items(self):
+        """As in the Design System's sub-navigation, and the live service at
+        desktop: group headings at 1.1875rem and the items at 1rem."""
         self.assertIn("font-size: 1.1875rem", _rules(CSS, ".role-nav__title"))
         self.assertIn("font-size: 1rem", _rules(CSS, ".role-nav"))
 
-    def test_t24_2_a_navigation_item_takes_the_design_systems_focus_state(self):
-        """ "Focus state appearance for items should match links in main page."
-        Yellow behind, black text, and the black bar along the bottom edge."""
+    def test_a_navigation_item_takes_the_design_systems_focus_state(self):
+        """The same as a link in the main content: yellow behind, black text,
+        and the black bar along the bottom edge."""
         focus = _rules(CSS, ".role-nav__item a:focus")
 
-        self.assertIn("background-color: #fd0", focus)
-        self.assertIn("color: #0b0c0c", focus)
-        self.assertIn("box-shadow: 0 -2px #fd0, 0 4px #0b0c0c", focus)
+        self.assertIn("background-color: var(--govuk-focus-colour, #fd0)", focus)
+        self.assertIn("color: var(--govuk-text-colour, #0b0c0c)", focus)
+        self.assertIn(
+            "box-shadow: 0 -2px var(--govuk-focus-colour, #fd0), "
+            "0 4px var(--govuk-text-colour, #0b0c0c)",
+            focus,
+        )
 
-    def test_t24_4_the_current_items_focus_state_has_no_black_left_edge(self):
-        """ "When focusing on the menu item for the current page, the focus state
-        should only have a black border on the bottom edge - currently also on
-        left edge" (14 September). The current item's 4px left border sits on
-        the yellow, as every other item's does; the bottom bar is the shadow."""
+    def test_the_current_items_focus_state_has_no_black_left_edge(self):
+        """Focused, the current page's item has black on the bottom edge only.
+        Its 4px left border sits on the yellow, as every other item's does;
+        the bottom bar is the shadow."""
         active_focus = _rules(CSS, ".role-nav__item--active a:focus")
 
-        self.assertIn("border-left-color: #fd0", active_focus)
-        self.assertNotIn("border-color: #0b0c0c", active_focus)
+        self.assertIn("border-left-color: var(--govuk-focus-colour, #fd0)", active_focus)
+        self.assertNotIn("border-color: var(--govuk-text-colour, #0b0c0c)", active_focus)
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
-class StylingChecklistTests(ReviewChecklistTestCase):
-    """T18, T20, T22 and T57: sizes and states, decided in the stylesheet."""
+class StylingTests(FrameworkParityTestCase):
+    """Sizes and states, decided in the stylesheet and the script."""
 
-    def test_t18_1_a_heading_2_an_editor_types_is_sized_as_a_heading(self):
-        """ "Heading 2 should use 'govuk-heading-l' to match CF site and
-        differentiate from H3." The bundle styles the classes, not the tags, so
-        the script adds the class an editor cannot."""
+    def test_a_heading_2_an_editor_types_is_sized_as_a_heading(self):
+        """govuk-heading-l, as on the live service, so it reads as apart from
+        a heading 3. The bundle styles the classes, not the tags, so the
+        script adds the class an editor cannot."""
         self.assertRegex(MAIN_JS, r'H2:\s*"govuk-heading-l"')
         self.assertRegex(MAIN_JS, r'H3:\s*"govuk-heading-m"')
 
-    def test_t18_2_a_heading_2_in_the_templates_is_already_the_right_size(self):
+    def test_a_heading_2_in_the_templates_is_already_the_right_size(self):
         html = self.role_html(self.analyst)
 
         for heading in re.findall(r"<h2[^>]*>", html):
@@ -455,16 +437,20 @@ class StylingChecklistTests(ReviewChecklistTestCase):
                 continue  # there to structure the page, not to be read at a size
             self.assertIn("govuk-heading-l", heading, heading)
 
-    def test_t20_a_link_takes_the_design_systems_focus_state(self):
+    def test_a_link_takes_the_design_systems_focus_state(self):
         """Checked in the stylesheet rather than the browser: the Design
         System's own rule is what the bundle ships, so this is the local
         overrides not undoing it."""
         for selector in (".role-nav__item a:focus", ".role-nav__item--active a:focus"):
-            self.assertIn("background-color: #fd0", _rules(CSS, selector), selector)
+            self.assertIn(
+                "background-color: var(--govuk-focus-colour, #fd0)",
+                _rules(CSS, selector),
+                selector,
+            )
 
-    def test_t22_a_skill_level_bar_is_a_fixed_size_not_the_cell_width(self):
-        """ "The 'skill level indicator' bars need to be smaller, and a fixed
-        size. Currently they are trying to fill the cell width."
+    def test_a_skill_level_bar_is_a_fixed_size_not_the_cell_width(self):
+        """The skill level indicator is a fixed size rather than filling the
+        cell.
 
         Fixed in the sense the framework itself uses: the bar is a share of the
         column set by the stylesheet rather than whatever the cell's contents
@@ -478,18 +464,17 @@ class StylingChecklistTests(ReviewChecklistTestCase):
         self.assertIn("table-layout: fixed", bar)
         self.assertNotIn("width: auto", bar)
 
-    def test_mobile_1_nothing_is_hyphenated_and_the_framework_tables_take_lives_small_screen_size(
+    def test_nothing_is_hyphenated_and_the_framework_tables_take_lives_small_screen_size(
         self,
     ):
-        """Antony, 18 September 2026, from mobile testing: "on small screens,
-        text should reflow to keep complete words", high priority.
+        """On a small screen, text reflows to keep complete words.
 
         GOV.UK Frontend 6 keeps .govuk-table at 19px on every screen; live runs
         Frontend 5, where a table is 16px below 40.0625em, which is how its
-        skill tables fit 320px without splitting a word. Ours were hyphenated
-        to fit instead, and split a word on most lines. The framework's tables
-        now ask for live's size through the Design System's own modifier, and
-        nothing is hyphenated.
+        skill tables fit 320px without splitting a word. Hyphenating to fit
+        would split a word on most lines, so the framework's tables ask for
+        live's size through the Design System's own modifier, and nothing is
+        hyphenated.
         """
         self.assertNotIn("hyphens: auto", CSS)
         # The size is the Design System's rather than ours, so this is the
@@ -502,7 +487,7 @@ class StylingChecklistTests(ReviewChecklistTestCase):
             FRONTEND_CSS,
         )
 
-    def test_mobile_1_a_paragraph_inside_a_cell_comes_down_with_its_table(self):
+    def test_a_paragraph_inside_a_cell_comes_down_with_its_table(self):
         """The modifier sizes the table and the cells inherit from it, but a
         .govuk-body or a .govuk-list item inside a cell sets its own size and
         does not -- and a skill description is made of both."""
@@ -515,7 +500,7 @@ class StylingChecklistTests(ReviewChecklistTestCase):
             with self.subTest(selector=selector):
                 self.assertIn("font-size: 1rem", _rules(small, selector))
 
-    def test_mobile_1_the_skill_tables_ask_for_the_smaller_size(self):
+    def test_the_skill_tables_ask_for_the_smaller_size(self):
         role_html = self.role_html(self.analyst)
         skills_html = self.client.get(self.skills_page.url).content.decode()
 
@@ -524,19 +509,17 @@ class StylingChecklistTests(ReviewChecklistTestCase):
         self.assertIn(modified, skills_html)
         self.assertNotIn('<table class="govuk-table">', role_html)
 
-    def test_mobile_2_the_back_to_top_button_leaves_the_fixed_layer_on_a_small_screen(
+    def test_the_back_to_top_button_leaves_the_fixed_layer_on_a_small_screen(
         self,
     ):
-        """CS32-3560, from Antony's mobile testing on 18 September 2026: "back
-        to top link covering last line of content".
+        """It must not cover the last line of content.
 
         Under the tablet width there is no gutter beside the text, so a button
         fixed at the left edge is over the content wherever the page is
-        scrolled to, not only at the end. The ticket asks for both "user can
-        read all content on page" and "user can still use the back to top
-        link", so it is not hidden as the live service hides it -- it takes
-        its place in the flow at the end of the content instead, where nothing
-        can be underneath it.
+        scrolled to, not only at the end. The reader has to be able to read all
+        of the page and still use the button, so it is not hidden as the live
+        service hides it -- it takes its place in the flow at the end of the
+        content instead, where nothing can be underneath it.
         """
         docked = _rules(_small_screen_css(CSS), "#back-to-top.back-to-top--visible")
 
@@ -545,16 +528,14 @@ class StylingChecklistTests(ReviewChecklistTestCase):
         # button carries it, so a bare #back-to-top would lose to it.
         self.assertNotIn("display: none", docked)
 
-    def test_mobile_2_the_button_is_still_fixed_above_the_tablet_width(self):
+    def test_the_back_to_top_button_is_still_fixed_above_the_tablet_width(self):
         """One media query, not a rewrite: above the tablet width the button is
-        left exactly where it was.
+        where it always was.
 
-        Not because it is clear of everything there. Measured on 19 September
-        2026 it overlaps the side navigation at 641px and above on the pages
-        that have one, and the live service's button does the same on the same
-        pages at the same widths. That is live's behaviour reproduced rather
-        than anything this change introduced, and CS32-3560 is about the
-        small-screen case, so it is left as it is.
+        Not because it is clear of everything there. It overlaps the side
+        navigation at 641px and above on the pages that have one, and the live
+        service's button does the same on the same pages at the same widths.
+        That is live's behaviour reproduced, so it is left as it is.
         """
         base = _rules(CSS, "#back-to-top")
 
@@ -563,7 +544,7 @@ class StylingChecklistTests(ReviewChecklistTestCase):
             "display: block", _rules(CSS, "#back-to-top.back-to-top--visible")
         )
 
-    def test_mobile_2_the_button_sits_at_the_end_of_the_content(self):
+    def test_the_back_to_top_button_sits_at_the_end_of_the_content(self):
         """In the flow it is visible, so where it falls in the markup starts to
         matter: it belongs after the content and before the feedback prompt,
         which is where GOV.UK puts it."""
@@ -580,10 +561,9 @@ class StylingChecklistTests(ReviewChecklistTestCase):
             html.index("gem-c-feedback"),
         )
 
-    def test_t57_a_bullet_inside_a_changelog_note_is_the_smaller_size_too(self):
-        """ "Text in bullet points should also be smaller - currently appearing
-        as the same size as page body text." The size is on the wrapper, so it
-        has to be a rule that reaches the list inside it."""
+    def test_a_bullet_inside_a_changelog_note_is_the_smaller_size_too(self):
+        """Not the page body size. The size is on the wrapper, so it has to be
+        a rule that reaches the list inside it."""
         self.assertIn("wrapperTextSize", MAIN_JS)
         self.assertRegex(
             MAIN_JS,
@@ -593,19 +573,19 @@ class StylingChecklistTests(ReviewChecklistTestCase):
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
-class SkillsAToZChecklistTests(ReviewChecklistTestCase):
-    """T36 to T38: the skills index."""
+class SkillsAToZTests(FrameworkParityTestCase):
+    """The skills index."""
 
-    def test_t36_a_skill_has_an_id_a_role_page_can_deep_link_to(self):
+    def test_a_skill_has_an_id_a_role_page_can_deep_link_to(self):
         html = self.client.get(self.skills_page.url).content.decode()
 
         self.assertIn(f'id="{self.skill.slug}"', html)
         self.assertIn("openLinkedAccordionSection", MAIN_JS)
         self.assertIn("govuk-accordion__section-button", MAIN_JS)
 
-    def test_t37_a_skill_level_reads_you_can_before_its_points(self):
-        """ "Each level description should start with 'You can:' then list the
-        bullet points - as skills do on role pages\"."""
+    def test_a_skill_level_reads_you_can_before_its_points(self):
+        """Each level's description starts "You can:" and then lists its
+        points, as skills do on role pages."""
         html = self.client.get(self.skills_page.url).content.decode()
         wording = CapabilityFrameworkWordingSettings.for_site(self.site)
 
@@ -617,7 +597,7 @@ class SkillsAToZChecklistTests(ReviewChecklistTestCase):
             "the lead-in comes before the points it leads into",
         )
 
-    def test_t38_a_skill_names_the_roles_that_require_it_and_links_them(self):
+    def test_a_skill_names_the_roles_that_require_it_and_links_them(self):
         html = self.client.get(self.skills_page.url).content.decode()
 
         self.assertIn("Data analyst", html)
@@ -625,10 +605,10 @@ class SkillsAToZChecklistTests(ReviewChecklistTestCase):
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
-class SearchChecklistTests(ReviewChecklistTestCase):
-    """T42 to T44: the search the review could not test, now built."""
+class SearchTests(FrameworkParityTestCase):
+    """Search results and suggestions."""
 
-    def test_t42_a_search_finds_roles_and_skills(self):
+    def test_a_search_finds_roles_and_skills(self):
         response = self.client.get(reverse("search"), {"query": "data"})
         html = response.content.decode()
 
@@ -636,24 +616,21 @@ class SearchChecklistTests(ReviewChecklistTestCase):
         self.assertIn("Data analyst", html)
         self.assertIn("Data visualisation", html)
 
-    def test_t43_a_result_links_to_the_role_or_the_skill_it_names(self):
-        """ "Verify that results deep link to individual role levels and
-        skills\"."""
+    def test_a_result_links_to_the_role_or_the_skill_it_names(self):
         html = self.client.get(reverse("search"), {"query": "data"}).content.decode()
 
         self.assertIn(role_url(self.main_page, self.analyst), html)
         self.assertIn(f"{self.skills_page.url}#{self.skill.slug}", html)
 
-    def test_t44_a_result_says_whether_it_is_a_role_or_a_skill(self):
-        """ "Verify that results clearly differentiate roles and role levels (as
-        they often have the same name)\"."""
+    def test_a_result_says_whether_it_is_a_role_or_a_skill(self):
+        """Roles and role levels often have the same name."""
         html = self.client.get(reverse("search"), {"query": "data"}).content.decode()
         tags = re.findall(r'<strong class="govuk-tag[^"]*">\s*(.*?)\s*</strong>', html)
 
         self.assertIn("Role", tags)
         self.assertIn("Skill", tags)
 
-    def test_t44_the_suggestions_say_the_same(self):
+    def test_a_suggestion_says_whether_it_is_a_role_or_a_skill(self):
         items = self.client.get("/search/suggest/", {"q": "data"}).json()
 
         self.assertEqual(
@@ -666,8 +643,8 @@ class SearchChecklistTests(ReviewChecklistTestCase):
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
-class DownloadChecklistTests(ReviewChecklistTestCase):
-    """T49: the download page's three files."""
+class DownloadTests(FrameworkParityTestCase):
+    """The download page's three files."""
 
     BODY = (
         '<p><a href="/download/roles.csv">Role descriptions</a></p>'
@@ -675,11 +652,10 @@ class DownloadChecklistTests(ReviewChecklistTestCase):
         '<p><a href="/download/changelog.csv">Changelog</a></p>'
     )
 
-    def test_t49_a_framework_page_still_shows_the_files_as_attachments(self):
-        """ "After giving the Download page the role navigation menu, the 3 file
-        icons and accompanying text has reverted to a normal link." Giving it
-        the navigation changed its page type, so the attachment rendering has
-        to survive the change of type."""
+    def test_a_framework_page_still_shows_the_files_as_attachments(self):
+        """Giving the download page the role navigation means making it a
+        framework content page, so the attachment rendering has to hold on
+        that page type too."""
         page = self.main_page.add_child(
             instance=FrameworkContentPage(
                 title="Download", slug="download", body=self.BODY
@@ -692,7 +668,7 @@ class DownloadChecklistTests(ReviewChecklistTestCase):
         self.assertEqual(html.count('<section class="gem-c-attachment'), 3)
         self.assertIn("role-nav", html)
 
-    def test_t49_a_plain_page_shows_them_the_same_way(self):
+    def test_a_plain_page_shows_them_the_same_way(self):
         page = self.root_page.add_child(
             instance=ContentPage(title="Download", slug="download", body=self.BODY)
         )
@@ -704,13 +680,11 @@ class DownloadChecklistTests(ReviewChecklistTestCase):
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
-class HomePageChecklistTests(ReviewChecklistTestCase):
-    """T23, T33 and T58: the header and the home page's updates."""
+class HomePageTests(FrameworkParityTestCase):
+    """The header and the home page's updates."""
 
-    def test_t23_the_govuk_logo_links_to_govuk_not_to_this_service(self):
-        """ "The GOV.UK should link to gov.uk homepage\".
-
-        The framework puts the service name in the service navigation, which
+    def test_the_govuk_logo_links_to_govuk_not_to_this_service(self):
+        """The framework puts the service name in the service navigation, which
         leaves the header logo on its own -- and on its own it always links to
         GOV.UK. (In the header-bar placement the logo and service name are a
         single link to the service, governed by the "Service name link"
@@ -726,7 +700,7 @@ class HomePageChecklistTests(ReviewChecklistTestCase):
         self.assertIsNotNone(logo)
         self.assertEqual(logo.group(1), "https://www.gov.uk")
 
-    def test_t23_the_service_name_is_in_the_service_navigation_not_the_header(self):
+    def test_the_service_name_is_in_the_service_navigation_not_the_header(self):
         settings = CustomiseSettings.for_site(self.site)
         settings.service_name_location = "navigation"
         settings.save()
@@ -738,9 +712,7 @@ class HomePageChecklistTests(ReviewChecklistTestCase):
         self.assertIn("govuk-service-navigation__service-name", html)
         self.assertNotIn("govuk-header__service-name", html)
 
-    def test_t58_the_site_updates_are_collapsed_until_the_reader_asks(self):
-        """ "Changelog entries on the homepage should be collapsed by default,
-        then expand on click\"."""
+    def test_the_site_updates_are_collapsed_until_the_reader_asks(self):
         GovukChangelogEntry.objects.create(
             date=date(2026, 8, 28), note="<p>The framework was updated.</p>"
         )
@@ -753,9 +725,8 @@ class HomePageChecklistTests(ReviewChecklistTestCase):
             re.search(r"<[^>]*data-hide-text.*?>(.{0,600})", html, re.S).group(0),
         )
 
-    def test_t33_see_all_updates_names_the_wording_that_closes_it_again(self):
-        """ "'hide all updates' then becomes visible, and should close it
-        again\"."""
+    def test_see_all_updates_names_the_wording_that_closes_it_again(self):
+        """Once open, the link reads "hide all updates" and closes them."""
         wording = CapabilityFrameworkWordingSettings.for_site(self.site)
 
         self.assertTrue(wording.hide_all_updates_link_text)
@@ -763,13 +734,12 @@ class HomePageChecklistTests(ReviewChecklistTestCase):
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
-class EditingChecklistTests(ReviewChecklistTestCase):
-    """T54 and T56: what the CMS lets an editor write."""
+class EditingTests(FrameworkParityTestCase):
+    """What the CMS lets an editor write."""
 
-    def test_t56_a_quote_holds_a_line_break_without_starting_a_new_quote(self):
-        """ "Quote formatting (uses inset text component) should allow line
-        breaks within a single quote. Currently a new line results in a new
-        border\"."""
+    def test_a_quote_holds_a_line_break_without_starting_a_new_quote(self):
+        """A quote is the inset text component; a new line inside it must not
+        start a new border."""
         from govuk.wagtail_hooks import LINE_BREAK_FEATURE
 
         page = self.main_page.add_child(
@@ -793,16 +763,18 @@ class EditingChecklistTests(ReviewChecklistTestCase):
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
-class RemainingChecklistTests(ReviewChecklistTestCase):
-    """T12, T19, T21, T48 and the CMS rows, which need one assertion each."""
+class PageLayoutTests(FrameworkParityTestCase):
+    """Spacing, rich text and the admin, one assertion each."""
 
-    def test_t12_the_heading_stands_off_the_service_navigation(self):
-        """ "Space between page title and service navigation component should be
-        larger... check current site for example." The live service leaves 25px
-        between the phase banner and the heading."""
-        self.assertIn("padding: 25px 0 0", _rules(CSS, ".govuk-main-wrapper"))
+    def test_the_heading_stands_off_the_service_navigation(self):
+        """One wrapper top gap gives every non-masthead page the same
+        stand-off: 20px, 30px at tablet and up (GOV.UK spacing point 6).
+        Masthead pages hold the wrapper flush instead."""
+        wrapper = _rules(CSS, ".govuk-main-wrapper")
+        self.assertIn("padding: 20px 0 0", wrapper)
+        self.assertIn("padding-top: 30px", wrapper)
 
-    def test_t19_a_table_an_editor_pastes_is_styled_like_a_design_system_one(self):
+    def test_a_table_an_editor_pastes_is_styled_like_a_design_system_one(self):
         """Wagtail's rich text has no table feature, so a table arrives as raw
         HTML without the Design System's classes. Both routes have to look the
         same."""
@@ -828,7 +800,7 @@ class RemainingChecklistTests(ReviewChecklistTestCase):
             "a bare table is styled to match govuk-table",
         )
 
-    def test_t21_a_bullet_list_an_editor_writes_gets_the_govuk_list_classes(self):
+    def test_a_bullet_list_an_editor_writes_gets_the_govuk_list_classes(self):
         """The bundle styles govuk-list, not ul, so rich text needs them
         adding for the bullets to appear at all."""
         self.assertIn('listModifier = { UL: "govuk-list--bullet"', MAIN_JS)
@@ -836,23 +808,21 @@ class RemainingChecklistTests(ReviewChecklistTestCase):
             'el.classList.add("govuk-list", listModifier[el.tagName])', MAIN_JS
         )
 
-    def test_t48_the_banner_text_takes_its_own_line_rather_than_wrapping(self):
-        """ "Test that the banner text doesn't wrap onto a second line at
-        smaller screen sizes." Below the breakpoint the text becomes a block,
-        so it starts on its own line instead of wrapping around the tag."""
+    def test_the_banner_text_takes_its_own_line_rather_than_wrapping(self):
+        """Below the breakpoint the text becomes a block, so it starts on its
+        own line instead of wrapping around the tag."""
         banner = _rules(CSS, ".govuk-phase-banner__text")
 
         self.assertIn("display: block", banner)
 
-    def test_t50_to_t55_an_editor_can_reach_the_snippets_the_review_edited(self):
-        """The review edited roles, skills, changelog entries and tags through
-        the CMS. Their admin URLs are what it used; ``test_editor_snippet_
-        permissions.py`` covers who may do it."""
+    def test_an_editor_can_reach_the_framework_snippets(self):
+        """Roles, skills, changelog entries and tags are edited through the
+        CMS; ``test_editor_snippet_permissions.py`` covers who may do it."""
         from django.contrib.auth import get_user_model
 
         User = get_user_model()
-        User.objects.create_superuser("reviewer", "reviewer@example.gov.uk", "pw")
-        self.client.force_login(User.objects.get(username="reviewer"))
+        User.objects.create_superuser("editor", "editor@example.gov.uk", "pw")
+        self.client.force_login(User.objects.get(username="editor"))
 
         for url in (
             "/admin/snippets/govuk/govukrole/",

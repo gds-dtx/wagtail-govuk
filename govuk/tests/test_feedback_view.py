@@ -10,8 +10,6 @@ from govuk.models import Feedback
 
 def _feature_flags(*, feedback_enabled: bool) -> dict[str, bool]:
     return {
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": feedback_enabled,
     }
 

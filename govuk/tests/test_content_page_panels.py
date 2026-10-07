@@ -39,8 +39,6 @@ FRAMEWORK_SETTINGS_FIELDS = {
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
     return {
         "SKILLS": skills_enabled,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 
@@ -71,13 +69,10 @@ class FrameworkMainPagePanelTests(SimpleTestCase):
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
     def test_the_main_page_offers_no_hero_styling_toggles(self):
-        """Hero styling is plain ContentPage's; the framework sets its own."""
+        """The hero-style dropdown is plain ContentPage's; the framework sets its own."""
         settings_fields = _field_names(framework_main_settings_panels())
 
-        self.assertNotIn("enable_hero_styling", settings_fields)
-        self.assertNotIn(
-            "enable_combined_service_navigation_and_hero_styling", settings_fields
-        )
+        self.assertNotIn("hero_style", settings_fields)
 
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_a_site_without_the_framework_is_offered_none_of_the_switches(self):
@@ -129,10 +124,7 @@ class FrameworkSkillsPagePanelTests(SimpleTestCase):
         settings_fields = _field_names(FrameworkSkillsPage.settings_panels)
 
         self.assertNotIn("enable_free_text_heading_navigation", settings_fields)
-        self.assertNotIn("enable_hero_styling", settings_fields)
-        self.assertNotIn(
-            "enable_combined_service_navigation_and_hero_styling", settings_fields
-        )
+        self.assertNotIn("hero_style", settings_fields)
 
 
 class SidebarListingIsCentralisedTests(SimpleTestCase):
@@ -173,10 +165,7 @@ class PlainContentPagePanelTests(SimpleTestCase):
         settings_fields = _field_names(ContentPage.settings_panels)
 
         self.assertIn("enable_free_text_heading_navigation", settings_fields)
-        self.assertIn("enable_hero_styling", settings_fields)
-        self.assertIn(
-            "enable_combined_service_navigation_and_hero_styling", settings_fields
-        )
+        self.assertIn("hero_style", settings_fields)
 
 
 class FrameworkMainPageDefaultsTests(SimpleTestCase):
@@ -324,8 +313,7 @@ class FrameworkPagesOnASiteWithoutTheFrameworkTests(TestCase):
     creates any page whose model it can resolve, so a framework export landed
     on another service leaves them in its tree. The skills index already 404ed
     there and stayed out of the generic listings; the main page and the
-    framework content pages served and were listed. Now all three behave alike,
-    which is what docs/platform-boundaries.md promises.
+    framework content pages served and were listed. Now all three behave alike.
     """
 
     def setUp(self):

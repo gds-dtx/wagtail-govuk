@@ -133,5 +133,39 @@ class TagListingsPageTag(TaggedItemBase):
     ]
 
 
+class NewsArticleTag(TaggedItemBase):
+    content_object = ParentalKey(
+        "govuk.NewsArticle",
+        related_name="tagged_items",
+        on_delete=models.CASCADE,
+    )
+    tag = models.ForeignKey(
+        "govuk.GovukTag",
+        related_name="news_article_tagged_items",
+        on_delete=models.CASCADE,
+    )
+
+    panels = [
+        FieldPanel("tag"),
+    ]
+
+
+class NewsIndexPageTag(TaggedItemBase):
+    content_object = ParentalKey(
+        "govuk.NewsIndexPage",
+        related_name="tagged_items",
+        on_delete=models.CASCADE,
+    )
+    tag = models.ForeignKey(
+        "govuk.GovukTag",
+        related_name="news_index_page_tagged_items",
+        on_delete=models.CASCADE,
+    )
+
+    panels = [
+        FieldPanel("tag"),
+    ]
+
+
 
 
