@@ -26,8 +26,6 @@ from govuk.tests.framework_helpers import make_framework_main_page, role_url
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
     return {
         "SKILLS": skills_enabled,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 
@@ -312,6 +310,9 @@ class RolePageLayoutTests(TestCase):
         other_site = Site.objects.create(
             hostname="other.example.gov.uk", port=80, root_page=other_root
         )
+        # The rollback at the end of the test deletes the site without the
+        # signal that clears Wagtail's cached site root paths.
+        self.addCleanup(Site.clear_site_root_paths_cache)
         setting = SidebarSettings.objects.create(site=other_site)
         SidebarNavigationItem.objects.create(
             setting=setting, page=guidance, visible=False, sort_order=0
@@ -435,9 +436,9 @@ class RolePageLayoutTests(TestCase):
     def test_sidebar_settings_set_the_order_and_leave_out_what_is_not_listed(self):
         """Choosing pages means choosing pages.
 
-        Antony configured the six pages the live service shows on 10 Sep 2026
-        and still saw all fourteen framework children, because the unlisted ones
-        used to be appended. The list an editor writes is the menu.
+        Configuring the six pages the live service shows used to leave all
+        fourteen framework children on the page, because the unlisted ones were
+        appended. The list an editor writes is the menu.
         """
         self._add_framework_children("Alpha", "Beta", "Gamma")
 
@@ -466,7 +467,7 @@ class RolePageLayoutTests(TestCase):
         self.assertEqual([item["title"] for item in group["items"]], ["Alpha", "Beta", "Gamma"])
 
     def test_the_dev_instances_fourteen_pages_configured_to_lives_six(self):
-        """Antony's case, end to end through the rendered page.
+        """The live service's menu, end to end through the rendered page.
 
         The development instance has fourteen framework children, because its
         editors ticked privacy, cookies, accessibility, feedback and the project

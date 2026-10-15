@@ -10,8 +10,6 @@ from govuk.models.pages import HeroStyle
 def _feature_flags() -> dict[str, bool]:
     return {
         "SKILLS": False,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

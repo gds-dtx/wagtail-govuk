@@ -18,8 +18,6 @@ from govuk.models import CustomiseSettings, EdDSAKeyPair, EdDSAKeySettings
 def _feature_flags() -> dict[str, bool]:
     return {
         "SKILLS": True,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

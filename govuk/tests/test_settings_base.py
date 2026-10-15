@@ -75,8 +75,8 @@ class ResolveOidcTokenAudienceTests(SimpleTestCase):
 
 
 class CacheConfigTests(SimpleTestCase):
-    """CACHE_URL, added at Ollie's suggestion on PR #106 so a deployment can
-    put a real tier behind the cache without a code change."""
+    """CACHE_URL lets a deployment put a real tier behind the cache without
+    a code change."""
 
     def _config(self, environ, redis_installed=True):
         spec = object() if redis_installed else None
