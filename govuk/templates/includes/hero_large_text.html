@@ -1,0 +1,14 @@
+{% load wagtailcore_tags %}
+{% comment %}
+    Large-text hero: the page title and intro rendered as in-column large text
+    (no coloured masthead band), matching the framework pages' treatment. Read
+    off the page as `self`; `search_description` is Wagtail's built-in field.
+{% endcomment %}
+<div class="govuk-width-container">
+    <h1 class="govuk-heading-xl">{{ self.hero_title|default:self.title }}</h1>
+    {% if self.hero_intro %}
+        <div class="govuk-body-l rich-text-content">{{ self.hero_intro|richtext }}</div>
+    {% elif self.search_description %}
+        <p class="govuk-body-l">{{ self.search_description }}</p>
+    {% endif %}
+</div>

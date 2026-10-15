@@ -79,11 +79,10 @@ def base_settings_panels() -> list:
 
 
 def content_settings_panels() -> list:
-    """Plain ``ContentPage`` settings: hero styling, the shared panels, heading
-    navigation, tags. The hero-styling toggles are offered here only."""
+    """Plain ``ContentPage`` settings: hero style, the shared panels, heading
+    navigation, tags. The hero-style dropdown is offered here only."""
     return page_settings_panels() + [
-        FieldPanel("enable_hero_styling"),
-        FieldPanel("enable_combined_service_navigation_and_hero_styling"),
+        FieldPanel("hero_style"),
         FieldPanel("show_last_updated_date"),
         FieldPanel("show_page_content_metadata"),
         FieldPanel("enable_free_text_heading_navigation"),
