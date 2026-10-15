@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% load wagtailcore_tags wagtailimages_tags wagtailroutablepage_tags govuk_filters %}
+{% comment %}
+    Lists the live news articles this page shows (its tag filter is applied in
+    NewsIndexPage.listed_articles), newest first, as section cards. Each card
+    links to the article's route under this page (article/<slug>/). The page's
+    own hero comes from base.html's page_hero block, as on other pages.
+{% endcomment %}
+{% block title %}{{ self.seo_title|default:self.title }}{% endblock %}
+{% block content %}
+    <div class="section-cards-container">
+        <div class="govuk-width-container">
+            <div class="govuk-grid-row">
+                <div class="govuk-grid-column-full">
+                    {% if articles %}
+                        <p class="govuk-body">
+                            {% if articles.paginator.count < 15 %}
+                                {{ articles.paginator.count }} article{{ articles.paginator.count|pluralize }}
+                            {% else %}
+                                Showing {{ articles.start_index }} to {{ articles.end_index }} of {{ articles.paginator.count }} articles
+                            {% endif %}
+                        </p>
+                        <div class="section-cards">
+                            {% for article in articles %}
+                                {% routablepageurl page "serve_article" article.slug as article_url %}
+                                <div class="section-card{% if article.hero_image %} section-card--with-image{% endif %}">
+                                    {% if article.hero_image %}
+                                        <div class="section-card--image section-card--image--cover">
+                                            {% picture article.hero_image format-{avif,webp,jpeg} width-720 %}
+                                        </div>
+                                    {% endif %}
+                                    <div class="section-card--content">
+                                        <h2 class="govuk-heading-s govuk-!-margin-bottom-0">
+                                            <a class="govuk-link govuk-link--no-visited-state section-card__link--stretched"
+                                               href="{{ article_url }}">{{ article.title }}</a>
+                                        </h2>
+                                        <p class="govuk-body-s govuk-!-margin-top-2 govuk-!-margin-bottom-2">
+                                            {{ article.publication_date|date:"j F Y" }}{% if article.author %} &middot; {{ article.author }}{% endif %}
+                                        </p>
+                                        {% if article.tags.all %}
+                                            <p class="govuk-body-s govuk-!-margin-top-2 govuk-!-margin-bottom-2 tags-container">
+                                                {% for tag in article.tags.all %}<strong class="govuk-tag govuk-tag--grey">{{ tag.name }}</strong>{% endfor %}
+                                            </p>
+                                        {% endif %}
+                                        {% if article.standfirst %}
+                                            <div class="govuk-body section-card__text">{{ article.standfirst|richtext }}</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </div>
+                        {% if articles.has_previous or articles.has_next %}
+                            <p class="govuk-body govuk-!-margin-top-4 govuk-!-margin-bottom-0">
+                                {% if articles.has_previous %}
+                                    <a class="govuk-link govuk-!-margin-right-4"
+                                       href="?page={{ articles.previous_page_number }}">Previous</a>
+                                {% endif %}
+                                Page {{ articles.number }} of {{ articles.paginator.num_pages }}
+                                {% if articles.has_next %}
+                                    <a class="govuk-link govuk-!-margin-left-4"
+                                       href="?page={{ articles.next_page_number }}">Next</a>
+                                {% endif %}
+                            </p>
+                        {% endif %}
+                    {% else %}
+                        <p class="govuk-body">There are no news articles yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% endblock %}

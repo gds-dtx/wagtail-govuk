@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% load wagtailcore_tags wagtailimages_tags govuk_filters %}
+{% comment %}
+    Renders a single news article. Driven entirely by the "article" in context,
+    not by a page object, so the same template serves two callers: the
+    NewsIndexPage article route (context_overrides) and the snippet's own
+    preview (NewsArticle.get_preview_context). This is why it extends base.html
+    rather than wagtailcore/page.html -- in preview there is no page "self".
+
+    "breadcrumbs" and "page_heading" come from whichever caller rendered it;
+    base.html renders the breadcrumbs from context on its own.
+{% endcomment %}
+{% block title %}{{ page_heading|default:article.title }}{% endblock %}
+{% block page_hero %}
+    {% if article %}
+        <div class="hero">
+            <div class="hero__content">
+                <h1 class="hero__title govuk-heading-xl">{{ page_heading|default:article.title }}</h1>
+                {% if article.standfirst %}
+                    <div class="hero__description rich-text-content govuk-body-l">{{ article.standfirst|richtext }}</div>
+                {% endif %}
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-margin-bottom-6">
+        <div class="govuk-grid-row">
+            <div class="govuk-grid-column-two-thirds">
+                <p class="govuk-body-s govuk-!-margin-bottom-3">
+                    {{ article.publication_date|date:"j F Y" }}{% if article.author %} &middot; {{ article.author }}{% endif %}
+                </p>
+                {% if article.hero_image %}
+                    <div class="govuk-!-margin-bottom-4">
+                        {% picture article.hero_image format-{avif,webp,jpeg} width-960 %}
+                    </div>
+                {% endif %}
+                {% if article.body %}
+                    <div class="govuk-body rich-text-content">{{ article.body|richtext }}</div>
+                {% endif %}
+                {% if article.tags.all %}
+                    <p class="govuk-body-s govuk-!-margin-top-4 tags-container">
+                        {% for tag in article.tags.all %}<strong class="govuk-tag govuk-tag--grey">{{ tag.name }}</strong>{% endfor %}
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endblock %}

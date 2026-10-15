@@ -30,4 +30,5 @@ WAGTAILADMIN_BASE_URL = "http://localhost:8000"
 FEATURE_FLAGS = {
     "SKILLS": True,
     "FEEDBACK": True,
+    "NEWS": True,
 }
