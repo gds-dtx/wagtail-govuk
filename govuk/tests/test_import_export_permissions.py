@@ -36,8 +36,6 @@ from govuk.page_import_export import PAGE_EXPORT_FORMAT
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
     return {
         "SKILLS": skills_enabled,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

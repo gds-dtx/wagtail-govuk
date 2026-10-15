@@ -18,8 +18,6 @@ from govuk.models import (
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
     return {
         "SKILLS": skills_enabled,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

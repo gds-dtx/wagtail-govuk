@@ -199,11 +199,11 @@ def search_suggest_view(request):
 
     A JSON list of ``{"text", "link", "type"}``, roles first, then skills, then
     supporting pages, at most ten -- the shape the live service's autocomplete
-    consumed, so the box can behave as it does there (CS32-3458). Each entry
+    consumed, so the box can behave as it does there. Each entry
     is the same result the results page would show for the same query, from
     the same backend and the same ranking, only regrouped by kind: a role
     links to its page, a skill to its section of the A to Z, a page to itself.
-    External content is left out; the spec names roles, skills and the site's
+    External content is left out: suggestions are roles, skills and the site's
     own pages.
 
     Two characters or fewer suggest nothing rather than everything. ``query``

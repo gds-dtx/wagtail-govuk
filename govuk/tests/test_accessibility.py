@@ -5,8 +5,7 @@ behaviour comes from Design System components. These tests lock down the
 handful of page-level invariants that the base template is responsible for
 and that a template change could silently break: a declared page language,
 a working skip link, a single top-level heading, a named main landmark and
-a non-empty document title. See docs/accessibility.md for the wider audit
-context and documented Design System deviations.
+a non-empty document title.
 """
 
 import re

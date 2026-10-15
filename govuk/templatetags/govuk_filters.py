@@ -60,8 +60,8 @@ def page_body(value):
     This replaces ``{{ self.body|richtext }}`` on content pages. Everything
     ``|richtext`` does still happens -- Wagtail's own page, document and embed
     links are resolved -- and then a paragraph holding nothing but a link to
-    one of the framework's CSVs becomes the GOV.UK attachment component, which
-    CS32-3313 asks for. See ``govuk.capability_framework.attachments`` for why that is done here
-    rather than asking an editor to write the markup.
+    one of the framework's CSVs becomes the GOV.UK attachment component. See
+    ``govuk.capability_framework.attachments`` for why that is done here rather
+    than asking an editor to write the markup.
     """
     return mark_safe(rewrite_csv_download_links(expand_db_html(str(value or ""))))

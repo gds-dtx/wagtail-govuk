@@ -8,8 +8,6 @@ from govuk.tests.framework_helpers import make_framework_main_page, role_url
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
     return {
         "SKILLS": skills_enabled,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

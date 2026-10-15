@@ -1,13 +1,11 @@
 {% comment %}
-    The GOV.UK attachment component (CS32-3313).
+    The GOV.UK attachment component.
 
     Markup follows govuk_publishing_components' gem-c-attachment, so a reader
     who has downloaded anything from GOV.UK before reads this the same way:
     the kind of file, its title as the link, then the format and size.
 
-    Three things differ from GOV.UK's version. There is no data-ga4-link,
-    because this service has no analytics yet (CS32-3315) and a tracking
-    attribute with nothing behind it is a claim the service does not meet. The
+    Three things differ from GOV.UK's version. There is no data-ga4-link. The
     thumbnail is aria-hidden and out of the tab order because it is the same
     link as the title beside it, so a screen reader and a keyboard both get
     one stop, not two. And the title is an h3, not GOV.UK's h2: on the

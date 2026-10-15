@@ -29,7 +29,5 @@ WAGTAILADMIN_BASE_URL = "http://localhost:8000"
 
 FEATURE_FLAGS = {
     "SKILLS": True,
-    "ORGANISATIONS": True,
-    "PEOPLE_FINDER": True,
     "FEEDBACK": True,
 }

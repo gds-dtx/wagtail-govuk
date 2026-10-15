@@ -1,0 +1,20 @@
+{% comment %}
+    The breadcrumb trail. Expects `breadcrumbs` (from the context processor).
+    Pass `inverse=True` for the dark-background variant (combined hero pages),
+    and `breadcrumbs_mobile_only=True` to hide it at tablet and up (framework
+    pages set this in their context).
+{% endcomment %}
+<nav class="govuk-breadcrumbs{% if inverse %} govuk-breadcrumbs--inverse{% endif %}{% if breadcrumbs_mobile_only %} app-breadcrumbs--mobile-only{% endif %}"
+     aria-label="Breadcrumb">
+    <ol class="govuk-breadcrumbs__list">
+        {% for item in breadcrumbs %}
+            {% if item.is_current %}
+                <li class="govuk-breadcrumbs__list-item" aria-current="page">{{ item.title }}</li>
+            {% else %}
+                <li class="govuk-breadcrumbs__list-item">
+                    <a class="govuk-breadcrumbs__link" href="{{ item.url }}">{{ item.title }}</a>
+                </li>
+            {% endif %}
+        {% endfor %}
+    </ol>
+</nav>

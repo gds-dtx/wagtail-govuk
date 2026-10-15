@@ -52,8 +52,6 @@ def _step(number: int) -> str:
 def _feature_flags() -> dict[str, bool]:
     return {
         "SKILLS": True,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 

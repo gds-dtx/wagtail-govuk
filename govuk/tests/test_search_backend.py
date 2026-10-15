@@ -937,8 +937,6 @@ class SearchBackendNulQueryTests(TestCase):
 @override_settings(
     FEATURE_FLAGS={
         "SKILLS": True,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 )
@@ -991,8 +989,6 @@ class SearchBackendRolesAreResultsTests(TestCase):
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
     return {
         "SKILLS": skills_enabled,
-        "ORGANISATIONS": False,
-        "PEOPLE_FINDER": False,
         "FEEDBACK": False,
     }
 
