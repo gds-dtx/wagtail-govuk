@@ -51,6 +51,7 @@ from .viewsets import (
     GovukSkillViewSet,
     GovukTagForm,
     GovukTagViewSet,
+    NewsArticleViewSet,
 )
 
 __all__ = [
@@ -70,6 +71,7 @@ __all__ = [
     "INSET_TEXT_BLOCK_TYPE",
     "INSET_TEXT_FEATURE",
     "LINE_BREAK_FEATURE",
+    "NewsArticleViewSet",
     "RAW_HTML_EMBEDTYPE",
     "RAW_HTML_ENTITY_TYPE",
     "RAW_HTML_FEATURE",
@@ -114,3 +116,6 @@ if settings.FEATURE_FLAGS.get("SKILLS"):
 
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)
+
+if settings.FEATURE_FLAGS.get("NEWS"):
+    _register_snippet_if_needed(NewsArticleViewSet)

@@ -515,6 +515,7 @@ LOGGING = {
 FEATURE_FLAGS = {
     "SKILLS": _bool_env("FEATURE_SKILLS"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
+    "NEWS": _bool_env("FEATURE_NEWS"),
 }
 
 # Wagtail's go-live and expiry dates only fire if something runs the

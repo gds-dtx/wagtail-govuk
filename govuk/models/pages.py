@@ -180,6 +180,7 @@ class ContentPage(HeroStyleMixin, BreadcrumbMixin, BaseContentPage):
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.NewsIndexPage",
     ]
     tags = ClusterTaggableManager(through="govuk.ContentPageTag", blank=True)
 
@@ -292,6 +293,7 @@ class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.NewsIndexPage",
     ]
 
     content_panels = Page.content_panels + [
@@ -816,6 +818,7 @@ class SectionPage(HeroStyleMixin, BreadcrumbMixin, Page):
         "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.NewsIndexPage",
     ]
 
     content_panels = Page.content_panels + [

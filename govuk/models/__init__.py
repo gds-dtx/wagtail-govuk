@@ -78,6 +78,12 @@ from .framework import (
     site_wide_changelog,
     without_framework_pages,
 )
+from .news import (
+    NewsArticle,
+    NewsIndexPage,
+    news_article_url,
+    news_index_page_for,
+)
 from .pages import BaseContentPage, ContentPage, SectionPage, TagListingsPage
 from .panels import (
     base_content_panels,
@@ -106,6 +112,8 @@ from .tags import (
     FrameworkContentPageTag,
     FrameworkMainPageTag,
     GovukTag,
+    NewsArticleTag,
+    NewsIndexPageTag,
     SectionPageTag,
     TagListingsPageTag,
 )
@@ -164,6 +172,10 @@ __all__ = [
     "LinkBlock",
     "LinkStructValue",
     "MaintenanceModeSettings",
+    "NewsArticle",
+    "NewsArticleTag",
+    "NewsIndexPage",
+    "NewsIndexPageTag",
     "PageUsefulnessVote",
     "PhaseBannerSettings",
     "RELATED_ROLES_COUNT",
@@ -202,6 +214,8 @@ __all__ = [
     "framework_main_page",
     "framework_main_settings_panels",
     "further_resources_group",
+    "news_article_url",
+    "news_index_page_for",
     "page_settings_panels",
     "role_navigation_groups",
     "role_page_urls_by_role_id",
