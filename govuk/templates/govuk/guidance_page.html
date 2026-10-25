@@ -1,0 +1,67 @@
+{% extends "wagtailcore/page.html" %}
+{% comment %}
+    A page of synced guidance: the collection's index, or one of its documents
+    on the document route. Laid out as a role page is -- the source's navigation
+    in a side column, the heading beside it -- and everything in it comes from
+    the repo: the page itself is only where the guidance is served.
+{% endcomment %}
+{% block title %}{{ page_heading|default:self.title }}{% endblock %}
+{% block page_hero %}{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-margin-bottom-6">
+        <div class="govuk-grid-row">
+            {% if guidance_home %}
+                <div class="govuk-grid-column-one-quarter">
+                    {% include "includes/guidance_navigation.html" %}
+                </div>
+            {% endif %}
+            <div class="{% if guidance_home %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-full{% endif %}">
+                {% if guidance_unsynced %}
+                    <h1 class="govuk-heading-xl">{{ self.title }}</h1>
+                    <p class="govuk-body">This guidance has not been synced yet.</p>
+                {% else %}
+                    <h1 class="govuk-heading-xl">{{ page_heading }}</h1>
+                    {% comment %}
+                        The source's site banner, once, on the front page: the
+                        tech-docs layout repeats it above every page, which here
+                        would put the same notice ahead of every heading.
+                    {% endcomment %}
+                    {% if guidance_is_index and guidance_banner %}
+                        <div class="govuk-inset-text app-guidance__banner">{{ guidance_banner }}</div>
+                    {% endif %}
+                    {% if guidance_is_index and guidance_site.description %}
+                        <p class="govuk-body-l">{{ guidance_site.description }}</p>
+                    {% endif %}
+                    {% if guidance_withdrawn %}
+                        <div class="govuk-warning-text">
+                            <span class="govuk-warning-text__icon" aria-hidden="true">!</span>
+                            <strong class="govuk-warning-text__text">
+                                <span class="govuk-visually-hidden">Warning</span>
+                                This guidance has been withdrawn.
+                            </strong>
+                        </div>
+                    {% endif %}
+                    {% if guidance_contents %}
+                        <p class="govuk-body govuk-body-s contents-list-links">Contents</p>
+                        <ul class="govuk-list govuk-body-s contents-list-links app-guidance__contents">
+                            {% for entry in guidance_contents %}
+                                <li>
+                                    — <a href="#{{ entry.anchor }}" class="contents-list-links govuk-link">{{ entry.text }}</a>
+                                    {% if entry.children %}
+                                        <ul class="govuk-list govuk-body-s contents-list-links indented-list">
+                                            {% for child in entry.children %}
+                                                <li>— <a href="#{{ child.anchor }}" class="contents-list-links govuk-link">{{ child.text }}</a></li>
+                                            {% endfor %}
+                                        </ul>
+                                    {% endif %}
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% endif %}
+                    <div class="app-guidance">{{ guidance_html }}</div>
+                    {% include "includes/guidance_page_meta.html" %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "wagtailadmin/base.html" %}
+{% load i18n %}
+{% block titletag %}{% trans "Sync guidance" %}{% endblock %}
+{% block content %}
+    {% trans "Sync guidance" as header_title %}
+    {% include "wagtailadmin/shared/header.html" with title=header_title subtitle=page.title icon="doc-full" %}
+    <div class="nice-padding">
+        <p>
+            {% blocktrans trimmed with repository=page.repository_url branch=page.branch %}
+                Fetch the latest guidance from <strong>{{ repository }}</strong>, branch <strong>{{ branch }}</strong>
+            {% endblocktrans %}{% if page.subdirectory %}, {% trans "directory" %} <strong>{{ page.subdirectory }}</strong>{% endif %}.
+            {% trans "The current copy keeps serving if the sync fails." %}
+        </p>
+        {% if snapshot.synced_at %}
+            <p>
+                {% blocktrans trimmed with commit=snapshot.commit_sha|slice:":7" synced=snapshot.synced_at|date:"j F Y, H:i" count counter=document_count %}
+                    Currently {{ counter }} page from commit {{ commit }}, synced {{ synced }}.
+                {% plural %}
+                    Currently {{ counter }} pages from commit {{ commit }}, synced {{ synced }}.
+                {% endblocktrans %}
+            </p>
+        {% endif %}
+        <form method="post">
+            {% csrf_token %}
+            <p>
+                <label><input type="checkbox" name="force" value="1"> {% trans "Re-render even if the repository has not changed" %}</label>
+            </p>
+            <button type="submit" class="button">{% trans "Sync now" %}</button>
+            <a href="{{ edit_url }}" class="button button-secondary">{% trans "Cancel" %}</a>
+        </form>
+    </div>
+{% endblock %}

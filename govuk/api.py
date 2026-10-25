@@ -4,24 +4,28 @@ from django.conf import settings
 from django.db import DatabaseError, connection
 from django.db.models import Count, Q
 from django.db.models.functions import Coalesce
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.urls import reverse
 from rest_framework import generics, serializers
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from wagtail.api.conf import APIField
 from wagtail.api.v2.router import WagtailAPIRouter
 from wagtail.api.v2.views import PagesAPIViewSet
 from wagtail.documents.api.v2.views import DocumentsAPIViewSet
 from wagtail.images.api.v2.views import ImagesAPIViewSet
+from wagtail.models import Site
 
 from govuk.authentication import InternalAccessJWTAuthentication
 from govuk.models import (
     ContentDiscoverySource,
     ExternalContentItem,
     GovukTag,
+    GuidanceCollectionPage,
     without_framework_pages,
+    without_guidance_pages,
 )
 from govuk.utils import normalised_text, row_id_from_text
 
@@ -191,8 +195,10 @@ class WagtailPages(AuthenticatedAPIViewSetMixin, PagesAPIViewSet):
         # AllowAny above, so this listing is public. Framework pages that
         # reached a non-framework site through the import 404 when fetched;
         # naming them here would publish a list of titles that all 404.
-        return without_framework_pages(
-            super().get_queryset().prefetch_related("view_restrictions__groups")
+        return without_guidance_pages(
+            without_framework_pages(
+                super().get_queryset().prefetch_related("view_restrictions__groups")
+            )
         )
 
 
@@ -396,6 +402,141 @@ def _build_external_content_endpoint_links(request):
     }
 
 
+class GuidanceAPIView(AuthenticatedAPIViewSetMixin, APIView):
+    """Read-only JSON for synced guidance, for machines rather than people.
+
+    Public, as the pages the guidance is served on are: ``AllowAny``, and only
+    live, unrestricted collection pages on the request's site that have been
+    synced. Each document carries its rendered HTML (links pointed at this
+    site) and its Markdown as the source wrote it, which is the basis an MCP
+    server or other tool can build on.
+    """
+
+    permission_classes = [AllowAny]
+
+    def initial(self, request, *args, **kwargs):
+        if not settings.FEATURE_FLAGS.get("GUIDANCE"):
+            raise Http404
+        super().initial(request, *args, **kwargs)
+
+    def collections(self, request):
+        pages = GuidanceCollectionPage.objects.live().public().filter(
+            guidance_snapshot__synced_at__isnull=False
+        )
+        site = Site.find_for_request(request)
+        if site is not None:
+            pages = pages.descendant_of(site.root_page, inclusive=True)
+        return pages.select_related("guidance_snapshot").order_by("path")
+
+    def collection(self, request, page_id):
+        page = self.collections(request).filter(pk=page_id).first()
+        if page is None:
+            raise Http404
+        return page
+
+    @staticmethod
+    def absolute_url(request, page, path="", fragment=""):
+        return request.build_absolute_uri(page.document_url(request, path, fragment))
+
+    def summary(self, request, page) -> dict:
+        snapshot = page.guidance_snapshot
+        return {
+            "id": page.pk,
+            "title": page.title,
+            "url": self.absolute_url(request, page),
+            "api_url": _build_api_absolute_url(
+                request, reverse("api_guidance_collection", args=[page.pk])
+            ),
+            "repository": page.repository_url,
+            "branch": page.branch,
+            "subdirectory": page.subdirectory,
+            "commit": snapshot.commit_sha,
+            "synced_at": snapshot.synced_at,
+        }
+
+    def document_summary(self, request, page, document) -> dict:
+        return {
+            "path": document.path,
+            "title": document.title,
+            "url": self.absolute_url(request, page, document.path),
+            "api_url": _build_api_absolute_url(
+                request,
+                reverse("api_guidance_document", args=[page.pk, document.path])
+                if document.path
+                else reverse("api_guidance_index_document", args=[page.pk]),
+            ),
+            "metadata": document.metadata,
+        }
+
+
+class GuidanceCollectionsAPIView(GuidanceAPIView):
+    def get(self, request):
+        return Response(
+            {"items": [self.summary(request, page) for page in self.collections(request)]}
+        )
+
+
+class GuidanceCollectionAPIView(GuidanceAPIView):
+    def get(self, request, page_id):
+        page = self.collection(request, page_id)
+        snapshot = page.guidance_snapshot
+        site = snapshot.site or {}
+        groups, _ = page.navigation_tree(request, snapshot)
+
+        def items(entries):
+            return [
+                {
+                    "title": item["title"],
+                    "url": request.build_absolute_uri(item["url"]),
+                    "path": item["path"],
+                    "children": items(item["children"]),
+                }
+                for item in entries
+            ]
+
+        navigation = [
+            {"title": group["title"], "items": items(group["items"])} for group in groups
+        ]
+        return Response(
+            {
+                **self.summary(request, page),
+                "site": {
+                    "title": site.get("title", ""),
+                    "description": site.get("description", ""),
+                    "format": site.get("format", ""),
+                },
+                "navigation": navigation,
+                "documents": [
+                    self.document_summary(request, page, document)
+                    for document in snapshot.documents.all()
+                ],
+            }
+        )
+
+
+class GuidanceDocumentAPIView(GuidanceAPIView):
+    def get(self, request, page_id, doc_path=""):
+        page = self.collection(request, page_id)
+        snapshot = page.guidance_snapshot
+        document = snapshot.documents.filter(path=doc_path.strip("/")).first()
+        if document is None:
+            raise Http404
+        repository = page.repository()
+        return Response(
+            {
+                **self.document_summary(request, page, document),
+                "collection": self.summary(request, page),
+                "headings": document.headings,
+                "html": page.expand_links(
+                    document.html, base=self.absolute_url(request, page)
+                ),
+                "markdown": document.markdown,
+                "source_path": document.source_path,
+                "source_url": repository.blob_url(document.source_path),
+            }
+        )
+
+
 def _build_api_absolute_url(request, path):
     base_url = getattr(settings, "WAGTAILADMIN_BASE_URL", "")
     if base_url:
@@ -410,6 +551,15 @@ def api_root_view(request):
                 "endpoints": {
                     **_build_wagtail_endpoint_links(request),
                     "externalcontent": _build_external_content_endpoint_links(request),
+                    **(
+                        {
+                            "guidance": _build_api_absolute_url(
+                                request, reverse("api_guidance_collections")
+                            )
+                        }
+                        if settings.FEATURE_FLAGS.get("GUIDANCE")
+                        else {}
+                    ),
                     "health": _build_api_absolute_url(request, reverse("api_health")),
                 },
             }

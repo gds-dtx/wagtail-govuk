@@ -25,6 +25,7 @@ from govuk.models import (
     GovukSkill,
     SectionPage,
     without_framework_pages,
+    without_guidance_pages,
 )
 from govuk.utils import normalised_text, row_id_from_text
 
@@ -177,7 +178,7 @@ class SearchBackend:
         self, query: str, filters: dict[str, Any]
     ) -> list[SearchResultItem]:
         queryset = self._apply_filters(
-            without_framework_pages(Page.objects.all()), filters
+            without_guidance_pages(without_framework_pages(Page.objects.all())), filters
         )
         if self._is_postgres(queryset.db):
             queryset = self._search_pages_postgres(queryset, query)

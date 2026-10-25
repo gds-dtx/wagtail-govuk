@@ -515,7 +515,13 @@ LOGGING = {
 FEATURE_FLAGS = {
     "SKILLS": _bool_env("FEATURE_SKILLS"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
+    "GUIDANCE": _bool_env("FEATURE_GUIDANCE"),
 }
+
+# Optional. Sent to the GitHub API when a guidance collection page syncs, which
+# lifts the unauthenticated limit of 60 requests an hour. Only needs read
+# access to public repositories.
+GUIDANCE_GITHUB_TOKEN = os.environ.get("GUIDANCE_GITHUB_TOKEN", "").strip()
 
 # Wagtail's go-live and expiry dates only fire if something runs the
 # publish_scheduled management command on a schedule. Nothing does: there is no

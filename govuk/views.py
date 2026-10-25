@@ -26,6 +26,7 @@ from govuk.models import (
     CustomiseSettings,
     EdDSAKeySettings,
     Feedback,
+    GuidanceCollectionPage,
     PageUsefulnessVote,
 )
 from govuk.oidc import (
@@ -263,6 +264,39 @@ def framework_csv_view(request, name):
     )
     write(response)
     return response
+
+
+def guidance_legacy_url_view(request, legacy_path):
+    """Send a guidance source's own ``.html`` addresses to their pages here.
+
+    A tech-docs site serves its pages as ``standards/alerting.html``; here they
+    are ``standards/alerting/`` under the guidance collection page. Wagtail's
+    page URLs have no dots, so those addresses would otherwise 404 before any
+    page saw them. The deepest collection page whose URL the path starts with
+    answers, with a redirect to the page or to where the source redirects it.
+    """
+    if not settings.FEATURE_FLAGS.get("GUIDANCE"):
+        raise Http404
+    site = Site.find_for_request(request)
+    if site is None:
+        raise Http404
+    request_path = f"/{legacy_path}"
+    pages = (
+        GuidanceCollectionPage.objects.live()
+        .public()
+        .descendant_of(site.root_page, inclusive=True)
+        .order_by("-depth")
+    )
+    for page in pages:
+        url_parts = page.get_url_parts(request)
+        if not url_parts or url_parts[0] != site.pk:
+            continue
+        base = url_parts[2] if url_parts[2].endswith("/") else f"{url_parts[2]}/"
+        if request_path.startswith(base):
+            response = page.legacy_redirect(request, request_path[len(base) :])
+            if response is not None:
+                return response
+    raise Http404
 
 
 BARE_SERVER_ERROR_HTML = (

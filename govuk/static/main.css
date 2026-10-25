@@ -1147,3 +1147,135 @@ main > :nth-last-child(1 of .section-cards-container) {
     border: 0 !important;
     white-space: nowrap !important;
 }
+
+/* Guidance-as-code: pages synced from a repo (govuk/guidance/render.py adds
+   these classes; everything else is GOV.UK Frontend's own). */
+.app-guidance code {
+    font-family: monospace;
+    font-size: 0.9em;
+    background-color: #f3f2f1;
+    padding: 0 3px;
+}
+.app-guidance__code {
+    margin: 0 0 20px;
+    padding: 15px;
+    overflow-x: auto;
+    background-color: #f3f2f1;
+    border-left: 5px solid #b1b4b6;
+}
+.app-guidance__code:focus {
+    outline: 3px solid #ffdd00;
+}
+.app-guidance__code code {
+    padding: 0;
+    background-color: transparent;
+    white-space: pre;
+}
+.app-guidance__table {
+    margin-bottom: 20px;
+    overflow-x: auto;
+}
+.app-guidance__table .govuk-table {
+    margin-bottom: 0;
+}
+.app-guidance__figure,
+.app-guidance__image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto 20px;
+}
+.app-guidance__figure {
+    width: 500px;
+}
+/* The contents list's own space below it. .contents-list-links is shared
+   with the role page, so it is left at its 8px. */
+.contents-list-links.app-guidance__contents {
+    margin-bottom: 20px;
+}
+.app-guidance__banner > :last-child,
+.app-guidance .govuk-inset-text > :last-child {
+    margin-bottom: 0;
+}
+
+/* Guidance-as-code side navigation (includes/guidance_navigation.html).
+   Looks like the Capability Framework's .role-nav, but is a separate set of
+   rules so that neither can change the other. It nests: the branch holding
+   the current page is open, with each level indented a step further. */
+.app-guidance-nav {
+    display: none;
+    font-family: "GDS Transport", arial, sans-serif;
+    font-weight: normal;
+    font-size: 1rem;
+    line-height: 1.25;
+}
+.app-guidance-nav__group {
+    margin-bottom: 20px;
+}
+.app-guidance-nav__group:last-child {
+    margin-bottom: 0;
+}
+.app-guidance-nav__title {
+    font-size: 1.1875rem;
+    line-height: 1.25;
+    color: #505a5f;
+    font-weight: normal;
+    margin: 0;
+    padding: 10px 10px 10px 14px;
+}
+.app-guidance-nav__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.app-guidance-nav__link,
+.app-guidance-nav__link:link,
+.app-guidance-nav__link:visited {
+    display: block;
+    box-sizing: border-box;
+    padding: 10px;
+    border-left: 4px solid transparent;
+    background-color: inherit;
+    color: var(--govuk-link-colour, #1a65a6);
+    text-decoration: none;
+}
+.app-guidance-nav__list--nested .app-guidance-nav__link {
+    padding-left: 26px;
+}
+.app-guidance-nav__list--nested .app-guidance-nav__list--nested .app-guidance-nav__link {
+    padding-left: 42px;
+}
+.app-guidance-nav__link:hover {
+    color: var(--govuk-link-hover-colour, #0f385c);
+    border-color: #5694ca;
+}
+.app-guidance-nav__item--home > .app-guidance-nav__link {
+    font-weight: bold;
+}
+.app-guidance-nav__item--open > .app-guidance-nav__link {
+    border-color: #b1b4b6;
+}
+.app-guidance-nav__item--current > .app-guidance-nav__link:link,
+.app-guidance-nav__item--current > .app-guidance-nav__link:visited {
+    background-color: #f3f2f1;
+    border-color: var(--govuk-link-colour, #1a65a6);
+    font-weight: bold;
+}
+.app-guidance-nav__item--current > .app-guidance-nav__link:hover {
+    color: var(--govuk-link-hover-colour, #0f385c);
+    border-color: var(--govuk-link-hover-colour, #0f385c);
+}
+.app-guidance-nav .app-guidance-nav__link:focus {
+    outline: 3px solid transparent;
+    position: relative;
+    color: var(--govuk-text-colour, #0b0c0c);
+    background-color: var(--govuk-focus-colour, #fd0);
+    box-shadow: 0 -2px var(--govuk-focus-colour, #fd0), 0 4px var(--govuk-text-colour, #0b0c0c);
+    border-left-color: var(--govuk-focus-colour, #fd0);
+    text-decoration: none;
+}
+@media (min-width: 40.0625em) {
+    .app-guidance-nav {
+        display: block;
+    }
+}

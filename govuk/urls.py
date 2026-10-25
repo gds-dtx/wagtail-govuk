@@ -2,7 +2,7 @@ from allauth.account.decorators import secure_admin_login
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.urls import include, path
+from django.urls import include, path, re_path
 from wagtail import urls as wagtail_urls
 from wagtail.admin import urls as wagtailadmin_urls
 from wagtail.contrib.sitemaps.views import sitemap
@@ -11,6 +11,9 @@ from wagtail.documents import urls as wagtaildocs_urls
 from govuk.api import (
     ExternalContentItemsAPIView,
     ExternalContentSourcesAPIView,
+    GuidanceCollectionAPIView,
+    GuidanceCollectionsAPIView,
+    GuidanceDocumentAPIView,
     api_externalcontent_root_view,
     api_health_view,
     api_root_view,
@@ -25,6 +28,7 @@ from govuk.views import (
     custom_css_view,
     feedback_view,
     framework_csv_view,
+    guidance_legacy_url_view,
     jwks_view,
     oidc_callback,
     oidc_login,
@@ -78,6 +82,26 @@ urlpatterns = [
         ExternalContentItemsAPIView.as_view(),
         name="api_externalcontent_items",
     ),
+    path(
+        "api/guidance/",
+        GuidanceCollectionsAPIView.as_view(),
+        name="api_guidance_collections",
+    ),
+    path(
+        "api/guidance/<int:page_id>/",
+        GuidanceCollectionAPIView.as_view(),
+        name="api_guidance_collection",
+    ),
+    path(
+        "api/guidance/<int:page_id>/docs/",
+        GuidanceDocumentAPIView.as_view(),
+        name="api_guidance_index_document",
+    ),
+    path(
+        "api/guidance/<int:page_id>/docs/<path:doc_path>",
+        GuidanceDocumentAPIView.as_view(),
+        name="api_guidance_document",
+    ),
     path("api/", api_router.urls),
     path("gen/custom.css", custom_css_view, name="govuk_custom_css"),
     path(".well-known/jwks.json", jwks_view, name="govuk_jwks"),
@@ -100,6 +124,14 @@ urlpatterns = [
     # The "Is this page useful?" answer. Registered on every site; the view
     # answers 404 unless the site has the prompt switched on.
     path("page-feedback/", page_feedback_view, name="page_feedback"),
+    # A guidance source's own .html addresses, which Wagtail's page URLs
+    # (no dots) would 404. The view answers 404 unless a guidance collection
+    # page has that page.
+    re_path(
+        r"^(?P<legacy_path>(?:[\w-]+/)*[\w.-]+\.html)$",
+        guidance_legacy_url_view,
+        name="govuk_guidance_legacy_url",
+    ),
 ]
 
 if settings.FEATURE_FLAGS.get("FEEDBACK"):

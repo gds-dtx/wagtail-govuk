@@ -7,8 +7,9 @@ history -- keeps working unchanged.
 
 The submodules, roughly in dependency order: ``constants`` and ``panels`` and
 ``signing`` and ``blocks`` are the shared foundation; ``tags``, ``settings``,
-``content_discovery``, ``pages`` and ``feedback`` are the platform domains; and
-the ``framework`` subpackage holds the Capability Framework. Relations use
+``content_discovery``, ``pages`` and ``feedback`` are the platform domains;
+the ``framework`` subpackage holds the Capability Framework; and ``guidance``
+holds the guidance-as-code page and its synced copy of a repo. Relations use
 string references (``"govuk.GovukRole"``) so nothing here depends on import
 order across submodules.
 """
@@ -77,6 +78,12 @@ from .framework import (
     role_route_url,
     site_wide_changelog,
     without_framework_pages,
+)
+from .guidance import (
+    GuidanceCollectionPage,
+    GuidanceDocument,
+    GuidanceSnapshot,
+    without_guidance_pages,
 )
 from .pages import BaseContentPage, ContentPage, SectionPage, TagListingsPage
 from .panels import (
@@ -154,6 +161,9 @@ __all__ = [
     "GovukSkill",
     "GovukTableBlock",
     "GovukTag",
+    "GuidanceCollectionPage",
+    "GuidanceDocument",
+    "GuidanceSnapshot",
     "HEX_COLOR_VALIDATOR",
     "HTTP_METHOD_PATTERN",
     "InsetTextBlock",
@@ -208,4 +218,5 @@ __all__ = [
     "role_route_url",
     "site_wide_changelog",
     "without_framework_pages",
+    "without_guidance_pages",
 ]

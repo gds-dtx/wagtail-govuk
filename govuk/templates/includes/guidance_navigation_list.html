@@ -1,0 +1,13 @@
+{% comment %}
+    One level of the guidance navigation; includes itself for the open branch.
+{% endcomment %}
+<ul class="app-guidance-nav__list{% if nested %} app-guidance-nav__list--nested{% endif %}">
+    {% for item in items %}
+        <li class="app-guidance-nav__item{% if item.is_current %} app-guidance-nav__item--current{% elif item.is_open %} app-guidance-nav__item--open{% endif %}">
+            <a class="app-guidance-nav__link" href="{{ item.url }}"{% if item.is_current %} aria-current="page"{% endif %}>{{ item.title }}</a>
+            {% if item.is_open and item.children %}
+                {% include "includes/guidance_navigation_list.html" with items=item.children nested=True %}
+            {% endif %}
+        </li>
+    {% endfor %}
+</ul>

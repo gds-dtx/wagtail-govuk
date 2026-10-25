@@ -1,0 +1,32 @@
+{% comment %}
+    The review and source details under a page of synced guidance: when it was
+    last reviewed, when it is next due and who owns it (the tech-docs
+    page-expiry block), then where its source lives.
+{% endcomment %}
+<div class="app-guidance__meta">
+    <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
+    {% if guidance_review.last_reviewed_on or guidance_review.owner %}
+        {% if guidance_review.overdue %}
+            <div class="govuk-warning-text">
+                <span class="govuk-warning-text__icon" aria-hidden="true">!</span>
+                <strong class="govuk-warning-text__text">
+                    <span class="govuk-visually-hidden">Warning</span>
+                    This page was due for review on {{ guidance_review.next_review_on|date:"j F Y" }}. It might be out of date.
+                </strong>
+            </div>
+        {% endif %}
+        <p class="govuk-body-s">
+            {% if guidance_review.last_reviewed_on %}This page was last reviewed on {{ guidance_review.last_reviewed_on|date:"j F Y" }}.{% endif %}
+            {% if guidance_review.next_review_on and not guidance_review.overdue %}
+                It needs to be reviewed again on {{ guidance_review.next_review_on|date:"j F Y" }}{% if guidance_review.owner %} by the page owner {% include "includes/guidance_owner.html" %}{% endif %}.
+            {% elif guidance_review.owner %}
+                The page owner is {% include "includes/guidance_owner.html" %}.
+            {% endif %}
+        </p>
+    {% endif %}
+    <ul class="govuk-list govuk-body-s">
+        <li><a class="govuk-link" href="{{ guidance_source.view_url }}">View source</a></li>
+        <li><a class="govuk-link" href="{{ guidance_source.report_url }}">Report a problem with this page</a></li>
+        <li><a class="govuk-link" href="{{ guidance_source.repository_url }}">GitHub repository</a></li>
+    </ul>
+</div>

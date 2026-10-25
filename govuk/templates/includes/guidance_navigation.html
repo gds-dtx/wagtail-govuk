@@ -1,0 +1,25 @@
+{% comment %}
+    The side navigation of a set of synced guidance. Its own include, not the
+    Capability Framework's role navigation: the guidance's navigation nests,
+    and the two are kept apart so that changing one cannot change the other.
+
+    Expects "guidance_home" ({title, url, is_current}) and
+    "guidance_navigation" (groups of {title, items}; see
+    GuidanceCollectionPage.navigation_tree). Like the framework's, it is hidden
+    on narrow screens, where the breadcrumbs stand in for it.
+{% endcomment %}
+<div class="app-guidance-nav">
+    <nav class="app-guidance-nav__group" aria-label="{{ guidance_home.title }}">
+        <ul class="app-guidance-nav__list">
+            <li class="app-guidance-nav__item app-guidance-nav__item--home{% if guidance_home.is_current %} app-guidance-nav__item--current{% endif %}">
+                <a class="app-guidance-nav__link" href="{{ guidance_home.url }}"{% if guidance_home.is_current %} aria-current="page"{% endif %}>{{ guidance_home.title }}</a>
+            </li>
+        </ul>
+    </nav>
+    {% for group in guidance_navigation %}
+        <nav class="app-guidance-nav__group" aria-label="{{ group.title }}">
+            <p class="app-guidance-nav__title">{{ group.title }}</p>
+            {% include "includes/guidance_navigation_list.html" with items=group.items nested=False %}
+        </nav>
+    {% endfor %}
+</div>

@@ -30,6 +30,12 @@ dependencies = [
   # the container filesystem. [s3] pulls in boto3. Only exercised when
   # MEDIA_S3_BUCKET is set (see govuk/settings/production.py).
   "django-storages[s3]==1.14.6",
+  # Guidance-as-code (FEATURE_GUIDANCE): renders a repo's Markdown, sanitises
+  # the HTML it produces (the source is someone else's repo, so nothing it
+  # contains is trusted), and reads its YAML frontmatter and manifest.
+  "markdown-it-py==4.2.0",
+  "nh3==0.3.7",
+  "PyYAML==6.0.3",
 ]
 
 [dependency-groups]
