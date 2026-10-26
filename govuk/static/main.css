@@ -124,11 +124,11 @@
     }
 }
 
-@media (max-width: 1030px) {
-    .rich-text-content img {
-        width: 100%;
-        height: auto;
-    }
+/* An image in rich text keeps the size it was rendered at, and shrinks only
+   when its column is narrower than that. */
+.rich-text-content img {
+    max-width: 100%;
+    height: auto;
 }
 img.full-width {
     width: 100%;
