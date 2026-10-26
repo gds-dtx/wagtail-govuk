@@ -1,0 +1,22 @@
+{% load wagtailcore_tags %}
+{% comment %}
+    One item from content_body_layout. The tag filter, where the page offers
+    it, goes above the first row of cards rather than at the top of the page,
+    so it sits next to what it narrows. full_width comes from the caller.
+{% endcomment %}
+{% if item.first_cards and self.enable_tag_filter and available_tags %}
+    {% if full_width %}
+        <div class="section-cards-container body-band">
+            <div class="govuk-width-container">
+                <div class="govuk-grid-row">
+                    <div class="govuk-grid-column-full">
+                        {% include "includes/card_tag_filter.html" with filter_id="body-tag-filter" %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% else %}
+        {% include "includes/card_tag_filter.html" with filter_id="body-tag-filter" %}
+    {% endif %}
+{% endif %}
+{% include_block item.block with visible_cards=item.cards %}

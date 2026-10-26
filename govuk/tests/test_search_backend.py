@@ -749,8 +749,8 @@ class SearchBackendPostgresRankTests(SimpleTestCase):
         self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
 
     def test_a_section_card_search_asks_for_more_than_an_unmatched_rank(self):
-        queryset = search_backend._search_sections_postgres(
-            SectionPage.objects.all(), "two words"
+        queryset = search_backend._search_card_pages_postgres(
+            SectionPage.objects.all(), "two words", "rows"
         )
 
         self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)

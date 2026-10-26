@@ -79,13 +79,16 @@ def base_settings_panels() -> list:
 
 
 def content_settings_panels() -> list:
-    """Plain ``ContentPage`` settings: hero style, the shared panels, heading
-    navigation, tags. The hero-style dropdown is offered here only."""
+    """Plain ``ContentPage`` settings: hero style, the shared panels, the card
+    tag switches, heading navigation, tags. The hero-style dropdown is offered
+    here only."""
     return page_settings_panels() + [
         FieldPanel("hero_style"),
         FieldPanel("show_breadcrumbs"),
         FieldPanel("show_last_updated_date"),
         FieldPanel("show_page_content_metadata"),
+        FieldPanel("enable_tag_filter"),
+        FieldPanel("enable_tag_display"),
         FieldPanel("enable_free_text_heading_navigation"),
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]

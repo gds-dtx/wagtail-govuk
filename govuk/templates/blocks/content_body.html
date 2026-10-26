@@ -1,0 +1,7 @@
+{% load wagtailcore_tags %}
+{% comment %}
+    Wagtail's default wraps every block in a div of its own. The content page
+    lays the blocks out through content_body_layout instead; this is for
+    anywhere else the stream is rendered whole, such as a preview.
+{% endcomment %}
+{% for child in value %}{% include_block child %}{% endfor %}

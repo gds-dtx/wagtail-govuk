@@ -27,9 +27,16 @@ from govuk.models import (
     GovukSkill,
     GovukTag,
 )
+from govuk.models.blocks import CARD_ROW_BLOCK_TYPES
 from govuk.utils import row_id_from_text
 
 PAGE_EXPORT_FORMAT = "govuk-page-import-export/v1"
+# The stream fields that hold rows of cards. A card's tags are stored as tag
+# ids, which mean nothing on another instance, so an import resolves them again.
+CARD_ROW_STREAM_FIELDS = {
+    ("govuk.SectionPage", "rows"),
+    ("govuk.ContentPage", "body_blocks"),
+}
 BASE_PAGE_LOCAL_FIELD_NAMES = {field.name for field in Page._meta.local_fields}
 CORE_PAGE_SETTING_FIELDS = (
     "title",
@@ -759,7 +766,10 @@ def _collect_page_node_tag_candidates(*, node, candidates: list[tuple[str, str]]
 
     fields_data = node.get("fields")
     if isinstance(fields_data, dict):
-        candidates.extend(_extract_tag_candidates_from_rows(fields_data.get("rows")))
+        for field_name in sorted({name for _, name in CARD_ROW_STREAM_FIELDS}):
+            candidates.extend(
+                _extract_tag_candidates_from_rows(fields_data.get(field_name))
+            )
 
     child_entries = node.get("children")
     if not isinstance(child_entries, list):
@@ -1929,8 +1939,7 @@ def _apply_page_fields(
 
         if (
             isinstance(model_field, StreamField)
-            and page._meta.label == "govuk.SectionPage"
-            and field_name == "rows"
+            and (page._meta.label, field_name) in CARD_ROW_STREAM_FIELDS
         ):
             raw_value = _normalise_section_row_card_tags(raw_value, tag_lookup=tag_lookup)
 
@@ -2042,7 +2051,7 @@ def _normalise_section_row_card_tags(raw_rows, *, tag_lookup: dict[str, dict[str
             continue
 
         row_value = raw_row.get("value")
-        if raw_row.get("type") != "row" or not isinstance(row_value, dict):
+        if raw_row.get("type") not in CARD_ROW_BLOCK_TYPES or not isinstance(row_value, dict):
             normalised_rows.append(raw_row)
             continue
 

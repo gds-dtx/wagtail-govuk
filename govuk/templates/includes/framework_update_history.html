@@ -1,0 +1,26 @@
+{% load govuk_filters %}
+{% comment %}
+    The full site-wide history is long, so main.js collapses it behind the
+    toggle. Both start out the other way round, leaving the history readable
+    without JavaScript.
+{% endcomment %}
+<h2 class="govuk-heading-m" id="update-history">{{ framework_wording.updates_heading }}</h2>
+<p class="govuk-body-s publish-dates">{{ framework_wording.published_prefix }} {{ framework_changelog.published_date|date:"j F Y" }}</p>
+<p class="govuk-body-s">
+    {{ framework_wording.last_updated_prefix }} {{ framework_changelog.last_updated_date|date:"j F Y" }}
+    <a href="#update-history"
+       id="toggle-link"
+       class="govuk-link"
+       role="button"
+       aria-controls="collapsible-div"
+       aria-expanded="true"
+       data-show-text="{{ framework_wording.show_all_updates_link_text }}"
+       data-hide-text="{{ framework_wording.hide_all_updates_link_text }}"
+       hidden>{{ framework_wording.show_all_updates_link_text }}</a>
+</p>
+<div id="collapsible-div" class="changelog-content">
+    {% for entry in framework_changelog.entries %}
+        <p class="govuk-body-s govuk-!-font-weight-bold">{{ entry.date|date:"j F Y" }}</p>
+        <div class="govuk-body-s">{% changelog_note entry %}</div>
+    {% endfor %}
+</div>

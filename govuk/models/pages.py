@@ -3,18 +3,15 @@ from django.conf import settings
 from django.core.paginator import Paginator
 from django.db import models
 from django.db.models.functions import Coalesce
-from django.utils.text import slugify
 from modelcluster.contrib.taggit import ClusterTaggableManager
-from wagtail import blocks
 from wagtail.admin.panels import FieldPanel, InlinePanel
 from wagtail.fields import RichTextField, StreamField
-from wagtail.images.blocks import ImageChooserBlock
 from wagtail.models import Page, Site
-from wagtail.snippets.blocks import SnippetChooserBlock
 
 from govuk.utils import row_id_from_text
 
-from .blocks import ContentBodyBlock, LinkBlock
+from .blocks import CardRowBlock, ContentBodyBlock
+from .cards import filter_cards
 from .constants import THIS_SITE_SOURCE_FILTER
 from .content_discovery import ExternalContentItem
 from .panels import (
@@ -146,11 +143,12 @@ class BaseContentPage(Page):
         ContentBodyBlock(),
         blank=True,
         use_json_field=True,
-        verbose_name="Tables and further content",
+        verbose_name="Content blocks",
         help_text=(
-            "Shown after the body above. To put a table part-way through a "
-            "page, move the body text into a Text block here and add the "
-            "table between the blocks."
+            "Text, tables, cards and banners, shown after the body above in "
+            "the order you add them. To put a block part-way through a page, "
+            "move the body text into a Text block here and add the block "
+            "between them."
         ),
     )
     enable_free_text_heading_navigation = models.BooleanField(
@@ -165,7 +163,29 @@ class BaseContentPage(Page):
 
 
 
-class ContentPage(HeroStyleMixin, BreadcrumbMixin, BaseContentPage):
+class CardTagOptionsMixin(models.Model):
+    """The card tag switches, on the page types whose content holds card rows.
+
+    Both apply across every row on the page: the filter is one control that
+    narrows all of them, and the display puts each card's tags on it.
+    """
+
+    enable_tag_filter = models.BooleanField(
+        default=False,
+        verbose_name="Enable tag filter",
+        help_text="Show a tag filter control above the cards.",
+    )
+    enable_tag_display = models.BooleanField(
+        default=False,
+        verbose_name="Enable tag display",
+        help_text="Show tag labels on cards.",
+    )
+
+    class Meta:
+        abstract = True
+
+
+class ContentPage(HeroStyleMixin, BreadcrumbMixin, CardTagOptionsMixin, BaseContentPage):
     parent_page_types = [
         "govuk.ContentPage",
         "govuk.FrameworkMainPage",
@@ -192,6 +212,12 @@ class ContentPage(HeroStyleMixin, BreadcrumbMixin, BaseContentPage):
         # Plain content pages carry no role navigation, so the sidebar heading
         # navigation is offered whenever it is switched on.
         context["heading_navigation"] = self.enable_free_text_heading_navigation
+        card_filter = filter_cards(
+            self.body_blocks, request, enabled=self.enable_tag_filter
+        )
+        context["card_filter"] = card_filter
+        context["available_tags"] = card_filter.available_tags
+        context["selected_tag"] = card_filter.selected_tag
         return context
 
 
@@ -663,7 +689,7 @@ class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
         return context
 
 
-class SectionPage(HeroStyleMixin, BreadcrumbMixin, Page):
+class SectionPage(HeroStyleMixin, BreadcrumbMixin, CardTagOptionsMixin, Page):
     hero_title = models.CharField(
         max_length=255,
         blank=True,
@@ -689,109 +715,9 @@ class SectionPage(HeroStyleMixin, BreadcrumbMixin, Page):
         verbose_name="Show page content metadata",
         help_text="Show page metadata above the main content.",
     )
-    enable_tag_filter = models.BooleanField(
-        default=False,
-        verbose_name="Enable tag filter",
-        help_text="Show a tag filter control above the cards.",
-    )
-    enable_tag_display = models.BooleanField(
-        default=False,
-        verbose_name="Enable tag display",
-        help_text="Show tag labels on cards.",
-    )
     tags = ClusterTaggableManager(through="govuk.SectionPageTag", blank=True)
     rows = StreamField(
-        [
-            (
-                "row",
-                blocks.StructBlock(
-                    [
-                        (
-                            "heading",
-                            blocks.CharBlock(
-                                required=False,
-                                help_text="Optional heading for this row section.",
-                            ),
-                        ),
-                        (
-                            "cards",
-                            blocks.ListBlock(
-                                blocks.StructBlock(
-                                    [
-                                        (
-                                            "title",
-                                            blocks.CharBlock(
-                                                required=True,
-                                                max_length=120,
-                                            ),
-                                        ),
-                                        (
-                                            "image",
-                                            ImageChooserBlock(
-                                                required=False,
-                                                help_text="Optional header image for this card.",
-                                            ),
-                                        ),
-                                        (
-                                            "image_fit",
-                                            blocks.ChoiceBlock(
-                                                choices=[
-                                                    ("cover", "Cover"),
-                                                    ("contain", "Contain"),
-                                                ],
-                                                default="cover",
-                                                required=True,
-                                                help_text=(
-                                                    "How the header image should fit "
-                                                    "inside the card."
-                                                ),
-                                            ),
-                                        ),
-                                        (
-                                            "text",
-                                            blocks.RichTextBlock(
-                                                required=False,
-                                                features=[
-                                                    "bold",
-                                                    "italic",
-                                                    "link",
-                                                    "ul",
-                                                    "ol",
-                                                ],
-                                            ),
-                                        ),
-                                        (
-                                            "link",
-                                            LinkBlock(
-                                                required=False,
-                                            ),
-                                        ),
-                                        (
-                                            "tags",
-                                            blocks.ListBlock(
-                                                SnippetChooserBlock(
-                                                    "govuk.GovukTag",
-                                                    required=False,
-                                                ),
-                                                required=False,
-                                                help_text="Optional tags for this card.",
-                                            ),
-                                        ),
-                                    ],
-                                    icon="doc-full",
-                                    label="Card",
-                                ),
-                                min_num=1,
-                                max_num=60,
-                                help_text="Add between 1 and 60 cards in this row.",
-                            ),
-                        ),
-                    ],
-                    icon="placeholder",
-                    label="Row section",
-                ),
-            ),
-        ],
+        [("row", CardRowBlock())],
         blank=True,
         help_text="Add one or more row sections. Each row can contain up to 60 cards.",
     )
@@ -837,94 +763,17 @@ class SectionPage(HeroStyleMixin, BreadcrumbMixin, Page):
         InlinePanel("tagged_items", heading="Tags", label="Tag"),
     ]
 
-    @staticmethod
-    def _card_tag_items(card) -> list[dict[str, str]]:
-        items: list[dict[str, str]] = []
-        seen: set[str] = set()
-        for tag in card.get("tags", []):
-            if not tag:
-                continue
-
-            key = (getattr(tag, "slug", "") or getattr(tag, "key", "")).strip().lower()
-            value = (getattr(tag, "name", "") or getattr(tag, "value", "")).strip()
-
-            if not key and isinstance(value, str):
-                key = slugify(value).strip().lower()
-            if not value and key:
-                value = key
-            if not key or not value or key in seen:
-                continue
-
-            seen.add(key)
-            items.append({"key": key, "value": value})
-        return items
-
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
-
-        prepared_rows: list[dict] = []
-        available_tags_by_key: dict[str, str] = {}
-        for block in self.rows:
-            if block.block_type != "row":
-                continue
-
-            prepared_cards: list[dict] = []
-            for card in block.value.get("cards", []):
-                tag_items = self._card_tag_items(card)
-                tag_keys = {item["key"] for item in tag_items}
-                for item in tag_items:
-                    available_tags_by_key[item["key"]] = item["value"]
-                prepared_cards.append(
-                    {
-                        "card": card,
-                        "tag_keys": tag_keys,
-                    }
-                )
-
-            prepared_rows.append(
-                {
-                    "heading": block.value.get("heading"),
-                    "cards": prepared_cards,
-                }
-            )
-
-        selected_tag = None
-        selected_tag_key = ""
-        if self.enable_tag_filter:
-            selected_tag_key = (request.GET.get("tag") or "").strip().lower()
-            if selected_tag_key not in available_tags_by_key:
-                selected_tag_key = ""
-
-            if selected_tag_key:
-                selected_tag = {
-                    "key": selected_tag_key,
-                    "value": available_tags_by_key[selected_tag_key],
-                }
-
-        row_sections: list[dict] = []
-        for row in prepared_rows:
-            cards = [
-                card_entry["card"]
-                for card_entry in row["cards"]
-                if not selected_tag_key or selected_tag_key in card_entry["tag_keys"]
-            ]
-            if cards:
-                row_sections.append(
-                    {
-                        "heading": row["heading"],
-                        "cards": cards,
-                    }
-                )
-
-        context["available_tags"] = [
-            {"key": key, "value": value}
-            for key, value in sorted(
-                available_tags_by_key.items(),
-                key=lambda row: row[1].lower(),
-            )
+        card_filter = filter_cards(self.rows, request, enabled=self.enable_tag_filter)
+        # A row the filter leaves empty is dropped, heading and all.
+        context["available_tags"] = card_filter.available_tags
+        context["selected_tag"] = card_filter.selected_tag
+        context["row_sections"] = [
+            {"heading": self.rows[index].value.get("heading"), "cards": cards}
+            for index, cards in card_filter.visible_cards.items()
+            if cards
         ]
-        context["selected_tag"] = selected_tag
-        context["row_sections"] = row_sections
         return context
 
 

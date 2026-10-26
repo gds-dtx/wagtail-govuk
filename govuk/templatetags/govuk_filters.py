@@ -3,6 +3,7 @@ from django.utils.safestring import mark_safe
 from wagtail.rich_text import expand_db_html
 
 from govuk.capability_framework.attachments import rewrite_csv_download_links
+from govuk.models.blocks import body_layout
 
 register = template.Library()
 
@@ -39,6 +40,24 @@ def comma_number(value):
         return f"{int(value):,}"
     except (TypeError, ValueError):
         return value
+
+
+@register.simple_tag(takes_context=True)
+def content_body_layout(context, page):
+    """The page's body blocks, grouped into the segments the template lays out.
+
+    Worked out at render time rather than in ``get_context`` because whether
+    the page has a sidebar is only settled once every ``get_context`` in the
+    chain has run: a framework content page forces the role navigation on after
+    the shared framework context is built.
+    """
+    has_sidebar = bool(context.get("heading_navigation") or context.get("role_navigation"))
+    card_filter = context.get("card_filter")
+    return body_layout(
+        getattr(page, "body_blocks", None),
+        allow_full_width=not has_sidebar,
+        visible_cards=card_filter.visible_cards if card_filter else None,
+    )
 
 
 @register.simple_tag

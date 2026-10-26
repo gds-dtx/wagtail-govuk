@@ -199,6 +199,48 @@ main > :nth-last-child(1 of .section-cards-container) {
     padding-bottom: 2em;
 }
 
+/* A content page body without a sidebar is laid out as segments: card rows
+   and banners as bands across the page, the text between them in the width
+   container. Card bands that follow one another share one background and one
+   gap between them, as a section page's rows always have; a banner keeps its
+   own padding. The text after a band stands off it. */
+.body-band {
+    padding-top: 2em;
+    padding-bottom: 2em;
+}
+
+.section-cards-container.body-band + .section-cards-container.body-band {
+    padding-top: 0;
+}
+
+.body-segment {
+    padding-bottom: 10px;
+}
+
+.body-band + .body-segment {
+    padding-top: 30px;
+}
+
+/* The same blocks beside a sidebar, kept in the text column. */
+.body-panel {
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.body-banner {
+    background-color: var(--govuk-secondary-colour, #d2e2f1);
+}
+
+.body-banner--brand {
+    background-color: var(--govuk-brand-colour, #1d70b8);
+}
+
+.body-banner--brand .body-banner__heading,
+.body-banner--brand .body-banner__text,
+.body-banner--brand .body-banner__text * {
+    color: #fff;
+}
+
 .section-cards {
   display: grid;
   gap: 1.5rem;

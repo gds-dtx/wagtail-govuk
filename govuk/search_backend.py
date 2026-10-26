@@ -26,6 +26,7 @@ from govuk.models import (
     SectionPage,
     without_framework_pages,
 )
+from govuk.models.blocks import CARD_ROW_BLOCK_TYPES
 from govuk.utils import normalised_text, row_id_from_text
 
 DEFAULT_PAGE_SIZE = 15
@@ -39,6 +40,9 @@ SEARCH_WEIGHTS = [0.1, 0.2, 0.4, 1.0]
 UNMATCHED_RANK = 1e-20
 PAGE_TAG_TEXT_WEIGHT = 0.75
 CARD_TAG_TEXT_WEIGHT = 1.0
+# The page types whose content holds card rows, and the stream each holds them
+# in. Every card is a result of its own.
+CARD_PAGE_FIELDS = ((SectionPage, "rows"), (ContentPage, "body_blocks"))
 TAG_RESULT_WEIGHT = 1.2
 EXTERNAL_SOURCE_TEXT_WEIGHT = 0.4
 EXTERNAL_TAG_TEXT_WEIGHT = 0.6
@@ -232,23 +236,30 @@ class SearchBackend:
     def _build_card_results(
         self, query: str, filters: dict[str, Any]
     ) -> list[SearchResultItem]:
-        section_pages = self._apply_filters(SectionPage.objects.all(), filters)
-        if self._is_postgres(section_pages.db):
-            section_pages = self._search_sections_postgres(section_pages, query)
-        else:
-            section_pages = self._search_sections_sqlite(section_pages, query)
+        results: list[SearchResultItem] = []
+        for page_model, field_name in CARD_PAGE_FIELDS:
+            pages = self._apply_filters(page_model.objects.all(), filters)
+            if self._is_postgres(pages.db):
+                pages = self._search_card_pages_postgres(pages, query, field_name)
+            else:
+                pages = self._search_card_pages_sqlite(pages, query, field_name)
+            results += self._card_results_for_pages(pages, field_name, query, filters)
+        return results
 
+    def _card_results_for_pages(
+        self, pages, field_name: str, query: str, filters: dict[str, Any]
+    ) -> list[SearchResultItem]:
         request = filters.get("request")
         site_root = self._site_root_page(filters)
         query_lower = query.lower()
         results: list[SearchResultItem] = []
 
-        for section_page in section_pages:
+        for section_page in pages:
             section_url = self._page_url(section_page, request)
             section_rank = float(getattr(section_page, "card_rank", 0.0) or 0.0)
             section_title = self._page_result_title(section_page)
 
-            for card in self._section_cards(section_page):
+            for card in self._section_cards(section_page, field_name):
                 title = normalised_text(card.get("title"))
                 text = normalised_text(card.get("text"))
                 link_text = normalised_text(card.get("link_text"))
@@ -651,14 +662,18 @@ class SearchBackend:
             .order_by("-rank", "-first_published_at", "title")
         )
 
-    def _search_sections_sqlite(self, queryset: QuerySet, query: str) -> QuerySet:
-        return queryset.filter(rows__icontains=query).order_by(
+    def _search_card_pages_sqlite(
+        self, queryset: QuerySet, query: str, field_name: str
+    ) -> QuerySet:
+        return queryset.filter(**{f"{field_name}__icontains": query}).order_by(
             "-first_published_at", "-latest_revision_created_at", "title"
         )
 
-    def _search_sections_postgres(self, queryset: QuerySet, query: str) -> QuerySet:
+    def _search_card_pages_postgres(
+        self, queryset: QuerySet, query: str, field_name: str
+    ) -> QuerySet:
         rows_vector = SearchVector(
-            Cast("rows", TextField()),
+            Cast(field_name, TextField()),
             weight="D",
             config=SEARCH_CONFIG,
         )
@@ -949,10 +964,10 @@ class SearchBackend:
 
         return (getattr(page, "url", "") or "").strip()
 
-    def _section_cards(self, section_page: SectionPage) -> list[dict[str, Any]]:
+    def _section_cards(self, page: Page, field_name: str) -> list[dict[str, Any]]:
         cards: list[dict[str, Any]] = []
-        for block in section_page.rows:
-            if block.block_type != "row":
+        for block in getattr(page, field_name):
+            if block.block_type not in CARD_ROW_BLOCK_TYPES:
                 continue
             for card in block.value.get("cards", []):
                 link_value = card.get("link")
