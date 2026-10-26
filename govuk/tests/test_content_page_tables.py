@@ -13,12 +13,22 @@ violations and no overflow at 320px, and a new field is the obvious way to
 lose that.
 """
 
+import json
+from uuid import uuid4
+
 from django.contrib.auth import get_user_model
 from django.test import SimpleTestCase, TestCase, override_settings
+from django.urls import reverse
+from wagtail.blocks import StructBlockValidationError
 from wagtail.models import Site
+from wagtail.test.utils.form_data import (
+    nested_form_data,
+    querydict_from_html,
+    streamfield,
+)
 
 from govuk.models import ContentPage
-from govuk.models.blocks import GovukTableBlock
+from govuk.models.blocks import GovukTableBlock, SizedTableBlock
 from govuk.page_import_export import (
     PAGE_EXPORT_FORMAT,
     build_page_export_payload,
@@ -39,25 +49,39 @@ def _feature_flags() -> dict[str, bool]:
     }
 
 
-def _table(
+def _grid(
     data, *, header_row=False, header_col=False, caption="", cell=None, merge=None
-) -> list[dict]:
+) -> dict:
     value = {
         "data": data,
         "first_row_is_table_header": header_row,
         "first_col_is_header": header_col,
         "table_caption": caption,
     }
-    # The grid's per-cell metadata and merges, as Wagtail saves them.
+    # The grid's per-cell metadata and merges.
     if cell is not None:
         value["cell"] = cell
     if merge is not None:
         value["mergeCells"] = merge
-    return [{"type": "table", "value": value}]
+    return value
 
 
-@override_settings(FEATURE_FLAGS=_feature_flags())
-class ContentPageTableRenderingTests(TestCase):
+def _table(data, *, widths=(), **grid) -> list[dict]:
+    return [
+        {
+            "type": "table",
+            "value": {
+                "table": _grid(data, **grid),
+                "column_widths": [
+                    {"type": "item", "value": width, "id": str(uuid4())}
+                    for width in widths
+                ],
+            },
+        }
+    ]
+
+
+class _TablePageMixin:
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root = self.site.root_page.specific
@@ -73,6 +97,9 @@ class ContentPageTableRenderingTests(TestCase):
         page.save_revision().publish()
         return self.client.get(page.url).content.decode()
 
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class ContentPageTableRenderingTests(_TablePageMixin, TestCase):
     def test_a_table_renders_as_a_govuk_table(self):
         html = self._render(
             _table([["Grade", "Level"], ["SCS1", "Deputy director"]], header_row=True)
@@ -235,6 +262,188 @@ class GovukTableBlockOptionsTests(SimpleTestCase):
         # On top of Wagtail's own menu, not instead of it.
         self.assertIn("row_above", options["contextMenu"])
         self.assertEqual(options["language"], "en-US")
+
+
+@override_settings(FEATURE_FLAGS=_feature_flags())
+class TableColumnWidthRenderingTests(_TablePageMixin, TestCase):
+    """Widths are a <col> per column, so they apply with or without a header row."""
+
+    def test_each_width_is_a_col_of_its_own(self):
+        html = self._render(
+            _table([["a", "b", "c"]], widths=["one-half", "auto", "one-quarter"])
+        )
+
+        self.assertIn(
+            '<colgroup><col class="app-table-col--one-half"><col>'
+            '<col class="app-table-col--one-quarter"></colgroup>',
+            html.replace("\n", "").replace("    ", ""),
+        )
+
+    def test_a_table_with_no_widths_has_no_colgroup(self):
+        self.assertNotIn("<colgroup>", self._render(_table([["a", "b"]])))
+
+    def test_all_automatic_widths_add_no_colgroup(self):
+        self.assertNotIn(
+            "<colgroup>", self._render(_table([["a", "b"]], widths=["auto", "auto"]))
+        )
+
+    def test_widths_beyond_the_last_column_are_left_out(self):
+        """An import writes stream data without the validation that refuses them."""
+        html = self._render(
+            _table([["a", "b"]], widths=["one-quarter", "one-quarter", "one-half"])
+        )
+
+        self.assertEqual(html.count("<col "), 2)
+        self.assertNotIn("app-table-col--one-half", html)
+
+    def test_a_stored_width_cannot_reach_the_class_attribute(self):
+        html = self._render(_table([["a", "b"]], widths=['half" onclick="alert(1)']))
+
+        self.assertNotIn("onclick", html)
+        self.assertNotIn("<colgroup>", html)
+
+    def test_a_table_stored_before_widths_still_renders(self):
+        """The grid's value on its own, as every table was saved before."""
+        html = self._render(
+            [{"type": "table", "value": _grid([["Grade", "Level"]], header_row=True)}]
+        )
+
+        self.assertIn('<table class="govuk-table">', html)
+        self.assertIn("Grade", html)
+        self.assertNotIn("<colgroup>", html)
+
+
+class SizedTableBlockTests(SimpleTestCase):
+    def _value(self, data, widths):
+        return SizedTableBlock().to_python(
+            {
+                "table": _grid(data),
+                "column_widths": [
+                    {"type": "item", "value": width, "id": str(uuid4())}
+                    for width in widths
+                ],
+            }
+        )
+
+    def test_widths_that_fit_are_accepted(self):
+        SizedTableBlock().clean(
+            self._value([["a", "b", "c"]], ["one-half", "one-quarter", "one-quarter"])
+        )
+
+    def test_more_widths_than_columns_are_refused(self):
+        with self.assertRaises(StructBlockValidationError) as raised:
+            SizedTableBlock().clean(
+                self._value([["a", "b"]], ["one-quarter", "one-quarter", "one-quarter"])
+            )
+
+        self.assertIn("column_widths", raised.exception.block_errors)
+        self.assertIn(
+            "The table has 2 columns",
+            str(raised.exception.block_errors["column_widths"].non_block_errors),
+        )
+
+    def test_widths_that_add_up_to_more_than_the_table_are_refused(self):
+        with self.assertRaises(StructBlockValidationError) as raised:
+            SizedTableBlock().clean(
+                self._value([["a", "b", "c"]], ["one-half", "one-half", "one-quarter"])
+            )
+
+        self.assertIn(
+            "more than the whole table",
+            str(raised.exception.block_errors["column_widths"].non_block_errors),
+        )
+
+    def test_three_thirds_make_a_whole_table(self):
+        """1/3 + 1/3 + 1/3 is not quite 1 in floating point."""
+        SizedTableBlock().clean(
+            self._value([["a", "b", "c"]], ["one-third", "one-third", "one-third"])
+        )
+
+    def test_a_table_stored_before_widths_reads_as_one_without_them(self):
+        value = SizedTableBlock().to_python(_grid([["a", "b"]]))
+
+        self.assertEqual(value["table"]["data"], [["a", "b"]])
+        self.assertEqual(list(value["column_widths"]), [])
+
+    def test_it_is_stored_with_its_widths_from_then_on(self):
+        block = SizedTableBlock()
+        stored = block.get_prep_value(block.to_python(_grid([["a", "b"]])))
+
+        self.assertEqual(stored["table"]["data"], [["a", "b"]])
+        self.assertEqual(stored["column_widths"], [])
+
+
+class TableColumnWidthAdminTests(TestCase):
+    """The widths reach a page through the form the admin serves."""
+
+    def setUp(self):
+        self.client.force_login(
+            get_user_model().objects.create_superuser(
+                username="editor", email="editor@example.gov.uk", password="unused"
+            )
+        )
+        root = Site.objects.get(is_default_site=True).root_page.specific
+        self.page = root.add_child(
+            instance=ContentPage(title="Grades", slug="grades", body=[])
+        )
+        self.page.save_revision().publish()
+        self.edit_url = reverse("wagtailadmin_pages:edit", args=[self.page.pk])
+
+    def _post(self, widths):
+        data = querydict_from_html(
+            self.client.get(self.edit_url).content.decode(), form_id="page-edit-form"
+        )
+        widths_data = {"count": len(widths)}
+        for index, width in enumerate(widths):
+            widths_data[str(index)] = {
+                "value": width,
+                "deleted": "",
+                "order": index,
+                "id": "",
+            }
+        data.update(
+            nested_form_data(
+                {
+                    "body": streamfield(
+                        [
+                            (
+                                "table",
+                                {
+                                    # The grid posts its value as JSON in a
+                                    # hidden input, with the header choice
+                                    # its editor always sends.
+                                    "table": json.dumps(
+                                        {
+                                            **_grid(
+                                                [["Grade", "Level"], ["SCS1", "Director"]]
+                                            ),
+                                            "table_header_choice": "row",
+                                        }
+                                    ),
+                                    "column_widths": widths_data,
+                                },
+                            )
+                        ]
+                    )
+                }
+            )
+        )
+        data["action-publish"] = "action-publish"
+        return self.client.post(self.edit_url, data=data)
+
+    def test_column_widths_can_be_published(self):
+        response = self._post(["one-quarter", "three-quarters"])
+
+        self.assertEqual(response.status_code, 302)
+        table = ContentPage.objects.get(pk=self.page.pk).body[0].value
+        self.assertEqual(list(table["column_widths"]), ["one-quarter", "three-quarters"])
+        self.assertEqual(table["table"]["data"][1], ["SCS1", "Director"])
+
+    def test_widths_for_columns_the_table_does_not_have_are_refused(self):
+        response = self._post(["one-quarter", "one-quarter", "one-quarter"])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "The table has 2 columns")
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())

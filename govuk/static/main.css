@@ -896,6 +896,27 @@ main > :nth-last-child(1 of .section-cards-container) {
     text-align: right;
 }
 
+/* A table column an editor gave a width, as a share of the table. */
+.app-table-col--one-quarter {
+    width: 25%;
+}
+
+.app-table-col--one-third {
+    width: 33.33%;
+}
+
+.app-table-col--one-half {
+    width: 50%;
+}
+
+.app-table-col--two-thirds {
+    width: 66.66%;
+}
+
+.app-table-col--three-quarters {
+    width: 75%;
+}
+
 .gem-c-attachment {
     position: relative;
 }

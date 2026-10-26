@@ -16,7 +16,8 @@
     An editor can centre or right-align a cell and merge cells in the grid.
     cell_alignment_class turns the grid's alignment into a class of our own;
     a merge is the cell_span attributes, with cell_hidden leaving out the
-    cells it covers.
+    cells it covers. Column widths are a <col> per column, so they apply with
+    or without a header row.
 {% endcomment %}
 <div class="table-scroll"
      tabindex="0"
@@ -25,6 +26,11 @@
     <table class="govuk-table">
         {% if table_caption %}
             <caption class="govuk-table__caption govuk-table__caption--m">{{ table_caption }}</caption>
+        {% endif %}
+        {% if column_classes %}
+            <colgroup>
+                {% for column_class in column_classes %}<col{% if column_class %} class="{{ column_class }}"{% endif %}>{% endfor %}
+            </colgroup>
         {% endif %}
         {% if table_header %}
             <thead class="govuk-table__head">

@@ -3,7 +3,11 @@ from dataclasses import dataclass, field
 
 from django.core.exceptions import ValidationError
 from wagtail import blocks
-from wagtail.blocks import StructBlockValidationError, StructValue
+from wagtail.blocks import (
+    ListBlockValidationError,
+    StructBlockValidationError,
+    StructValue,
+)
 from wagtail.contrib.table_block.blocks import DEFAULT_TABLE_OPTIONS, TableBlock
 from wagtail.images.blocks import ImageChooserBlock
 from wagtail.snippets.blocks import SnippetChooserBlock
@@ -99,6 +103,121 @@ class GovukTableBlock(TableBlock):
             "caption: it is how somebody using a screen reader knows what the "
             "table is before reading it."
         )
+
+
+# The widths a table column can be given, each a fraction of the table. Not the
+# Design System's width classes: those go to the full width below the tablet
+# breakpoint, which on a table's columns asks every sized one for the whole
+# table. These hold at every width, and a table too wide for the screen scrolls.
+TABLE_COLUMN_WIDTHS = {
+    "one-quarter": ("One quarter", 1 / 4),
+    "one-third": ("One third", 1 / 3),
+    "one-half": ("One half", 1 / 2),
+    "two-thirds": ("Two thirds", 2 / 3),
+    "three-quarters": ("Three quarters", 3 / 4),
+}
+
+
+def _table_column_count(table_value) -> int:
+    data = (table_value or {}).get("data") or []
+    return len(data[0]) if data and data[0] else 0
+
+
+class SizedTableBlock(blocks.StructBlock):
+    """A table, with an optional width for each of its columns.
+
+    The grid stores only what its own editor saves, so the widths sit beside it
+    as a list, one per column from the left. A column without one shares out
+    what the others leave.
+
+    A table stored before the widths existed is the grid's value on its own;
+    it is read as a table with no widths, and stored in this shape the next
+    time its page is saved.
+    """
+
+    table = GovukTableBlock()
+    column_widths = blocks.ListBlock(
+        blocks.ChoiceBlock(
+            choices=[
+                ("auto", "Automatic"),
+                *((key, label) for key, (label, _) in TABLE_COLUMN_WIDTHS.items()),
+            ],
+            default="auto",
+            label="Width",
+        ),
+        default=[],
+        required=False,
+        label="Column widths",
+        help_text=(
+            "Optional. One width for each column, from the left. A column "
+            "without one, or set to Automatic, shares out what is left."
+        ),
+    )
+
+    class Meta:
+        icon = "table"
+        label = "Table"
+        template = "blocks/sized_table.html"
+
+    @staticmethod
+    def _with_widths(raw):
+        if isinstance(raw, dict) and "table" not in raw and "data" in raw:
+            return {"table": raw, "column_widths": []}
+        return raw
+
+    def to_python(self, value):
+        return super().to_python(self._with_widths(value))
+
+    def bulk_to_python(self, values):
+        return super().bulk_to_python([self._with_widths(value) for value in values])
+
+    def clean(self, value):
+        value = super().clean(value)
+        widths = list(value.get("column_widths") or [])
+        columns = _table_column_count(value.get("table"))
+        if columns and len(widths) > columns:
+            raise StructBlockValidationError(
+                block_errors={
+                    "column_widths": ListBlockValidationError(
+                        non_block_errors=[
+                            ValidationError(
+                                f"The table has {columns} "
+                                f"column{'s' if columns != 1 else ''}, so give "
+                                f"no more than {columns} "
+                                f"width{'s' if columns != 1 else ''}."
+                            )
+                        ]
+                    )
+                }
+            )
+        total = sum(TABLE_COLUMN_WIDTHS[width][1] for width in widths if width in TABLE_COLUMN_WIDTHS)
+        if total > 1 + 1e-9:
+            raise StructBlockValidationError(
+                block_errors={
+                    "column_widths": ListBlockValidationError(
+                        non_block_errors=[
+                            ValidationError(
+                                "These widths add up to more than the whole table."
+                            )
+                        ]
+                    )
+                }
+            )
+        return value
+
+    def get_context(self, value, parent_context=None):
+        context = super().get_context(value, parent_context=parent_context)
+        # A class per column.
+        # A page import writes stream data without running clean, so
+        # neither the width nor the number of them can be trusted.
+        columns = _table_column_count(value.get("table"))
+        widths = list(value.get("column_widths") or [])[:columns]
+        column_classes = [
+            f"app-table-col--{width}" if width in TABLE_COLUMN_WIDTHS else ""
+            for width in widths
+        ]
+        context["column_classes"] = column_classes if any(column_classes) else []
+        return context
 
 
 class BodyTextBlock(blocks.RichTextBlock):
@@ -286,7 +405,7 @@ class ContentBodyBlock(blocks.StreamBlock):
     """
 
     text = BodyTextBlock()
-    table = GovukTableBlock()
+    table = SizedTableBlock()
     cards = CardRowBlock(label="Cards")
     banner = BannerBlock()
     inset_text = InsetTextBlock(features=FRAMEWORK_WELCOME_RICH_TEXT_FEATURES)
