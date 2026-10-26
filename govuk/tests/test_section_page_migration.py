@@ -9,6 +9,7 @@ and URL, whose body is its rows as card blocks and then its free text.
 
 import uuid
 
+from django.core.management.color import no_style
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import TransactionTestCase
@@ -145,6 +146,13 @@ class SectionPageMigrationTests(TransactionTestCase):
         self.bystander_tag = OldContentPageTag.objects.create(
             pk=self.section_tag.pk, content_object_id=self.bystander.pk, tag_id=alpha.pk
         )
+        # An explicit id leaves Postgres's sequence where it was, so the
+        # migration's own new tag row would be handed the same one.
+        with connection.cursor() as cursor:
+            for statement in connection.ops.sequence_reset_sql(
+                no_style(), [OldContentPageTag]
+            ):
+                cursor.execute(statement)
 
         sectionpage_ct = self._content_type("govuk", "sectionpage")
         self.draft = apps.get_model("wagtailcore", "Revision").objects.create(
