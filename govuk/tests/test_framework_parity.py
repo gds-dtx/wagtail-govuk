@@ -40,6 +40,7 @@ from govuk.models import (
     GovukSkill,
 )
 from govuk.tests.framework_helpers import make_framework_main_page, role_url
+from govuk.tests.page_helpers import text_body
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 MAIN_CSS = (STATIC / "main.css").read_text()
@@ -658,7 +659,7 @@ class DownloadTests(FrameworkParityTestCase):
         that page type too."""
         page = self.main_page.add_child(
             instance=FrameworkContentPage(
-                title="Download", slug="download", body=self.BODY
+                title="Download", slug="download", body=text_body(self.BODY)
             )
         )
         page.save_revision().publish()
@@ -670,7 +671,7 @@ class DownloadTests(FrameworkParityTestCase):
 
     def test_a_plain_page_shows_them_the_same_way(self):
         page = self.root_page.add_child(
-            instance=ContentPage(title="Download", slug="download", body=self.BODY)
+            instance=ContentPage(title="Download", slug="download", body=text_body(self.BODY))
         )
         page.save_revision().publish()
 
@@ -747,8 +748,8 @@ class EditingTests(FrameworkParityTestCase):
                 title="Upcoming changes",
                 slug="upcoming-changes",
                 body=(
-                    '<div class="govuk-inset-text">'
-                    "<p>First line.<br/>Second line.</p></div>"
+                    text_body('<div class="govuk-inset-text">'
+                    "<p>First line.<br/>Second line.</p></div>")
                 ),
             )
         )
@@ -783,8 +784,8 @@ class PageLayoutTests(FrameworkParityTestCase):
                 title="Job grades",
                 slug="job-grades",
                 body=(
-                    "<table><thead><tr><th>Grade</th></tr></thead>"
-                    "<tbody><tr><td>SCS1</td></tr></tbody></table>"
+                    text_body("<table><thead><tr><th>Grade</th></tr></thead>"
+                    "<tbody><tr><td>SCS1</td></tr></tbody></table>")
                 ),
             )
         )

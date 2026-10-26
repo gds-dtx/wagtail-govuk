@@ -44,7 +44,6 @@ def base_content_panels() -> list:
         FieldPanel("hero_intro"),
         FieldPanel("author"),
         FieldPanel("body"),
-        FieldPanel("body_blocks"),
     ]
 
 

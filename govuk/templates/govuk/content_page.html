@@ -14,11 +14,10 @@
             text between them in the width container. Only a page with no
             sidebar gets here, so there is no side column to lay out.
         {% endcomment %}
-        {% if self.body or self.author or self.show_last_updated_date or self.show_page_content_metadata or framework_changelog.last_updated_date or self.show_framework_welcome %}
+        {% if self.show_page_content_metadata or framework_changelog.last_updated_date or self.show_framework_welcome %}
             <div class="govuk-width-container body-segment">
                 <div class="govuk-body rich-text-content">
                     {% include "includes/content_page_intro.html" %}
-                    {% if self.body %}{{ self.body | page_body }}{% endif %}
                 </div>
             </div>
         {% endif %}
@@ -42,7 +41,7 @@
         {% endif %}
     {% else %}
         <div class="govuk-width-container govuk-!-margin-bottom-6">
-            {% if self.body or self.body_blocks or self.author or self.show_last_updated_date or self.show_page_content_metadata or role_navigation or framework_changelog.entries or self.show_framework_welcome %}
+            {% if self.body or self.author or self.show_last_updated_date or self.show_page_content_metadata or role_navigation or framework_changelog.entries or self.show_framework_welcome %}
                 <div class="govuk-!-margin-bottom-3">
                     <div class="govuk-grid-row{% if heading_navigation %} free-text-with-headings-layout{% endif %}"
                          {% if heading_navigation %}data-auto-heading-layout{% endif %}>
@@ -73,7 +72,6 @@
                             <div class="govuk-body rich-text-content"
                                  {% if heading_navigation %}data-auto-heading-source{% endif %}>
                                 {% include "includes/content_page_intro.html" %}
-                                {% if self.body %}{{ self.body | page_body }}{% endif %}
                                 {% for segment in body_layout.segments %}
                                     {% for item in segment.items %}{% include "includes/body_block.html" %}{% endfor %}
                                 {% endfor %}

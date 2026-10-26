@@ -365,7 +365,7 @@ class Command(BaseCommand):
             return
 
         home.hero_intro = f"<p>{escape(SITE_INTRO)}</p>"
-        home.body = ""
+        home.body = []
         home.show_role_navigation = True
         home.show_framework_updates = True
         # The welcome layout is on; the welcome prose (framework_welcome_body)

@@ -12,6 +12,7 @@ from django.urls import reverse
 from wagtail.models import Site
 
 from govuk.models import ContentPage, CustomiseSettings, PageUsefulnessVote
+from govuk.tests.page_helpers import text_body
 
 
 def _feature_flags() -> dict[str, bool]:
@@ -38,7 +39,7 @@ class PageFeedbackPromptTests(TestCase):
             instance=ContentPage(
                 title="Civil Service job grades",
                 slug="job-grades",
-                body="<p>The grades.</p>",
+                body=text_body("<p>The grades.</p>"),
             )
         )
         page.save_revision().publish()

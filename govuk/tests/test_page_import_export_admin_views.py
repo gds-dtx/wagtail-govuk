@@ -10,6 +10,7 @@ from wagtail.models import Page, PageViewRestriction, Site
 
 from govuk.models import ContentPage, GovukRole, GovukSkill, GovukTag, SectionPage
 from govuk.page_import_export import PAGE_EXPORT_FORMAT, import_pages_from_payload
+from govuk.tests.page_helpers import body_html, text_body
 
 
 def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
@@ -35,7 +36,7 @@ class PageImportExportAdminViewTests(TestCase):
             instance=SectionPage(title="Benefits", slug="benefits")
         )
         self.content_page = self.section_page.add_child(
-            instance=ContentPage(title="Apply", slug="apply", body="<p>Old body</p>")
+            instance=ContentPage(title="Apply", slug="apply", body=text_body("<p>Old body</p>"))
         )
 
         self.index_url = reverse("govuk_pages_import_export")
@@ -202,7 +203,7 @@ class PageImportExportAdminViewTests(TestCase):
                             "fields": {
                                 "hero_title": "Apply for support",
                                 "hero_intro": "<p>Step by step</p>",
-                                "body": "<p>Updated content body</p>",
+                                "body": text_body("<p>Updated content body</p>"),
                                 "hero_style": "combined",
                                 "enable_free_text_heading_navigation": True,
                             },
@@ -256,7 +257,7 @@ class PageImportExportAdminViewTests(TestCase):
             1,
         )
         self.assertEqual(self.content_page.title, "Apply now")
-        self.assertEqual(self.content_page.body, "<p>Updated content body</p>")
+        self.assertEqual(body_html(self.content_page), "<p>Updated content body</p>")
         self.assertEqual(self.content_page.seo_title, "Apply SEO")
         self.assertTrue(self.content_page.show_in_menus)
         self.assertEqual(self.content_page.hero_style, "combined")
@@ -445,7 +446,7 @@ class PageImportExportAdminViewTests(TestCase):
                 {
                     "model": "govuk.ContentPage",
                     "settings": {"title": "The framework", "slug": self.root_page.slug},
-                    "fields": {"body": "<p>Welcome</p>"},
+                    "fields": {"body": text_body("<p>Welcome</p>")},
                     "children": [
                         {
                             "model": "govuk.SectionPage",
@@ -455,7 +456,7 @@ class PageImportExportAdminViewTests(TestCase):
                         {
                             "model": "govuk.ContentPage",
                             "settings": {"title": "Brand new", "slug": "brand-new"},
-                            "fields": {"body": "<p>New</p>"},
+                            "fields": {"body": text_body("<p>New</p>")},
                         },
                     ],
                 }
@@ -663,7 +664,7 @@ class PageImportExportAdminViewTests(TestCase):
                     {
                         "model": "govuk.ContentPage",
                         "settings": {"title": "Apply", "slug": "apply"},
-                        "fields": {"body": "<p>New body</p>"},
+                        "fields": {"body": text_body("<p>New body</p>")},
                     }
                 ],
             }
@@ -672,7 +673,7 @@ class PageImportExportAdminViewTests(TestCase):
 
         self.assertIn("Import complete", " ".join(messages))
         self.content_page.refresh_from_db()
-        self.assertEqual(self.content_page.body, "<p>New body</p>")
+        self.assertEqual(body_html(self.content_page), "<p>New body</p>")
 
     def test_the_home_page_can_be_exported_and_comes_back_in_place(self):
         """The front page is content, and export used to leave it behind.

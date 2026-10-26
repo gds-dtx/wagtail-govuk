@@ -9,6 +9,7 @@ from govuk.models import (
     SectionPage,
     TagListingsPage,
 )
+from govuk.tests.page_helpers import text_body
 
 
 class PageContentMetadataToggleTests(TestCase):
@@ -34,7 +35,7 @@ class PageContentMetadataToggleTests(TestCase):
             instance=ContentPage(
                 title="Metadata content page",
                 slug="metadata-content-page",
-                body="<p>Body</p>",
+                body=text_body("<p>Body</p>"),
                 author="Example Author",
                 show_last_updated_date=True,
             )

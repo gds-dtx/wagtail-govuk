@@ -85,10 +85,9 @@ class _PageTestCase(TestCase):
         self.root = self.site.root_page.specific
 
     def _publish(self, blocks, **fields) -> ContentPage:
-        fields.setdefault("body", "")
         page = self.root.add_child(
             instance=ContentPage(
-                title="Get involved", slug="get-involved", body_blocks=blocks, **fields
+                title="Get involved", slug="get-involved", body=blocks, **fields
             )
         )
         page.save_revision().publish()
@@ -118,15 +117,6 @@ class ContentPageBlockLayoutTests(_PageTestCase):
         self.assertLess(html.index("Alpha card"), html.index("After the cards."))
         # The text either side is in a width container of its own, not the band.
         self.assertEqual(html.count("govuk-width-container body-segment"), 2)
-
-    def test_the_body_field_still_comes_first(self):
-        html = self._html(
-            self._publish(
-                [_cards(_card("Alpha card"))], body="<p>The page body.</p>"
-            )
-        )
-
-        self.assertLess(html.index("The page body."), html.index("Alpha card"))
 
     def test_beside_heading_navigation_a_card_row_stays_in_the_column(self):
         html = self._html(
@@ -190,8 +180,7 @@ class FrameworkContentPageBlockLayoutTests(TestCase):
             instance=FrameworkContentPage(
                 title="Roadmap",
                 slug="roadmap",
-                body="",
-                body_blocks=[_cards(_card("Alpha card"))],
+                body=[_cards(_card("Alpha card"))],
             )
         )
         page.save_revision().publish()
@@ -349,8 +338,7 @@ class ContentPageBlockAdminTests(_PageTestCase):
         data = querydict_from_html(
             self.client.get(edit_url).content.decode(), form_id="page-edit-form"
         )
-        data.update(nested_form_data({"body_blocks": streamfield(blocks)}))
-        data["body"] = rich_text("")
+        data.update(nested_form_data({"body": streamfield(blocks)}))
         data["action-publish"] = "action-publish"
         return self.client.post(edit_url, data=data)
 
@@ -387,17 +375,17 @@ class ContentPageBlockAdminTests(_PageTestCase):
         self.assertEqual(response.status_code, 302)
         page = ContentPage.objects.get(pk=self.page.pk)
         self.assertEqual(
-            [block.block_type for block in page.body_blocks],
+            [block.block_type for block in page.body],
             ["text", "cards", "banner"],
         )
-        self.assertEqual(page.body_blocks[1].value["cards"][0]["title"], "Alpha card")
+        self.assertEqual(page.body[1].value["cards"][0]["title"], "Alpha card")
 
     def test_a_banner_button_with_nowhere_to_go_is_refused(self):
         response = self._post([("banner", self._banner_form(button_external_url=""))])
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Choose a page or enter a URL for the button.")
-        self.assertEqual(len(ContentPage.objects.get(pk=self.page.pk).body_blocks), 0)
+        self.assertEqual(len(ContentPage.objects.get(pk=self.page.pk).body), 0)
 
 
 class ContentPageCardSearchTests(_PageTestCase):
@@ -433,13 +421,13 @@ class ContentPageCardImportExportTests(_PageTestCase):
         page = self._publish([_cards(_card("Alpha card", tags=[tag]))])
         payload = build_page_export_payload(site=self.site, pages=[page], user=self.user)
 
-        page.body_blocks = []
+        page.body = []
         page.save_revision().publish()
 
         import_pages_from_payload(payload=payload, site=self.site, user=self.user)
 
         reloaded = ContentPage.objects.get(pk=page.pk)
-        [card] = reloaded.body_blocks[0].value["cards"]
+        [card] = reloaded.body[0].value["cards"]
         self.assertEqual(card["title"], "Alpha card")
         self.assertEqual(list(card["tags"]), [tag])
 
@@ -452,7 +440,7 @@ class ContentPageCardImportExportTests(_PageTestCase):
                     "model": "govuk.ContentPage",
                     "settings": {"slug": "tagged", "title": "Tagged"},
                     "fields": {
-                        "body_blocks": [
+                        "body": [
                             {
                                 "type": "cards",
                                 "value": {
@@ -484,5 +472,5 @@ class ContentPageCardImportExportTests(_PageTestCase):
         import_pages_from_payload(payload=payload, site=self.site, user=self.user)
 
         page = ContentPage.objects.get(slug="tagged")
-        raw_tag = page.body_blocks.raw_data[0]["value"]["cards"][0]["value"]["tags"][0]
+        raw_tag = page.body.raw_data[0]["value"]["cards"][0]["value"]["tags"][0]
         self.assertEqual(GovukTag.objects.get(pk=raw_tag["value"]).slug, "new-tag")

@@ -42,7 +42,7 @@ PAGE_TAG_TEXT_WEIGHT = 0.75
 CARD_TAG_TEXT_WEIGHT = 1.0
 # The page types whose content holds card rows, and the stream each holds them
 # in. Every card is a result of its own.
-CARD_PAGE_FIELDS = ((SectionPage, "rows"), (ContentPage, "body_blocks"))
+CARD_PAGE_FIELDS = ((SectionPage, "rows"), (ContentPage, "body"))
 TAG_RESULT_WEIGHT = 1.2
 EXTERNAL_SOURCE_TEXT_WEIGHT = 0.4
 EXTERNAL_TAG_TEXT_WEIGHT = 0.6

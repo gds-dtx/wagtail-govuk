@@ -15,6 +15,7 @@ from govuk.page_import_export import (
     build_page_export_payload,
     import_pages_from_payload,
 )
+from govuk.tests.page_helpers import text_body
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -426,7 +427,7 @@ class RoleExportImportFieldTests(TestCase):
             {
                 "model": "govuk.ContentPage",
                 "settings": {"title": "Capability Framework", "slug": "home"},
-                "fields": {"body": "<p>The framework.</p>"},
+                "fields": {"body": text_body("<p>The framework.</p>")},
                 "tags": [],
                 "privacy": [],
                 "children": children or [],
@@ -447,7 +448,7 @@ class RoleExportImportFieldTests(TestCase):
                 {
                     "model": "govuk.ContentPage",
                     "settings": {"title": "Data analyst", "slug": "data-analyst"},
-                    "fields": {"body": "<p>Body.</p>"},
+                    "fields": {"body": text_body("<p>Body.</p>")},
                     "tags": [],
                     "privacy": [],
                     "children": [],
@@ -495,7 +496,7 @@ class RoleExportImportFieldTests(TestCase):
             instance=ContentPage(
                 title="Data analyst",
                 slug="data-analyst",
-                body="<p>Body.</p>",
+                body=text_body("<p>Body.</p>"),
             )
         )
         page.save_revision().publish()
@@ -627,7 +628,7 @@ class ImportIntoASiteWithSkillsSwitchedOffTests(TestCase):
             instance=ContentPage(
                 title="Data analyst",
                 slug="data-analyst",
-                body="<p>Body.</p>",
+                body=text_body("<p>Body.</p>"),
             )
         )
         page.save_revision().publish()

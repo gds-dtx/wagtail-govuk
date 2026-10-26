@@ -227,7 +227,7 @@ INSTALLED_APPS = [
     # own.
     "wagtail.contrib.routable_page",
     "wagtail.contrib.settings",
-    # The grid editor behind ContentPage.body_blocks. Without it a table
+    # The grid editor behind the content page body's Table block. Without it a table
     # reaches a content page only as hand-written HTML, which is not a
     # formatting option a content designer has.
     "wagtail.contrib.table_block",

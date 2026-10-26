@@ -15,6 +15,7 @@ from govuk.models import (
 )
 from govuk.page_import_export import _serialise_page_fields
 from govuk.tests.framework_helpers import make_framework_main_page
+from govuk.tests.page_helpers import text_body
 
 
 class ContentPageRoleNavigationTests(TestCase):
@@ -37,7 +38,7 @@ class ContentPageRoleNavigationTests(TestCase):
             self.root_page,
             title="Welcome",
             slug="welcome",
-            body="<p>Some words.</p>",
+            body=text_body("<p>Some words.</p>"),
             show_role_navigation=False,
             show_framework_updates=False,
             show_framework_welcome=False,
@@ -119,7 +120,7 @@ class FrameworkUpdatesTests(TestCase):
             self.site.root_page.specific,
             title="Welcome",
             slug="welcome",
-            body="<p>Some words.</p>",
+            body=text_body("<p>Some words.</p>"),
             show_role_navigation=False,
             show_framework_updates=False,
             show_framework_welcome=False,
@@ -312,7 +313,7 @@ class FrameworkWelcomeContentTests(TestCase):
     def test_the_welcome_prose_renders_without_anything_in_the_body(self):
         page = self._welcome()
 
-        self.assertEqual(self.page.body, "")
+        self.assertEqual(len(self.page.body), 0)
         for heading in (
             "How to use this framework",
             "Skills in this framework",

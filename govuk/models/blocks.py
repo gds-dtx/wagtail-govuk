@@ -86,13 +86,13 @@ class GovukTableBlock(TableBlock):
 
 
 class BodyTextBlock(blocks.RichTextBlock):
-    """Rich text in a page body, rendered the way the body field is.
+    """Rich text in a page body.
 
-    No features argument, so this offers exactly what the body field offers --
-    both take the default set, which the rich text hooks extend with the GOV.UK
-    button, start button, inset text and raw HTML. The template runs it through
-    ``page_body`` too, so a link to a framework CSV becomes an attachment here
-    as it does in the body field.
+    No features argument, so this offers exactly what the rich text body field
+    it replaced did -- the default set, which the rich text hooks extend with
+    the GOV.UK button, start button, inset text and raw HTML. The template runs
+    it through ``page_body``, so a link to a framework CSV becomes an
+    attachment.
     """
 
     class Meta:
@@ -267,12 +267,8 @@ class BannerBlock(blocks.StructBlock):
 class ContentBodyBlock(blocks.StreamBlock):
     """Prose, tables, cards and banners, in whatever order the page needs them.
 
-    ``ContentPage.body`` is a rich text field and, for now, stays one. This
-    renders after it, so an editor adding a block to an existing page changes
-    nothing about the page's existing text.
-
-    A page that needs a block part-way through moves its body text into a Text
-    block here, which offers the same formatting the body field does.
+    The whole of a content page's body. The block type names are stored with
+    each block, so renaming one means migrating every page that uses it.
     """
 
     text = BodyTextBlock()

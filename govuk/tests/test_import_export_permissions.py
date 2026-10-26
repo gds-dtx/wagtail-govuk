@@ -31,6 +31,7 @@ from govuk.models import (
     SectionPage,
 )
 from govuk.page_import_export import PAGE_EXPORT_FORMAT
+from govuk.tests.page_helpers import text_body
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -49,7 +50,7 @@ class ImportExportPermissionTests(TestCase):
             instance=SectionPage(title="Benefits", slug="benefits")
         )
         self.content_page = self.section_page.add_child(
-            instance=ContentPage(title="Apply", slug="apply", body="<p>Body</p>")
+            instance=ContentPage(title="Apply", slug="apply", body=text_body("<p>Body</p>"))
         )
 
         self.skill = GovukSkill.objects.create(slug="accessibility", title="Accessibility")
@@ -384,7 +385,7 @@ class ImportedPasswordRestrictionTests(TestCase):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
         self.page = self.root_page.add_child(
-            instance=ContentPage(title="Apply", slug="apply", body="<p>Body</p>")
+            instance=ContentPage(title="Apply", slug="apply", body=text_body("<p>Body</p>"))
         )
         self.user = get_user_model().objects.create_superuser(
             username="admin-user",
@@ -475,7 +476,7 @@ class PlaceholderHomePageReplacementPermissionTests(TestCase):
                 {
                     "model": "govuk.ContentPage",
                     "settings": {"title": "Capability Framework", "slug": "home"},
-                    "fields": {"body": "<p>The framework.</p>"},
+                    "fields": {"body": text_body("<p>The framework.</p>")},
                     "tags": [],
                     "privacy": [],
                     "children": [],

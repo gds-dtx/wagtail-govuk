@@ -21,6 +21,7 @@ from wagtail.models import GroupPagePermission, Page, PageLogEntry, Site
 
 from govuk.models import ContentPage, SectionPage
 from govuk.page_import_export import PAGE_EXPORT_FORMAT, import_pages_from_payload
+from govuk.tests.page_helpers import body_html, text_body
 
 
 def _feature_flags() -> dict[str, bool]:
@@ -40,7 +41,7 @@ class PageImportPublishingTests(TestCase):
         )
         self.page = self.section.add_child(
             instance=ContentPage(
-                title="Apply", slug="apply", body="<p>The wording as published.</p>"
+                title="Apply", slug="apply", body=text_body("<p>The wording as published.</p>")
             )
         )
         self.page.save_revision().publish()
@@ -91,7 +92,7 @@ class PageImportPublishingTests(TestCase):
                         {
                             "model": "govuk.ContentPage",
                             "settings": {"slug": slug, "title": "Apply"},
-                            "fields": {"body": body},
+                            "fields": {"body": text_body(body)},
                         }
                     ],
                 }
@@ -111,7 +112,7 @@ class PageImportPublishingTests(TestCase):
         self.page.refresh_from_db()
         self.assertTrue(self.page.live)
         self.assertFalse(self.page.has_unpublished_changes)
-        self.assertIn("from the file", self.page.specific.body)
+        self.assertIn("from the file", body_html(self.page.specific))
 
     def test_a_publisher_import_is_recorded_in_the_page_history(self):
         publisher = self._publisher()
@@ -140,8 +141,8 @@ class PageImportPublishingTests(TestCase):
         result = self._import(self._editor())
 
         self.page.refresh_from_db()
-        self.assertIn("as published", self.page.specific.body)
-        self.assertNotIn("from the file", self.page.specific.body)
+        self.assertIn("as published", body_html(self.page.specific))
+        self.assertNotIn("from the file", body_html(self.page.specific))
         self.assertEqual(result.skipped, 0)
 
     def test_an_editor_import_waits_in_a_draft(self):
@@ -152,7 +153,7 @@ class PageImportPublishingTests(TestCase):
         self.assertTrue(self.page.has_unpublished_changes)
         latest = self.page.get_latest_revision()
         self.assertEqual(latest.user, editor)
-        self.assertIn("from the file", latest.as_object().body)
+        self.assertIn("from the file", body_html(latest.as_object()))
 
     def test_an_editor_import_says_so(self):
         result = self._import(self._editor())
@@ -191,7 +192,7 @@ class PageImportPublishingTests(TestCase):
 
         created = Page.objects.get(slug="apply-later")
         self.assertTrue(created.live)
-        self.assertIn("from the file", created.specific.body)
+        self.assertIn("from the file", body_html(created.specific))
 
     def test_creating_a_page_is_logged_as_a_creation(self):
         publisher = self._publisher()

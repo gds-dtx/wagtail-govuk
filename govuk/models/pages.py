@@ -138,17 +138,17 @@ class BaseContentPage(Page):
         verbose_name="Show page content metadata",
         help_text="Show page metadata above the main content.",
     )
-    body = RichTextField(blank=True)
-    body_blocks = StreamField(
+    # One stream for the whole body. It was a rich text field with a stream
+    # of further blocks after it until migrations 0087-0088 moved each page's
+    # rich text into a Text block at the head of the stream.
+    body = StreamField(
         ContentBodyBlock(),
         blank=True,
         use_json_field=True,
         verbose_name="Content blocks",
         help_text=(
-            "Text, tables, cards and banners, shown after the body above in "
-            "the order you add them. To put a block part-way through a page, "
-            "move the body text into a Text block here and add the block "
-            "between them."
+            "Build the page from blocks - text, tables, cards, banners and "
+            "inset text - in the order you want them to appear."
         ),
     )
     enable_free_text_heading_navigation = models.BooleanField(
@@ -213,7 +213,7 @@ class ContentPage(HeroStyleMixin, BreadcrumbMixin, CardTagOptionsMixin, BaseCont
         # navigation is offered whenever it is switched on.
         context["heading_navigation"] = self.enable_free_text_heading_navigation
         card_filter = filter_cards(
-            self.body_blocks, request, enabled=self.enable_tag_filter
+            self.body, request, enabled=self.enable_tag_filter
         )
         context["card_filter"] = card_filter
         context["available_tags"] = card_filter.available_tags

@@ -2,8 +2,8 @@
 
 Wagtail's rich text has no table feature, so without a block the only route
 would be hand-written HTML in a raw HTML embed, which is not a formatting
-option a content designer has. ContentPage.body_blocks gives them a grid
-instead.
+option a content designer has. A content page body's Table block gives them a
+grid instead.
 
 Two things are checked beyond "a table appears". It has to be a GOV.UK table,
 because the rest of the service is, and it has to scroll rather than drag the
@@ -23,6 +23,7 @@ from govuk.page_import_export import (
     build_page_export_payload,
     import_pages_from_payload,
 )
+from govuk.tests.page_helpers import text_body
 from govuk.wagtail_hooks import (
     RawHtmlEmbedHandler,
     _encode_raw_html,
@@ -64,8 +65,7 @@ class ContentPageTableRenderingTests(TestCase):
             instance=ContentPage(
                 title="Contextual challenges",
                 slug="contextual-challenges",
-                body="<p>Before the table.</p>",
-                body_blocks=blocks,
+                body=[*text_body("<p>Before the table.</p>"), *blocks],
             )
         )
         page.save_revision().publish()
@@ -122,13 +122,13 @@ class ContentPageTableRenderingTests(TestCase):
         self.assertNotIn("<script>alert(1)</script>", html)
         self.assertIn("&lt;script&gt;", html)
 
-    def test_the_body_field_still_renders_above_the_blocks(self):
+    def test_text_before_a_table_renders_above_it(self):
         html = self._render(_table([["a", "b"]]))
 
         self.assertLess(html.index("Before the table."), html.index("govuk-table"))
 
     def test_text_blocks_and_tables_interleave(self):
-        """A table part-way down a page: the body moves into a Text block."""
+        """A table part-way down a page, with text either side of it."""
         html = self._render(
             [
                 {"type": "text", "value": "<p>Above the table.</p>"},
@@ -140,7 +140,7 @@ class ContentPageTableRenderingTests(TestCase):
         self.assertLess(html.index("Above the table."), html.index("govuk-table"))
         self.assertLess(html.index("govuk-table"), html.index("Below the table."))
 
-    def test_a_page_with_no_blocks_renders_unchanged(self):
+    def test_a_page_without_a_table_has_no_scroll_region(self):
         html = self._render([])
 
         self.assertIn("Before the table.", html)
@@ -149,13 +149,7 @@ class ContentPageTableRenderingTests(TestCase):
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
 class ContentPageTableExportTests(TestCase):
-    """A new field on the page model is a new way for an export to lose content.
-
-    The verified export was taken before this field existed, and it is what
-    production will be built from, so both directions matter: a table has to
-    survive a round trip, and a file that predates the field must leave it
-    alone rather than blanking it.
-    """
+    """A table has to survive a round trip through an export file."""
 
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
@@ -164,33 +158,34 @@ class ContentPageTableExportTests(TestCase):
             instance=ContentPage(
                 title="Contextual challenges",
                 slug="contextual-challenges",
-                body="<p>Before the table.</p>",
-                body_blocks=_table([["Grade", "Level"]], header_row=True),
+                body=[
+                    *text_body("<p>Before the table.</p>"),
+                    *_table([["Grade", "Level"]], header_row=True),
+                ],
             )
         )
         self.page.save_revision().publish()
+        self.user = get_user_model().objects.create_superuser(
+            username="cutover", email="cutover@example.gov.uk", password="unused"
+        )
 
     def test_a_table_survives_an_export_and_import(self):
-        user = get_user_model().objects.create_superuser(
-            username="cutover", email="cutover@example.gov.uk", password="unused"
-        )
         payload = build_page_export_payload(
-            site=self.site, pages=[self.page], user=user
+            site=self.site, pages=[self.page], user=self.user
         )
 
-        self.page.body_blocks = []
+        self.page.body = []
         self.page.save_revision().publish()
 
-        import_pages_from_payload(payload=payload, site=self.site, user=user)
+        import_pages_from_payload(payload=payload, site=self.site, user=self.user)
 
         reloaded = ContentPage.objects.get(pk=self.page.pk)
-        self.assertEqual(len(reloaded.body_blocks), 1)
-        self.assertEqual(reloaded.body_blocks[0].block_type, "table")
-
-    def test_a_file_taken_before_the_field_existed_leaves_it_alone(self):
-        user = get_user_model().objects.create_superuser(
-            username="cutover", email="cutover@example.gov.uk", password="unused"
+        self.assertEqual(
+            [block.block_type for block in reloaded.body], ["text", "table"]
         )
+
+    def test_a_file_from_before_block_bodies_is_refused_whole(self):
+        """Its HTML would arrive as an empty stream and blank the page."""
         payload = {
             "format": PAGE_EXPORT_FORMAT,
             "pages": [
@@ -205,11 +200,38 @@ class ContentPageTableExportTests(TestCase):
             ],
         }
 
-        import_pages_from_payload(payload=payload, site=self.site, user=user)
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
 
+        self.assertTrue(
+            any("exported before page content became blocks" in e for e in result.errors),
+            result.errors,
+        )
         reloaded = ContentPage.objects.get(pk=self.page.pk)
-        self.assertIn("Rewritten by the old file", reloaded.body)
-        self.assertEqual(len(reloaded.body_blocks), 1)
+        self.assertEqual(
+            [block.block_type for block in reloaded.body], ["text", "table"]
+        )
+
+    def test_a_file_with_the_old_body_blocks_field_is_refused_too(self):
+        """Exported between the table block and block bodies: body and body_blocks."""
+        payload = {
+            "format": PAGE_EXPORT_FORMAT,
+            "pages": [
+                {
+                    "model": "govuk.ContentPage",
+                    "settings": {"slug": "new-page", "title": "New page"},
+                    "fields": {"body": "", "body_blocks": []},
+                }
+            ],
+        }
+
+        result = import_pages_from_payload(
+            payload=payload, site=self.site, user=self.user
+        )
+
+        self.assertTrue(result.errors)
+        self.assertFalse(ContentPage.objects.filter(slug="new-page").exists())
 
 
 class RawHtmlTableScrollTests(TestCase):

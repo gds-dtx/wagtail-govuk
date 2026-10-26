@@ -32,6 +32,7 @@ from govuk.models import (
     TagListingsPage,
     page_settings_panels,
 )
+from govuk.tests.page_helpers import text_body
 
 PUBLISHING_PANEL = "wagtail.admin.panels.PublishingPanel"
 
@@ -115,7 +116,7 @@ class SchedulingControlsInTheAdminTests(TestCase):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
         self.page = self.root_page.add_child(
-            instance=ContentPage(title="A page", slug="a-page", body="<p>Words.</p>")
+            instance=ContentPage(title="A page", slug="a-page", body=text_body("<p>Words.</p>"))
         )
         self.page.save_revision().publish()
 
@@ -156,9 +157,12 @@ class SchedulingControlsInTheAdminTests(TestCase):
         data = querydict_from_html(self._edit_page_html(), form_id="page-edit-form")
         # A StreamField's inputs are built by its JavaScript, so they are not
         # in the served HTML for the scrape above to find.
-        data.update(nested_form_data({"body_blocks": streamfield([])}))
+        data.update(
+            nested_form_data(
+                {"body": streamfield([("text", rich_text("<p>New words.</p>"))])}
+            )
+        )
         data["title"] = "A page, edited"
-        data["body"] = rich_text("<p>New words.</p>")
         data["action-publish"] = "action-publish"
 
         response = self.client.post(

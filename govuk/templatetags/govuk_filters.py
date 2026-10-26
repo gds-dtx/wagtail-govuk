@@ -54,7 +54,7 @@ def content_body_layout(context, page):
     has_sidebar = bool(context.get("heading_navigation") or context.get("role_navigation"))
     card_filter = context.get("card_filter")
     return body_layout(
-        getattr(page, "body_blocks", None),
+        getattr(page, "body", None),
         allow_full_width=not has_sidebar,
         visible_cards=card_filter.visible_cards if card_filter else None,
     )
@@ -74,9 +74,9 @@ def changelog_note(entry):
 
 @register.filter
 def page_body(value):
-    """A page's rich text body, with CSV download links shown as attachments.
+    """Rich text in a page body, with CSV download links shown as attachments.
 
-    This replaces ``{{ self.body|richtext }}`` on content pages. Everything
+    This replaces ``|richtext`` for a content page's Text blocks. Everything
     ``|richtext`` does still happens -- Wagtail's own page, document and embed
     links are resolved -- and then a paragraph holding nothing but a link to
     one of the framework's CSVs becomes the GOV.UK attachment component. See
