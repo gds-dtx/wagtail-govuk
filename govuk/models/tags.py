@@ -99,23 +99,6 @@ class FrameworkContentPageTag(TaggedItemBase):
     ]
 
 
-class SectionPageTag(TaggedItemBase):
-    content_object = ParentalKey(
-        "govuk.SectionPage",
-        related_name="tagged_items",
-        on_delete=models.CASCADE,
-    )
-    tag = models.ForeignKey(
-        "govuk.GovukTag",
-        related_name="section_page_tagged_items",
-        on_delete=models.CASCADE,
-    )
-
-    panels = [
-        FieldPanel("tag"),
-    ]
-
-
 class TagListingsPageTag(TaggedItemBase):
     content_object = ParentalKey(
         "govuk.TagListingsPage",

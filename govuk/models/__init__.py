@@ -78,7 +78,7 @@ from .framework import (
     site_wide_changelog,
     without_framework_pages,
 )
-from .pages import BaseContentPage, ContentPage, SectionPage, TagListingsPage
+from .pages import BaseContentPage, ContentPage, TagListingsPage
 from .panels import (
     base_content_panels,
     base_settings_panels,
@@ -106,7 +106,6 @@ from .tags import (
     FrameworkContentPageTag,
     FrameworkMainPageTag,
     GovukTag,
-    SectionPageTag,
     TagListingsPageTag,
 )
 
@@ -180,8 +179,6 @@ __all__ = [
     "SKILL_LEVEL_ORDINALS",
     "SKILL_LEVEL_VALUES",
     "SectionBreakBlock",
-    "SectionPage",
-    "SectionPageTag",
     "SecretTextarea",
     "SidebarNavigationItem",
     "SidebarSettings",

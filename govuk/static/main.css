@@ -202,15 +202,24 @@ main > :nth-last-child(1 of .section-cards-container) {
 /* A content page body without a sidebar is laid out as segments: card rows
    and banners as bands across the page, the text between them in the width
    container. Card bands that follow one another share one background and one
-   gap between them, as a section page's rows always have; a banner keeps its
-   own padding. The text after a band stands off it. */
+   gap between them; a banner keeps its own padding. The text after a band
+   stands off it. */
 .body-band {
     padding-top: 2em;
     padding-bottom: 2em;
 }
 
+.section-cards-container.body-band {
+    margin-bottom: 20px;
+}
+
 .section-cards-container.body-band + .section-cards-container.body-band {
     padding-top: 0;
+}
+
+/* Not between two card bands, which would split their shared background. */
+.section-cards-container.body-band:has(+ .section-cards-container.body-band) {
+    margin-bottom: 0;
 }
 
 .body-segment {
@@ -218,7 +227,7 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 
 .body-band + .body-segment {
-    padding-top: 30px;
+    padding-top: 15px;
 }
 
 /* The same blocks beside a sidebar, kept in the text column. */

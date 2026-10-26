@@ -28,7 +28,6 @@ from govuk.models import (
     FrameworkContentPage,
     FrameworkMainPage,
     FrameworkSkillsPage,
-    SectionPage,
     TagListingsPage,
     page_settings_panels,
 )
@@ -42,7 +41,6 @@ PAGE_MODELS = (
     FrameworkContentPage,
     FrameworkSkillsPage,
     TagListingsPage,
-    SectionPage,
 )
 
 

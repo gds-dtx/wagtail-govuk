@@ -8,7 +8,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import Page, PageViewRestriction, Site
 
-from govuk.models import ContentPage, GovukRole, GovukSkill, GovukTag, SectionPage
+from govuk.models import ContentPage, GovukRole, GovukSkill, GovukTag
 from govuk.page_import_export import PAGE_EXPORT_FORMAT, import_pages_from_payload
 from govuk.tests.page_helpers import body_html, text_body
 
@@ -32,10 +32,10 @@ class PageImportExportAdminViewTests(TestCase):
         )
         self.client.force_login(self.admin_user)
 
-        self.section_page = self.root_page.add_child(
-            instance=SectionPage(title="Benefits", slug="benefits")
+        self.benefits_page = self.root_page.add_child(
+            instance=ContentPage(title="Benefits", slug="benefits")
         )
-        self.content_page = self.section_page.add_child(
+        self.content_page = self.benefits_page.add_child(
             instance=ContentPage(title="Apply", slug="apply", body=text_body("<p>Old body</p>"))
         )
 
@@ -81,7 +81,7 @@ class PageImportExportAdminViewTests(TestCase):
             self.export_url,
             data={
                 "site_id": self.site.pk,
-                "page_ids": [self.section_page.pk],
+                "page_ids": [self.benefits_page.pk],
             },
         )
 
@@ -166,7 +166,7 @@ class PageImportExportAdminViewTests(TestCase):
             "format": PAGE_EXPORT_FORMAT,
             "pages": [
                 {
-                    "model": "govuk.SectionPage",
+                    "model": "govuk.ContentPage",
                     "settings": {
                         "title": "Benefits updated",
                         "draft_title": "Benefits updated",
@@ -180,8 +180,7 @@ class PageImportExportAdminViewTests(TestCase):
                     "fields": {
                         "hero_title": "Support options",
                         "hero_intro": "<p>Updated intro</p>",
-                        "rows": [],
-                        "free_text": "<p>Updated section content</p>",
+                        "body": text_body("<p>Updated section content</p>"),
                         "hero_style": "styled",
                         "enable_free_text_heading_navigation": False,
                     },
@@ -242,13 +241,13 @@ class PageImportExportAdminViewTests(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response["Location"], f"{self.index_url}?site_id={self.site.pk}")
 
-        self.section_page.refresh_from_db()
+        self.benefits_page.refresh_from_db()
         self.content_page.refresh_from_db()
 
-        self.assertEqual(self.section_page.title, "Benefits updated")
-        self.assertEqual(self.section_page.seo_title, "Benefits SEO")
-        self.assertTrue(self.section_page.show_in_menus)
-        self.assertEqual(self.section_page.free_text, "<p>Updated section content</p>")
+        self.assertEqual(self.benefits_page.title, "Benefits updated")
+        self.assertEqual(self.benefits_page.seo_title, "Benefits SEO")
+        self.assertTrue(self.benefits_page.show_in_menus)
+        self.assertEqual(body_html(self.benefits_page), "<p>Updated section content</p>")
 
         self.assertEqual(
             Page.objects.descendant_of(self.root_page, inclusive=False)
@@ -398,7 +397,7 @@ class PageImportExportAdminViewTests(TestCase):
             "tags": [{"slug": "alpha", "name": "Alpha"}],
             "skills": [{"slug": "skill-one", "title": "Skill one"}],
             "roles": [{"slug": "role-one", "title": "Role one", "levels": []}],
-            "pages": [{"model": "govuk.SectionPage", "settings": {"slug": "sequence-page"}}],
+            "pages": [{"model": "govuk.ContentPage", "settings": {"slug": "sequence-page"}}],
         }
 
         call_order: list[str] = []
@@ -438,18 +437,18 @@ class PageImportExportAdminViewTests(TestCase):
         page and moved every slug-matched page in the file under it -- the
         whole site restructured, every URL gaining a /home/ prefix, behind a
         green report. Seen for real importing a with-root export into the
-        dev rehearsal, whose home page is a SectionPage.
+        dev rehearsal, whose home page was then a SectionPage.
         """
         payload = {
             "format": PAGE_EXPORT_FORMAT,
             "pages": [
                 {
-                    "model": "govuk.ContentPage",
+                    "model": "govuk.FrameworkMainPage",
                     "settings": {"title": "The framework", "slug": self.root_page.slug},
                     "fields": {"body": text_body("<p>Welcome</p>")},
                     "children": [
                         {
-                            "model": "govuk.SectionPage",
+                            "model": "govuk.ContentPage",
                             "settings": {"title": "Benefits changed", "slug": "benefits"},
                             "fields": {},
                         },
@@ -470,13 +469,13 @@ class PageImportExportAdminViewTests(TestCase):
         # The site keeps its shape: one home page, and nothing moved under a
         # second one.
         self.assertEqual(Page.objects.filter(slug=self.root_page.slug).count(), 1)
-        self.section_page.refresh_from_db()
-        self.assertEqual(self.section_page.get_parent().pk, self.root_page.pk)
+        self.benefits_page.refresh_from_db()
+        self.assertEqual(self.benefits_page.get_parent().pk, self.root_page.pk)
         # What the file holds inside its home page still arrives, in place:
         # the slug match updated where it stands, the new page was created
         # under the root the site already has.
         self.assertEqual(
-            Page.objects.get(pk=self.section_page.pk).title, "Benefits changed"
+            Page.objects.get(pk=self.benefits_page.pk).title, "Benefits changed"
         )
         brand_new = Page.objects.get(slug="brand-new")
         self.assertEqual(brand_new.get_parent().pk, self.root_page.pk)
@@ -497,7 +496,7 @@ class PageImportExportAdminViewTests(TestCase):
             ],
             "pages": [
                 {
-                    "model": "govuk.SectionPage",
+                    "model": "govuk.ContentPage",
                     "settings": {
                         "title": "Tagged section",
                         "draft_title": "Tagged section",
@@ -512,10 +511,10 @@ class PageImportExportAdminViewTests(TestCase):
                         "hero_style": "none",
                         "hero_title": "Tagged section",
                         "hero_intro": "<p>Intro</p>",
-                        "rows": [
+                        "body": [
                             {
                                 "id": "7371d28b-34be-49b0-a7d2-3b28ef9077d8",
-                                "type": "row",
+                                "type": "cards",
                                 "value": {
                                     "heading": "Row heading",
                                     "cards": [
@@ -545,7 +544,6 @@ class PageImportExportAdminViewTests(TestCase):
                                 },
                             }
                         ],
-                        "free_text": "",
                         "enable_free_text_heading_navigation": False,
                     },
                     "tags": [
@@ -577,13 +575,13 @@ class PageImportExportAdminViewTests(TestCase):
         self.assertEqual(existing_tag.name, "Existing tag")
         self.assertTrue(GovukTag.objects.filter(slug="new-tag", name="New tag").exists())
 
-        imported_page = SectionPage.objects.get(slug="tagged-section")
+        imported_page = ContentPage.objects.get(slug="tagged-section")
         self.assertEqual(
             sorted(imported_page.tags.values_list("slug", flat=True)),
             ["existing-tag", "new-tag"],
         )
 
-        raw_card_tag_value = imported_page.rows.raw_data[0]["value"]["cards"][0]["value"]["tags"][0][
+        raw_card_tag_value = imported_page.body.raw_data[0]["value"]["cards"][0]["value"]["tags"][0][
             "value"
         ]
         self.assertIsInstance(raw_card_tag_value, int)

@@ -10,7 +10,7 @@ from wagtail.models import Page, Site
 
 from govuk.utils import row_id_from_text
 
-from .blocks import CardRowBlock, ContentBodyBlock
+from .blocks import ContentBodyBlock
 from .cards import filter_cards
 from .constants import THIS_SITE_SOURCE_FILTER
 from .content_discovery import ExternalContentItem
@@ -25,7 +25,6 @@ from .tags import (
     FrameworkContentPageTag,
     FrameworkMainPageTag,
     GovukTag,
-    SectionPageTag,
 )
 
 
@@ -164,7 +163,7 @@ class BaseContentPage(Page):
 
 
 class CardTagOptionsMixin(models.Model):
-    """The card tag switches, on the page types whose content holds card rows.
+    """The card tag switches for a page whose body holds card rows.
 
     Both apply across every row on the page: the filter is one control that
     narrows all of them, and the display puts each card's tags on it.
@@ -190,14 +189,12 @@ class ContentPage(HeroStyleMixin, BreadcrumbMixin, CardTagOptionsMixin, BaseCont
         "govuk.ContentPage",
         "govuk.FrameworkMainPage",
         "govuk.FrameworkContentPage",
-        "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
     ]
     subpage_types = [
         "govuk.ContentPage",
         "govuk.FrameworkMainPage",
-        "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
     ]
@@ -306,7 +303,6 @@ class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
 
     parent_page_types = [
         "govuk.ContentPage",
-        "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
         "govuk.FrameworkMainPage",
@@ -315,7 +311,6 @@ class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
     subpage_types = [
         "govuk.ContentPage",
         "govuk.FrameworkMainPage",
-        "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
     ]
@@ -378,11 +373,6 @@ class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
         )
         page_querysets = [
             ContentPage.objects.live()
-            .filter(tags__id__in=tag_ids)
-            .annotate(sort_updated=page_sort_updated)
-            .prefetch_related("tags", "view_restrictions")
-            .distinct(),
-            SectionPage.objects.live()
             .filter(tags__id__in=tag_ids)
             .annotate(sort_updated=page_sort_updated)
             .prefetch_related("tags", "view_restrictions")
@@ -485,7 +475,6 @@ class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
 
         through_models = {
             ContentPage: ContentPageTag,
-            SectionPage: SectionPageTag,
             FrameworkMainPage: FrameworkMainPageTag,
             FrameworkContentPage: FrameworkContentPageTag,
         }
@@ -687,95 +676,3 @@ class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
         context["selected_source_id"] = selected_source_id
         context["selected_source_label"] = selected_source_label
         return context
-
-
-class SectionPage(HeroStyleMixin, BreadcrumbMixin, CardTagOptionsMixin, Page):
-    hero_title = models.CharField(
-        max_length=255,
-        blank=True,
-        help_text="Optional hero heading. If blank, the page title is used.",
-    )
-    hero_intro = RichTextField(
-        blank=True,
-        features=["bold", "italic", "link"],
-    )
-    author = models.CharField(
-        max_length=255,
-        blank=True,
-        default="",
-        help_text="Optional author name displayed above the main content.",
-    )
-    show_last_updated_date = models.BooleanField(
-        default=False,
-        verbose_name="Show last updated date",
-        help_text="Show the page last updated date above the main content.",
-    )
-    show_page_content_metadata = models.BooleanField(
-        default=False,
-        verbose_name="Show page content metadata",
-        help_text="Show page metadata above the main content.",
-    )
-    tags = ClusterTaggableManager(through="govuk.SectionPageTag", blank=True)
-    rows = StreamField(
-        [("row", CardRowBlock())],
-        blank=True,
-        help_text="Add one or more row sections. Each row can contain up to 60 cards.",
-    )
-    free_text = RichTextField(blank=True)
-    enable_free_text_heading_navigation = models.BooleanField(
-        default=False,
-        verbose_name="Enable sidebar heading navigation",
-        help_text="Show free text in a two-thirds and one-third layout with an automatic clickable heading list.",
-    )
-
-    parent_page_types = [
-        "govuk.ContentPage",
-        "govuk.SectionPage",
-        "govuk.TagListingsPage",
-        "govuk.FrameworkSkillsPage",
-        "govuk.FrameworkMainPage",
-        "govuk.FrameworkContentPage",
-    ]
-    subpage_types = [
-        "govuk.ContentPage",
-        "govuk.FrameworkMainPage",
-        "govuk.SectionPage",
-        "govuk.TagListingsPage",
-        "govuk.FrameworkSkillsPage",
-    ]
-
-    content_panels = Page.content_panels + [
-        FieldPanel("hero_title"),
-        FieldPanel("hero_intro"),
-        FieldPanel("author"),
-        FieldPanel("rows"),
-        FieldPanel("free_text"),
-    ]
-
-    settings_panels = page_settings_panels() + [
-        FieldPanel("hero_style"),
-        FieldPanel("show_breadcrumbs"),
-        FieldPanel("show_last_updated_date"),
-        FieldPanel("show_page_content_metadata"),
-        FieldPanel("enable_tag_filter"),
-        FieldPanel("enable_tag_display"),
-        FieldPanel("enable_free_text_heading_navigation"),
-        InlinePanel("tagged_items", heading="Tags", label="Tag"),
-    ]
-
-    def get_context(self, request, *args, **kwargs):
-        context = super().get_context(request, *args, **kwargs)
-        card_filter = filter_cards(self.rows, request, enabled=self.enable_tag_filter)
-        # A row the filter leaves empty is dropped, heading and all.
-        context["available_tags"] = card_filter.available_tags
-        context["selected_tag"] = card_filter.selected_tag
-        context["row_sections"] = [
-            {"heading": self.rows[index].value.get("heading"), "cards": cards}
-            for index, cards in card_filter.visible_cards.items()
-            if cards
-        ]
-        return context
-
-
-
-

@@ -19,7 +19,7 @@ from django.contrib.auth.models import Group, Permission
 from django.test import TestCase, override_settings
 from wagtail.models import GroupPagePermission, Page, PageLogEntry, Site
 
-from govuk.models import ContentPage, SectionPage
+from govuk.models import ContentPage
 from govuk.page_import_export import PAGE_EXPORT_FORMAT, import_pages_from_payload
 from govuk.tests.page_helpers import body_html, text_body
 
@@ -37,7 +37,7 @@ class PageImportPublishingTests(TestCase):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
         self.section = self.root_page.add_child(
-            instance=SectionPage(title="Benefits", slug="benefits")
+            instance=ContentPage(title="Benefits", slug="benefits")
         )
         self.page = self.section.add_child(
             instance=ContentPage(
@@ -85,7 +85,7 @@ class PageImportPublishingTests(TestCase):
             "format": PAGE_EXPORT_FORMAT,
             "pages": [
                 {
-                    "model": "govuk.SectionPage",
+                    "model": "govuk.ContentPage",
                     "settings": {"slug": "benefits", "title": "Benefits"},
                     "fields": {},
                     "children": [

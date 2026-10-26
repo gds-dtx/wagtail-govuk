@@ -1,12 +1,12 @@
 {% load wagtailcore_tags wagtailimages_tags %}
 {% comment %}
-    A row of cards. With full_width it is a band across the page, as on a
-    section page; without, it sits in the text column beside a sidebar and the
-    grid fits fewer cards to a line.
+    A row of cards. With full_width it is a band across the page; without, it
+    sits in the text column beside a sidebar and the grid fits fewer cards to
+    a line.
 
-    heading and cards come from CardRowBlock.get_context, or straight from the
-    section page template, which passes the cards its tag filter left in.
-    Whether tags show is the page's setting, so it is read from page.
+    heading and cards come from CardRowBlock.get_context, which takes the cards
+    the page's tag filter left in. Whether tags show is the page's setting, so
+    it is read from page.
 {% endcomment %}
 {% if full_width %}
     <div class="section-cards-container body-band">

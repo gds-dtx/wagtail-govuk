@@ -25,7 +25,7 @@
             {% if segment.full_width %}
                 {% for item in segment.items %}{% include "includes/body_block.html" with full_width=True %}{% endfor %}
             {% else %}
-                <div class="govuk-width-container body-segment">
+                <div class="govuk-width-container body-segment{% if forloop.last and not framework_changelog.entries %} govuk-!-margin-bottom-6{% endif %}">
                     <div class="govuk-body rich-text-content">
                         {% for item in segment.items %}{% include "includes/body_block.html" %}{% endfor %}
                     </div>
@@ -33,7 +33,7 @@
             {% endif %}
         {% endfor %}
         {% if framework_changelog.entries %}
-            <div class="govuk-width-container body-segment">
+            <div class="govuk-width-container body-segment govuk-!-margin-bottom-6">
                 <div class="govuk-body rich-text-content">
                     {% include "includes/framework_update_history.html" %}
                 </div>

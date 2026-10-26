@@ -6,10 +6,10 @@ from wagtail.models import Page, Site
 
 from govuk.models import (
     ContentPage,
+    FrameworkMainPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
-    SectionPage,
 )
 from govuk.page_import_export import (
     build_page_export_payload,
@@ -416,7 +416,7 @@ class RoleExportImportFieldTests(TestCase):
         )
 
     def _framework_payload(self, *, children: list | None = None) -> dict:
-        """A payload rooted at a ContentPage home, as the framework's export is."""
+        """A payload rooted at the framework main page, as the framework's export is."""
         payload = build_page_export_payload(
             site=self.site,
             pages=[],
@@ -425,7 +425,7 @@ class RoleExportImportFieldTests(TestCase):
         )
         payload["pages"] = [
             {
-                "model": "govuk.ContentPage",
+                "model": "govuk.FrameworkMainPage",
                 "settings": {"title": "Capability Framework", "slug": "home"},
                 "fields": {"body": text_body("<p>The framework.</p>")},
                 "tags": [],
@@ -438,7 +438,8 @@ class RoleExportImportFieldTests(TestCase):
     def test_a_placeholder_home_page_is_replaced_rather_than_nested_under(self):
         """A new instance ships an empty home page of the wrong type."""
         placeholder = self.site.root_page.specific
-        self.assertIsInstance(placeholder, SectionPage)
+        # The starter site's home page, a content page since 0089.
+        self.assertIsInstance(placeholder, ContentPage)
 
         # Roles are no longer pages, so the child that used to be a role page is
         # a plain content page here: the behaviour under test is the placeholder
@@ -464,7 +465,7 @@ class RoleExportImportFieldTests(TestCase):
 
         self.site.refresh_from_db()
         new_root = self.site.root_page.specific
-        self.assertIsInstance(new_root, ContentPage)
+        self.assertIsInstance(new_root, FrameworkMainPage)
         self.assertEqual(new_root.slug, "home")
         self.assertEqual(new_root.depth, 2)
         # The framework sits at the top level, not under /home/.

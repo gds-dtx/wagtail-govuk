@@ -10,9 +10,8 @@ from wagtail.snippets.blocks import SnippetChooserBlock
 
 from .constants import FRAMEWORK_WELCOME_RICH_TEXT_FEATURES
 
-# The names a row of cards is stored under: "row" in SectionPage.rows, where it
-# has always been called that, and "cards" in a content page's body.
-CARD_ROW_BLOCK_TYPES = ("row", "cards")
+# The name a row of cards is stored under in a content page's body.
+CARD_ROW_BLOCK_TYPE = "cards"
 
 
 class LinkStructValue(StructValue):
@@ -104,9 +103,8 @@ class BodyTextBlock(blocks.RichTextBlock):
 class CardBlock(blocks.StructBlock):
     """One card in a row of cards.
 
-    The children, their names and their order are the ones the inline
-    definition on ``SectionPage.rows`` had, so a row stored before this class
-    existed reads back unchanged.
+    The children, their names and their order are the ones section pages'
+    rows had, which migration 0089 moved into content page bodies unchanged.
     """
 
     title = blocks.CharBlock(
@@ -147,10 +145,9 @@ class CardBlock(blocks.StructBlock):
 class CardRowBlock(blocks.StructBlock):
     """A row of cards under an optional heading.
 
-    The row a section page is built from, and a block a content page body can
-    hold between its text. Which cards show is not always the row's to say: a
-    page with a tag filter passes the cards the filter left in as
-    ``visible_cards``, and a section page passes its own ``cards``.
+    A block a content page body can hold between its text. Which cards show
+    is not always the row's to say: a page with a tag filter passes the cards
+    the filter left in as ``visible_cards``.
     """
 
     heading = blocks.CharBlock(
@@ -313,13 +310,13 @@ def body_layout(stream, *, allow_full_width: bool, visible_cards=None) -> BodyLa
 
     ``visible_cards`` is the tag filter's answer, keyed by the row's position in
     the stream (see ``govuk.models.cards``). A row it leaves without a card is
-    not laid out at all, as a section page drops one. ``first_cards`` marks the
+    not laid out at all, heading and all. ``first_cards`` marks the
     first row that is, where the filter control goes.
     """
     segments: list[BodySegment] = []
     seen_cards = False
     for index, child in enumerate(stream or []):
-        is_card_row = child.block_type in CARD_ROW_BLOCK_TYPES
+        is_card_row = child.block_type == CARD_ROW_BLOCK_TYPE
         cards = None
         if is_card_row and visible_cards is not None:
             cards = visible_cards.get(index, [])

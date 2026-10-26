@@ -27,14 +27,13 @@ from govuk.models import (
     GovukSkill,
     GovukTag,
 )
-from govuk.models.blocks import CARD_ROW_BLOCK_TYPES
+from govuk.models.blocks import CARD_ROW_BLOCK_TYPE
 from govuk.utils import row_id_from_text
 
 PAGE_EXPORT_FORMAT = "govuk-page-import-export/v1"
 # The stream fields that hold rows of cards. A card's tags are stored as tag
 # ids, which mean nothing on another instance, so an import resolves them again.
 CARD_ROW_STREAM_FIELDS = {
-    ("govuk.SectionPage", "rows"),
     ("govuk.ContentPage", "body"),
 }
 BASE_PAGE_LOCAL_FIELD_NAMES = {field.name for field in Page._meta.local_fields}
@@ -1796,7 +1795,7 @@ def _apply_page_fields(
             isinstance(model_field, StreamField)
             and (page._meta.label, field_name) in CARD_ROW_STREAM_FIELDS
         ):
-            raw_value = _normalise_section_row_card_tags(raw_value, tag_lookup=tag_lookup)
+            raw_value = _normalise_card_row_tags(raw_value, tag_lookup=tag_lookup)
 
         snippet_stream = PAGE_SNIPPET_SLUG_STREAM_FIELDS.get(
             (page._meta.label, field_name)
@@ -1895,7 +1894,7 @@ def _apply_tags(page: Page, tags_data, *, tag_lookup: dict[str, dict[str, int]] 
     page.tags.set(tag_objects)
 
 
-def _normalise_section_row_card_tags(raw_rows, *, tag_lookup: dict[str, dict[str, int]] | None):
+def _normalise_card_row_tags(raw_rows, *, tag_lookup: dict[str, dict[str, int]] | None):
     if not isinstance(raw_rows, list):
         return raw_rows
 
@@ -1906,7 +1905,7 @@ def _normalise_section_row_card_tags(raw_rows, *, tag_lookup: dict[str, dict[str
             continue
 
         row_value = raw_row.get("value")
-        if raw_row.get("type") not in CARD_ROW_BLOCK_TYPES or not isinstance(row_value, dict):
+        if raw_row.get("type") != CARD_ROW_BLOCK_TYPE or not isinstance(row_value, dict):
             normalised_rows.append(raw_row)
             continue
 
@@ -1933,7 +1932,7 @@ def _normalise_section_row_card_tags(raw_rows, *, tag_lookup: dict[str, dict[str
 
             normalised_card_tags: list[dict[str, object]] = []
             for raw_card_tag in raw_card_tags:
-                normalised_card_tag = _normalise_section_card_tag_block(
+                normalised_card_tag = _normalise_card_tag_block(
                     raw_card_tag,
                     tag_lookup=tag_lookup,
                 )
@@ -1957,7 +1956,7 @@ def _normalise_section_row_card_tags(raw_rows, *, tag_lookup: dict[str, dict[str
     return normalised_rows
 
 
-def _normalise_section_card_tag_block(raw_card_tag, *, tag_lookup: dict[str, dict[str, int]] | None):
+def _normalise_card_tag_block(raw_card_tag, *, tag_lookup: dict[str, dict[str, int]] | None):
     tag_block_id = None
     tag_block_type = "item"
     raw_tag_value = raw_card_tag

@@ -23,10 +23,9 @@ from govuk.models import (
     FrameworkSkillsPage,
     GovukRole,
     GovukSkill,
-    SectionPage,
     without_framework_pages,
 )
-from govuk.models.blocks import CARD_ROW_BLOCK_TYPES
+from govuk.models.blocks import CARD_ROW_BLOCK_TYPE
 from govuk.utils import normalised_text, row_id_from_text
 
 DEFAULT_PAGE_SIZE = 15
@@ -40,9 +39,6 @@ SEARCH_WEIGHTS = [0.1, 0.2, 0.4, 1.0]
 UNMATCHED_RANK = 1e-20
 PAGE_TAG_TEXT_WEIGHT = 0.75
 CARD_TAG_TEXT_WEIGHT = 1.0
-# The page types whose content holds card rows, and the stream each holds them
-# in. Every card is a result of its own.
-CARD_PAGE_FIELDS = ((SectionPage, "rows"), (ContentPage, "body"))
 TAG_RESULT_WEIGHT = 1.2
 EXTERNAL_SOURCE_TEXT_WEIGHT = 0.4
 EXTERNAL_TAG_TEXT_WEIGHT = 0.6
@@ -236,30 +232,24 @@ class SearchBackend:
     def _build_card_results(
         self, query: str, filters: dict[str, Any]
     ) -> list[SearchResultItem]:
-        results: list[SearchResultItem] = []
-        for page_model, field_name in CARD_PAGE_FIELDS:
-            pages = self._apply_filters(page_model.objects.all(), filters)
-            if self._is_postgres(pages.db):
-                pages = self._search_card_pages_postgres(pages, query, field_name)
-            else:
-                pages = self._search_card_pages_sqlite(pages, query, field_name)
-            results += self._card_results_for_pages(pages, field_name, query, filters)
-        return results
+        """One result per card in a content page body that matches."""
+        pages = self._apply_filters(ContentPage.objects.all(), filters)
+        if self._is_postgres(pages.db):
+            pages = self._search_card_pages_postgres(pages, query)
+        else:
+            pages = self._search_card_pages_sqlite(pages, query)
 
-    def _card_results_for_pages(
-        self, pages, field_name: str, query: str, filters: dict[str, Any]
-    ) -> list[SearchResultItem]:
         request = filters.get("request")
         site_root = self._site_root_page(filters)
         query_lower = query.lower()
         results: list[SearchResultItem] = []
 
-        for section_page in pages:
-            section_url = self._page_url(section_page, request)
-            section_rank = float(getattr(section_page, "card_rank", 0.0) or 0.0)
-            section_title = self._page_result_title(section_page)
+        for card_page in pages:
+            page_url = self._page_url(card_page, request)
+            page_rank = float(getattr(card_page, "card_rank", 0.0) or 0.0)
+            page_title = self._page_result_title(card_page)
 
-            for card in self._section_cards(section_page, field_name):
+            for card in self._page_cards(card_page):
                 title = normalised_text(card.get("title"))
                 text = normalised_text(card.get("text"))
                 link_text = normalised_text(card.get("link_text"))
@@ -275,7 +265,7 @@ class SearchBackend:
                         card_tag_items.append(tag_item)
                 tags_text = normalised_text(" ".join(card_tag_text))
                 result_tag_items = self._unique_tag_items(
-                    card_tag_items + self._page_tag_items(section_page)
+                    card_tag_items + self._page_tag_items(card_page)
                 )
                 result_tags = [tag["value"] for tag in result_tag_items]
                 result_tag_keys = [tag["key"] for tag in result_tag_items]
@@ -288,7 +278,7 @@ class SearchBackend:
                 if query_lower not in searchable_text:
                     continue
 
-                score = section_rank + self._text_relevance(
+                score = page_rank + self._text_relevance(
                     query,
                     (
                         (title, 3.5),
@@ -300,23 +290,23 @@ class SearchBackend:
                 )
                 results.append(
                     SearchResultItem(
-                        title=title or section_title,
+                        title=title or page_title,
                         search_description=(
                             text
-                            or self._page_search_description(section_page)
-                            or f"Card in {section_title}"
+                            or self._page_search_description(card_page)
+                            or f"Card in {page_title}"
                         ),
-                        url=link_url or section_url,
+                        url=link_url or page_url,
                         score=score,
                         breadcrumbs=self._page_breadcrumbs(
-                            section_page,
+                            card_page,
                             request=request,
                             site_root=site_root,
                             include_page=True,
                         ),
                         tags=result_tags,
                         tag_keys=result_tag_keys,
-                        last_updated=self._page_last_updated(section_page),
+                        last_updated=self._page_last_updated(card_page),
                     )
                 )
 
@@ -329,7 +319,7 @@ class SearchBackend:
         site_root = self._site_root_page(filters)
         results: list[SearchResultItem] = []
 
-        for model in (ContentPage, SectionPage):
+        for model in (ContentPage,):
             queryset = self._apply_filters(
                 model.objects.filter(
                     Q(tags__slug__icontains=query) | Q(tags__name__icontains=query)
@@ -541,7 +531,7 @@ class SearchBackend:
         site_root = self._site_root_page(filters)
         results: list[SearchResultItem] = []
 
-        for model in (ContentPage, SectionPage):
+        for model in (ContentPage,):
             queryset = self._apply_filters(model.objects.all(), filters)
             if self._is_postgres(queryset.db):
                 queryset = self._search_hero_postgres(queryset, query)
@@ -662,18 +652,14 @@ class SearchBackend:
             .order_by("-rank", "-first_published_at", "title")
         )
 
-    def _search_card_pages_sqlite(
-        self, queryset: QuerySet, query: str, field_name: str
-    ) -> QuerySet:
-        return queryset.filter(**{f"{field_name}__icontains": query}).order_by(
+    def _search_card_pages_sqlite(self, queryset: QuerySet, query: str) -> QuerySet:
+        return queryset.filter(body__icontains=query).order_by(
             "-first_published_at", "-latest_revision_created_at", "title"
         )
 
-    def _search_card_pages_postgres(
-        self, queryset: QuerySet, query: str, field_name: str
-    ) -> QuerySet:
+    def _search_card_pages_postgres(self, queryset: QuerySet, query: str) -> QuerySet:
         rows_vector = SearchVector(
-            Cast(field_name, TextField()),
+            Cast("body", TextField()),
             weight="D",
             config=SEARCH_CONFIG,
         )
@@ -936,14 +922,14 @@ class SearchBackend:
     def _is_postgres(self, db_alias: str) -> bool:
         return connections[db_alias].vendor == "postgresql"
 
-    def _section_card_link_title(self, link_value: Any) -> str:
+    def _card_link_title(self, link_value: Any) -> str:
         if not link_value:
             return ""
         if hasattr(link_value, "get"):
             return normalised_text(link_value.get("title"))
         return normalised_text(getattr(link_value, "title", ""))
 
-    def _section_card_link_url(self, link_value: Any) -> str:
+    def _card_link_url(self, link_value: Any) -> str:
         if not link_value:
             return ""
 
@@ -964,15 +950,15 @@ class SearchBackend:
 
         return (getattr(page, "url", "") or "").strip()
 
-    def _section_cards(self, page: Page, field_name: str) -> list[dict[str, Any]]:
+    def _page_cards(self, page: Page) -> list[dict[str, Any]]:
         cards: list[dict[str, Any]] = []
-        for block in getattr(page, field_name):
-            if block.block_type not in CARD_ROW_BLOCK_TYPES:
+        for block in page.body:
+            if block.block_type != CARD_ROW_BLOCK_TYPE:
                 continue
             for card in block.value.get("cards", []):
                 link_value = card.get("link")
-                link_text = self._section_card_link_title(link_value)
-                link_url = self._section_card_link_url(link_value)
+                link_text = self._card_link_title(link_value)
+                link_url = self._card_link_url(link_value)
                 cards.append(
                     {
                         "title": card.get("title"),

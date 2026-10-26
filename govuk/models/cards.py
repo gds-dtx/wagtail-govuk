@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from django.utils.text import slugify
 
-from .blocks import CARD_ROW_BLOCK_TYPES
+from .blocks import CARD_ROW_BLOCK_TYPE
 
 
 @dataclass
@@ -47,9 +47,8 @@ def card_tag_items(card) -> list[dict[str, str]]:
 def filter_cards(stream, request, *, enabled: bool) -> CardFilter:
     """Narrow the card rows in ``stream`` to the tag in ``?tag=``.
 
-    Shared by the section page, whose rows are the whole of its content, and
-    the content page, whose body can hold card rows between its other blocks.
-    The filter applies across every row on the page, and blocks that are not
+    A content page body can hold card rows between its other blocks. The
+    filter applies across every row on the page, and blocks that are not
     card rows are left alone. The available tags are worked out either way;
     only the selection waits on ``enabled``, so a tag in the query string does
     nothing on a page that does not offer the control.
@@ -57,7 +56,7 @@ def filter_cards(stream, request, *, enabled: bool) -> CardFilter:
     rows: list[tuple[int, list[tuple[object, set[str]]]]] = []
     available_tags_by_key: dict[str, str] = {}
     for index, block in enumerate(stream or []):
-        if block.block_type not in CARD_ROW_BLOCK_TYPES:
+        if block.block_type != CARD_ROW_BLOCK_TYPE:
             continue
 
         prepared_cards: list[tuple[object, set[str]]] = []
