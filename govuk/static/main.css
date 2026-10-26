@@ -886,6 +886,16 @@ main > :nth-last-child(1 of .section-cards-container) {
     width: auto;
 }
 
+/* A table cell an editor centred or right-aligned in the grid. Two classes
+   deep so they outrank the Design System's own left-aligned cell. */
+.govuk-table .app-table-cell--align-centre {
+    text-align: center;
+}
+
+.govuk-table .app-table-cell--align-right {
+    text-align: right;
+}
+
 .gem-c-attachment {
     position: relative;
 }

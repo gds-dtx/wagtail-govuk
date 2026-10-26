@@ -14,10 +14,11 @@ lose that.
 """
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.models import ContentPage
+from govuk.models.blocks import GovukTableBlock
 from govuk.page_import_export import (
     PAGE_EXPORT_FORMAT,
     build_page_export_payload,
@@ -39,19 +40,20 @@ def _feature_flags() -> dict[str, bool]:
 
 
 def _table(
-    data, *, header_row=False, header_col=False, caption=""
+    data, *, header_row=False, header_col=False, caption="", cell=None, merge=None
 ) -> list[dict]:
-    return [
-        {
-            "type": "table",
-            "value": {
-                "data": data,
-                "first_row_is_table_header": header_row,
-                "first_col_is_header": header_col,
-                "table_caption": caption,
-            },
-        }
-    ]
+    value = {
+        "data": data,
+        "first_row_is_table_header": header_row,
+        "first_col_is_header": header_col,
+        "table_caption": caption,
+    }
+    # The grid's per-cell metadata and merges, as Wagtail saves them.
+    if cell is not None:
+        value["cell"] = cell
+    if merge is not None:
+        value["mergeCells"] = merge
+    return [{"type": "table", "value": value}]
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())
@@ -145,6 +147,94 @@ class ContentPageTableRenderingTests(TestCase):
 
         self.assertIn("Before the table.", html)
         self.assertNotIn("table-scroll", html)
+
+    def test_a_centred_cell_is_centred(self):
+        """The grid saves its own class names, which style nothing on GOV.UK."""
+        html = self._render(
+            _table(
+                [["Grade", "Level"], ["SCS1", "Deputy director"]],
+                header_row=True,
+                cell=[{"row": 1, "col": 1, "className": "htCenter htMiddle"}],
+            )
+        )
+
+        self.assertIn(
+            '<td class="govuk-table__cell app-table-cell--align-centre"', html
+        )
+        self.assertNotIn("htCenter", html)
+
+    def test_a_right_aligned_header_is_right_aligned(self):
+        html = self._render(
+            _table(
+                [["Grade", "Level"], ["SCS1", "Deputy director"]],
+                header_row=True,
+                cell=[{"row": 0, "col": 1, "className": "htRight"}],
+            )
+        )
+
+        self.assertIn('class="govuk-table__header app-table-cell--align-right"', html)
+
+    def test_alignment_lands_on_the_cell_it_was_set_on(self):
+        """Body rows count from the header, as Wagtail's own cell tags do."""
+        html = self._render(
+            _table(
+                [["Grade", "Level"], ["SCS1", "Deputy director"], ["SCS2", "Director"]],
+                header_row=True,
+                cell=[{"row": 2, "col": 0, "className": "htRight"}],
+            )
+        )
+
+        aligned = html.index("app-table-cell--align-right")
+        self.assertLess(html.index("Deputy director"), aligned)
+        self.assertLess(aligned, html.index("SCS2"))
+
+    def test_vertical_and_justified_alignment_add_nothing(self):
+        html = self._render(
+            _table(
+                [["a", "b"]],
+                cell=[{"row": 0, "col": 0, "className": "htJustify htBottom"}],
+            )
+        )
+
+        self.assertNotIn("app-table-cell--align", html)
+        self.assertNotIn("htJustify", html)
+
+    def test_merged_cells_span_and_leave_out_the_cells_they_cover(self):
+        html = self._render(
+            _table(
+                [["Spans two", "Covered by the merge"], ["c", "d"]],
+                cell=[{"row": 0, "col": 1, "hidden": True}],
+                merge=[{"row": 0, "col": 0, "rowspan": 1, "colspan": 2}],
+            )
+        )
+
+        self.assertIn('rowspan="1" colspan="2">Spans two</td>', html)
+        self.assertNotIn("Covered by the merge", html)
+
+    def test_a_merged_header_spans_the_header_row(self):
+        html = self._render(
+            _table(
+                [["Levels", "Hidden heading"], ["1", "2"]],
+                header_row=True,
+                cell=[{"row": 0, "col": 1, "hidden": True}],
+                merge=[{"row": 0, "col": 0, "rowspan": 1, "colspan": 2}],
+            )
+        )
+
+        self.assertIn('rowspan="1" colspan="2">Levels</th>', html)
+        self.assertNotIn("Hidden heading", html)
+
+
+class GovukTableBlockOptionsTests(SimpleTestCase):
+    def test_the_grid_offers_alignment_and_merging(self):
+        options = GovukTableBlock().table_options
+
+        self.assertIn("alignment", options["contextMenu"])
+        self.assertIn("mergeCells", options["contextMenu"])
+        self.assertIs(options["mergeCells"], True)
+        # On top of Wagtail's own menu, not instead of it.
+        self.assertIn("row_above", options["contextMenu"])
+        self.assertEqual(options["language"], "en-US")
 
 
 @override_settings(FEATURE_FLAGS=_feature_flags())

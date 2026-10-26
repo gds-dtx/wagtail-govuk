@@ -42,6 +42,34 @@ def comma_number(value):
         return value
 
 
+# The grid's horizontal alignment classes, and what each renders as. Left is the
+# Design System's default and justify is not offered on GOV.UK, so neither adds
+# anything; the grid's vertical alignment classes are not rendered.
+TABLE_CELL_ALIGNMENT_CLASSES = {
+    "htCenter": "app-table-cell--align-centre",
+    "htRight": "app-table-cell--align-right",
+}
+
+
+@register.simple_tag(takes_context=True)
+def cell_alignment_class(context, row_index, col_index, table_header=None):
+    """The class a table cell's horizontal alignment adds, with a leading space.
+
+    Wagtail keeps the grid's per-cell classes in the ``classnames`` context its
+    table block renders with, counting the header as row 0; ``table_header`` is
+    passed for body rows, as Wagtail's own ``cell_span`` takes it. Its own
+    ``cell_classname`` writes the grid's class names out as they are, which
+    style nothing on a GOV.UK page.
+    """
+    classnames = context.get("classnames") or {}
+    if table_header is not None:
+        row_index += 1
+    for name in (classnames.get((row_index, col_index)) or "").split():
+        if name in TABLE_CELL_ALIGNMENT_CLASSES:
+            return " " + TABLE_CELL_ALIGNMENT_CLASSES[name]
+    return ""
+
+
 @register.simple_tag(takes_context=True)
 def content_body_layout(context, page):
     """The page's body blocks, grouped into the segments the template lays out.

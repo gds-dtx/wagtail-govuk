@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from django.core.exceptions import ValidationError
 from wagtail import blocks
 from wagtail.blocks import StructBlockValidationError, StructValue
-from wagtail.contrib.table_block.blocks import TableBlock
+from wagtail.contrib.table_block.blocks import DEFAULT_TABLE_OPTIONS, TableBlock
 from wagtail.images.blocks import ImageChooserBlock
 from wagtail.snippets.blocks import SnippetChooserBlock
 
@@ -61,6 +61,12 @@ class GovukTableBlock(TableBlock):
     Cells hold text, not HTML: the renderer stays on Wagtail's default, so
     whatever is typed is escaped. A table is a place a paste from a document
     would otherwise carry markup straight onto a public page.
+
+    The grid's menu also aligns cells and merges them. Both are stored per
+    cell in the block's value (``cell`` and ``mergeCells``), which Wagtail
+    keeps already; the template turns them into GOV.UK markup. The alignment
+    menu offers vertical alignment too -- it is the grid's own submenu, which
+    plain options cannot trim -- but only the horizontal choice is rendered.
     """
 
     def __init__(self, *args, table_options=None, **kwargs):
@@ -70,7 +76,17 @@ class GovukTableBlock(TableBlock):
         # this picks are the grid's own context menu ("Insert row above"),
         # where the two spellings do not differ. Naming the locale it has
         # keeps the admin console clean.
-        table_options = {"language": "en-US", **(table_options or {})}
+        table_options = {
+            "language": "en-US",
+            "contextMenu": [
+                *DEFAULT_TABLE_OPTIONS["contextMenu"],
+                "---------",
+                "alignment",
+                "mergeCells",
+            ],
+            "mergeCells": True,
+            **(table_options or {}),
+        }
         super().__init__(*args, table_options=table_options, **kwargs)
 
     class Meta:
@@ -78,9 +94,10 @@ class GovukTableBlock(TableBlock):
         label = "Table"
         template = "blocks/govuk_table.html"
         help_text = (
-            "Right-click a cell to add or remove rows and columns. Give the "
-            "table a caption: it is how somebody using a screen reader knows "
-            "what the table is before reading it."
+            "Right-click a cell to add or remove rows and columns, align its "
+            "text, or merge it with the cells next to it. Give the table a "
+            "caption: it is how somebody using a screen reader knows what the "
+            "table is before reading it."
         )
 
 

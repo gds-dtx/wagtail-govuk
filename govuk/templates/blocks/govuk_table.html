@@ -1,4 +1,4 @@
-{% load table_block_tags %}
+{% load table_block_tags govuk_filters %}
 {% comment %}
     Wagtail's own table template emits a bare <table>. This is the same table
     in Design System markup, inside the scrollable region main.css styles.
@@ -12,6 +12,11 @@
 
     Cell text is escaped: html_renderer is off, so a table pasted from a
     document cannot carry markup onto a public page.
+
+    An editor can centre or right-align a cell and merge cells in the grid.
+    cell_alignment_class turns the grid's alignment into a class of our own;
+    a merge is the cell_span attributes, with cell_hidden leaving out the
+    cells it covers.
 {% endcomment %}
 <div class="table-scroll"
      tabindex="0"
@@ -29,7 +34,7 @@
                             {% cell_hidden 0 col_index as is_hidden %}
                             {% if not is_hidden %}
                                 <th scope="col"
-                                    class="govuk-table__header"
+                                    class="govuk-table__header{% cell_alignment_class 0 col_index %}"
                                     {% cell_span 0 col_index %}>{% if column.strip %}{{ column.strip|linebreaksbr }}{% endif %}</th>
                             {% endif %}
                         {% endwith %}
@@ -47,10 +52,10 @@
                                 {% if not is_hidden %}
                                     {% if first_col_is_header and forloop.first %}
                                         <th scope="row"
-                                            class="govuk-table__header"
+                                            class="govuk-table__header{% cell_alignment_class row_index col_index table_header %}"
                                             {% cell_span row_index col_index table_header %}>{% if column.strip %}{{ column.strip|linebreaksbr }}{% endif %}</th>
                                     {% else %}
-                                        <td class="govuk-table__cell"
+                                        <td class="govuk-table__cell{% cell_alignment_class row_index col_index table_header %}"
                                             {% cell_span row_index col_index table_header %}>{% if column.strip %}{{ column.strip|linebreaksbr }}{% endif %}</td>
                                     {% endif %}
                                 {% endif %}
