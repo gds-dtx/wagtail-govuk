@@ -1,7 +1,7 @@
 {% load govuk_filters %}
 {% comment %}
-    An editor's own HTML, written out as it is: the one place an editor can
-    write HTML, and trusted to. raw_html_block gives a table the same
-    scrollable region as a table block.
+    An editor's own HTML, cleaned to the Raw HTML block's allowlist by
+    raw_html_block, which also gives a table the same scrollable region as a
+    table block.
 {% endcomment %}
 {{ value|raw_html_block }}

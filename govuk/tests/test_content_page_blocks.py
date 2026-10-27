@@ -22,7 +22,8 @@ from wagtail.test.utils.form_data import (
 )
 
 from govuk.models import ContentPage, FrameworkContentPage, GovukTag
-from govuk.models.blocks import BannerBlock
+from govuk.models.blocks import BannerBlock, BodyRawHtmlBlock
+from govuk.models.raw_html import sanitise_raw_html
 from govuk.page_import_export import (
     PAGE_EXPORT_FORMAT,
     build_page_export_payload,
@@ -356,6 +357,220 @@ def _list_block(values) -> dict:
     return data
 
 
+class RawHtmlAllowlistTests(SimpleTestCase):
+    """What a Raw HTML block keeps, and what it takes out.
+
+    The content security policy already blocks most of what is removed; these
+    are the things it does not cover, and the things it would block anyway.
+    """
+
+    def test_scripts_go_with_their_content(self):
+        self.assertEqual(
+            sanitise_raw_html("<script>alert(1)</script><p>Kept.</p>"), "<p>Kept.</p>"
+        )
+
+    def test_a_script_from_this_site_goes_too(self):
+        """The policy allows this site's own scripts, the admin's among them."""
+        self.assertEqual(
+            sanitise_raw_html('<script src="/static/wagtailadmin/js/core.js"></script>'),
+            "",
+        )
+
+    def test_a_refresh_cannot_send_readers_elsewhere(self):
+        """The policy does not govern where a page navigates to."""
+        self.assertEqual(
+            sanitise_raw_html(
+                '<meta http-equiv="refresh" content="0;url=https://elsewhere.example">'
+            ),
+            "",
+        )
+
+    def test_links_to_stylesheets_and_other_hosts_go(self):
+        self.assertEqual(
+            sanitise_raw_html(
+                '<link rel="dns-prefetch" href="//elsewhere.example">'
+                '<link rel="stylesheet" href="/static/wagtailadmin/css/core.css">'
+            ),
+            "",
+        )
+
+    def test_styles_and_handlers_go_and_classes_stay(self):
+        self.assertEqual(
+            sanitise_raw_html(
+                '<div class="app-callout" style="color: red" onclick="go()">Note</div>'
+            ),
+            '<div class="app-callout">Note</div>',
+        )
+
+    def test_govuk_frontend_markup_stays(self):
+        markup = (
+            '<div class="govuk-accordion" data-module="govuk-accordion" id="faq" '
+            'aria-label="Questions"><button type="button">Open</button></div>'
+        )
+
+        self.assertEqual(sanitise_raw_html(markup), markup)
+
+    def test_govuk_typography_markup_stays(self):
+        """Headings at every level: how many h1s a page has is the editor's call."""
+        markup = (
+            '<span class="govuk-caption-xl">Caption</span>'
+            '<h1 class="govuk-heading-xl">Heading</h1>'
+            '<div class="govuk-panel govuk-panel--confirmation">'
+            '<h1 class="govuk-panel__title">Done</h1></div>'
+        )
+
+        self.assertEqual(sanitise_raw_html(markup), markup)
+
+    def test_a_start_button_keeps_its_arrow(self):
+        markup = (
+            '<a href="/start" role="button" draggable="false" '
+            'class="govuk-button govuk-button--start" data-module="govuk-button">'
+            'Start now<svg class="govuk-button__start-icon" '
+            'xmlns="http://www.w3.org/2000/svg" width="17.5" height="19" '
+            'viewBox="0 0 33 40" aria-hidden="true" focusable="false">'
+            '<path fill="currentColor" d="M0 0h13l20 20-20 20H0l20-20z"></path>'
+            "</svg></a>"
+        )
+
+        self.assertEqual(sanitise_raw_html(markup), markup)
+
+    def test_an_icon_cannot_reach_outside_its_drawing(self):
+        self.assertEqual(
+            sanitise_raw_html(
+                '<svg onload="go()"><script>go()</script>'
+                '<use href="https://elsewhere.example/icons.svg#a"/>'
+                "<foreignObject><p>Inside</p></foreignObject>"
+                '<path d="M0 0" onclick="go()" style="fill: red"/></svg>'
+            ),
+            '<svg><use></use><path d="M0 0"></path></svg>',
+        )
+
+    def test_a_drawing_with_gradients_clipping_markers_filters_and_text_stays(self):
+        drawing = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100" '
+            'role="img" aria-labelledby="chart-title">'
+            '<title id="chart-title">Chart</title><desc>Two bars</desc><defs>'
+            '<linearGradient id="g" x1="0" y2="1" gradientUnits="objectBoundingBox">'
+            '<stop offset="0" stop-color="#1d70b8" stop-opacity="0.9"></stop>'
+            "</linearGradient>"
+            '<linearGradient id="g2" xlink:href="#g" gradientTransform="rotate(90)">'
+            "</linearGradient>"
+            '<clipPath id="c"><rect width="200" height="100" rx="4"></rect></clipPath>'
+            '<marker id="m" markerWidth="6" markerHeight="6" refX="3" refY="3" '
+            'orient="auto"><circle cx="3" cy="3" r="2"></circle></marker>'
+            '<filter id="f"><feDropShadow dx="1" dy="1" stdDeviation="1" '
+            'flood-opacity="0.4"></feDropShadow></filter>'
+            '<symbol id="bar" viewBox="0 0 10 10"><rect width="10" height="10"></rect>'
+            '</symbol><path id="curve" d="M10 90 Q100 10 190 90"></path></defs>'
+            '<g clip-path="url(#c)" filter="url(#f)">'
+            '<use href="#bar" x="20" y="40" width="40" height="60" fill="url(#g)"></use>'
+            '<line x1="10" y1="95" x2="190" y2="95" stroke="#0b0c0c" '
+            'stroke-dasharray="4 2" marker-end="url(#m)"></line></g>'
+            '<text font-size="8" text-anchor="middle">'
+            '<textPath href="#curve" startOffset="50%">Along the curve</textPath>'
+            "</text></svg>"
+        )
+
+        self.assertEqual(sanitise_raw_html(drawing), drawing)
+
+    def test_a_drawing_references_only_itself(self):
+        """A reference to another file loads it; one to an id in the page does not."""
+        self.assertEqual(
+            sanitise_raw_html(
+                '<svg><use href="/media/icons.svg#a"></use>'
+                '<use xlink:href="https://elsewhere.example/i.svg#a"></use>'
+                '<rect fill="url(https://elsewhere.example/p.svg#g)" '
+                "filter=\"url( '/f.svg#f')\" width=\"1\"></rect></svg>"
+            ),
+            '<svg><use></use><use></use><rect width="1"></rect></svg>',
+        )
+
+    def test_animation_cannot_rewrite_a_link(self):
+        """<animate attributeName="href" to="javascript:..."> is a known way in."""
+        self.assertEqual(
+            sanitise_raw_html(
+                '<svg><a href="#top">'
+                '<animate attributeName="href" to="javascript:go()"></animate>'
+                '<set attributeName="href" to="javascript:go()"></set>'
+                "<text>Top</text></a></svg>"
+            ),
+            '<svg><a href="#top"><text>Top</text></a></svg>',
+        )
+
+    def test_a_drawing_cannot_load_images(self):
+        self.assertEqual(
+            sanitise_raw_html(
+                '<svg><image href="/media/a.png"></image><filter id="f">'
+                '<feImage href="https://elsewhere.example/a.png"></feImage></filter></svg>'
+            ),
+            '<svg><filter id="f"></filter></svg>',
+        )
+
+    def test_script_urls_go_and_links_keep_their_rel(self):
+        self.assertEqual(
+            sanitise_raw_html(
+                '<a href="javascript:go()">Bad</a> '
+                '<a href="/guidance/" rel="external" target="_blank">Good</a>'
+            ),
+            '<a>Bad</a> <a href="/guidance/" rel="external" target="_blank">Good</a>',
+        )
+
+    def test_unclosed_markup_cannot_take_the_page_with_it(self):
+        self.assertEqual(
+            sanitise_raw_html("</main><div><p>Unclosed"), "<div><p>Unclosed</p></div>"
+        )
+
+    def test_frames_forms_and_style_sheets_go(self):
+        self.assertEqual(
+            sanitise_raw_html(
+                '<iframe src="https://elsewhere.example"></iframe>'
+                '<form action="/"><input name="password"></form>'
+                "<style>p { display: none; }</style>"
+            ),
+            "",
+        )
+
+    def test_a_table_keeps_its_structure(self):
+        self.assertEqual(
+            sanitise_raw_html(
+                '<table><caption>Grades</caption><tr><th scope="row">SCS1</th>'
+                '<td colspan="2">Deputy director</td></tr></table>'
+            ),
+            '<table><caption>Grades</caption><tbody><tr><th scope="row">SCS1</th>'
+            '<td colspan="2">Deputy director</td></tr></tbody></table>',
+        )
+
+    def test_saving_the_block_cleans_it(self):
+        """So what the editor sees after saving is what is published."""
+        cleaned = BodyRawHtmlBlock().clean(
+            '<p class="app-note">Kept.</p><script>alert(1)</script>'
+        )
+
+        self.assertEqual(str(cleaned), '<p class="app-note">Kept.</p>')
+
+
+class RawHtmlRenderingTests(_PageTestCase):
+    def test_html_stored_without_cleaning_is_cleaned_on_the_way_out(self):
+        """An import writes stream data without running the block's clean."""
+        html = self._html(
+            self._publish(
+                [
+                    {
+                        "type": "raw_html",
+                        "value": (
+                            '<meta http-equiv="refresh" content="0;url=https://elsewhere.example">'
+                            '<p class="app-note">Kept.</p><script>alert("raw")</script>'
+                        ),
+                    }
+                ]
+            )
+        )
+
+        self.assertIn('<p class="app-note">Kept.</p>', html)
+        self.assertNotIn("elsewhere.example", html)
+        self.assertNotIn('alert("raw")', html)
+
+
 class ContentPageBlockAdminTests(_PageTestCase):
     """The blocks reach a page through the form the admin serves.
 
@@ -427,6 +642,14 @@ class ContentPageBlockAdminTests(_PageTestCase):
         self.assertEqual(
             str(page.body[0].value), '<p class="app-note">Hand written.</p>'
         )
+
+    def test_raw_html_is_stored_cleaned(self):
+        self._post(
+            [("raw_html", '<p onclick="go()">Hand written.</p><script>go()</script>')]
+        )
+
+        page = ContentPage.objects.get(pk=self.page.pk)
+        self.assertEqual(str(page.body[0].value), "<p>Hand written.</p>")
 
     def test_a_banner_button_with_nowhere_to_go_is_refused(self):
         response = self._post([("banner", self._banner_form(button_external_url=""))])

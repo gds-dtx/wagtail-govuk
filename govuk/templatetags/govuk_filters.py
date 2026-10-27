@@ -4,6 +4,7 @@ from wagtail.rich_text import expand_db_html
 
 from govuk.capability_framework.attachments import rewrite_csv_download_links
 from govuk.models.blocks import body_layout
+from govuk.models.raw_html import sanitise_raw_html
 from govuk.wagtail_hooks.rich_text import _wrap_table_in_scroll_region
 
 register = template.Library()
@@ -103,12 +104,15 @@ def changelog_note(entry):
 
 @register.filter
 def raw_html_block(value):
-    """A Raw HTML block's markup, written out as it is.
+    """A Raw HTML block's markup, cleaned to the block's allowlist.
 
-    A fragment that is a table is given the scrollable region every table on
-    the site has.
+    Cleaned here as well as when the block is saved: an import writes stream
+    data without running the block's clean, and a block saved before the
+    allowlist existed was never cleaned. A fragment that is a table is then
+    given the scrollable region every table on the site has -- after cleaning,
+    since the region's own markup is ours.
     """
-    return mark_safe(_wrap_table_in_scroll_region(str(value or "")))
+    return mark_safe(_wrap_table_in_scroll_region(sanitise_raw_html(str(value or ""))))
 
 
 @register.filter

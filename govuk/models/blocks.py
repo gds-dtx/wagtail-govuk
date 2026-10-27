@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 
 from django.core.exceptions import ValidationError
+from django.utils.safestring import mark_safe
 from wagtail import blocks
 from wagtail.blocks import (
     ListBlockValidationError,
@@ -13,6 +14,7 @@ from wagtail.images.blocks import ImageChooserBlock
 from wagtail.snippets.blocks import SnippetChooserBlock
 
 from .constants import FRAMEWORK_WELCOME_RICH_TEXT_FEATURES
+from .raw_html import sanitise_raw_html
 
 # The name a row of cards is stored under in a content page's body.
 CARD_ROW_BLOCK_TYPE = "cards"
@@ -221,13 +223,15 @@ class SizedTableBlock(blocks.StructBlock):
 
 
 class BodyRawHtmlBlock(blocks.RawHTMLBlock):
-    """HTML written by hand, put on the page as it is.
+    """HTML written by hand, for markup the other blocks cannot make.
 
     The one place an editor can write HTML: rich text has no raw HTML feature.
-    Not sanitised, so it is for markup the other blocks cannot make, and a
-    fragment that is a table is given the scrollable region a table block has
-    (see ``raw_html_block`` in ``govuk_filters``). It sits in the text column,
-    where main.js gives its links and lists the GOV.UK classes.
+    It is cleaned to an allowlist (``govuk.models.raw_html``) when it is saved,
+    so the editor sees what will be published, and again when it is rendered,
+    since an import writes stream data without running ``clean``. A fragment
+    that is a table is given the scrollable region a table block has (see
+    ``raw_html_block`` in ``govuk_filters``). It sits in the text column, where
+    main.js gives its links and lists the GOV.UK classes.
     """
 
     class Meta:
@@ -235,10 +239,14 @@ class BodyRawHtmlBlock(blocks.RawHTMLBlock):
         label = "Raw HTML"
         template = "blocks/raw_html.html"
         help_text = (
-            "HTML is put on the page exactly as written. The site's security "
-            "policy blocks scripts, style attributes, iframes and images from "
-            "other sites, so use the other blocks for those where you can."
+            "For markup the other blocks cannot make. Scripts, styles, forms, "
+            "iframes and anything else that is not page content are removed "
+            "when you save. Style it with classes from Settings > Customise > "
+            "Extra CSS."
         )
+
+    def clean(self, value):
+        return mark_safe(sanitise_raw_html(str(super().clean(value) or "")))
 
 
 class BodyTextBlock(blocks.RichTextBlock):
