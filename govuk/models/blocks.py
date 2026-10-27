@@ -220,12 +220,33 @@ class SizedTableBlock(blocks.StructBlock):
         return context
 
 
+class BodyRawHtmlBlock(blocks.RawHTMLBlock):
+    """HTML written by hand, put on the page as it is.
+
+    The one place an editor can write HTML: rich text has no raw HTML feature.
+    Not sanitised, so it is for markup the other blocks cannot make, and a
+    fragment that is a table is given the scrollable region a table block has
+    (see ``raw_html_block`` in ``govuk_filters``). It sits in the text column,
+    where main.js gives its links and lists the GOV.UK classes.
+    """
+
+    class Meta:
+        icon = "code"
+        label = "Raw HTML"
+        template = "blocks/raw_html.html"
+        help_text = (
+            "HTML is put on the page exactly as written. The site's security "
+            "policy blocks scripts, style attributes, iframes and images from "
+            "other sites, so use the other blocks for those where you can."
+        )
+
+
 class BodyTextBlock(blocks.RichTextBlock):
     """Rich text in a page body.
 
     No features argument, so this offers exactly what the rich text body field
     it replaced did -- the default set, which the rich text hooks extend with
-    the GOV.UK button, start button, inset text and raw HTML. The template runs
+    the GOV.UK button, start button, inset text and line breaks. The template runs
     it through ``page_body``, so a link to a framework CSV becomes an
     attachment.
     """
@@ -409,6 +430,7 @@ class ContentBodyBlock(blocks.StreamBlock):
     cards = CardRowBlock(label="Cards")
     banner = BannerBlock()
     inset_text = InsetTextBlock(features=FRAMEWORK_WELCOME_RICH_TEXT_FEATURES)
+    raw_html = BodyRawHtmlBlock()
 
     class Meta:
         required = False

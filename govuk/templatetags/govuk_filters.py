@@ -4,6 +4,7 @@ from wagtail.rich_text import expand_db_html
 
 from govuk.capability_framework.attachments import rewrite_csv_download_links
 from govuk.models.blocks import body_layout
+from govuk.wagtail_hooks.rich_text import _wrap_table_in_scroll_region
 
 register = template.Library()
 
@@ -98,6 +99,16 @@ def changelog_note(entry):
     """
     note = getattr(entry, "note", entry)
     return mark_safe(expand_db_html(str(note or "")))
+
+
+@register.filter
+def raw_html_block(value):
+    """A Raw HTML block's markup, written out as it is.
+
+    A fragment that is a table is given the scrollable region every table on
+    the site has.
+    """
+    return mark_safe(_wrap_table_in_scroll_region(str(value or "")))
 
 
 @register.filter

@@ -144,6 +144,44 @@ class ContentPageBlockLayoutTests(_PageTestCase):
 
         self.assertIn("Only a block.", html)
 
+    def test_raw_html_is_put_on_the_page_as_written(self):
+        html = self._html(
+            self._publish(
+                [
+                    _text("<p>Before.</p>"),
+                    {
+                        "type": "raw_html",
+                        "value": '<dl class="app-summary"><dt>Term</dt><dd>Detail</dd></dl>',
+                    },
+                ]
+            )
+        )
+
+        self.assertIn('<dl class="app-summary"><dt>Term</dt><dd>Detail</dd></dl>', html)
+        # In the text column with the text around it, not a band of its own,
+        # inside the container main.js gives rich text's classes in.
+        column = html.index('class="govuk-body rich-text-content"')
+        self.assertLess(column, html.index('<dl class="app-summary">'))
+        self.assertNotIn("body-band", html)
+
+    def test_a_raw_html_table_scrolls_like_a_table_block(self):
+        html = self._html(
+            self._publish(
+                [
+                    {
+                        "type": "raw_html",
+                        "value": "<table><caption>Grades</caption><tr><td>a</td></tr></table>",
+                    }
+                ]
+            )
+        )
+
+        self.assertIn(
+            '<div class="table-scroll" tabindex="0" role="region" aria-label="Grades">'
+            "<table><caption>Grades</caption>",
+            html,
+        )
+
     def test_text_blocks_are_not_wrapped_in_a_div_each(self):
         html = self._html(self._publish([_text("<p>Plain.</p>")]))
 
@@ -379,6 +417,16 @@ class ContentPageBlockAdminTests(_PageTestCase):
             ["text", "cards", "banner"],
         )
         self.assertEqual(page.body[1].value["cards"][0]["title"], "Alpha card")
+
+    def test_raw_html_can_be_published(self):
+        response = self._post([("raw_html", "<p class=\"app-note\">Hand written.</p>")])
+
+        self.assertEqual(response.status_code, 302)
+        page = ContentPage.objects.get(pk=self.page.pk)
+        self.assertEqual([block.block_type for block in page.body], ["raw_html"])
+        self.assertEqual(
+            str(page.body[0].value), '<p class="app-note">Hand written.</p>'
+        )
 
     def test_a_banner_button_with_nowhere_to_go_is_refused(self):
         response = self._post([("banner", self._banner_form(button_external_url=""))])

@@ -35,11 +35,7 @@ from govuk.page_import_export import (
     import_pages_from_payload,
 )
 from govuk.tests.page_helpers import text_body
-from govuk.wagtail_hooks import (
-    RawHtmlEmbedHandler,
-    _encode_raw_html,
-    _wrap_table_in_scroll_region,
-)
+from govuk.wagtail_hooks import _wrap_table_in_scroll_region
 
 
 def _feature_flags() -> dict[str, bool]:
@@ -534,10 +530,11 @@ class ContentPageTableExportTests(TestCase):
 
 
 class RawHtmlTableScrollTests(TestCase):
-    """The other route a table arrives by, which is still open to editors.
+    """The other route a table arrives by: a Raw HTML block.
 
     main.css has carried the scrollable region since f29e990 and nothing ever
     applied the class, so a hand-written table still dragged the page sideways.
+    The block's template applies it through this function.
     """
 
     def test_a_pasted_table_is_given_a_scroll_region(self):
@@ -581,9 +578,3 @@ class RawHtmlTableScrollTests(TestCase):
 
         self.assertEqual(_wrap_table_in_scroll_region(html), html)
 
-    def test_a_table_reaches_a_page_through_the_embed_and_is_wrapped(self):
-        encoded = _encode_raw_html("<table><tr><td>a</td></tr></table>")
-        [rendered] = RawHtmlEmbedHandler.expand_db_attributes_many([{"html": encoded}])
-
-        self.assertIn('class="table-scroll"', rendered)
-        self.assertIn("<table>", rendered)
