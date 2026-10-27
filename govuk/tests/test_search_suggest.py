@@ -24,6 +24,7 @@ from govuk.models import (
     GovukSkill,
 )
 from govuk.tests.framework_helpers import make_framework_main_page, role_url
+from govuk.tests.page_helpers import text_body
 
 STATIC = Path(__file__).resolve().parents[1] / "static"
 
@@ -59,7 +60,7 @@ class SearchSuggestTests(TestCase):
             instance=ContentPage(
                 title="Data protection guidance",
                 slug="data-protection",
-                body="<p>How the framework handles personal data.</p>",
+                body=text_body("<p>How the framework handles personal data.</p>"),
             )
         )
         self.page.save_revision().publish()
@@ -167,7 +168,7 @@ class SearchSuggestWithoutTheFrameworkTests(TestCase):
         site = Site.objects.get(is_default_site=True)
         page = site.root_page.add_child(
             instance=ContentPage(
-                title="Data guidance", slug="data-guidance", body="<p>Data.</p>"
+                title="Data guidance", slug="data-guidance", body=text_body("<p>Data.</p>")
             )
         )
         page.save_revision().publish()

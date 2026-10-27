@@ -21,7 +21,6 @@ from govuk.models import (
     GovukRole,
     GovukSkill,
     GovukTag,
-    SectionPage,
     TagListingsPage,
 )
 from govuk.search_backend import UNMATCHED_RANK, search_backend
@@ -217,14 +216,12 @@ class SearchBackendDescriptionFallbackTests(TestCase):
     def test_tag_results_prefer_hero_intro_over_search_description(self):
         tag = GovukTag.objects.create(slug="backend-hero-tag", name="Backend hero tag")
         page = self.root_page.add_child(
-            instance=SectionPage(
+            instance=ContentPage(
                 title="Tagged hero section",
                 slug="tagged-hero-section",
                 hero_title="Tagged hero display title",
                 hero_intro="<p>Section hero summary</p>",
                 search_description="Section meta summary",
-                rows=[],
-                free_text="",
             )
         )
         page.tags.add(tag)
@@ -627,7 +624,7 @@ class SearchBackendBreadcrumbTests(TestCase):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
         self.section = self.root_page.add_child(
-            instance=SectionPage(title="Data roles", slug="data-roles")
+            instance=ContentPage(title="Data roles", slug="data-roles")
         )
         self.section.save_revision().publish()
         self.pages = []
@@ -748,9 +745,9 @@ class SearchBackendPostgresRankTests(SimpleTestCase):
 
         self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)
 
-    def test_a_section_card_search_asks_for_more_than_an_unmatched_rank(self):
-        queryset = search_backend._search_sections_postgres(
-            SectionPage.objects.all(), "two words"
+    def test_a_card_search_asks_for_more_than_an_unmatched_rank(self):
+        queryset = search_backend._search_card_pages_postgres(
+            ContentPage.objects.all(), "two words"
         )
 
         self.assertEqual(self._rank_floor(queryset), UNMATCHED_RANK)

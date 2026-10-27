@@ -1,0 +1,7 @@
+{% load govuk_filters %}
+{% comment %}
+    An editor's own HTML, cleaned to the Raw HTML block's allowlist by
+    raw_html_block, which also gives a table the same scrollable region as a
+    table block.
+{% endcomment %}
+{{ value|raw_html_block }}

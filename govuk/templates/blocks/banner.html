@@ -1,0 +1,35 @@
+{% load wagtailcore_tags %}
+{% comment %}
+    A coloured band with a heading, some text and an optional button: across
+    the page with full_width, or as a panel in the text column beside a
+    sidebar.
+
+    The style is chosen here rather than interpolated into the class: a page
+    import writes stream data without running the block's validation, so the
+    stored value cannot be trusted inside an attribute.
+{% endcomment %}
+{% with is_light=value.style|default:""|lower %}
+<div class="body-banner {% if is_light == "light" %}body-banner--light{% else %}body-banner--brand{% endif %} {% if full_width %}body-band{% else %}body-panel{% endif %}">
+    {% if full_width %}
+        <div class="govuk-width-container">
+            <div class="govuk-grid-row">
+                <div class="govuk-grid-column-two-thirds">
+    {% endif %}
+                    <h2 class="govuk-heading-l body-banner__heading">{{ value.heading }}</h2>
+                    {% if value.text %}
+                        <div class="govuk-body-l rich-text-content body-banner__text">{{ value.text|richtext }}</div>
+                    {% endif %}
+                    {% if value.button_text and value.button_url %}
+                        <a href="{{ value.button_url }}"
+                           role="button"
+                           draggable="false"
+                           class="govuk-button{% if is_light != "light" %} govuk-button--inverse{% endif %} govuk-!-margin-bottom-0"
+                           data-module="govuk-button">{{ value.button_text }}</a>
+                    {% endif %}
+    {% if full_width %}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endwith %}

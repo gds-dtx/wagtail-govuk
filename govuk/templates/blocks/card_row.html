@@ -1,0 +1,66 @@
+{% load wagtailcore_tags wagtailimages_tags %}
+{% comment %}
+    A row of cards. With full_width it is a band across the page; without, it
+    sits in the text column beside a sidebar and the grid fits fewer cards to
+    a line.
+
+    heading and cards come from CardRowBlock.get_context, which takes the cards
+    the page's tag filter left in. Whether tags show is the page's setting, so
+    it is read from page.
+{% endcomment %}
+{% if full_width %}
+    <div class="section-cards-container body-band">
+        <div class="govuk-width-container">
+            <div class="govuk-grid-row">
+                <div class="govuk-grid-column-full">
+{% else %}
+    <div class="section-cards-container body-panel">
+{% endif %}
+                    {% if heading %}<h2 class="govuk-heading-m">{{ heading }}</h2>{% endif %}
+                    <div class="section-cards">
+                        {% for card in cards %}
+                            {% with card_link=card.link %}
+                                {% with card_url=card_link.url card_button_text=card_link.title %}
+                                    <div class="section-card{% if card.image %} section-card--with-image{% endif %}">
+                                        {% if card.image %}
+                                            <div class="section-card--image {% if card.image_fit == "contain" %}section-card--image--contain{% else %}section-card--image--cover{% endif %}">
+                                                {% picture card.image format-{avif,webp,jpeg} width-720 %}
+                                            </div>
+                                        {% endif %}
+                                        <div class="section-card--content">
+                                            {% with card_heading_tag=heading|yesno:"h3,h2" %}
+                                            <{{ card_heading_tag }} class="govuk-heading-s govuk-!-margin-bottom-0">
+                                                {% if card_url %}
+                                                    <a class="govuk-link govuk-link--no-visited-state section-card__link--stretched"
+                                                       href="{{ card_url }}">{{ card.title }}</a>
+                                                {% else %}
+                                                    {{ card.title }}
+                                                {% endif %}
+                                            </{{ card_heading_tag }}>
+                                            {% endwith %}
+                                            {% if page.enable_tag_display and card.tags %}
+                                                <p class="govuk-body-s govuk-!-margin-top-2 govuk-!-margin-bottom-2 tags-container">
+                                                    {% for tag in card.tags %}
+                                                        {% if tag %}<strong class="govuk-tag govuk-tag--grey">{{ tag.name|default:tag.value }}</strong>{% endif %}
+                                                    {% endfor %}
+                                                </p>
+                                            {% endif %}
+                                            {% if card.text %}
+                                                <div class="govuk-body section-card__text {% if not card_button_text %}govuk-!-margin-bottom-0{% endif %}">
+                                                    {{ card.text|richtext }}
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% endwith %}
+                            {% endwith %}
+                        {% endfor %}
+                    </div>
+{% if full_width %}
+                </div>
+            </div>
+        </div>
+    </div>
+{% else %}
+    </div>
+{% endif %}

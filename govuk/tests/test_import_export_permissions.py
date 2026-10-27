@@ -24,13 +24,14 @@ from wagtail.models import (
 
 from govuk.models import (
     ContentPage,
+    FrameworkMainPage,
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
     GovukTag,
-    SectionPage,
 )
 from govuk.page_import_export import PAGE_EXPORT_FORMAT
+from govuk.tests.page_helpers import text_body
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -45,11 +46,11 @@ class ImportExportPermissionTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
-        self.section_page = self.root_page.add_child(
-            instance=SectionPage(title="Benefits", slug="benefits")
+        self.benefits_page = self.root_page.add_child(
+            instance=ContentPage(title="Benefits", slug="benefits")
         )
-        self.content_page = self.section_page.add_child(
-            instance=ContentPage(title="Apply", slug="apply", body="<p>Body</p>")
+        self.content_page = self.benefits_page.add_child(
+            instance=ContentPage(title="Apply", slug="apply", body=text_body("<p>Body</p>"))
         )
 
         self.skill = GovukSkill.objects.create(slug="accessibility", title="Accessibility")
@@ -278,7 +279,7 @@ class ImportExportPermissionTests(TestCase):
         self._protect(self.content_page)
         self.client.force_login(self._superuser())
 
-        response = self._export(page_ids=[str(self.section_page.pk)])
+        response = self._export(page_ids=[str(self.benefits_page.pk)])
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(
@@ -297,7 +298,7 @@ class ImportExportPermissionTests(TestCase):
             )
         )
 
-        response = self._export(page_ids=[str(self.section_page.pk)])
+        response = self._export(page_ids=[str(self.benefits_page.pk)])
 
         self.assertEqual(response.status_code, 200)
         body = response.content.decode()
@@ -335,7 +336,7 @@ class ImportExportPermissionTests(TestCase):
         )
 
         response = self._export(
-            page_ids=[str(self.section_page.pk), str(self.content_page.pk)]
+            page_ids=[str(self.benefits_page.pk), str(self.content_page.pk)]
         )
 
         self.assertEqual(response.status_code, 200)
@@ -361,7 +362,7 @@ class ImportExportPermissionTests(TestCase):
         )
 
         response = self._export(
-            page_ids=[str(self.section_page.pk)],
+            page_ids=[str(self.benefits_page.pk)],
             role_ids=[str(self.role.pk)],
             skill_ids=[str(self.skill.pk)],
         )
@@ -384,7 +385,7 @@ class ImportedPasswordRestrictionTests(TestCase):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
         self.page = self.root_page.add_child(
-            instance=ContentPage(title="Apply", slug="apply", body="<p>Body</p>")
+            instance=ContentPage(title="Apply", slug="apply", body=text_body("<p>Body</p>"))
         )
         self.user = get_user_model().objects.create_superuser(
             username="admin-user",
@@ -461,9 +462,10 @@ class PlaceholderHomePageReplacementPermissionTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
         # Left empty and of the starter type, which is what makes it a
-        # replaceable placeholder.
+        # replaceable placeholder: a content page since 0089, so the file is
+        # rooted at the framework main page to differ from it.
         self.placeholder = self.site.root_page.specific
-        self.assertIsInstance(self.placeholder, SectionPage)
+        self.assertIsInstance(self.placeholder, ContentPage)
         self.assertFalse(self.placeholder.get_children().exists())
 
         self.import_url = reverse("govuk_pages_import")
@@ -473,9 +475,9 @@ class PlaceholderHomePageReplacementPermissionTests(TestCase):
             "format": PAGE_EXPORT_FORMAT,
             "pages": [
                 {
-                    "model": "govuk.ContentPage",
+                    "model": "govuk.FrameworkMainPage",
                     "settings": {"title": "Capability Framework", "slug": "home"},
-                    "fields": {"body": "<p>The framework.</p>"},
+                    "fields": {"body": text_body("<p>The framework.</p>")},
                     "tags": [],
                     "privacy": [],
                     "children": [],
@@ -596,6 +598,6 @@ class PlaceholderHomePageReplacementPermissionTests(TestCase):
 
         self.site.refresh_from_db()
         new_root = self.site.root_page.specific
-        self.assertIsInstance(new_root, ContentPage)
+        self.assertIsInstance(new_root, FrameworkMainPage)
         self.assertEqual(new_root.slug, "home")
         self.assertFalse(Page.objects.filter(pk=self.placeholder.pk).exists())

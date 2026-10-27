@@ -21,6 +21,7 @@ from govuk.page_import_export import (
     build_page_export_payload,
     import_pages_from_payload,
 )
+from govuk.tests.page_helpers import text_body
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -375,7 +376,7 @@ class WordingImportPermissionTests(TestCase):
                     {
                         "model": "govuk.ContentPage",
                         "settings": {"title": "Guidance", "slug": "guidance"},
-                        "fields": {"body": "<p>Imported.</p>"},
+                        "fields": {"body": text_body("<p>Imported.</p>")},
                     }
                 ],
             }

@@ -12,6 +12,7 @@ from django.test import TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.models import ContentPage
+from govuk.tests.page_helpers import text_body
 
 
 def _flags(*, skills: bool) -> dict[str, bool]:
@@ -28,7 +29,7 @@ class RichTextTypeScaleScopeTests(TestCase):
             instance=ContentPage(
                 title="Guidance",
                 slug="guidance",
-                body="<h2>A heading</h2><p>Some prose.</p>",
+                body=text_body("<h2>A heading</h2><p>Some prose.</p>"),
             )
         )
         self.page.save_revision().publish()

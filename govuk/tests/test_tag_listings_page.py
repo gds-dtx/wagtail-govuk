@@ -11,7 +11,6 @@ from govuk.models import (
     ExternalContentItemTag,
     FrameworkMainPage,
     GovukTag,
-    SectionPage,
     TagListingsPage,
 )
 
@@ -63,17 +62,15 @@ class TagListingsPageQuerysetTests(TestCase):
             restriction_type=PageViewRestriction.LOGIN
         )
 
-        self.section_page_beta = self.root_page.add_child(
-            instance=SectionPage(
+        self.content_page_beta = self.root_page.add_child(
+            instance=ContentPage(
                 title="Beta section",
                 slug="beta-section",
                 hero_intro="",
-                rows=[],
-                free_text="",
             )
         )
-        self.section_page_beta.tags.add(self.beta_tag)
-        self.section_page_beta.save_revision().publish()
+        self.content_page_beta.tags.add(self.beta_tag)
+        self.content_page_beta.save_revision().publish()
 
         self.framework_page_alpha = self.root_page.add_child(
             instance=FrameworkMainPage(
@@ -145,7 +142,7 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertIn(self.external_alpha.url, urls)
         self.assertIn(self.external_beta.url, urls)
         self.assertIn(self.content_page_alpha.url, urls)
-        self.assertIn(self.section_page_beta.url, urls)
+        self.assertIn(self.content_page_beta.url, urls)
         self.assertIn(self.framework_page_alpha.url, urls)
 
         self.assertNotIn(self.external_gamma.url, urls)
@@ -162,13 +159,13 @@ class TagListingsPageQuerysetTests(TestCase):
 
         self.assertEqual(item_by_url[self.external_alpha.url]["tags"], ["Alpha"])
         self.assertEqual(item_by_url[self.content_page_alpha.url]["tags"], ["Alpha"])
-        self.assertEqual(item_by_url[self.section_page_beta.url]["tags"], ["Beta"])
+        self.assertEqual(item_by_url[self.content_page_beta.url]["tags"], ["Beta"])
 
     def test_get_listing_queryset_applies_selected_tag_to_external_and_pages(self):
         items = self.listings_page.get_listing_queryset(selected_tag_id=self.beta_tag.id)
         urls = {item["url"] for item in items}
 
-        self.assertEqual(urls, {self.external_beta.url, self.section_page_beta.url})
+        self.assertEqual(urls, {self.external_beta.url, self.content_page_beta.url})
 
     def test_get_listing_queryset_applies_selected_tag_to_framework_pages(self):
         items = self.listings_page.get_listing_queryset(selected_tag_id=self.alpha_tag.id)
@@ -177,7 +174,7 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertIn(self.external_alpha.url, urls)
         self.assertIn(self.content_page_alpha.url, urls)
         self.assertIn(self.framework_page_alpha.url, urls)
-        self.assertNotIn(self.section_page_beta.url, urls)
+        self.assertNotIn(self.content_page_beta.url, urls)
 
     def test_get_listing_queryset_applies_selected_source_to_external_only(self):
         items = self.listings_page.get_listing_queryset(
@@ -195,7 +192,7 @@ class TagListingsPageQuerysetTests(TestCase):
         urls = {item["url"] for item in items}
 
         self.assertIn(self.content_page_alpha.url, urls)
-        self.assertIn(self.section_page_beta.url, urls)
+        self.assertIn(self.content_page_beta.url, urls)
         self.assertIn(self.framework_page_alpha.url, urls)
         self.assertNotIn(self.external_alpha.url, urls)
         self.assertNotIn(self.external_beta.url, urls)

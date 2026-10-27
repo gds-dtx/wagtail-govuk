@@ -1,7 +1,7 @@
 from django.test import SimpleTestCase, TestCase
 from wagtail.models import Site
 
-from govuk.models import ContentPage, SectionPage
+from govuk.models import ContentPage
 from govuk.models.pages import HeroStyle, HeroStyleMixin
 
 
@@ -88,13 +88,3 @@ class HeroStyleRenderingTests(TestCase):
         self.assertNotContains(response, "masthead")
         self.assertNotContains(response, "govuk-heading-xl")
 
-    def test_section_page_also_honours_the_dropdown(self):
-        page = self.root.add_child(
-            instance=SectionPage(
-                title="A section", slug="a-section", hero_style=HeroStyle.STYLED
-            )
-        )
-        page.save_revision().publish()
-        response = self.client.get(page.url)
-        self.assertContains(response, "masthead")
-        self.assertNotContains(response, "masthead--combined")

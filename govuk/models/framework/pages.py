@@ -605,7 +605,6 @@ class FrameworkMainPage(
         # statement and accessibility statement out of the menu.
         "govuk.FrameworkContentPage",
         "govuk.ContentPage",
-        "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
     ]
@@ -692,7 +691,6 @@ class FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage):
         # A plain page may sit under a framework page, as under the main page:
         # the development instance holds project pages that way.
         "govuk.ContentPage",
-        "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
     ]
@@ -745,14 +743,12 @@ class FrameworkSkillsPage(Page):
     max_count = 1
     parent_page_types = [
         "govuk.ContentPage",
-        "govuk.SectionPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkMainPage",
         "govuk.FrameworkContentPage",
     ]
     subpage_types = [
         "govuk.ContentPage",
-        "govuk.SectionPage",
         "govuk.TagListingsPage",
     ]
     hero_title = models.CharField(

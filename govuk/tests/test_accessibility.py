@@ -14,6 +14,7 @@ from django.test import TestCase
 from wagtail.models import Site
 
 from govuk.models import ContentPage
+from govuk.tests.page_helpers import text_body
 
 
 class AccessibilityBaselineTests(TestCase):
@@ -26,7 +27,7 @@ class AccessibilityBaselineTests(TestCase):
                 title="Accessible page",
                 slug="accessible-page",
                 hero_title="Accessible page",
-                body="<h2>A section</h2><p>Some body copy.</p>",
+                body=text_body("<h2>A section</h2><p>Some body copy.</p>"),
             )
         )
         self.page.save_revision().publish()

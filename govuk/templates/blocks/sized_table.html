@@ -1,0 +1,8 @@
+{% load wagtailcore_tags %}
+{% comment %}
+    The table with its column widths. column_classes comes from
+    SizedTableBlock.get_context and reaches the table's own template through
+    the context include_block passes on. bound_blocks, because value.table is
+    the grid's raw value, which has no template of its own to render with.
+{% endcomment %}
+{% include_block value.bound_blocks.table %}

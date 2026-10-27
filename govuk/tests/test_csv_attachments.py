@@ -25,6 +25,7 @@ from govuk.capability_framework.attachments import (
     rewrite_csv_download_links,
 )
 from govuk.models import ContentPage
+from govuk.tests.page_helpers import text_body
 
 
 def _feature_flags(*, skills_enabled: bool = True) -> dict[str, bool]:
@@ -247,10 +248,10 @@ class DownloadPageTests(TestCase):
                 title="Download framework content",
                 slug="download",
                 body=(
-                    "<h2>Role descriptions</h2>"
+                    text_body("<h2>Role descriptions</h2>"
                     '<p><a href="/download/roles.csv">'
                     "Role content - Capability Framework (CSV)</a></p>"
-                    "<h3>File details</h3>"
+                    "<h3>File details</h3>")
                 ),
             )
         )

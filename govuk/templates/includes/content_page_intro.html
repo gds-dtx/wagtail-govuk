@@ -1,0 +1,17 @@
+{% comment %}
+    What a content page shows above its body: the page metadata, the
+    framework's last-updated line and the framework welcome content.
+{% endcomment %}
+{% if self.show_page_content_metadata %}
+    {% include "includes/page_content_metadata.html" with page=self %}
+{% endif %}
+{% if framework_changelog.last_updated_date %}
+    <hr class="govuk-section-break govuk-section-break--l govuk-section-break--visible">
+    <p class="govuk-body-s">
+        {{ framework_wording.last_updated_prefix }} {{ framework_changelog.last_updated_date|date:"j F Y" }} —
+        <a href="#update-history" id="jump-link" class="govuk-link">{{ framework_wording.see_all_updates_link_text }}</a>
+    </p>
+{% endif %}
+{% if self.show_framework_welcome %}
+    {% include "includes/framework_welcome.html" %}
+{% endif %}

@@ -15,7 +15,6 @@ from govuk.models import (
     ExternalContentItem,
     ExternalContentItemTag,
     GovukTag,
-    SectionPage,
 )
 from govuk.search_backend import search_backend
 
@@ -92,12 +91,10 @@ class SearchViewFilterTests(TestCase):
         self.alpha_page.save_revision().publish()
 
         self.beta_section = self.root_page.add_child(
-            instance=SectionPage(
+            instance=ContentPage(
                 title="Filterable beta section",
                 slug="filterable-beta-section",
                 hero_intro="",
-                rows=[],
-                free_text="",
             )
         )
         self.beta_section.tags.add(self.beta_tag)

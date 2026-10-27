@@ -31,7 +31,9 @@ function setSkipLink() {
 
 function setHyperlinkClasses() {
   const richTextContents = document.querySelectorAll(".rich-text-content");
-  const masthead = document.querySelectorAll(".masthead");
+  // A brand-coloured body banner is the masthead's colour too, so its links
+  // need the same inverse treatment.
+  const masthead = document.querySelectorAll(".masthead, .body-banner--brand");
   [richTextContents, masthead].forEach((content) => {
     content.forEach((element) => {
       const links = element.querySelectorAll("a");
@@ -39,10 +41,11 @@ function setHyperlinkClasses() {
         if (link.classList.contains("govuk-button")) {
           return;
         }
-        if (element.classList.contains("masthead")) {
-          if (element.classList.contains("masthead--combined")) {
-            link.classList.add("govuk-link--inverse");
-          }
+        if (
+          element.classList.contains("masthead--combined") ||
+          element.classList.contains("body-banner--brand")
+        ) {
+          link.classList.add("govuk-link--inverse");
         }
         link.classList.add("govuk-link");
       });
@@ -306,6 +309,11 @@ function setAutoHeadingNavigation() {
     const headingItems = [];
 
     headings.forEach((heading, index) => {
+      // A card's title names the card, not a part of the page; the heading
+      // over its row is what the contents list should carry.
+      if (heading.closest(".section-card")) {
+        return;
+      }
       const text = (heading.textContent || "").trim();
       if (!text) {
         return;

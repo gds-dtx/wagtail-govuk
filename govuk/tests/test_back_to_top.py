@@ -11,6 +11,7 @@ from django.test import TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.models import ContentPage, CustomiseSettings
+from govuk.tests.page_helpers import text_body
 
 
 def _feature_flags() -> dict[str, bool]:
@@ -28,7 +29,7 @@ class BackToTopGateTests(TestCase):
             instance=ContentPage(
                 title="Civil Service job grades",
                 slug="job-grades",
-                body="<p>The grades.</p>",
+                body=text_body("<p>The grades.</p>"),
             )
         )
         page.save_revision().publish()

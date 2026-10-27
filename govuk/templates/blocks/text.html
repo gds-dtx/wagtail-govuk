@@ -1,0 +1,7 @@
+{% load govuk_filters %}
+{% comment %}
+    Through page_body, so a paragraph holding nothing but a link to a framework
+    CSV becomes the attachment component. value.source is the stored HTML;
+    page_body expands Wagtail's links itself.
+{% endcomment %}
+{{ value.source|page_body }}

@@ -246,8 +246,16 @@ class PageTypesMigrationTests(TransactionTestCase):
             self.assertEqual(page.get_parent().pk, self.home_id)
 
     def test_the_footer_pages_stay_plain(self):
+        # Under the framework only: the starter site's own home page, which
+        # 0089 turned from a section page into a content page, is not one of
+        # the framework's.
+        main_page = Page.objects.get(pk=self.home_id)
         self.assertEqual(
-            sorted(ContentPage.objects.values_list("slug", flat=True)),
+            sorted(
+                ContentPage.objects.descendant_of(main_page).values_list(
+                    "slug", flat=True
+                )
+            ),
             ["cookie-statement", "privacy"],
         )
 

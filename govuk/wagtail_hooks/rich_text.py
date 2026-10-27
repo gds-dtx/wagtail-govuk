@@ -1,18 +1,14 @@
-import base64
 import re
 
 from django.urls import reverse_lazy
 from django.utils.html import escape, strip_tags
 from draftjs_exporter.dom import DOM
 from wagtail import hooks
-from wagtail.admin.rich_text.converters.contentstate_models import Entity
 from wagtail.admin.rich_text.converters.html_to_contentstate import (
-    AtomicBlockEntityElementHandler,
     BlockElementHandler,
     PageLinkElementHandler,
 )
 from wagtail.admin.rich_text.editors.draftail import features as draftail_features
-from wagtail.rich_text import EmbedHandler
 from wagtail.rich_text.pages import PageLinkHandler
 from wagtail.whitelist import check_url
 
@@ -35,34 +31,9 @@ GOVUK_BUTTON_STYLE_MODIFIERS = {
 GOVUK_BUTTON_STYLES = frozenset(
     {GOVUK_BUTTON_STYLE_DEFAULT, *GOVUK_BUTTON_STYLE_MODIFIERS}
 )
-RAW_HTML_FEATURE = "raw-html"
-RAW_HTML_ENTITY_TYPE = "RAW_HTML"
-RAW_HTML_EMBEDTYPE = "raw_html"
 INSET_TEXT_FEATURE = "inset-text"
 INSET_TEXT_BLOCK_TYPE = "inset-text"
 LINE_BREAK_FEATURE = "line-break"
-
-
-def _encode_raw_html(raw_html: str | None) -> str:
-    normalised_html = (raw_html or "").strip()
-    if not normalised_html:
-        return ""
-    return base64.urlsafe_b64encode(normalised_html.encode("utf-8")).decode("ascii")
-
-
-def _decode_raw_html(encoded_html: str | None) -> str:
-    normalised_encoded_html = (encoded_html or "").strip()
-    if not normalised_encoded_html:
-        return ""
-
-    # Base64 strings in embed attributes can be copied without padding.
-    padding = "=" * (-len(normalised_encoded_html) % 4)
-    try:
-        return base64.urlsafe_b64decode(
-            (normalised_encoded_html + padding).encode("ascii")
-        ).decode("utf-8")
-    except (ValueError, UnicodeDecodeError):
-        return ""
 
 
 def _normalise_button_style(style: str | None) -> str:
@@ -176,15 +147,6 @@ class GovukButtonLinkHandler(PageLinkHandler):
             yield from super().extract_references(attrs)
 
 
-class RawHtmlElementHandler(AtomicBlockEntityElementHandler):
-    def create_entity(self, name, attrs, state, contentstate):
-        return Entity(
-            RAW_HTML_ENTITY_TYPE,
-            "MUTABLE",
-            {"html": _decode_raw_html(attrs.get("html", ""))},
-        )
-
-
 _TABLE_FRAGMENT_RE = re.compile(r"^\s*<table\b", re.IGNORECASE)
 _CAPTION_RE = re.compile(r"<caption\b[^>]*>(.*?)</caption>", re.IGNORECASE | re.DOTALL)
 
@@ -214,35 +176,12 @@ def _wrap_table_in_scroll_region(html: str) -> str:
     )
 
 
-class RawHtmlEmbedHandler(EmbedHandler):
-    identifier = RAW_HTML_EMBEDTYPE
-
-    @classmethod
-    def expand_db_attributes_many(cls, attrs_list: list[dict]) -> list[str]:
-        return [
-            _wrap_table_in_scroll_region(_decode_raw_html(attrs.get("html", "")))
-            for attrs in attrs_list
-        ]
-
-
-def raw_html_entity(props: dict):
-    return DOM.create_element(
-        "embed",
-        {
-            "embedtype": RAW_HTML_EMBEDTYPE,
-            "html": _encode_raw_html(props.get("html", "")),
-        },
-    )
-
-
 @hooks.register("register_rich_text_features")
 def register_govuk_button_rich_text_features(features):
     features.register_link_type(GovukButtonLinkHandler)
-    features.register_embed_type(RawHtmlEmbedHandler)
 
     for feature_name in (
         GOVUK_BUTTON_FEATURE,
-        RAW_HTML_FEATURE,
         INSET_TEXT_FEATURE,
         LINE_BREAK_FEATURE,
     ):
@@ -290,31 +229,6 @@ def register_govuk_button_rich_text_features(features):
             },
             "to_database_format": {
                 "entity_decorators": {GOVUK_BUTTON_ENTITY_TYPE: govuk_button_entity}
-            },
-        },
-    )
-
-    features.register_editor_plugin(
-        "draftail",
-        RAW_HTML_FEATURE,
-        draftail_features.EntityFeature(
-            {
-                "type": RAW_HTML_ENTITY_TYPE,
-                "description": "Raw HTML block",
-                "icon": "code",
-            },
-            js=["govuk/js/draftail-raw-html.js"],
-        ),
-    )
-    features.register_converter_rule(
-        "contentstate",
-        RAW_HTML_FEATURE,
-        {
-            "from_database_format": {
-                f'embed[embedtype="{RAW_HTML_EMBEDTYPE}"]': RawHtmlElementHandler(),
-            },
-            "to_database_format": {
-                "entity_decorators": {RAW_HTML_ENTITY_TYPE: raw_html_entity}
             },
         },
     )

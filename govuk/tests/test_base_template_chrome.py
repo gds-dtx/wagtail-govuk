@@ -10,6 +10,7 @@ from django.test import TestCase
 from wagtail.models import Site
 
 from govuk.models import ContentPage
+from govuk.tests.page_helpers import text_body
 
 
 class BaseTemplateChromeTests(TestCase):
@@ -20,7 +21,7 @@ class BaseTemplateChromeTests(TestCase):
                 title="Chrome",
                 slug="chrome",
                 hero_title="Chrome",
-                body="<p>Some body copy.</p>",
+                body=text_body("<p>Some body copy.</p>"),
             )
         )
         page.save_revision().publish()

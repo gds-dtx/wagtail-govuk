@@ -1,0 +1,42 @@
+{% comment %}
+    The "Filter cards" control, narrowing every card row on the page to one tag.
+    Takes available_tags and selected_tag from the page context and filter_id
+    for the select's id.
+{% endcomment %}
+<details class="govuk-details govuk-!-margin-bottom-2"
+         data-module="govuk-details"
+         {% if selected_tag %}open{% endif %}>
+    <summary class="govuk-details__summary">
+        <span class="govuk-details__summary-text">Filter cards</span>
+    </summary>
+    <div class="govuk-details__text">
+        {% if selected_tag %}
+            <p class="govuk-body-s govuk-!-margin-top-0 govuk-!-margin-bottom-3">
+                Showing cards for <strong>{{ selected_tag.value }}</strong>.
+            </p>
+        {% endif %}
+        <form method="get" class="govuk-!-margin-bottom-0">
+            <div class="govuk-form-group">
+                <label class="govuk-label" for="{{ filter_id }}">Filter by tag</label>
+                <select class="govuk-select" id="{{ filter_id }}" name="tag">
+                    <option value="">All tags</option>
+                    {% for tag in available_tags %}
+                        <option value="{{ tag.key|urlencode }}"
+                                {% if selected_tag and selected_tag.key == tag.key %}selected{% endif %}>
+                            {{ tag.value }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="govuk-button-group govuk-!-margin-bottom-0">
+                <button type="submit" class="govuk-button">Apply filter</button>
+                {% if selected_tag %}
+                    <a href="?"
+                       role="button"
+                       draggable="false"
+                       class="govuk-button govuk-button--secondary">Clear filter</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</details>

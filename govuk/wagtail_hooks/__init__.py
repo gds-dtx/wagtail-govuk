@@ -4,7 +4,7 @@ Wagtail auto-discovers ``govuk.wagtail_hooks`` and imports it once at startup.
 Registration happens as a side effect of that import, so this ``__init__`` must
 pull in every submodule for its hooks to fire:
 
-* ``rich_text`` -- the GOV.UK button, raw-HTML and inset-text rich-text
+* ``rich_text`` -- the GOV.UK button, inset-text and line-break rich-text
   features, plus the ``register_rich_text_features`` hook.
 * ``viewsets`` -- the snippet viewsets (tags, external content, the Capability
   Framework group, feedback). The classes are defined here; the imperative
@@ -33,11 +33,6 @@ from .rich_text import (
     INSET_TEXT_BLOCK_TYPE,
     INSET_TEXT_FEATURE,
     LINE_BREAK_FEATURE,
-    RAW_HTML_EMBEDTYPE,
-    RAW_HTML_ENTITY_TYPE,
-    RAW_HTML_FEATURE,
-    RawHtmlEmbedHandler,
-    _encode_raw_html,
     _wrap_table_in_scroll_region,
     register_govuk_button_rich_text_features,
 )
@@ -70,12 +65,7 @@ __all__ = [
     "INSET_TEXT_BLOCK_TYPE",
     "INSET_TEXT_FEATURE",
     "LINE_BREAK_FEATURE",
-    "RAW_HTML_EMBEDTYPE",
-    "RAW_HTML_ENTITY_TYPE",
-    "RAW_HTML_FEATURE",
-    "RawHtmlEmbedHandler",
     "SidebarSettings",
-    "_encode_raw_html",
     "_wrap_table_in_scroll_region",
     "register_govuk_button_rich_text_features",
 ]

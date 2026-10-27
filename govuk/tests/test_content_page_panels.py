@@ -28,6 +28,7 @@ from govuk.models import (
     framework_main_settings_panels,
 )
 from govuk.tests.framework_helpers import make_framework_main_page
+from govuk.tests.page_helpers import text_body
 
 FRAMEWORK_SETTINGS_FIELDS = {
     "show_role_navigation",
@@ -193,7 +194,7 @@ class FrameworkContentPageForcesItsBehaviourTests(TestCase):
             instance=FrameworkContentPage(
                 title="Further guidance",
                 slug="further-guidance",
-                body="<p>Guidance.</p>",
+                body=text_body("<p>Guidance.</p>"),
                 # Stored the wrong way round on purpose: an import could carry
                 # these, and the page must ignore them.
                 show_role_navigation=False,
@@ -218,7 +219,7 @@ class FrameworkContentPageForcesItsBehaviourTests(TestCase):
         resources" group, the way a role does on its route."""
         child = self.main_page.add_child(
             instance=FrameworkContentPage(
-                title="Guidance", slug="guidance", body="<p>Guidance.</p>"
+                title="Guidance", slug="guidance", body=text_body("<p>Guidance.</p>")
             )
         )
         child.save_revision().publish()
@@ -247,7 +248,7 @@ class ContentPageRenderWriteTests(TestCase):
         self.site = Site.objects.get(is_default_site=True)
         self.root_page = self.site.root_page.specific
         self.page = self.root_page.add_child(
-            instance=ContentPage(title="Guidance", slug="guidance", body="Hello")
+            instance=ContentPage(title="Guidance", slug="guidance", body=text_body("Hello"))
         )
         self.page.save_revision().publish()
         CapabilityFrameworkWordingSettings.objects.all().delete()
