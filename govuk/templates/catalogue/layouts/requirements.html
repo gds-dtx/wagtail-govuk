@@ -1,0 +1,38 @@
+{% extends "catalogue/base.html" %}
+{% comment %}
+    The requirements layout, for standards and principles (as GOV.UK lays out
+    the Service Standard and the Technology Code of Practice). The title is in
+    a full-width band. The front page has the standard's introduction, then its
+    numbered points, each with its summary, then the rest of its own content.
+    Each point is a page of its own, with previous and next.
+{% endcomment %}
+{% block catalogue_masthead %}{% include "catalogue/includes/entry_masthead.html" %}{% endblock %}
+{% block catalogue_content %}
+    <div class="govuk-grid-row">
+        <div class="govuk-grid-column-two-thirds">
+            {% include "catalogue/includes/entry_intro.html" %}
+            {% if is_entry_front %}
+                <div class="app-guidance">{{ requirements_intro }}</div>
+                {% if sequence %}
+                    <h2 class="govuk-heading-l">Points</h2>
+                    <ol class="app-catalogue-points">
+                        {% for item in sequence %}
+                            <li>
+                                <h3 class="govuk-heading-m govuk-!-margin-bottom-2">
+                                    <a class="govuk-link" href="{{ item.url }}">{{ item.number }}. {{ item.title }}</a>
+                                </h3>
+                                {% if item.summary %}<p class="govuk-body govuk-!-margin-bottom-0">{{ item.summary }}</p>{% endif %}
+                            </li>
+                        {% endfor %}
+                    </ol>
+                {% endif %}
+                <div class="app-guidance">{{ requirements_rest }}</div>
+            {% else %}
+                {% include "catalogue/includes/contents.html" %}
+                <div class="app-guidance">{{ document_html }}</div>
+                {% include "catalogue/includes/sequence_pagination.html" with label="Point" %}
+            {% endif %}
+        </div>
+    </div>
+    {% include "catalogue/includes/entry_details.html" %}
+{% endblock %}

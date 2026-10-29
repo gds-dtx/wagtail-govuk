@@ -1,0 +1,34 @@
+{% comment %}
+    An entry's side navigation: its front page, then (for steps) its numbered
+    steps, then the groups from its source. Its own include and CSS
+    (app-guidance-nav), not the Capability Framework's role navigation, so that
+    changing one cannot change the other. Hidden on narrow screens, where the
+    breadcrumbs stand in for it.
+{% endcomment %}
+<div class="app-guidance-nav">
+    <nav class="app-guidance-nav__group" aria-label="{{ entry.title }}">
+        <ul class="app-guidance-nav__list">
+            <li class="app-guidance-nav__item app-guidance-nav__item--home{% if is_entry_front %} app-guidance-nav__item--current{% endif %}">
+                <a class="app-guidance-nav__link" href="{{ entry.url }}"{% if is_entry_front %} aria-current="page"{% endif %}>{{ entry.title }}</a>
+            </li>
+        </ul>
+    </nav>
+    {% if sequence %}
+        <nav class="app-guidance-nav__group" aria-label="Steps">
+            <p class="app-guidance-nav__title">Steps</p>
+            <ol class="app-guidance-nav__list">
+                {% for item in sequence %}
+                    <li class="app-guidance-nav__item{% if item.is_current %} app-guidance-nav__item--current{% endif %}">
+                        <a class="app-guidance-nav__link" href="{{ item.url }}"{% if item.is_current %} aria-current="page"{% endif %}>{{ item.number }}. {{ item.title }}</a>
+                    </li>
+                {% endfor %}
+            </ol>
+        </nav>
+    {% endif %}
+    {% for group in entry_navigation %}
+        <nav class="app-guidance-nav__group" aria-label="{{ group.title }}">
+            <p class="app-guidance-nav__title">{{ group.title }}</p>
+            {% include "catalogue/includes/entry_navigation_list.html" with items=group.items nested=False %}
+        </nav>
+    {% endfor %}
+</div>

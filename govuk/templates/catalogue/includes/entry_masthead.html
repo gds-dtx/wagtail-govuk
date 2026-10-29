@@ -1,0 +1,24 @@
+{% comment %}
+    A full-width title band for standards and policies, as GOV.UK heads an HTML
+    publication: the kind of document (or, on a point's page, the standard it
+    belongs to), the title, and its key dates. Who it is from is in the details
+    bar at the bottom of the page.
+    Takes "page_heading", "caption" and "masthead_facts" (label and value
+    pairs, which may be empty).
+{% endcomment %}
+<div class="app-catalogue-masthead">
+    <div class="govuk-width-container">
+        {% if caption %}<span class="govuk-caption-l app-catalogue-masthead__caption">{{ caption }}</span>{% endif %}
+        <h1 class="govuk-heading-xl app-catalogue-masthead__title">{{ page_heading }}</h1>
+        {% if masthead_facts %}
+            <dl class="app-catalogue-masthead__facts">
+                {% for fact in masthead_facts %}
+                    <div class="app-catalogue-masthead__fact">
+                        <dt>{{ fact.label }}:</dt>
+                        <dd>{{ fact.value }}</dd>
+                    </div>
+                {% endfor %}
+            </dl>
+        {% endif %}
+    </div>
+</div>

@@ -12,6 +12,8 @@ pull in every submodule for its hooks to fire:
 * ``admin_views`` -- the pages import/export, content-discovery and EdDSA-key
   admin views, and the ``register_admin_menu_item`` / ``register_admin_urls`` /
   ``register_reports_menu_item`` hooks.
+* ``catalogue`` -- the content main page's "Sync now" view, and its catalogue
+  sync on publish.
 
 Names other modules and tests read off ``govuk.wagtail_hooks`` are re-exported
 here so the split is invisible to callers.
@@ -25,7 +27,10 @@ from wagtail.snippets.models import register_snippet
 
 from govuk.models import CapabilityFrameworkWordingSettings, SidebarSettings
 
-from . import admin_views  # noqa: F401  (imported for its hook registrations)
+from . import (  # noqa: F401  (imported for their hook registrations)
+    admin_views,
+    catalogue,
+)
 from .rich_text import (
     GOVUK_BUTTON_ENTITY_TYPE,
     GOVUK_BUTTON_FEATURE,

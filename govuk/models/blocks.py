@@ -13,7 +13,7 @@ from wagtail.contrib.table_block.blocks import DEFAULT_TABLE_OPTIONS, TableBlock
 from wagtail.images.blocks import ImageChooserBlock
 from wagtail.snippets.blocks import SnippetChooserBlock
 
-from .constants import FRAMEWORK_WELCOME_RICH_TEXT_FEATURES
+from .constants import FRAMEWORK_WELCOME_RICH_TEXT_FEATURES, HEX_COLOR_VALIDATOR
 from .raw_html import sanitise_raw_html
 
 # The name a row of cards is stored under in a content page's body.
@@ -345,6 +345,33 @@ class CardRowBlock(blocks.StructBlock):
         return context
 
 
+def _hex_colour(value) -> str:
+    """``value`` as ``#rrggbb`` in lower case, or "" if it is not a hex colour."""
+    value = str(value or "").strip()
+    try:
+        HEX_COLOR_VALIDATOR(value)
+    except ValidationError:
+        return ""
+    digits = value[1:].lower()
+    if len(digits) == 3:
+        digits = "".join(digit * 2 for digit in digits)
+    return f"#{digits}"
+
+
+def _relative_luminance(hex_colour: str) -> float:
+    """WCAG 2 relative luminance of a ``#rrggbb`` colour."""
+    channels = []
+    for start in (1, 3, 5):
+        channel = int(hex_colour[start : start + 2], 16) / 255
+        channels.append(
+            channel / 12.92
+            if channel <= 0.04045
+            else ((channel + 0.055) / 1.055) ** 2.4
+        )
+    red, green, blue = channels
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue
+
+
 class BannerStructValue(StructValue):
     @property
     def button_url(self):
@@ -354,22 +381,99 @@ class BannerStructValue(StructValue):
         page = self.get("button_page")
         return (page.url or "") if page else ""
 
+    @property
+    def custom_colour(self):
+        """The custom background as ``#rrggbb``, or "" if there is not one.
+
+        Checked here as well as in ``clean``: a page import writes stream data
+        without running the block's validation, and this goes into a style
+        sheet.
+        """
+        if str(self.get("style") or "").lower() != "custom":
+            return ""
+        return _hex_colour(self.get("colour"))
+
+    @property
+    def custom_class(self):
+        """The class custom_style_sheet styles, keyed on the colour so two
+        banners of the same colour share a rule."""
+        if not self.custom_colour:
+            return ""
+        return f"body-banner--colour-{self.custom_colour[1:]}"
+
+    @property
+    def custom_style_sheet(self):
+        """The rules for a custom background, built only from the checked
+        colour.
+
+        An inverse button's text takes the background colour, where the Design
+        System would give it the brand colour; the focus state it leaves out is
+        the one GOV.UK Frontend makes yellow, focused but neither hovered nor
+        pressed.
+        """
+        background = self.custom_colour
+        if not background:
+            return ""
+        banner = f".{self.custom_class}"
+        rules = [f"{banner}{{background-color:{background}}}"]
+        if self.is_dark:
+            selectors = ",".join(
+                f"{banner} .govuk-button--inverse{state}"
+                for state in (":not(:focus)", ":hover", ":active")
+            )
+            rules.append(f"{selectors}{{color:{background}}}")
+        return "".join(rules)
+
+    @property
+    def scheme(self):
+        """``brand``, ``light`` or ``custom``: never the stored value itself,
+        which an import could have set to anything. A custom style without a
+        usable colour falls back to the brand colour."""
+        if self.custom_colour:
+            return "custom"
+        if str(self.get("style") or "").lower() == "light":
+            return "light"
+        return "brand"
+
+    @property
+    def is_dark(self):
+        """Whether the background wants white text and an inverse button.
+
+        For a custom colour, whichever of white or black text contrasts more.
+        """
+        scheme = self.scheme
+        if scheme != "custom":
+            return scheme == "brand"
+        luminance = _relative_luminance(self.custom_colour)
+        return (1.05 / (luminance + 0.05)) >= ((luminance + 0.05) / 0.05)
+
 
 class BannerBlock(blocks.StructBlock):
-    """A coloured band with a heading, a line or two of text and a button.
+    """A coloured band with a heading, some text, some HTML and a button.
 
-    The button is optional, so its text and its destination are separate
-    optional fields rather than a LinkBlock, whose title is always required.
-    ``clean`` asks for both or neither.
+    Every part is optional, though ``clean`` asks for a heading, text or HTML,
+    so a banner is never an empty band. The button's text and its destination
+    are separate optional fields rather than a LinkBlock, whose title is always
+    required; ``clean`` asks for both or neither.
     """
 
     heading = blocks.CharBlock(
-        required=True,
+        required=False,
         max_length=120,
     )
     text = blocks.RichTextBlock(
         required=False,
         features=["bold", "italic", "link"],
+    )
+    raw_html = BodyRawHtmlBlock(
+        required=False,
+        label="Raw HTML",
+        help_text=(
+            "Optional. For markup the other fields cannot make. Scripts, "
+            "styles, forms, iframes and anything else that is not page content "
+            "are removed when you save. Style it with classes from Settings > "
+            "Customise > Extra CSS."
+        ),
     )
     button_text = blocks.CharBlock(
         required=False,
@@ -387,9 +491,19 @@ class BannerBlock(blocks.StructBlock):
         choices=[
             ("brand", "Brand colour"),
             ("light", "Light"),
+            ("custom", "Custom colour"),
         ],
         default="brand",
         required=True,
+    )
+    colour = blocks.CharBlock(
+        required=False,
+        max_length=7,
+        validators=[HEX_COLOR_VALIDATOR],
+        help_text=(
+            "For a custom colour: a hex colour such as #ca357c. The text and "
+            "button turn white or black, whichever is easier to read on it."
+        ),
     )
 
     # See CardRowBlock.full_width.
@@ -403,6 +517,26 @@ class BannerBlock(blocks.StructBlock):
 
     def clean(self, value):
         value = super().clean(value)
+        if not (
+            (value.get("heading") or "").strip()
+            or (value.get("text") and value.get("text").source.strip())
+            or str(value.get("raw_html") or "").strip()
+        ):
+            raise StructBlockValidationError(
+                block_errors={
+                    "heading": ValidationError(
+                        "Give the banner a heading, some text or some HTML."
+                    )
+                }
+            )
+        if value.get("style") == "custom" and not (value.get("colour") or "").strip():
+            raise StructBlockValidationError(
+                block_errors={
+                    "colour": ValidationError(
+                        "Enter a colour, or choose the brand or light style."
+                    )
+                }
+            )
         has_text = bool((value.get("button_text") or "").strip())
         has_destination = bool(
             value.get("button_page") or (value.get("button_external_url") or "").strip()

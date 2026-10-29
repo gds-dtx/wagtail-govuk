@@ -10,6 +10,7 @@ from govuk.models import (
     FooterSettings,
     PhaseBannerSettings,
     without_framework_pages,
+    without_guidance_pages,
 )
 
 
@@ -60,7 +61,9 @@ def navigation_and_breadcrumbs(request):
 
     service_navigation_items = []
     menu_pages = (
-        without_framework_pages(site_root.get_children().live().in_menu())
+        without_guidance_pages(
+            without_framework_pages(site_root.get_children().live().in_menu())
+        )
         .specific()
         .order_by("path")
     )

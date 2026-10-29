@@ -24,6 +24,7 @@ from wagtail.test.utils.form_data import (
 )
 
 from govuk.models import (
+    ContentMainPage,
     ContentPage,
     FrameworkContentPage,
     FrameworkMainPage,
@@ -41,6 +42,7 @@ PAGE_MODELS = (
     FrameworkContentPage,
     FrameworkSkillsPage,
     TagListingsPage,
+    ContentMainPage,
 )
 
 

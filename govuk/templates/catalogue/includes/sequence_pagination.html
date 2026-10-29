@@ -1,0 +1,26 @@
+{% comment %}
+    Previous and next in a numbered sequence of requirements or steps.
+    Takes "sequence_previous", "sequence_next" and "label" ("Point", "Step").
+{% endcomment %}
+{% if sequence_previous or sequence_next %}
+    <nav class="govuk-pagination govuk-pagination--block" aria-label="{{ label }}s">
+        {% if sequence_previous %}
+            <div class="govuk-pagination__prev">
+                <a class="govuk-link govuk-pagination__link" href="{{ sequence_previous.url }}" rel="prev">
+                    <span class="govuk-pagination__link-title">Previous<span class="govuk-visually-hidden"> {{ label|lower }}</span></span>
+                    <span class="govuk-visually-hidden">:</span>
+                    <span class="govuk-pagination__link-label">{{ label }} {{ sequence_previous.number }}: {{ sequence_previous.title }}</span>
+                </a>
+            </div>
+        {% endif %}
+        {% if sequence_next %}
+            <div class="govuk-pagination__next">
+                <a class="govuk-link govuk-pagination__link" href="{{ sequence_next.url }}" rel="next">
+                    <span class="govuk-pagination__link-title">Next<span class="govuk-visually-hidden"> {{ label|lower }}</span></span>
+                    <span class="govuk-visually-hidden">:</span>
+                    <span class="govuk-pagination__link-label">{{ label }} {{ sequence_next.number }}: {{ sequence_next.title }}</span>
+                </a>
+            </div>
+        {% endif %}
+    </nav>
+{% endif %}

@@ -1,0 +1,50 @@
+{% load i18n %}
+<fieldset>
+    <legend class="w-sr-only">{% trans "Catalogue sync status" %}</legend>
+    {% if not page.pk %}
+        <p class="help">{% trans "The catalogue is synced when this page is first published." %}</p>
+    {% elif not snapshot or not snapshot.synced_at %}
+        <p>{% trans "Not synced yet." %}</p>
+    {% else %}
+        <p>
+            {% blocktrans trimmed count counter=entry_count %}
+                {{ counter }} entry synced
+            {% plural %}
+                {{ counter }} entries synced
+            {% endblocktrans %}
+            {% trans "from commit" %} <a href="{{ commit_url }}" target="_blank" rel="noreferrer"><code>{{ snapshot.commit_sha|slice:":7" }}</code></a>
+            {% trans "on" %} {{ snapshot.synced_at|date:"j F Y, H:i" }}:
+            {% for group in group_counts %}{{ group.label }} {{ group.count }}{% if not forloop.last %}, {% endif %}{% endfor %}.
+        </p>
+    {% endif %}
+    {% if snapshot.last_error %}
+        <div class="help-block help-critical">
+            <p><strong>{% trans "The last sync failed" %}</strong> ({{ snapshot.last_attempt_at|date:"j F Y, H:i" }}): {{ snapshot.last_error }}</p>
+        </div>
+    {% endif %}
+    {% if entry_errors %}
+        <div class="help-block help-warning">
+            <p><strong>{% trans "These entries could not be synced" %}</strong></p>
+            <ul>
+                {% for entry in entry_errors %}<li><strong>{{ entry.entry_id }}</strong>: {{ entry.content_error }}</li>{% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+    {% if snapshot.warnings %}
+        <details class="w-mb-4">
+            <summary>
+                {% blocktrans trimmed count counter=snapshot.warnings|length %}
+                    {{ counter }} warning from the last sync
+                {% plural %}
+                    {{ counter }} warnings from the last sync
+                {% endblocktrans %}
+            </summary>
+            <ul>
+                {% for warning in snapshot.warnings %}<li>{{ warning }}</li>{% endfor %}
+            </ul>
+        </details>
+    {% endif %}
+    {% if sync_url %}
+        <a class="button button-small button-secondary" href="{{ sync_url }}">{% trans "Sync now" %}</a>
+    {% endif %}
+</fieldset>

@@ -7,9 +7,10 @@ history -- keeps working unchanged.
 
 The submodules, roughly in dependency order: ``constants`` and ``panels`` and
 ``signing`` and ``blocks`` are the shared foundation; ``tags``, ``settings``,
-``content_discovery``, ``pages`` and ``feedback`` are the platform domains; and
-the ``framework`` subpackage holds the Capability Framework. Relations use
-string references (``"govuk.GovukRole"``) so nothing here depends on import
+``content_discovery``, ``pages`` and ``feedback`` are the platform domains;
+the ``framework`` subpackage holds the Capability Framework; and ``catalogue``
+holds the content catalogue's main page and its synced copy of a catalogue.
+Relations use string references (``"govuk.GovukRole"``) so nothing here depends on import
 order across submodules.
 """
 
@@ -19,6 +20,13 @@ from .blocks import (
     InsetTextBlock,
     LinkBlock,
     LinkStructValue,
+)
+from .catalogue import (
+    CatalogueDocument,
+    CatalogueEntry,
+    CatalogueSnapshot,
+    ContentMainPage,
+    without_guidance_pages,
 )
 from .constants import (
     DEFAULT_JWT_LIFETIME,
@@ -101,6 +109,7 @@ from .settings import (
 )
 from .signing import JWTGenerationError, SecretTextarea
 from .tags import (
+    ContentMainPageTag,
     ContentPageTag,
     ExternalContentItemTag,
     FrameworkContentPageTag,
@@ -128,6 +137,11 @@ __all__ = [
     "ContentDiscoverySettings",
     "ContentDiscoverySource",
     "ContentPage",
+    "CatalogueDocument",
+    "CatalogueEntry",
+    "CatalogueSnapshot",
+    "ContentMainPage",
+    "ContentMainPageTag",
     "ContentPageTag",
     "CustomiseSettings",
     "DEFAULT_JWT_LIFETIME",
@@ -205,4 +219,5 @@ __all__ = [
     "role_route_url",
     "site_wide_changelog",
     "without_framework_pages",
+    "without_guidance_pages",
 ]

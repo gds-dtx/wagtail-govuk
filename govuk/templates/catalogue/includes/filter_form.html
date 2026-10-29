@@ -1,0 +1,44 @@
+{% comment %}
+    Search and filter the catalogue's entries: a search box, then a dropdown
+    each for topic, profession, type and scope side by side, on the parameters
+    catalogue.filtering reads (q, tag, profession, type, scope). Each dropdown
+    offers only the values the entries being listed use, with how many use
+    each. Behind a "Search and filter" toggle, open while anything is applied
+    or when the page is linked to at #search-and-filter (openLinkedDetails in
+    main.js). That is a data attribute rather than an id, so the link opens
+    the toggle without the browser jumping down to it. Takes "filter_form".
+{% endcomment %}
+<details class="govuk-details app-catalogue-filter-toggle" data-module="govuk-details" data-open-on-hash="search-and-filter"{% if filter_form.active %} open{% endif %}>
+    <summary class="govuk-details__summary">
+        <span class="govuk-details__summary-text">Search and filter</span>
+    </summary>
+    <div class="govuk-details__text app-catalogue-filter-toggle__panel">
+        <form method="get" class="app-catalogue-filters" role="search" aria-label="Search and filter">
+            <div class="govuk-form-group app-catalogue-filters__search">
+                <label class="govuk-label govuk-label--s" for="catalogue-q">Search</label>
+                <input class="govuk-input" id="catalogue-q" name="q" type="search" value="{{ filter_form.query }}">
+            </div>
+            {% if filter_form.fields %}
+                <div class="app-catalogue-filters__selects">
+                    {% for field in filter_form.fields %}
+                        <div class="govuk-form-group">
+                            <label class="govuk-label govuk-label--s" for="catalogue-{{ field.name }}">{{ field.label }}</label>
+                            <select class="govuk-select" id="catalogue-{{ field.name }}" name="{{ field.name }}">
+                                <option value="">All</option>
+                                {% for option in field.options %}
+                                    <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }} ({{ option.count }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+            <div class="govuk-button-group">
+                <button type="submit" class="govuk-button govuk-!-margin-bottom-0">Apply</button>
+                {% if filter_form.active %}
+                    <a href="?" class="govuk-link govuk-link--no-visited-state">Clear search and filters</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</details>

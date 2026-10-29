@@ -1,0 +1,32 @@
+{% extends "catalogue/base.html" %}
+{% comment %}
+    A group's entries as cards, in a section for each of the group's types.
+    In each section the primary entries come first, marked out by their
+    card's darker edge, then the rest, each by title. A search lists the
+    matches in one list instead, best match first.
+{% endcomment %}
+{% block catalogue_content %}
+    <h1 class="govuk-heading-xl">{{ page_heading }}</h1>
+    {% if catalogue_group.description %}
+        <p class="govuk-body-l">{{ catalogue_group.description }}</p>
+    {% endif %}
+    {% include "catalogue/includes/filter_form.html" %}
+    {% if filter_form.active %}
+        <p class="govuk-body" role="status">{{ result_count }} result{{ result_count|pluralize }}</p>
+    {% endif %}
+    {% if result_cards %}
+        <ul class="app-catalogue-cards">
+            {% for card in result_cards %}{% include "catalogue/includes/card.html" with heading_level=2 %}{% endfor %}
+        </ul>
+    {% endif %}
+    {% for section in type_sections %}
+        <h2 class="govuk-heading-l" id="{{ section.slug }}">{{ section.title }}</h2>
+        <ul class="app-catalogue-cards">
+            {% for card in section.cards %}{% include "catalogue/includes/card.html" with heading_level=3 %}{% endfor %}
+        </ul>
+    {% endfor %}
+    {% if filter_form.active and not result_count %}
+        <p class="govuk-body">Nothing matches. <a class="govuk-link" href="?">Clear the search and filters</a>.</p>
+    {% endif %}
+    <p class="govuk-body"><a class="govuk-link" href="{{ catalogue_all_url }}">Search all content</a></p>
+{% endblock %}

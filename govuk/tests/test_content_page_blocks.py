@@ -7,6 +7,7 @@ in the usual column; beside heading navigation or the role navigation there is
 no room to break out, and every block stays in the column.
 """
 
+import re
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
@@ -137,8 +138,30 @@ class ContentPageBlockLayoutTests(_PageTestCase):
     def test_a_banner_without_a_sidebar_spans_the_page(self):
         html = self._html(self._publish([{"type": "banner", "value": _banner()}]))
 
-        self.assertIn("body-banner body-banner--brand body-band", html)
+        self.assertIn(
+            "body-banner body-banner--brand body-banner--inverse body-band", html
+        )
         self.assertIn("Join the community", html)
+
+    def test_a_custom_colour_banner_carries_its_style_sheet_nonce(self):
+        """The policy blocks style attributes, so the colour is a style sheet
+        with the response's nonce, and the nonce is in the policy."""
+        page = self._publish(
+            [
+                {
+                    "type": "banner",
+                    "value": _banner(style="custom", colour="#ca357c"),
+                }
+            ]
+        )
+
+        response = self.client.get(page.url)
+        html = response.content.decode()
+        nonce = re.search(r"<style nonce=\"([^\"]+)\">", html).group(1)
+
+        self.assertIn(f"'nonce-{nonce}'", response.headers["Content-Security-Policy"])
+        self.assertIn(".body-banner--colour-ca357c{background-color:#ca357c}", html)
+        self.assertNotIn('style="', html)
 
     def test_a_page_holding_only_blocks_renders_them(self):
         html = self._html(self._publish([_text("<p>Only a block.</p>")]))
@@ -347,6 +370,112 @@ class BannerBlockTests(SimpleTestCase):
 
         self.assertIn("body-panel", html)
         self.assertNotIn("govuk-width-container", html)
+
+    def test_a_banner_may_have_no_heading(self):
+        block, value = self._value(heading="")
+
+        block.clean(value)
+        html = block.render(value, context={"full_width": True})
+
+        self.assertNotIn("<h2", html)
+        self.assertIn("Meet people doing the same work.", html)
+
+    def test_a_banner_needs_a_heading_text_or_html(self):
+        block, value = self._value(heading="", text="", raw_html="")
+
+        with self.assertRaises(StructBlockValidationError) as raised:
+            block.clean(value)
+        self.assertIn("heading", raised.exception.block_errors)
+
+    def test_raw_html_sits_between_the_text_and_the_button(self):
+        block, value = self._value(raw_html='<figure class="hero__logo">Crest</figure>')
+
+        html = block.render(value, context={"full_width": True})
+
+        self.assertLess(html.index("body-banner__text"), html.index("hero__logo"))
+        self.assertLess(html.index("hero__logo"), html.index("govuk-button"))
+
+    def test_raw_html_is_cleaned_when_rendered(self):
+        """A page import writes stream data without running clean."""
+        block, value = self._value(raw_html="<p>Kept</p><script>go()</script>")
+
+        html = block.render(value, context={"full_width": True})
+
+        self.assertIn("<p>Kept</p>", html)
+        self.assertNotIn("<script>", html)
+
+    def test_a_custom_style_needs_a_colour(self):
+        block, value = self._value(style="custom", colour="")
+
+        with self.assertRaises(StructBlockValidationError) as raised:
+            block.clean(value)
+        self.assertIn("colour", raised.exception.block_errors)
+
+    def test_a_custom_colour_must_be_hex(self):
+        block, value = self._value(style="custom", colour="pink")
+
+        with self.assertRaises(StructBlockValidationError) as raised:
+            block.clean(value)
+        self.assertIn("colour", raised.exception.block_errors)
+
+    def test_a_dark_custom_colour_has_white_text_and_an_inverse_button(self):
+        block, value = self._value(style="custom", colour="#CA357C")
+
+        block.clean(value)
+        html = block.render(value, context={"full_width": True, "csp_nonce": "n0nce"})
+
+        self.assertIn(
+            '<style nonce="n0nce">'
+            ".body-banner--colour-ca357c{background-color:#ca357c}",
+            html,
+        )
+        self.assertIn(
+            "body-banner body-banner--custom body-banner--inverse "
+            "body-banner--colour-ca357c body-band",
+            html,
+        )
+        self.assertIn("govuk-button--inverse", html)
+
+    def test_a_pale_custom_colour_has_dark_text_and_a_plain_button(self):
+        block, value = self._value(style="custom", colour="#fd0")
+
+        html = block.render(value, context={"full_width": True})
+
+        self.assertIn("body-banner--colour-ffdd00", html)
+        self.assertNotIn("body-banner--inverse", html)
+        self.assertNotIn("govuk-button--inverse", html)
+
+    def test_a_stored_colour_cannot_reach_the_style_sheet(self):
+        """A page import writes stream data without running the block's validation."""
+        block, value = self._value(
+            style="custom", colour="red}body{display:none"
+        )
+
+        html = block.render(value, context={"full_width": True})
+
+        self.assertNotIn("<style", html)
+        self.assertNotIn("display:none", html)
+        self.assertIn("body-banner--brand", html)
+
+    def test_an_inverse_button_takes_the_background_as_its_text_colour(self):
+        block, value = self._value(style="custom", colour="#ca357c")
+
+        html = block.render(value, context={"full_width": True})
+
+        self.assertIn(
+            ".body-banner--colour-ca357c .govuk-button--inverse:not(:focus),"
+            ".body-banner--colour-ca357c .govuk-button--inverse:hover,"
+            ".body-banner--colour-ca357c .govuk-button--inverse:active"
+            "{color:#ca357c}",
+            html,
+        )
+
+    def test_a_plain_button_keeps_its_own_text_colour(self):
+        block, value = self._value(style="custom", colour="#fd0")
+
+        html = block.render(value, context={"full_width": True})
+
+        self.assertNotIn(".govuk-button--inverse", html)
 
 
 def _list_block(values) -> dict:
@@ -745,3 +874,15 @@ class ContentPageCardImportExportTests(_PageTestCase):
         page = ContentPage.objects.get(slug="tagged")
         raw_tag = page.body.raw_data[0]["value"]["cards"][0]["value"]["tags"][0]
         self.assertEqual(GovukTag.objects.get(pk=raw_tag["value"]).slug, "new-tag")
+
+
+class BannerColourPolicyTests(SimpleTestCase):
+    def test_the_admin_style_policy_has_no_nonce(self):
+        """A nonce would make the browser ignore 'unsafe-inline', which the
+        admin's own inline styles need."""
+        from django.conf import settings
+        from django.utils.csp import CSP
+
+        self.assertIn(CSP.NONCE, settings.SECURE_CSP["style-src"])
+        self.assertNotIn(CSP.NONCE, settings.SECURE_CSP_ADMIN["style-src"])
+        self.assertIn(CSP.UNSAFE_INLINE, settings.SECURE_CSP_ADMIN["style-src"])

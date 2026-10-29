@@ -35,6 +35,7 @@ PAGE_EXPORT_FORMAT = "govuk-page-import-export/v1"
 # ids, which mean nothing on another instance, so an import resolves them again.
 CARD_ROW_STREAM_FIELDS = {
     ("govuk.ContentPage", "body"),
+    ("govuk.ContentMainPage", "body"),
 }
 BASE_PAGE_LOCAL_FIELD_NAMES = {field.name for field in Page._meta.local_fields}
 CORE_PAGE_SETTING_FIELDS = (

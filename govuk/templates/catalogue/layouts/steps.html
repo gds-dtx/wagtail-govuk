@@ -1,0 +1,44 @@
+{% extends "catalogue/base.html" %}
+{% comment %}
+    The steps layout, for methods: the steps numbered in order, each a page
+    with previous and next, beside a side navigation of the steps and any
+    reference pages that sit outside the numbering. The front page starts the
+    method with a start button to its first step.
+{% endcomment %}
+{% block catalogue_content %}
+    <div class="govuk-grid-row">
+        <div class="govuk-grid-column-one-quarter">
+            {% include "catalogue/includes/entry_navigation.html" %}
+        </div>
+        <div class="govuk-grid-column-three-quarters">
+            {% include "catalogue/includes/entry_header.html" %}
+            {% if is_entry_front %}
+                <div class="app-guidance">{{ document_html }}</div>
+                {% if sequence %}
+                    <a href="{{ sequence.0.url }}" role="button" draggable="false" class="govuk-button govuk-button--start" data-module="govuk-button">
+                        Start now
+                        <svg class="govuk-button__start-icon" xmlns="http://www.w3.org/2000/svg" width="17.5" height="19" viewBox="0 0 33 40" aria-hidden="true" focusable="false">
+                            <path fill="currentColor" d="M0 0h13l20 20-20 20H0l20-20z" />
+                        </svg>
+                    </a>
+                    <h2 class="govuk-heading-l">Steps</h2>
+                    <ol class="app-catalogue-points">
+                        {% for item in sequence %}
+                            <li>
+                                <h3 class="govuk-heading-m govuk-!-margin-bottom-2">
+                                    <a class="govuk-link" href="{{ item.url }}">{{ item.number }}. {{ item.title }}</a>
+                                </h3>
+                                {% if item.summary %}<p class="govuk-body govuk-!-margin-bottom-0">{{ item.summary }}</p>{% endif %}
+                            </li>
+                        {% endfor %}
+                    </ol>
+                {% endif %}
+            {% else %}
+                {% include "catalogue/includes/contents.html" %}
+                <div class="app-guidance">{{ document_html }}</div>
+                {% include "catalogue/includes/sequence_pagination.html" with label="Step" %}
+            {% endif %}
+        </div>
+    </div>
+    {% include "catalogue/includes/entry_details.html" %}
+{% endblock %}

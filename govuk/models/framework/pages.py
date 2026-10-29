@@ -607,6 +607,7 @@ class FrameworkMainPage(
         "govuk.ContentPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.ContentMainPage",
     ]
     # The framework page types render the same page as the old framework
     # content page did; only the role route swaps in the role template.

@@ -1,0 +1,17 @@
+{% comment %}
+    What follows an entry page's heading: a withdrawn notice, and on the
+    front page the entry's opening paragraph and any banner from its source.
+{% endcomment %}
+{% if entry.withdrawn %}
+    <div class="govuk-warning-text">
+        <span class="govuk-warning-text__icon" aria-hidden="true">!</span>
+        <strong class="govuk-warning-text__text">
+            <span class="govuk-visually-hidden">Warning</span>
+            This has been withdrawn.
+        </strong>
+    </div>
+{% endif %}
+{% if is_entry_front %}
+    <p class="govuk-body-l">{{ entry.long_description }}</p>
+    {% if entry_banner %}<div class="govuk-inset-text app-guidance__banner">{{ entry_banner }}</div>{% endif %}
+{% endif %}

@@ -1,0 +1,22 @@
+{% comment %}
+    One catalogue entry as a card: its title, what it is in a sentence, and
+    where it comes from. An entry with pages links to them; an external entry
+    links straight to where it is published.
+
+    A primary entry's card has a darker top edge; primary entries also come
+    first in their section and in "all".
+
+    Takes "card" (catalogue.context.card) and "heading_level" (2 or 3).
+{% endcomment %}
+<li class="app-catalogue-card{% if card.primary %} app-catalogue-card--primary{% endif %}">
+    {% if heading_level == 2 %}<h2 class="govuk-heading-s app-catalogue-card__title">{% else %}<h3 class="govuk-heading-s app-catalogue-card__title">{% endif %}
+        <a class="govuk-link govuk-link--no-visited-state app-catalogue-card__link" href="{{ card.url }}">{{ card.title }}</a>
+    {% if heading_level == 2 %}</h2>{% else %}</h3>{% endif %}
+    {% if card.withdrawn %}
+        <p class="app-catalogue-card__badges"><strong class="app-catalogue-badge app-catalogue-badge--red">Withdrawn</strong></p>
+    {% endif %}
+    <p class="govuk-body-s app-catalogue-card__description">{{ card.description }}</p>
+    {% if card.source_name %}
+        <p class="govuk-body-s app-catalogue-card__source">Source: {{ card.source_name }}</p>
+    {% endif %}
+</li>
