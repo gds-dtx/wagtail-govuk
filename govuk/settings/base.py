@@ -515,7 +515,13 @@ LOGGING = {
 FEATURE_FLAGS = {
     "SKILLS": _bool_env("FEATURE_SKILLS"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
+    "GUIDANCE": _bool_env("FEATURE_GUIDANCE"),
 }
+
+# Optional. Sent to the GitHub API when the content catalogue is imported from a
+# GitHub repo, which lifts the unauthenticated limit of 60 requests an hour.
+# Only needs read access to public repositories.
+GUIDANCE_GITHUB_TOKEN = os.environ.get("GUIDANCE_GITHUB_TOKEN", "").strip()
 
 # Wagtail's go-live and expiry dates only fire if something runs the
 # publish_scheduled management command on a schedule. Nothing does: there is no
@@ -700,7 +706,9 @@ WAGTAILSEARCH_BACKENDS = {
 SECURE_CSP = {
     "default-src": [CSP.SELF],
     "script-src": [CSP.SELF, CSP.NONCE],
-    "style-src": [CSP.SELF],
+    # The nonce is for a banner block's custom colour (blocks/banner.html);
+    # style attributes stay blocked.
+    "style-src": [CSP.SELF, CSP.NONCE],
     "img-src": [CSP.SELF, "data:", "blob:"],
     "font-src": [CSP.SELF],
     "connect-src": [CSP.SELF],
@@ -717,8 +725,14 @@ SECURE_CSP_ADMIN["script-src"] = [
     *SECURE_CSP_ADMIN.get("script-src", []),
     CSP.UNSAFE_INLINE,
 ]
+# Without the public policy's nonce: a browser that sees a nonce ignores
+# 'unsafe-inline', and the admin's inline styles would stop working.
 SECURE_CSP_ADMIN["style-src"] = [
-    *SECURE_CSP_ADMIN.get("style-src", []),
+    *(
+        source
+        for source in SECURE_CSP_ADMIN.get("style-src", [])
+        if source != CSP.NONCE
+    ),
     CSP.UNSAFE_INLINE,
 ]
 SECURE_CSP_ADMIN["connect-src"] = [

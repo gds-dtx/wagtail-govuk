@@ -1,0 +1,10 @@
+{% comment %}
+    An entry page's heading: its caption (the entry, or its place in a
+    sequence), the title, a withdrawn notice, and on the entry's front page its
+    opening paragraph. Everything else the catalogue records about the entry is
+    in the details bar at the bottom (entry_details.html).
+    Takes "entry", "page_heading", "caption" and "is_entry_front".
+{% endcomment %}
+{% if caption %}<span class="govuk-caption-l">{{ caption }}</span>{% endif %}
+<h1 class="govuk-heading-xl">{{ page_heading }}</h1>
+{% include "catalogue/includes/entry_intro.html" %}

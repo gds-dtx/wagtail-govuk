@@ -1,0 +1,17 @@
+{% extends "wagtailcore/page.html" %}
+{% comment %}
+    Every page of the content catalogue beneath its content main page: its
+    groups, "all", and each entry and the pages within it. The heading comes
+    from "page_heading" rather than a hero: on "all", "self" is the main page,
+    and an entry's pages lay their heading out with the entry's own.
+
+    "catalogue_masthead" is a full-width band above the page's content, for
+    the layouts that carry their title in one (standards and policies).
+{% endcomment %}
+{% block title %}{{ page_heading|default:self.title }}{% endblock %}
+{% block page_hero %}{% block catalogue_masthead %}{% endblock %}{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-margin-bottom-6 app-catalogue">
+        {% block catalogue_content %}{% endblock %}
+    </div>
+{% endblock %}

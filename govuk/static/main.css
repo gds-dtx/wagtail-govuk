@@ -244,9 +244,20 @@ main > :nth-last-child(1 of .section-cards-container) {
     background-color: var(--govuk-brand-colour, #1d70b8);
 }
 
-.body-banner--brand .body-banner__heading,
-.body-banner--brand .body-banner__text,
-.body-banner--brand .body-banner__text * {
+/* A background dark enough for white text: the brand colour, or a custom
+   colour (set by the banner's own style sheet) that reads better in white.
+   An inverse button keeps its own text colour, and anything focused keeps the
+   Design System's dark text on yellow. */
+.body-banner--inverse .body-banner__heading,
+.body-banner--inverse .body-banner__text,
+.body-banner--inverse .body-banner__text :not(:focus),
+.body-banner--inverse .body-banner__html {
+    color: #fff;
+}
+
+/* A rule of its own: a browser that cannot read a selector list inside :not()
+   drops only this rule, not the heading's and text's above. */
+.body-banner--inverse .body-banner__html :not(.govuk-button, .govuk-button *, :focus) {
     color: #fff;
 }
 
@@ -1228,4 +1239,366 @@ main > :nth-last-child(1 of .section-cards-container) {
     clip-path: inset(50%) !important;
     border: 0 !important;
     white-space: nowrap !important;
+}
+
+/* Content catalogue: entry pages rendered from a repo (govuk/catalogue/render.py adds
+   these classes; everything else is GOV.UK Frontend's own). */
+.app-guidance code {
+    font-family: monospace;
+    font-size: 0.9em;
+    background-color: #f3f2f1;
+    padding: 0 3px;
+}
+.app-guidance__code {
+    margin: 0 0 20px;
+    padding: 15px;
+    overflow-x: auto;
+    background-color: #f3f2f1;
+    border-left: 5px solid #b1b4b6;
+}
+.app-guidance__code:focus {
+    outline: 3px solid #ffdd00;
+}
+.app-guidance__code code {
+    padding: 0;
+    background-color: transparent;
+    white-space: pre;
+}
+.app-guidance__table {
+    margin-bottom: 20px;
+    overflow-x: auto;
+}
+.app-guidance__table .govuk-table {
+    margin-bottom: 0;
+}
+.app-guidance__figure,
+.app-guidance__image {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto 20px;
+}
+.app-guidance__figure {
+    width: 500px;
+}
+/* The contents list's own space below it. .contents-list-links is shared
+   with the role page, so it is left at its 8px. */
+.contents-list-links.app-guidance__contents {
+    margin-bottom: 20px;
+}
+@media (min-width: 40.0625em) {
+    .contents-list-links.app-guidance__contents {
+        margin-bottom: 50px;
+    }
+}
+.app-guidance__banner > :last-child,
+.app-guidance .govuk-inset-text > :last-child {
+    margin-bottom: 0;
+}
+
+/* Content catalogue entry side navigation (catalogue/includes/entry_navigation.html).
+   Looks like the Capability Framework's .role-nav, but is a separate set of
+   rules so that neither can change the other. It nests: the branch holding
+   the current page is open, with each level indented a step further. */
+.app-guidance-nav {
+    display: none;
+    font-family: "GDS Transport", arial, sans-serif;
+    font-weight: normal;
+    font-size: 1rem;
+    line-height: 1.25;
+}
+.app-guidance-nav__group {
+    margin-bottom: 20px;
+}
+.app-guidance-nav__group:last-child {
+    margin-bottom: 0;
+}
+.app-guidance-nav__title {
+    font-size: 1.1875rem;
+    line-height: 1.25;
+    color: #505a5f;
+    font-weight: normal;
+    margin: 0;
+    padding: 10px 10px 10px 14px;
+}
+.app-guidance-nav__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+.app-guidance-nav__link,
+.app-guidance-nav__link:link,
+.app-guidance-nav__link:visited {
+    display: block;
+    box-sizing: border-box;
+    padding: 10px;
+    border-left: 4px solid transparent;
+    background-color: inherit;
+    color: var(--govuk-link-colour, #1a65a6);
+    text-decoration: none;
+}
+.app-guidance-nav__list--nested .app-guidance-nav__link {
+    padding-left: 26px;
+}
+.app-guidance-nav__list--nested .app-guidance-nav__list--nested .app-guidance-nav__link {
+    padding-left: 42px;
+}
+.app-guidance-nav__link:hover {
+    color: var(--govuk-link-hover-colour, #0f385c);
+    border-color: #5694ca;
+}
+.app-guidance-nav__item--home > .app-guidance-nav__link {
+    font-weight: bold;
+}
+.app-guidance-nav__item--open > .app-guidance-nav__link {
+    border-color: #b1b4b6;
+}
+.app-guidance-nav__item--current > .app-guidance-nav__link:link,
+.app-guidance-nav__item--current > .app-guidance-nav__link:visited {
+    background-color: #f3f2f1;
+    border-color: var(--govuk-link-colour, #1a65a6);
+    font-weight: bold;
+}
+.app-guidance-nav__item--current > .app-guidance-nav__link:hover {
+    color: var(--govuk-link-hover-colour, #0f385c);
+    border-color: var(--govuk-link-hover-colour, #0f385c);
+}
+.app-guidance-nav .app-guidance-nav__link:focus {
+    outline: 3px solid transparent;
+    position: relative;
+    color: var(--govuk-text-colour, #0b0c0c);
+    background-color: var(--govuk-focus-colour, #fd0);
+    box-shadow: 0 -2px var(--govuk-focus-colour, #fd0), 0 4px var(--govuk-text-colour, #0b0c0c);
+    border-left-color: var(--govuk-focus-colour, #fd0);
+    text-decoration: none;
+}
+@media (min-width: 40.0625em) {
+    .app-guidance-nav {
+        display: block;
+    }
+}
+
+/* Content catalogue cards (catalogue/includes/card.html): a first design, to be
+   replaced once the catalogue's UI is designed. Laid out as a grid of equal
+   cards, as the MoJ reuse library lists its entries. */
+.app-catalogue-cards {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 20px;
+    margin: 0 0 30px;
+    padding: 0;
+    list-style: none;
+}
+@media (min-width: 40.0625em) {
+    .app-catalogue-cards {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+@media (min-width: 64em) {
+    .app-catalogue-cards:not(.app-catalogue-cards--narrow) {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+.app-catalogue-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 15px 20px 20px;
+    border: 1px solid #b1b4b6;
+    border-top: 5px solid #1d70b8;
+    background-color: #ffffff;
+}
+.app-catalogue-card--primary {
+    border-top-color: #0b0c0c;
+}
+.app-catalogue-card__title {
+    margin-bottom: 10px;
+}
+/* The whole card is the link's target, as on the content page cards. */
+.app-catalogue-card__link::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+}
+.app-catalogue-card__description {
+    flex-grow: 1;
+}
+.app-catalogue-card__badges {
+    margin: 0 0 10px;
+}
+.app-catalogue-card__source {
+    margin-bottom: 0;
+    color: #505a5f;
+}
+.app-catalogue-points {
+    margin: 0 0 30px;
+    padding: 0;
+    list-style: none;
+}
+.app-catalogue-points li {
+    margin-bottom: 20px;
+}
+
+/* Content catalogue badges: a small, bordered label after the MoJ Design
+   System's badge (design-patterns.service.justice.gov.uk/components/badge),
+   for topics, professions and an entry's status. */
+.app-catalogue-badge {
+    display: inline-block;
+    min-width: 10px;
+    padding: 0 5px;
+    border: 2px solid #1d70b8;
+    color: #1d70b8;
+    font-family: "GDS Transport", arial, sans-serif;
+    font-size: 0.875rem;
+    font-weight: 700;
+    line-height: 1.5;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    vertical-align: middle;
+}
+.app-catalogue-badge--grey {
+    border-color: #505a5f;
+    color: #505a5f;
+}
+.app-catalogue-badge--red {
+    border-color: #d4351c;
+    color: #d4351c;
+}
+.app-catalogue-badges {
+    margin: 0 0 15px;
+    padding: 0;
+    list-style: none;
+}
+.app-catalogue-badges li {
+    display: inline-block;
+    margin: 0 5px 5px 0;
+}
+
+/* A standard's or policy's title band, as GOV.UK heads an HTML publication. */
+/* Spaced from what sits above it (the breadcrumbs, or the phase banner or
+   service navigation without them) by the main wrapper's own top padding:
+   20px, and 40px from tablet up. */
+.app-catalogue-masthead {
+    margin: 0 0 30px;
+    padding: 30px 0 25px;
+    background-color: #1d70b8;
+    color: #ffffff;
+}
+@media (min-width: 40.0625em) {
+    .app-catalogue-masthead {
+        margin-bottom: 40px;
+    }
+}
+.app-catalogue-masthead__caption,
+.app-catalogue-masthead__title {
+    color: #ffffff;
+}
+
+.app-catalogue-masthead__title {
+    max-width: 30em;
+    margin-bottom: 20px;
+}
+@media (min-width: 40.0625em) {
+    .app-catalogue-masthead__title {
+        margin-bottom: 25px;
+    }
+}
+.app-catalogue-masthead__facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 30px;
+    margin: 0;
+    font-family: "GDS Transport", arial, sans-serif;
+    font-size: 1rem;
+}
+.app-catalogue-masthead__fact {
+    display: flex;
+    gap: 5px;
+}
+.app-catalogue-masthead__fact dt {
+    font-weight: 700;
+}
+.app-catalogue-masthead__fact dd {
+    margin: 0;
+}
+
+/* The details bar at the bottom of an entry's pages. */
+.app-catalogue-details {
+    margin-top: 40px;
+    padding: 20px 20px 10px;
+    border-top: 5px solid #1d70b8;
+    background-color: #f3f2f1;
+}
+.app-catalogue-details__facts {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 30px;
+    margin: 0 0 10px;
+}
+@media (min-width: 40.0625em) {
+    .app-catalogue-details__facts {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+.app-catalogue-details__fact dt,
+.app-catalogue-details__fact dd {
+    margin: 0;
+}
+.app-catalogue-details__fact dd {
+    margin-bottom: 15px;
+}
+.app-catalogue-details__links {
+    margin-top: 10px;
+}
+
+/* A policy reads at full width: its introduction keeps a readable measure. */
+.app-catalogue-policy__intro {
+    max-width: 40em;
+}
+
+/* The catalogue's search and filters (catalogue/includes/filter_form.html): a
+   search box, then its dropdowns side by side, two to a row on a tablet and
+   all four on a desktop. */
+.app-catalogue-filter-toggle {
+    margin-bottom: 40px;
+}
+/* The grey panel is the form's frame, so the details' own left rule and
+   indent are not needed as well. */
+.app-catalogue-filter-toggle__panel {
+    padding: 0;
+    border-left: 0;
+}
+.app-catalogue-filters {
+    padding: 20px 20px 0;
+    background-color: #f3f2f1;
+}
+.app-catalogue-filters__search {
+    max-width: 40em;
+    margin-bottom: 20px;
+}
+.app-catalogue-filters__selects {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 20px;
+}
+@media (min-width: 40.0625em) {
+    .app-catalogue-filters__selects {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (min-width: 64em) {
+    .app-catalogue-filters__selects {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+}
+.app-catalogue-filters__selects .govuk-form-group {
+    margin-bottom: 20px;
+}
+.app-catalogue-filters .govuk-select {
+    width: 100%;
+    min-width: 0;
+}
+.app-catalogue-filters .govuk-button-group {
+    margin-bottom: 0;
+    padding-bottom: 20px;
 }

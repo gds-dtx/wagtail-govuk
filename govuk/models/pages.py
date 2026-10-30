@@ -184,25 +184,12 @@ class CardTagOptionsMixin(models.Model):
         abstract = True
 
 
-class ContentPage(HeroStyleMixin, BreadcrumbMixin, CardTagOptionsMixin, BaseContentPage):
-    parent_page_types = [
-        "govuk.ContentPage",
-        "govuk.FrameworkMainPage",
-        "govuk.FrameworkContentPage",
-        "govuk.TagListingsPage",
-        "govuk.FrameworkSkillsPage",
-    ]
-    subpage_types = [
-        "govuk.ContentPage",
-        "govuk.FrameworkMainPage",
-        "govuk.TagListingsPage",
-        "govuk.FrameworkSkillsPage",
-    ]
-    tags = ClusterTaggableManager(through="govuk.ContentPageTag", blank=True)
+class ContentBodyContextMixin:
+    """What ``content_page.html`` needs to lay out a content page's body.
 
-    content_panels = base_content_panels()
-
-    settings_panels = content_settings_panels()
+    Shared by ``ContentPage`` and the content catalogue's ``ContentMainPage``,
+    whose own page is edited and shown exactly as a content page is.
+    """
 
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)
@@ -216,6 +203,31 @@ class ContentPage(HeroStyleMixin, BreadcrumbMixin, CardTagOptionsMixin, BaseCont
         context["available_tags"] = card_filter.available_tags
         context["selected_tag"] = card_filter.selected_tag
         return context
+
+
+class ContentPage(
+    ContentBodyContextMixin, HeroStyleMixin, BreadcrumbMixin, CardTagOptionsMixin, BaseContentPage
+):
+    parent_page_types = [
+        "govuk.ContentPage",
+        "govuk.FrameworkMainPage",
+        "govuk.FrameworkContentPage",
+        "govuk.TagListingsPage",
+        "govuk.FrameworkSkillsPage",
+        "govuk.ContentMainPage",
+    ]
+    subpage_types = [
+        "govuk.ContentPage",
+        "govuk.FrameworkMainPage",
+        "govuk.TagListingsPage",
+        "govuk.FrameworkSkillsPage",
+        "govuk.ContentMainPage",
+    ]
+    tags = ClusterTaggableManager(through="govuk.ContentPageTag", blank=True)
+
+    content_panels = base_content_panels()
+
+    settings_panels = content_settings_panels()
 
 
 
@@ -307,12 +319,14 @@ class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
         "govuk.FrameworkSkillsPage",
         "govuk.FrameworkMainPage",
         "govuk.FrameworkContentPage",
+        "govuk.ContentMainPage",
     ]
     subpage_types = [
         "govuk.ContentPage",
         "govuk.FrameworkMainPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.ContentMainPage",
     ]
 
     content_panels = Page.content_panels + [
@@ -398,6 +412,17 @@ class TagListingsPage(HeroStyleMixin, BreadcrumbMixin, Page):
                 .prefetch_related("tags", "view_restrictions")
                 .distinct(),
             ]
+        # Content main pages likewise, on a site with the content catalogue.
+        if settings.FEATURE_FLAGS.get("GUIDANCE"):
+            from .catalogue import ContentMainPage
+
+            page_querysets.append(
+                ContentMainPage.objects.live()
+                .filter(tags__id__in=tag_ids)
+                .annotate(sort_updated=page_sort_updated)
+                .prefetch_related("tags", "view_restrictions")
+                .distinct()
+            )
         is_authenticated = bool(request and request.user.is_authenticated)
         if (
             not is_authenticated

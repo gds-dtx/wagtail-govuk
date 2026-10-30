@@ -1,0 +1,34 @@
+{% extends "catalogue/base.html" %}
+{% comment %}
+    The policy layout: strict about what it shows. The title, owner, version
+    and dates are in a full-width band; then, across the full width, the
+    policy's introduction and each of its "##" sections, numbered in order, as
+    one section of an accordion. A link to a section's anchor opens it
+    (openLinkedAccordionSection in main.js).
+{% endcomment %}
+{% block catalogue_masthead %}{% include "catalogue/includes/entry_masthead.html" %}{% endblock %}
+{% block catalogue_content %}
+    {% include "catalogue/includes/entry_intro.html" %}
+    {% if policy_intro %}<div class="app-guidance rich-text-content app-catalogue-policy__intro">{{ policy_intro }}</div>{% endif %}
+    {% if policy_sections %}
+        <div class="govuk-accordion app-catalogue-policy" data-module="govuk-accordion" id="policy-sections">
+            {% for section in policy_sections %}
+                <div class="govuk-accordion__section">
+                    <div class="govuk-accordion__section-header">
+                        <h2 class="govuk-accordion__section-heading">
+                            <span class="govuk-accordion__section-button" id="policy-sections-heading-{{ section.number }}">
+                                <span id="{{ section.anchor }}">{{ section.number }}. {{ section.title }}</span>
+                            </span>
+                        </h2>
+                    </div>
+                    <div id="policy-sections-content-{{ section.number }}" class="govuk-accordion__section-content">
+                        <div class="app-guidance rich-text-content">{{ section.html }}</div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="app-guidance rich-text-content">{{ document_html }}</div>
+    {% endif %}
+    {% include "catalogue/includes/entry_details.html" %}
+{% endblock %}

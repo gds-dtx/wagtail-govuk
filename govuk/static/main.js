@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
   setBackToTop();
   setChangelogToggle();
   openLinkedAccordionSection();
+  openLinkedDetails();
   setPageFeedback();
   setSiteSearchAutocomplete();
   setSkipLink();
@@ -32,8 +33,8 @@ function setSkipLink() {
 function setHyperlinkClasses() {
   const richTextContents = document.querySelectorAll(".rich-text-content");
   // A brand-coloured body banner is the masthead's colour too, so its links
-  // need the same inverse treatment.
-  const masthead = document.querySelectorAll(".masthead, .body-banner--brand");
+  // need the same inverse treatment, as do a dark custom-coloured banner's.
+  const masthead = document.querySelectorAll(".masthead, .body-banner--inverse");
   [richTextContents, masthead].forEach((content) => {
     content.forEach((element) => {
       const links = element.querySelectorAll("a");
@@ -43,7 +44,7 @@ function setHyperlinkClasses() {
         }
         if (
           element.classList.contains("masthead--combined") ||
-          element.classList.contains("body-banner--brand")
+          element.classList.contains("body-banner--inverse")
         ) {
           link.classList.add("govuk-link--inverse");
         }
@@ -282,6 +283,34 @@ function openLinkedAccordionSection() {
       button.click();
     }
     target.scrollIntoView();
+  }
+
+  openFromHash();
+  window.addEventListener("hashchange", openFromHash);
+}
+
+function openLinkedDetails() {
+  // A details component with data-open-on-hash opens when the page's
+  // fragment names it: #search-and-filter on a catalogue listing opens the
+  // search and filters. It is not an id, so the page stays where it is rather
+  // than jumping down to the details.
+  function openFromHash() {
+    const hash = window.location.hash;
+    if (hash.length < 2) {
+      return;
+    }
+
+    let name = "";
+    try {
+      name = decodeURIComponent(hash.slice(1));
+    } catch (error) {
+      return;
+    }
+    document.querySelectorAll("details[data-open-on-hash]").forEach((details) => {
+      if (details.dataset.openOnHash === name) {
+        details.open = true;
+      }
+    });
   }
 
   openFromHash();

@@ -1,0 +1,64 @@
+{% comment %}
+    The details bar at the bottom of every entry page: what the catalogue
+    records about the entry, its professions and topics as badges, when the
+    page was reviewed, where it is published, and the entries it relates to. Kept together and out of the way of the content.
+    Takes "entry" and "review".
+{% endcomment %}
+<aside class="app-catalogue-details" aria-labelledby="entry-details-heading">
+    <h2 class="govuk-heading-m" id="entry-details-heading">About this {{ entry.type|lower }}</h2>
+    <dl class="app-catalogue-details__facts">
+        <div class="app-catalogue-details__fact">
+            <dt class="govuk-body-s govuk-!-font-weight-bold">Owner</dt>
+            <dd class="govuk-body-s">
+                {{ entry.owner }}{% if entry.team %}, {{ entry.team }}{% endif %}
+                {% if entry.contact_url %}<br><a class="govuk-link" href="{{ entry.contact_url }}">{{ entry.contact_text|default:"Contact the owner" }}</a>{% endif %}
+            </dd>
+        </div>
+        {% if entry.applies_to %}
+            <div class="app-catalogue-details__fact">
+                <dt class="govuk-body-s govuk-!-font-weight-bold">Who it is for</dt>
+                <dd class="govuk-body-s">{{ entry.applies_to }}</dd>
+            </div>
+        {% endif %}
+        <div class="app-catalogue-details__fact">
+            <dt class="govuk-body-s govuk-!-font-weight-bold">Scope</dt>
+            <dd class="govuk-body-s">{{ entry.scope }}</dd>
+        </div>
+        {% if entry.version %}
+            <div class="app-catalogue-details__fact">
+                <dt class="govuk-body-s govuk-!-font-weight-bold">Version</dt>
+                <dd class="govuk-body-s">{{ entry.version }}</dd>
+            </div>
+        {% endif %}
+        {% if review.last_reviewed_on %}
+            <div class="app-catalogue-details__fact">
+                <dt class="govuk-body-s govuk-!-font-weight-bold">Last reviewed</dt>
+                <dd class="govuk-body-s">
+                    {{ review.last_reviewed_on|date:"j F Y" }}{% if review.next_review_on %}, next review {{ review.next_review_on|date:"j F Y" }}{% endif %}
+                    {% if review.overdue %}<br><strong class="app-catalogue-badge app-catalogue-badge--red">Review overdue</strong>{% endif %}
+                </dd>
+            </div>
+        {% endif %}
+    </dl>
+    <div class="app-catalogue-details__badges">
+        <p class="govuk-body-s govuk-!-font-weight-bold govuk-!-margin-bottom-1">Professions</p>
+        <ul class="app-catalogue-badges">
+            {% for profession in entry.professions %}<li><strong class="app-catalogue-badge">{{ profession }}</strong></li>{% endfor %}
+        </ul>
+        <p class="govuk-body-s govuk-!-font-weight-bold govuk-!-margin-bottom-1">Topics</p>
+        <ul class="app-catalogue-badges">
+            {% for tag in entry.tags %}<li><strong class="app-catalogue-badge app-catalogue-badge--grey">{{ tag }}</strong></li>{% endfor %}
+        </ul>
+    </div>
+    {% if entry.related %}
+        <p class="govuk-body-s govuk-!-font-weight-bold govuk-!-margin-bottom-1">Related</p>
+        <ul class="govuk-list govuk-body-s">
+            {% for related in entry.related %}
+                <li><a class="govuk-link" href="{{ related.url }}">{{ related.title }}</a>{% if related.external and related.source_name %} ({{ related.source_name }}){% endif %}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    <ul class="govuk-list govuk-body-s app-catalogue-details__links">
+        {% if entry.source_url %}<li><a class="govuk-link" href="{{ entry.source_url }}">Published on {{ entry.source_name }}</a></li>{% endif %}
+    </ul>
+</aside>

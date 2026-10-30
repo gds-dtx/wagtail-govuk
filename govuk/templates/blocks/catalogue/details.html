@@ -1,0 +1,7 @@
+{% load wagtailcore_tags %}
+<details class="govuk-details">
+    <summary class="govuk-details__summary">
+        <span class="govuk-details__summary-text">{{ value.summary }}</span>
+    </summary>
+    <div class="govuk-details__text">{{ value.text|richtext }}</div>
+</details>

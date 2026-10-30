@@ -1,0 +1,21 @@
+{% extends "catalogue/base.html" %}
+{% comment %}
+    The guide layout, for guidance and strategy: a handbook of pages with the
+    source's own side navigation (as The GDS Way), or a single page with a
+    contents list when the guide is one page.
+{% endcomment %}
+{% block catalogue_content %}
+    <div class="govuk-grid-row">
+        {% if entry_navigation %}
+            <div class="govuk-grid-column-one-quarter">
+                {% include "catalogue/includes/entry_navigation.html" %}
+            </div>
+        {% endif %}
+        <div class="{% if entry_navigation %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-two-thirds{% endif %}">
+            {% include "catalogue/includes/entry_header.html" %}
+            {% include "catalogue/includes/contents.html" %}
+            <div class="app-guidance rich-text-content">{{ document_html }}</div>
+        </div>
+    </div>
+    {% include "catalogue/includes/entry_details.html" %}
+{% endblock %}

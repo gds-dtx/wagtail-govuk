@@ -25,7 +25,7 @@ from wagtail.snippets.models import register_snippet
 
 from govuk.models import CapabilityFrameworkWordingSettings, SidebarSettings
 
-from . import admin_views  # noqa: F401  (imported for its hook registrations)
+from . import admin_views, catalogue  # noqa: F401  (imported for their hook registrations)
 from .rich_text import (
     GOVUK_BUTTON_ENTITY_TYPE,
     GOVUK_BUTTON_FEATURE,
@@ -38,6 +38,7 @@ from .rich_text import (
 )
 from .viewsets import (
     CapabilityFrameworkViewSetGroup,
+    ContentCatalogueViewSetGroup,
     ExternalContentItemViewSet,
     FeedbackIndexView,
     FeedbackViewSet,
@@ -50,6 +51,7 @@ from .viewsets import (
 
 __all__ = [
     "CapabilityFrameworkViewSetGroup",
+    "ContentCatalogueViewSetGroup",
     "CapabilityFrameworkWordingSettings",
     "ExternalContentItemViewSet",
     "FeedbackIndexView",
@@ -104,3 +106,6 @@ if settings.FEATURE_FLAGS.get("SKILLS"):
 
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)
+if settings.FEATURE_FLAGS.get("GUIDANCE"):
+    # One "Content catalogue" menu with the catalogue's vocabularies under it.
+    _register_snippet_if_needed(ContentCatalogueViewSetGroup)

@@ -17,6 +17,7 @@ from wagtail.models import Page, PageViewRestriction, Site
 
 from govuk.models import (
     SKILL_LEVEL_CHOICES,
+    ContentMainPage,
     ContentPage,
     ExternalContentItem,
     FrameworkMainPage,
@@ -24,6 +25,7 @@ from govuk.models import (
     GovukRole,
     GovukSkill,
     without_framework_pages,
+    without_guidance_pages,
 )
 from govuk.models.blocks import CARD_ROW_BLOCK_TYPE
 from govuk.utils import normalised_text, row_id_from_text
@@ -82,6 +84,20 @@ class SearchResultItem:
     # as a badge so a reader can tell a role or skill apart from an ordinary
     # page at a glance. Empty for pages, whose kind is not worth naming.
     result_type: str = ""
+
+
+def _catalogue_result_type(page) -> str:
+    """A content catalogue entry's badge in the results: its type, such as "Standard"."""
+    entry_type = getattr(page, "entry_type", None)
+    return entry_type.label if entry_type is not None else ""
+
+
+def _content_page_models() -> tuple:
+    """The page types whose hero and tags are searched: content pages, and the
+    content catalogue's main page (a content page too) on a site with it."""
+    if settings.FEATURE_FLAGS.get("GUIDANCE"):
+        return (ContentPage, ContentMainPage)
+    return (ContentPage,)
 
 
 class SearchBackend:
@@ -177,7 +193,7 @@ class SearchBackend:
         self, query: str, filters: dict[str, Any]
     ) -> list[SearchResultItem]:
         queryset = self._apply_filters(
-            without_framework_pages(Page.objects.all()), filters
+            without_guidance_pages(without_framework_pages(Page.objects.all())), filters
         )
         if self._is_postgres(queryset.db):
             queryset = self._search_pages_postgres(queryset, query)
@@ -225,6 +241,7 @@ class SearchBackend:
                     tags=tag_labels,
                     tag_keys=tag_keys,
                     last_updated=self._page_last_updated(page),
+                    result_type=_catalogue_result_type(page),
                 )
             )
         return results
@@ -319,7 +336,7 @@ class SearchBackend:
         site_root = self._site_root_page(filters)
         results: list[SearchResultItem] = []
 
-        for model in (ContentPage,):
+        for model in _content_page_models():
             queryset = self._apply_filters(
                 model.objects.filter(
                     Q(tags__slug__icontains=query) | Q(tags__name__icontains=query)
@@ -531,7 +548,7 @@ class SearchBackend:
         site_root = self._site_root_page(filters)
         results: list[SearchResultItem] = []
 
-        for model in (ContentPage,):
+        for model in _content_page_models():
             queryset = self._apply_filters(model.objects.all(), filters)
             if self._is_postgres(queryset.db):
                 queryset = self._search_hero_postgres(queryset, query)

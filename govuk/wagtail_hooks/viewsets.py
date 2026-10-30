@@ -9,6 +9,9 @@ from wagtail.snippets.views.snippets import (
 
 from govuk.models import (
     CapabilityFrameworkWordingSettings,
+    CatalogueProfession,
+    CatalogueScope,
+    CatalogueType,
     ExternalContentItem,
     Feedback,
     GovukChangelogEntry,
@@ -139,6 +142,55 @@ class CapabilityFrameworkViewSetGroup(SnippetViewSetGroup):
             )
         )
         return menu_items
+
+
+class CatalogueTypeViewSet(SnippetViewSet):
+    model = CatalogueType
+    icon = "tag"
+    menu_label = "Types"
+    menu_name = "catalogue-types"
+    add_to_admin_menu = False
+    list_display = ["label", "key", "layout", "sort_order"]
+    list_filter = ["layout"]
+    search_fields = ["label", "key"]
+    ordering = ["sort_order", "label"]
+
+
+class CatalogueScopeViewSet(SnippetViewSet):
+    model = CatalogueScope
+    icon = "site"
+    menu_label = "Scopes"
+    menu_name = "catalogue-scopes"
+    add_to_admin_menu = False
+    list_display = ["label", "key", "sort_order"]
+    search_fields = ["label", "key"]
+    ordering = ["sort_order", "label"]
+
+
+class CatalogueProfessionViewSet(SnippetViewSet):
+    model = CatalogueProfession
+    icon = "user"
+    menu_label = "Professions"
+    menu_name = "catalogue-professions"
+    add_to_admin_menu = False
+    list_display = ["label", "key", "sort_order"]
+    search_fields = ["label", "key"]
+    ordering = ["sort_order", "label"]
+
+
+class ContentCatalogueViewSetGroup(SnippetViewSetGroup):
+    """The content catalogue's vocabularies under one "Content catalogue" menu.
+
+    The catalogue's groups and entries are pages, in the page tree; these are
+    the values the entries are described and filtered by. Topics are the
+    site's tags, under Tags.
+    """
+
+    menu_label = "Content catalogue"
+    menu_name = "content-catalogue"
+    menu_icon = "folder-open-inverse"
+    menu_order = 216
+    items = (CatalogueTypeViewSet, CatalogueScopeViewSet, CatalogueProfessionViewSet)
 
 
 class FeedbackIndexView(SnippetIndexView):
