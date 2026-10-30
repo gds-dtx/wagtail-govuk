@@ -39,6 +39,7 @@ from .catalogue import (
     ContentStepPage,
     catalogue_enabled,
     catalogue_page_models,
+    catalogue_type_labels,
     entry_page_models,
     without_guidance_pages,
 )
@@ -233,6 +234,7 @@ __all__ = [
     "catalogue_enabled",
     "catalogue_page_models",
     "content_settings_panels",
+    "catalogue_type_labels",
     "entry_page_models",
     "framework_breadcrumbs",
     "framework_content_panels",

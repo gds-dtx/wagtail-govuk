@@ -29,6 +29,7 @@ from .pages import (
     ContentStepPage,
     catalogue_enabled,
     catalogue_page_models,
+    catalogue_type_labels,
     entry_page_models,
     without_guidance_pages,
 )
@@ -66,6 +67,7 @@ __all__ = [
     "WarningTextBlock",
     "catalogue_enabled",
     "catalogue_page_models",
+    "catalogue_type_labels",
     "entry_page_models",
     "without_guidance_pages",
 ]

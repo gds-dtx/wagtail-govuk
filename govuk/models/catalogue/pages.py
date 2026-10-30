@@ -100,6 +100,47 @@ def entry_page_models() -> tuple:
     )
 
 
+def catalogue_type_labels(pages) -> dict[int, str]:
+    """The type label ("Standard") of each catalogue entry among ``pages``, by page id.
+
+    A page within an entry (a standard's point, a guide's page) has its
+    entry's. Pages that are not the catalogue's are left out, so the keys are
+    also which of ``pages`` are catalogue content. ``pages`` are specific
+    pages; the entries above the pages within them are found in one query,
+    however many there are.
+    """
+    from .vocabulary import CatalogueType
+
+    entry_models = entry_page_models()
+    sub_page_models = (ContentRequirementPage, ContentStepPage, ContentGuidePage)
+    entries = [page for page in pages if isinstance(page, entry_models)]
+    sub_pages = [page for page in pages if isinstance(page, sub_page_models)]
+    if not entries and not sub_pages:
+        return {}
+
+    labels = dict(CatalogueType.objects.values_list("pk", "label"))
+    by_page = {page.pk: labels.get(page.entry_type_id, "") for page in entries}
+    if sub_pages:
+        ancestor_paths = {
+            page.path[:end]
+            for page in sub_pages
+            for end in range(page.steplen, len(page.path), page.steplen)
+        }
+        by_path = {
+            entry.path: labels.get(entry.entry_type_id, "")
+            for entry in Page.objects.filter(path__in=ancestor_paths)
+            .type(*entry_models)
+            .specific()
+        }
+        for page in sub_pages:
+            # The nearest entry above it: a guide page can sit deep in its guide.
+            for end in range(len(page.path) - page.steplen, 0, -page.steplen):
+                if page.path[:end] in by_path:
+                    by_page[page.pk] = by_path[page.path[:end]]
+                    break
+    return by_page
+
+
 class CatalogueFlagMixin:
     """Not creatable, and not served, on a site without the catalogue.
 

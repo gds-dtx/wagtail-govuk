@@ -187,10 +187,6 @@ def search_view(request):
 
 SUGGESTION_MIN_LENGTH = 2
 SUGGESTION_LIMIT = 10
-# How far down the ranked results to look before regrouping by kind. Roles are
-# few and rank high; a generous pool keeps a role from being cut off behind a
-# run of skills that happened to score above it.
-SUGGESTION_POOL = 50
 
 
 @require_http_methods(["GET", "HEAD"])
@@ -198,11 +194,15 @@ def search_suggest_view(request):
     """Suggestions for the header search box as the reader types.
 
     A JSON list of ``{"text", "link", "type"}``, roles first, then skills, then
-    supporting pages, at most ten -- the shape the live service's autocomplete
-    consumed, so the box can behave as it does there. Each entry
-    is the same result the results page would show for the same query, from
-    the same backend and the same ranking, only regrouped by kind: a role
-    links to its page, a skill to its section of the A to Z, a page to itself.
+    supporting pages, then the content catalogue's entries and the pages within
+    them, at most ten -- the shape the live service's autocomplete consumed,
+    so the box can behave as it does there. Each entry is the same result the
+    results page would show for the same query, from the same backend and the
+    same ranking, only regrouped by kind: a role links to its page, a skill to
+    its section of the A to Z, a page to itself. A catalogue entry's type is
+    its own ("Standard", "Guidance"), and so is a page within it; they come
+    after the site's other pages so a page of the site's own is not crowded
+    out by the catalogue's many.
     External content is left out: suggestions are roles, skills and the site's
     own pages.
 
@@ -222,17 +222,26 @@ def search_suggest_view(request):
                 "site": site,
                 "live": True,
                 "public": not request.user.is_authenticated,
-                "page_size": SUGGESTION_POOL,
             },
             page=1,
         )
-        grouped: dict[str, list[dict[str, str]]] = {"Role": [], "Skill": [], "Page": []}
-        for item in results.object_list:
+        grouped: dict[str, list[dict[str, str]]] = {
+            "Role": [], "Skill": [], "Page": [], "Catalogue": [],
+        }
+        # Every match, not one page of them, before regrouping: the backend has
+        # ranked them all already, and a page of the site's own that matched
+        # less well than fifty of the catalogue's must still come first.
+        for item in results.paginator.object_list:
             if item.is_external or not item.url:
                 continue
-            kind = item.result_type if item.result_type in ("Role", "Skill") else "Page"
-            grouped[kind].append({"text": item.title, "link": item.url, "type": kind})
-        suggestions = (grouped["Role"] + grouped["Skill"] + grouped["Page"])[:SUGGESTION_LIMIT]
+            if item.is_catalogue:
+                group, kind = "Catalogue", item.result_type or "Page"
+            elif item.result_type in ("Role", "Skill"):
+                group = kind = item.result_type
+            else:
+                group = kind = "Page"
+            grouped[group].append({"text": item.title, "link": item.url, "type": kind})
+        suggestions = [item for group in grouped.values() for item in group][:SUGGESTION_LIMIT]
         response = JsonResponse(suggestions, safe=False)
     # What a signed-in editor sees can differ from what the public sees, and
     # content changes as editors work, so nothing on the path keeps a copy.

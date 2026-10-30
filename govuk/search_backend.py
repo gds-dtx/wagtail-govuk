@@ -24,6 +24,7 @@ from govuk.models import (
     FrameworkSkillsPage,
     GovukRole,
     GovukSkill,
+    catalogue_type_labels,
     without_framework_pages,
     without_guidance_pages,
 )
@@ -80,16 +81,14 @@ class SearchResultItem:
     source_name: str = ""
     source_id: int | None = None
     last_updated: datetime | None = None
-    # A label for what kind of thing the result is -- "Role" or "Skill" -- shown
-    # as a badge so a reader can tell a role or skill apart from an ordinary
-    # page at a glance. Empty for pages, whose kind is not worth naming.
+    # A label for what kind of thing the result is -- "Role" or "Skill", or a
+    # catalogue entry's type such as "Standard" -- shown as a badge so a reader
+    # can tell it apart from an ordinary page at a glance. Empty for pages,
+    # whose kind is not worth naming.
     result_type: str = ""
-
-
-def _catalogue_result_type(page) -> str:
-    """A content catalogue entry's badge in the results: its type, such as "Standard"."""
-    entry_type = getattr(page, "entry_type", None)
-    return entry_type.label if entry_type is not None else ""
+    # A content catalogue entry, or a page within one. The header box suggests
+    # these after the site's own pages.
+    is_catalogue: bool = False
 
 
 def _content_page_models() -> tuple:
@@ -204,6 +203,7 @@ class SearchBackend:
         site_root = self._site_root_page(filters)
         pages = list(queryset)
         specific_pages = {page.pk: page.specific for page in pages}
+        catalogue_labels = catalogue_type_labels(specific_pages.values())
         results: list[SearchResultItem] = []
         for page in pages:
             specific_page = specific_pages[page.pk]
@@ -241,7 +241,8 @@ class SearchBackend:
                     tags=tag_labels,
                     tag_keys=tag_keys,
                     last_updated=self._page_last_updated(page),
-                    result_type=_catalogue_result_type(page),
+                    result_type=catalogue_labels.get(page.pk, ""),
+                    is_catalogue=page.pk in catalogue_labels,
                 )
             )
         return results

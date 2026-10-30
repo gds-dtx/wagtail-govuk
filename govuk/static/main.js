@@ -562,10 +562,11 @@ function setSiteSearchAutocomplete() {
         if (!item) {
           return "";
         }
-        // The kind is shown for a role or a skill; a page is just its name,
-        // and so is the query offered back.
+        // The kind is shown for a role, a skill or a catalogue entry (its
+        // type, such as "Standard"); a page is just its name, and so is the
+        // query offered back.
         const type =
-          item.type === "Role" || item.type === "Skill"
+          item.type && item.type !== "Page"
             ? '<span class="app-site-search__option-type">' +
               escapeHtml(item.type) +
               "</span>"
