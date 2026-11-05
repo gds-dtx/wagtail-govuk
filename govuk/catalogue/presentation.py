@@ -302,6 +302,7 @@ def with_image_policy(response):
 def entry_context(entry, request, *, document) -> dict:
     """An entry's front page (``document`` is the entry) or a page within it."""
     from govuk.models import CatalogueLayout
+    from govuk.models.catalogue.vocabulary import GENERIC_LAYOUT
 
     vocab = vocabularies()
     is_front = document.pk == entry.pk
@@ -340,6 +341,11 @@ def entry_context(entry, request, *, document) -> dict:
             )
         context["policy_sections"] = sections
         html_parts.append(intro)
+    elif layout == GENERIC_LAYOUT:
+        # Laid out by its template as a content page's body is
+        # (content_body_layout); rendered here only for its images' origins.
+        html, _ = render_blocks(entry.body, render_context)
+        html_parts.append(html)
     elif layout != CatalogueLayout.TOOL or not is_front:
         html, headings = render_blocks(getattr(document, "body", None), render_context)
         context["document_html"] = mark_safe(html)

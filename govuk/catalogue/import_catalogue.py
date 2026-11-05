@@ -258,6 +258,7 @@ class _Importer:
             "guide": models.ContentEntryGuidePage,
             "steps": models.ContentEntryStepsPage,
             "tool": models.ContentEntryToolPage,
+            "generic": models.ContentEntryGenericPage,
         }
         model = layout_models.get(record.layout) if record.has_pages else None
         model = model or models.ContentEntryExternalPage
@@ -409,6 +410,14 @@ class _Importer:
                 # A page in no navigation is still on the source's site: keep it.
                 if path and path not in pages and not document.metadata.get("hidden"):
                     pages[path] = self._sub_page(self._model("ContentGuidePage"), entry, document)
+        else:
+            # A policy or a generic entry is one page: anything beside its
+            # index has nowhere to go.
+            extra = sorted(document.source_path for path, document in documents.items() if path)
+            if extra:
+                self.result.warnings.append(
+                    f"{entry.slug}: a {layout} entry is one page; left out {', '.join(extra)}"
+                )
         return pages
 
     def _tree(self, parent, items, documents, pages):

@@ -29,6 +29,7 @@ ContentMainPage                    the catalogue's root, and a content page
 │   │   ├── ContentStepPage            one numbered step
 │   │   └── ContentGuidePage           a reference page
 │   ├── ContentEntryToolPage           a resource or product, with its links
+│   ├── ContentEntryGenericPage        anything else, laid out as a content page
 │   └── ContentEntryExternalPage       published elsewhere
 └── ContentPage / TagListingsPage  the main page's own pages
 ```
@@ -53,6 +54,15 @@ ContentMainPage                    the catalogue's root, and a content page
 
   An entry's type is limited to the types that use its page type's layout. Its
   search description defaults to its short description.
+- **A generic entry** (`ContentEntryGenericPage`) is an entry of **any type**
+  laid out freely, instead of in its type's layout. It has every field the
+  other entries have, and a free-form body laid out as a content page's is:
+  card rows and banners run across the page, with the text between them in
+  the width container. It keeps the entry's heading, opening paragraph and
+  details bar, but has no masthead, contents list, side navigation or pages
+  beneath it. The type still says what the entry is (a Resource, a Standard)
+  for its group section, filters and search badge; choosing this page type
+  says how it is laid out.
 - **An external entry** has no content of its own. Its card, and its own
   address, go straight to its source. It is still a page so that it is
   edited, published and moderated in the same place as every other entry.
@@ -129,6 +139,10 @@ the main page.
      - A standard's text before its first `##` is its introduction. The rest
        follows its points.
      - A policy is split into sections at each `##`.
+     - An entry whose file says `layout: generic` becomes a generic page,
+       whatever its type, and its `index.md` is its body. A policy or a
+       generic entry is one page, so any other Markdown in its folder is
+       reported and left out. The export writes `layout: generic` back.
      - Points and steps are made in the `requirements:` or `steps:` order.
      - A guide's pages are nested as its navigation nests them.
 5. **Links:** a link between an entry's own pages becomes a page link, or the

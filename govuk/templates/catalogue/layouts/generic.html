@@ -1,0 +1,34 @@
+{% extends "catalogue/base.html" %}
+{% load govuk_filters %}
+{% comment %}
+    The generic layout, for entries the other layouts do not fit: the entry's
+    heading and opening paragraph, then its body laid out as a content page's
+    is (govuk/content_page.html) -- card rows and banners as bands across the
+    page, the text between them in the width container -- then its details.
+    No masthead, contents list or side navigation: those are what make the
+    other layouts structured.
+{% endcomment %}
+{% block content %}
+    {% content_body_layout self as body_layout %}
+    <div class="govuk-width-container app-catalogue">
+        <div class="govuk-grid-row">
+            <div class="govuk-grid-column-two-thirds">
+                {% include "catalogue/includes/entry_header.html" %}
+            </div>
+        </div>
+    </div>
+    {% for segment in body_layout.segments %}
+        {% if segment.full_width %}
+            {% for item in segment.items %}{% include "includes/body_block.html" with full_width=True %}{% endfor %}
+        {% else %}
+            <div class="govuk-width-container body-segment">
+                <div class="govuk-body rich-text-content">
+                    {% for item in segment.items %}{% include "includes/body_block.html" %}{% endfor %}
+                </div>
+            </div>
+        {% endif %}
+    {% endfor %}
+    <div class="govuk-width-container govuk-!-margin-bottom-6 app-catalogue">
+        {% include "catalogue/includes/entry_details.html" %}
+    </div>
+{% endblock %}

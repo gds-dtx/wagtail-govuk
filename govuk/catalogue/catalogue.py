@@ -22,8 +22,11 @@ CATALOGUE_FILE = "catalogue.yml"
 CATALOGUE_SCHEMA_PREFIX = "guidance-catalogue/"
 MANIFEST_FILE = "guidance.yml"
 LAYOUTS = ("requirements", "policy", "guide", "steps", "tool", "media")
+# What an entry's own "layout" may say, in place of its type's: laid out
+# freely, whatever its type. Only for an entry with pages of its own.
+ENTRY_LAYOUTS = ("generic",)
 # The layouts whose entries are pages on the site, from hosted or repo content.
-CONTENT_LAYOUTS = ("requirements", "policy", "guide", "steps")
+CONTENT_LAYOUTS = ("requirements", "policy", "guide", "steps", "generic")
 REQUIRED_FIELDS = (
     "id", "title", "short_description", "long_description",
     "type", "scope", "tags", "professions", "owner", "source",
@@ -203,6 +206,14 @@ def _entry(files, path: str, vocabularies: dict, *, position: int) -> EntryRecor
         raise _Skip("owner needs an organisation")
 
     layout = entry_type["layout"]
+    own_layout = raw.get("layout")
+    if own_layout is not None:
+        if own_layout not in ENTRY_LAYOUTS:
+            raise _Skip(f"layout '{own_layout}' must be {' or '.join(ENTRY_LAYOUTS)}, or left out")
+        source = raw["source"]
+        if isinstance(source, dict) and source.get("type") == "external":
+            raise _Skip(f"an external entry has no page, so no layout '{own_layout}'")
+        layout = own_layout
     source = raw["source"]
     if not isinstance(source, dict):
         raise _Skip("source must be a mapping")

@@ -16,6 +16,7 @@ from .blocks import (
 from .pages import (
     ENTRY_PAGE_TYPES,
     ContentEntryExternalPage,
+    ContentEntryGenericPage,
     ContentEntryGuidePage,
     ContentEntryPage,
     ContentEntryPolicyPage,
@@ -54,6 +55,7 @@ __all__ = [
     "ContentEntryPolicyPage",
     "ContentEntryRequirementsPage",
     "ContentEntryStepsPage",
+    "ContentEntryGenericPage",
     "ContentEntryToolPage",
     "ContentGroupPage",
     "ContentGuidePage",

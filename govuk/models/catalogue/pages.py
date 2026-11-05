@@ -23,7 +23,7 @@ Gated by ``FEATURE_FLAGS["GUIDANCE"]``.
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.forms import CheckboxSelectMultiple
+from django.forms import CheckboxSelectMultiple, Select
 from django.http import Http404, HttpResponseRedirect
 from django.urls import reverse
 from modelcluster.contrib.taggit import ClusterTaggableManager
@@ -47,7 +47,7 @@ from ..pages import (
 )
 from ..panels import base_content_panels, content_settings_panels, page_settings_panels
 from .blocks import CatalogueBodyBlock, PolicySectionBlock, ToolLinkBlock
-from .vocabulary import CatalogueLayout
+from .vocabulary import GENERIC_LAYOUT, CatalogueLayout
 
 # Every entry page type, by label: what a group page may hold, and what an
 # entry's "related" may point at.
@@ -57,6 +57,7 @@ ENTRY_PAGE_TYPES = [
     "govuk.ContentEntryGuidePage",
     "govuk.ContentEntryStepsPage",
     "govuk.ContentEntryToolPage",
+    "govuk.ContentEntryGenericPage",
     "govuk.ContentEntryExternalPage",
 ]
 
@@ -96,6 +97,7 @@ def entry_page_models() -> tuple:
         ContentEntryGuidePage,
         ContentEntryStepsPage,
         ContentEntryToolPage,
+        ContentEntryGenericPage,
         ContentEntryExternalPage,
     )
 
@@ -272,6 +274,9 @@ class ContentEntryPage(CatalogueFlagMixin, Page):
     """What the catalogue records about an entry, whatever its layout."""
 
     layout: str = ""
+    # Whether the entry's type must use the page's layout. The generic page
+    # takes any type, as an external entry does.
+    type_follows_layout = True
 
     short_description = models.CharField(
         max_length=180, help_text="One sentence, for the card that links to the entry."
@@ -325,11 +330,25 @@ class ContentEntryPage(CatalogueFlagMixin, Page):
         abstract = True
 
     @classmethod
-    def entry_panels(cls, *layout_panels) -> list:
+    def entry_panels(cls, *layout_panels, layout: str = "", type_help: str = "") -> list:
+        """The entry's panels, with ``layout_panels`` for its content.
+
+        The type is a dropdown, not the snippet chooser Wagtail would give it:
+        the chooser lists every type, ignoring the field's ``limit_choices_to``,
+        so an editor could pick one of another layout and only learn on saving
+        that it is "not one of the available choices".
+        """
+        if not type_help:
+            type_help = (
+                f"Only the types that use the {layout} layout. "
+                "To add one, go to Content catalogue › Types."
+                if layout
+                else "Any type: an external entry links straight to its source."
+            )
         return Page.content_panels + [
             MultiFieldPanel(
                 [
-                    FieldPanel("entry_type"),
+                    FieldPanel("entry_type", widget=Select, help_text=type_help),
                     FieldPanel("short_description"),
                     FieldPanel("long_description"),
                     FieldPanel("primary"),
@@ -374,7 +393,12 @@ class ContentEntryPage(CatalogueFlagMixin, Page):
 
     def clean(self):
         super().clean()
-        if self.entry_type_id and self.layout and self.entry_type.layout != self.layout:
+        if (
+            self.type_follows_layout
+            and self.entry_type_id
+            and self.layout
+            and self.entry_type.layout != self.layout
+        ):
             raise ValidationError(
                 {"entry_type": f"Choose a type that uses the {self.layout} layout."}
             )
@@ -411,7 +435,7 @@ class ContentEntryRequirementsPage(ContentEntryPage):
 
     subpage_types = ["govuk.ContentRequirementPage"]
     template = "catalogue/layouts/requirements.html"
-    content_panels = ContentEntryPage.entry_panels(FieldPanel("body"), FieldPanel("closing_body"))
+    content_panels = ContentEntryPage.entry_panels(FieldPanel("body"), FieldPanel("closing_body"), layout=layout)
 
     class Meta:
         verbose_name = "catalogue entry: requirements"
@@ -432,7 +456,7 @@ class ContentEntryPolicyPage(ContentEntryPage):
 
     subpage_types = []
     template = "catalogue/layouts/policy.html"
-    content_panels = ContentEntryPage.entry_panels(FieldPanel("body"), FieldPanel("sections"))
+    content_panels = ContentEntryPage.entry_panels(FieldPanel("body"), FieldPanel("sections"), layout=layout)
 
     class Meta:
         verbose_name = "catalogue entry: policy"
@@ -447,7 +471,7 @@ class ContentEntryGuidePage(ContentEntryPage):
 
     subpage_types = ["govuk.ContentGuidePage"]
     template = "catalogue/layouts/guide.html"
-    content_panels = ContentEntryPage.entry_panels(FieldPanel("body"))
+    content_panels = ContentEntryPage.entry_panels(FieldPanel("body"), layout=layout)
 
     class Meta:
         verbose_name = "catalogue entry: guide"
@@ -462,7 +486,7 @@ class ContentEntryStepsPage(ContentEntryPage):
 
     subpage_types = ["govuk.ContentStepPage", "govuk.ContentGuidePage"]
     template = "catalogue/layouts/steps.html"
-    content_panels = ContentEntryPage.entry_panels(FieldPanel("body"))
+    content_panels = ContentEntryPage.entry_panels(FieldPanel("body"), layout=layout)
 
     class Meta:
         verbose_name = "catalogue entry: steps"
@@ -477,10 +501,35 @@ class ContentEntryToolPage(ContentEntryPage):
 
     subpage_types = []
     template = "catalogue/layouts/tool.html"
-    content_panels = ContentEntryPage.entry_panels(FieldPanel("links"))
+    content_panels = ContentEntryPage.entry_panels(FieldPanel("links"), layout=layout)
 
     class Meta:
         verbose_name = "catalogue entry: tool"
+
+
+class ContentEntryGenericPage(ContentEntryPage):
+    """An entry of any type, laid out freely: its body as a content page's is
+    (card rows and banners across the page), with the entry's heading above it
+    and its details below.
+
+    The type says what the entry is (a resource, a standard); choosing this
+    page type rather than the type's own layout says how it is laid out.
+    """
+
+    layout = GENERIC_LAYOUT
+    type_follows_layout = False
+    entry_type = entry_type_field()
+    body = StreamField(CatalogueBodyBlock(), blank=True, use_json_field=True)
+
+    subpage_types = []
+    template = "catalogue/layouts/generic.html"
+    content_panels = ContentEntryPage.entry_panels(
+        FieldPanel("body"),
+        type_help="Any type: this page lays it out freely, whatever its type's own layout.",
+    )
+
+    class Meta:
+        verbose_name = "catalogue entry: generic"
 
 
 class ContentEntryExternalPage(ContentEntryPage):

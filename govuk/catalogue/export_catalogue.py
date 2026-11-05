@@ -184,7 +184,11 @@ class _Exporter:
     # -- an entry ------------------------------------------------------------------------
 
     def _entry(self, page, entry_ids) -> str:
-        from govuk.models import ContentEntryExternalPage, ContentEntryToolPage
+        from govuk.models import (
+            ContentEntryExternalPage,
+            ContentEntryGenericPage,
+            ContentEntryToolPage,
+        )
 
         data = {
             "id": page.slug,
@@ -193,6 +197,9 @@ class _Exporter:
             "long_description": page.long_description,
             "type": page.entry_type.key,
         }
+        if isinstance(page, ContentEntryGenericPage):
+            # Laid out freely, whatever its type's own layout.
+            data["layout"] = "generic"
         if page.primary:
             data["primary"] = True
         data["scope"] = page.scope.key

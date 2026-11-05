@@ -10,6 +10,12 @@ use.
 from django.db import models
 from wagtail.admin.panels import FieldPanel
 
+# The generic entry page's layout. Not a type's: a generic page takes a type
+# of any layout, since it is a choice of how an entry is laid out, not of what
+# kind of entry it is. The catalogue format records it on the entry instead
+# (``layout: generic``).
+GENERIC_LAYOUT = "generic"
+
 
 class CatalogueLayout(models.TextChoices):
     """How a type of entry is laid out: which entry page type holds it."""
