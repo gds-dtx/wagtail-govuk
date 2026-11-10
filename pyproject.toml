@@ -15,11 +15,11 @@ license = "MIT"
 license-files = ["LICENCE"]
 requires-python = ">=3.12"
 dependencies = [
-  "Django==6.1.2",
-  "wagtail==8.0.1",
+  "Django==6.1.3",
+  "wagtail==8.1",
   "gunicorn==26.2.0",
   "whitenoise==6.12.0",
-  "django-allauth[socialaccount,openid]==65.20.1",
+  "django-allauth[socialaccount,openid]==65.21.1",
   "djangorestframework==3.18.3",
   # Verifies OIDC ID tokens against the issuer's JWKS. [crypto] pulls in
   # cryptography for the RS256 signature check.
@@ -38,7 +38,7 @@ dependencies = [
 [dependency-groups]
 # Not needed to run the site, only to check it. CI installs this group.
 dev = [
-  "ruff==0.17.2",
+  "ruff==0.17.4",
 ]
 
 [tool.ruff]
