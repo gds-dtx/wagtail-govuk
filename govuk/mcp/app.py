@@ -10,7 +10,8 @@
   ``MAINTENANCE_MODE`` and the planned Maintenance mode setting alike, since
   there is no signed-in staff member here to let through.
 - **A rate limit** of ``MCP_RATE_LIMIT_PER_MINUTE`` requests per client
-  address. It is a second line: the load balancer's limit is the first.
+  address (from ``MCP_CLIENT_IP_HEADER`` behind CloudFront). It is a second
+  line: the WAF's limit is the first.
 
 The health check at ``HEALTH_PATH`` is exempt from the last two, as the
 site's own is, or the orchestrator would replace a closed or busy container.
@@ -95,20 +96,34 @@ class RateLimitMiddleware:
     """At most ``limit`` requests a minute from one client address.
 
     Counted in fixed one-minute windows in the default cache. The address is
-    the one uvicorn settles on from ``X-Forwarded-For``, believing only the
-    proxies in ``MCP_FORWARDED_ALLOW_IPS``.
+    the one in ``client_ip_header`` (``MCP_CLIENT_IP_HEADER``), when that is
+    set and the request carries it; otherwise the connection's, which uvicorn
+    takes from ``X-Forwarded-For`` as far as ``MCP_FORWARDED_ALLOW_IPS`` lets it.
     """
 
-    def __init__(self, app, *, limit: int, window: int = RATE_LIMIT_WINDOW_SECONDS):
+    def __init__(
+        self, app, *, limit: int, window: int = RATE_LIMIT_WINDOW_SECONDS, client_ip_header: str = ""
+    ):
         self.app = app
         self.limit = limit
         self.window = window
+        self.client_ip_header = client_ip_header.lower().encode("latin-1")
+
+    def _client(self, scope) -> str:
+        if self.client_ip_header:
+            for name, value in scope.get("headers") or []:
+                if name == self.client_ip_header:
+                    # One address, as the proxy sets it; the first, if a list.
+                    address = value.decode("latin-1").split(",")[0].strip()
+                    if address:
+                        return address
+        return (scope.get("client") or ("unknown", 0))[0]
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http" or self.limit <= 0 or scope["path"] == HEALTH_PATH:
             await self.app(scope, receive, send)
             return
-        client = (scope.get("client") or ("unknown", 0))[0]
+        client = self._client(scope)
         now = time.time()
         key = f"govuk-mcp-rate:{client}:{int(now // self.window)}"
         if await cache.aadd(key, 1, timeout=self.window * 2):
@@ -143,5 +158,9 @@ def create_app():
     )
     # The last added runs first: the rate limit, then maintenance.
     app.add_middleware(MaintenanceMiddleware)
-    app.add_middleware(RateLimitMiddleware, limit=settings.MCP_RATE_LIMIT_PER_MINUTE)
+    app.add_middleware(
+        RateLimitMiddleware,
+        limit=settings.MCP_RATE_LIMIT_PER_MINUTE,
+        client_ip_header=settings.MCP_CLIENT_IP_HEADER,
+    )
     return app

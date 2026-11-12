@@ -213,6 +213,32 @@ class AppTests(TestCase):
         self.assertEqual([response.status_code for response in responses], [421, 421, 429, 200])
         self.assertTrue(1 <= int(responses[2].headers["Retry-After"]) <= 60)
 
+    @staticmethod
+    def _from(address: str | None):
+        headers = {**MCP_HEADERS, "Host": "evil.example"}
+        if address:
+            headers["True-Client-IP"] = address
+        return ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": headers})
+
+    @override_settings(MCP_RATE_LIMIT_PER_MINUTE=1, MCP_CLIENT_IP_HEADER="true-client-ip")
+    def test_behind_cloudfront_each_viewer_is_counted_apart(self):
+        # One connection (CloudFront's) carrying three viewers' requests.
+        responses = self._requests(
+            self._from("203.0.113.1"), self._from("203.0.113.2"), self._from("203.0.113.1, 10.0.0.9")
+        )
+        self.assertEqual([response.status_code for response in responses], [421, 421, 429])
+
+    @override_settings(MCP_RATE_LIMIT_PER_MINUTE=1, MCP_CLIENT_IP_HEADER="true-client-ip")
+    def test_a_request_without_the_header_is_counted_by_its_connection(self):
+        responses = self._requests(self._from(None), self._from(None))
+        self.assertEqual([response.status_code for response in responses], [421, 429])
+
+    @override_settings(MCP_RATE_LIMIT_PER_MINUTE=1)
+    def test_the_header_is_ignored_unless_it_is_configured(self):
+        # Otherwise a client could reset its own count by writing the header.
+        responses = self._requests(self._from("203.0.113.1"), self._from("203.0.113.2"))
+        self.assertEqual([response.status_code for response in responses], [421, 429])
+
     @override_settings(FEATURE_FLAGS={**FLAGS, "MCP": False})
     def test_it_will_not_start_with_the_flag_off(self):
         with self.assertRaisesMessage(ImproperlyConfigured, "FEATURE_MCP"):

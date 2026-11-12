@@ -82,9 +82,18 @@ to 8000.
   signed-in staff member to let through.
 - **Rate limit:** each client address may make `MCP_RATE_LIMIT_PER_MINUTE`
   requests a minute (60 by default). One question can take several requests.
-  The count is kept per process unless `CACHE_URL` names a shared cache, so
-  treat this as a second line of defence behind the load balancer's own
-  limit.
+  - **Which address:** behind CloudFront, the address counted is the one in
+    the header `MCP_CLIENT_IP_HEADER` names (`true-client-ip`). CloudFront's
+    viewer-request function sets that header from the viewer's own address,
+    overwriting anything the client sent. Only CloudFront can reach the load
+    balancer, because the load balancer forwards nothing without CloudFront's
+    secret `X-ALB-Protection` header.
+  - **Without the header setting,** the connection's address is counted.
+    Behind CloudFront that would be a CloudFront edge address, so the setting
+    is needed there.
+  - **Per process:** the count is kept per process unless `CACHE_URL` names a
+    shared cache, so treat this as a second line of defence behind the WAF's
+    limit.
 - **Health check:** `/mcp/health` is exempt from maintenance and the rate
   limit, as the site's own health check is.
 - **Logging:** each tool call is logged with its tool, outcome, number of
@@ -97,31 +106,47 @@ to 8000.
 
 ### Deploying it
 
-The infrastructure is in `gds-dtx/wagtail-iac` and `gds-dtx/wagtail-instances`,
-and does not run the MCP server yet. It needs:
+The infrastructure is in `gds-dtx/wagtail-iac` (the module) and
+`gds-dtx/wagtail-instances` (one module call per site), and does not run the
+MCP server yet. A request reaches it through CloudFront (and its WAF, where it
+is on), then the instance's load balancer listener, then ECS. CloudFront's
+default behaviour already passes `POST` through with caching off and every
+viewer header forwarded, so CloudFront needs no change. The module is used
+unpinned, so everything below belongs behind an opt-in variable.
 
-- **A container** from the same image, alongside the site's, running
-  `python manage.py run_mcp_server --host 0.0.0.0 --port 8001`. It needs the
-  site's environment, including `FEATURE_MCP=true`. Set `--workers` to suit
-  the task's CPU.
-- **A health check** of `GET /mcp/health` on port 8001. The image's
-  `HEALTHCHECK` checks gunicorn's port, so the MCP container needs its own
-  check in the task definition.
-- **A load balancer rule** sending `/mcp` and `/mcp/*` to that container's
-  target group, ahead of the site's default rule. The site stays on the same
-  domain.
-- **`MCP_FORWARDED_ALLOW_IPS`** set to the VPC's range. Then the address the
-  rate limit counts is the client's, not the load balancer's, and an address
-  a client writes into `X-Forwarded-For` itself is ignored.
-- **A rate limit at the load balancer or web application firewall**, per
-  client IP, on `/mcp`. This is the limit to rely on.
-- **`FEATURE_MCP=true`** on the site's own container too, so the index is
-  written as editors publish.
-- **The index rebuilt on deployment** (`rebuild_content_index`), and on a
-  timer afterwards.
-- **External sources fetched on a timer**, for example daily
-  (`harvest_external_sources`). The task needs outbound https to the
-  sources' hosts.
+- **A separate ECS service**, from the same image and with the site's
+  environment, running
+  `python manage.py run_mcp_server --host 0.0.0.0 --port 8001`.
+  - **Why separate:** ECS replaces a whole task when any of its target groups
+    fails a health check, so the MCP server must not share the site's task.
+  - **What it does not need:** no EFS mount and no `migrate`; the site's
+    container still runs the migrations.
+  - **Size:** 256 CPU and 512 MB to begin with. Set `--workers` to suit.
+- **Its security group** lets port 8001 in from the load balancer.
+- **A target group** on port 8001, with a health check of `GET /mcp/health`.
+  It answers whatever the `Host` header, so the load balancer can probe by
+  IP.
+- **A listener rule** sending `/mcp` and `/mcp/*` to that target group. It
+  carries the site rule's host and `X-ALB-Protection` conditions and is
+  evaluated before the site's rule, which therefore needs a higher priority
+  number than it has now (1).
+- **`MCP_CLIENT_IP_HEADER=true-client-ip`**, so the rate limit counts each
+  viewer rather than CloudFront's edges. `MCP_FORWARDED_ALLOW_IPS` cannot
+  help behind CloudFront: the load balancer appends CloudFront's address.
+- **A rate-based rule on the CloudFront WAF**, per IP, on URIs starting
+  `/mcp`, with its own block action. This is the limit to rely on.
+  - **Monitor mode:** the WAF's managed rules default to count only
+    (`waf_monitor_mode`).
+  - **The WAF itself** is off unless `enable_cloudfront_waf` is set.
+- **`FEATURE_MCP=true`** in the instance's `wagtail_variables`, so the site,
+  the MCP service and the scheduled tasks all have it. The site needs it to
+  write the index as editors publish, and to fetch a new external source.
+- **Two scheduled tasks**, built like `sync_external_content`'s:
+  `rebuild_content_index` and `harvest_external_sources`, daily. They need
+  outbound https, which the tasks' security group and subnets already give
+  `sync_external_content`.
+- **On the first deployment**, run `rebuild_content_index` and then
+  `harvest_external_sources` once, with ECS Exec or a one-off task.
 
 ## The content index
 

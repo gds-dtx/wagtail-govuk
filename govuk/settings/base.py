@@ -573,10 +573,18 @@ MAINTENANCE_RETRY_AFTER = int(os.getenv("MAINTENANCE_RETRY_AFTER", 60 * 60))
 # count is kept in the default cache, so it is per process unless CACHE_URL
 # names a shared one: the load balancer's own limit is the one to rely on.
 MCP_RATE_LIMIT_PER_MINUTE = int(os.getenv("MCP_RATE_LIMIT_PER_MINUTE", "60"))
-# The proxies whose X-Forwarded-For is believed, as uvicorn's
-# --forwarded-allow-ips takes them. Behind the load balancer, set it to the
-# VPC's range: then the address the rate limit counts is the client's, not the
-# load balancer's, and one a client wrote into the header itself is ignored.
+# A request header holding the client's address, set by a proxy in front that
+# overwrites whatever the client sent. Deployed, that is CloudFront's viewer
+# request function, which sets true-client-ip from the viewer's own address;
+# only CloudFront can reach the load balancer, which forwards nothing without
+# its secret X-ALB-Protection header, so a client cannot write its own. The
+# rate limit counts this address. Unset, it counts the connection's.
+MCP_CLIENT_IP_HEADER = os.getenv("MCP_CLIENT_IP_HEADER", "").strip().lower()
+# The proxies whose X-Forwarded-For uvicorn believes for the connection's
+# address (its --forwarded-allow-ips). Only what the rate limit counts when
+# MCP_CLIENT_IP_HEADER is unset, and what uvicorn's access log shows. Behind
+# CloudFront it cannot give the client's address: the load balancer appends
+# CloudFront's, which is outside any range worth trusting.
 MCP_FORWARDED_ALLOW_IPS = os.getenv("MCP_FORWARDED_ALLOW_IPS", "127.0.0.1")
 
 # When enabled, logs inbound Django requests (including headers) at INFO level.
