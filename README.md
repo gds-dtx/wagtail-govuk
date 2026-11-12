@@ -66,7 +66,7 @@ Optional:
 - `OIDC_JWKS_URL`: JWKS URL for API bearer token verification. Defaults to `https://sso.service.security.gov.uk/.well-known/jwks.json`.
 - `OIDC_ISSUER`: Expected JWT issuer for API bearer token verification. Defaults to `https://sso.service.security.gov.uk`.
 - `OIDC_TOKEN_AUDIENCE` / `OIDC_TOKEN_AUDIENCES`: Expected JWT audience, or a comma-separated list of them, for API bearer token verification. Defaults to `OIDC_CLIENT_ID`.
-- `FEATURE_SKILLS`, `FEATURE_FEEDBACK`, `FEATURE_GUIDANCE`: Feature flags, all off by default. See [Feature flags](#feature-flags).
+- `FEATURE_SKILLS`, `FEATURE_FEEDBACK`, `FEATURE_GUIDANCE`, `FEATURE_MCP`: Feature flags, all off by default. See [Feature flags](#feature-flags).
 - `GUIDANCE_GITHUB_TOKEN`: Optional GitHub token used when the content catalogue is imported from a GitHub repo, to lift GitHub's unauthenticated rate limit. Read-only access to public repositories is enough.
 - `SCHEDULED_PUBLISHING`: Defaults to `false`, which hides the go-live and expiry fields in the admin. Turn it on only once something runs `manage.py publish_scheduled` on a timer.
 - `MAINTENANCE_MODE`: Emergency close of the whole site behind the 503 page, for everyone including editors. `MAINTENANCE_RESUME_TEXT` sets the "back at" wording and `MAINTENANCE_RETRY_AFTER` the `Retry-After` header in seconds (defaults to `3600`). Planned maintenance is the **Maintenance mode** site setting instead.
@@ -87,6 +87,8 @@ Read once at startup from the environment into `settings.FEATURE_FLAGS`
 | `SKILLS` | `FEATURE_SKILLS` | The Capability Framework: roles, skills, changelog, its page types, wording and sidebar settings, and the CSV downloads |
 | `FEEDBACK` | `FEATURE_FEEDBACK` | The built-in feedback form at `/feedback`, and its snippet listing. When on, it shadows any CMS page at `/feedback` |
 | `GUIDANCE` | `FEATURE_GUIDANCE` | The content catalogue: the content main page, group and entry page types, the catalogue vocabulary snippets, and the catalogue import and export. See [docs/content-catalogue.md](docs/content-catalogue.md) |
+| `MCP` | `FEATURE_MCP` | The content index: every published, public page, role and skill as Markdown, kept current on publish, and `manage.py rebuild_content_index`. See [docs/mcp-server.md](docs/mcp-server.md) |
+
 A flag gates structure only. With it off, the feature's page
 types cannot be created, return 404 if the page import puts one in the tree,
 and are left out of search, the pages API, the service navigation and tag

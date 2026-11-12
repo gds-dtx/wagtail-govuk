@@ -91,3 +91,7 @@ class GovukConfig(AppConfig):
             _warn_about_framework_across_sites,
             dispatch_uid="govuk.warn_about_framework_across_sites",
         )
+
+        from govuk.content_index import signals as content_index_signals
+
+        content_index_signals.connect()

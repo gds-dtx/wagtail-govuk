@@ -516,6 +516,9 @@ FEATURE_FLAGS = {
     "SKILLS": _bool_env("FEATURE_SKILLS"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
     "GUIDANCE": _bool_env("FEATURE_GUIDANCE"),
+    # The content index (govuk/content_index/) and the MCP server that reads
+    # it. Off, nothing is written to the index on publish.
+    "MCP": _bool_env("FEATURE_MCP"),
 }
 
 # Optional. Sent to the GitHub API when the content catalogue is imported from a
