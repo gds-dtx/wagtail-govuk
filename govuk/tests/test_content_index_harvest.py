@@ -275,40 +275,28 @@ def patched_web(web):
 
 @override_settings(FEATURE_FLAGS=FLAGS)
 class PublishTests(TestCase):
-    def setUp(self):
-        self.main = make_content_main_page(Site.objects.get(is_default_site=True).root_page)
-        import_fixture(self.main)
-        self.entry = ContentEntryExternalPage.objects.get(slug="external-policy")
+    """Publishing never fetches a source: the timer and Fetch now do."""
 
-    def _publish(self):
-        with self.captureOnCommitCallbacks(execute=True):
-            self.entry.save_revision().publish()
-
-    def test_a_new_source_is_fetched_when_the_entry_is_published(self):
-        with patched_web(FakeWeb({API: api_response(guide())})) as web:
-            self._publish()
-        self.assertIn((API, ""), web.requests)
-        self.assertEqual(HarvestedSource.objects.get(url=SOURCE).status, "ok")
-        self.assertIn("## Devices", IndexedDocument.objects.get(page_id=self.entry.pk).markdown)
-
-    def test_republishing_with_the_same_source_does_not_fetch_again(self):
-        HarvestedSource.objects.create(url=SOURCE, status="ok")
-        with patched_web(FakeWeb()) as web:
-            self._publish()
+    def test_publishing_an_entry_with_a_new_source_fetches_nothing(self):
+        main = make_content_main_page(Site.objects.get(is_default_site=True).root_page)
+        import_fixture(main)
+        entry = ContentEntryExternalPage.objects.get(slug="external-policy")
+        entry.source_url = OTHER_SOURCE
+        with patched_web(FakeWeb()) as web, self.captureOnCommitCallbacks(execute=True):
+            entry.save_revision().publish()
         self.assertEqual(web.requests, [])
+        self.assertFalse(HarvestedSource.objects.exists())
+        metadata = IndexedDocument.objects.get(page_id=entry.pk).metadata
+        self.assertEqual((metadata["source_text"], metadata["source_text_reason"]), ("unavailable", "Not fetched yet."))
 
-    def test_a_changed_source_is_fetched(self):
-        HarvestedSource.objects.create(url=SOURCE, status="ok")
-        self.entry.source_url = OTHER_SOURCE
-        with patched_web(FakeWeb({OTHER_API: api_response(guide(), url=OTHER_API)})):
-            self._publish()
-        self.assertTrue(HarvestedSource.objects.filter(url=OTHER_SOURCE, status="ok").exists())
-
-    @override_settings(FEATURE_FLAGS={**FLAGS, "MCP": False})
-    def test_nothing_is_fetched_with_the_index_off(self):
-        with patched_web(FakeWeb()) as web:
-            self._publish()
+    def test_an_import_fetches_nothing(self):
+        main = make_content_main_page(Site.objects.get(is_default_site=True).root_page)
+        with patched_web(FakeWeb()) as web, self.captureOnCommitCallbacks(execute=True):
+            import_fixture(main)
         self.assertEqual(web.requests, [])
+        self.assertTrue(
+            IndexedDocument.objects.filter(page_id__in=ContentEntryExternalPage.objects.values("pk")).exists()
+        )
 
 
 @override_settings(FEATURE_FLAGS=FLAGS)

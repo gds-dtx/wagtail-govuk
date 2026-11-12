@@ -4,8 +4,8 @@
 ``HarvestedSource`` row, and re-indexes the entries that use it.
 ``harvest_all`` does that for every live external entry, one host at a time,
 and removes the rows no entry uses any more. Run by
-``manage.py harvest_external_sources`` on a timer, by the task queued when an
-external entry is published with a new source, and by the admin's Fetch now.
+``manage.py harvest_external_sources`` on a timer, and by the admin's Fetch
+now; never on publish, which it would slow down.
 
 A failed or refused attempt keeps the last text fetched: a source that is
 briefly down should not empty the index of it. A page that is read and found

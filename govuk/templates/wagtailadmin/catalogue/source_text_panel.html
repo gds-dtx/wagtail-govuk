@@ -1,6 +1,6 @@
 {% load i18n %}
 <p class="help w-mb-4">
-    {% trans "The content index keeps a copy of the source page's text, so the site's MCP server can answer from it. It is fetched when the entry is first published with its source address, and checked again on a timer." %}
+    {% trans "The content index keeps a copy of the source page's text, so the site's MCP server can answer from it. It is fetched on a timer, so a new entry or a new source address has no text until the next run. Fetch now to get it straight away." %}
 </p>
 {% if source %}
     <dl class="w-mb-4">

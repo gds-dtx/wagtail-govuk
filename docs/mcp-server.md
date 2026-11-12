@@ -140,7 +140,7 @@ unpinned, so everything below belongs behind an opt-in variable.
   - **The WAF itself** is off unless `enable_cloudfront_waf` is set.
 - **`FEATURE_MCP=true`** in the instance's `wagtail_variables`, so the site,
   the MCP service and the scheduled tasks all have it. The site needs it to
-  write the index as editors publish, and to fetch a new external source.
+  write the index as editors publish.
 - **Two scheduled tasks**, built like `sync_external_content`'s:
   `rebuild_content_index` and `harvest_external_sources`, daily. They need
   outbound https, which the tasks' security group and subnets already give
@@ -299,12 +299,11 @@ and has no text any more loses it.
 
 ### When it fetches
 
-- **On publish:** when an external entry is published with a source address
-  that has never been fetched, or that has changed, a fetch is queued once
-  the publish has committed. It runs as a Django task. With the immediate
-  backend configured today, it runs straight away and can add up to the
-  10-second timeout to that publish. With a worker backend, the same code
-  runs in the background.
+- **Not on publish.** Fetching while a page is published would hold up the
+  publish, up to the 10-second timeout for each page, and an import publishes
+  dozens of pages at once. A new entry, or one given a new source address,
+  has no copy until the next timed run, unless someone uses Fetch now. Until
+  then its notice says it has not been fetched yet.
 - **On a timer:** `harvest_external_sources` fetches every source, re-indexes
   what changed, and removes rows that no live entry uses:
 
@@ -365,7 +364,6 @@ followed by the path, so a change of hostname needs no rebuild.
 | `govuk/content_index/fetch.py` | The guarded fetch, and robots.txt |
 | `govuk/content_index/sources.py` | Reading a source page as Markdown: GOV.UK's Content API, GitHub, any other page |
 | `govuk/content_index/harvest.py` | Fetching a source, storing how it went, re-indexing its entries; fetching them all |
-| `govuk/content_index/tasks.py` | The fetch queued on publish |
 | `govuk/management/commands/harvest_external_sources.py` | Fetching every source |
 | `SourceTextPanel` in `govuk/models/catalogue/pages.py`; `catalogue_fetch_source_view` in `govuk/wagtail_hooks/catalogue.py` | The Source text panel and Fetch now |
 | `govuk/tests/test_content_index.py`, `test_content_index_search.py`, `test_content_index_harvest.py`, `test_mcp_server.py` | Tests |
