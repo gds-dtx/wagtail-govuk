@@ -7,8 +7,8 @@ publishes. It is built in stages:
    held as Markdown and split into sections, kept current as editors publish.
 2. **The MCP server** (done): tools to search the index and read a document,
    served at `/mcp`.
-3. The text of catalogue entries published elsewhere, fetched from their
-   sources into the index.
+3. **External entries' source text** (done): the page each catalogue entry
+   published elsewhere points at, fetched into the index.
 4. Tools for the catalogue's entries and the framework's roles and skills.
 
 It is behind the `MCP` feature flag (`FEATURE_MCP`). With the flag off:
@@ -25,6 +25,13 @@ The flag is on in `govuk/settings/development.py`.
 
    ```bash
    .venv/bin/python manage.py rebuild_content_index
+   ```
+
+   To fetch the source pages of the catalogue's external entries too, which
+   takes about a minute for 60 sources:
+
+   ```bash
+   .venv/bin/python manage.py harvest_external_sources
    ```
 
 2. Start the server. It runs beside `runserver`, on its own port:
@@ -112,6 +119,9 @@ and does not run the MCP server yet. It needs:
   written as editors publish.
 - **The index rebuilt on deployment** (`rebuild_content_index`), and on a
   timer afterwards.
+- **External sources fetched on a timer**, for example daily
+  (`harvest_external_sources`). The task needs outbound https to the
+  sources' hosts.
 
 ## The content index
 
@@ -124,7 +134,7 @@ and does not run the MCP server yet. It needs:
 | Catalogue group pages | Description and body | The page |
 | Catalogue entries | The entry's details (type, scope, professions, topics, owner, contact, version and review dates, related entries), its opening paragraph and its content in the order the page shows it: a standard's points, a policy's numbered sections, a method's steps, a tool's links | The page |
 | Pages within an entry | Summary and body, with the point or step number | The page |
-| External catalogue entries | The entry's details and opening paragraph. Their source's own text arrives in stage 3 | The page, and the source in `source_url` |
+| External catalogue entries | The entry's details and opening paragraph, then a copy of its source page's text where one could be fetched (see [External entries' source text](#external-entries-source-text)) | The page, and the source in `source_url` |
 | Roles | Description, each level (description, grades, skills with their level descriptions), senior civil service grades and skills, and both progression lists | `…/role/<slug>/` under the framework main page |
 | Skills | Description, each level's points, and leadership examples | `…/skills/#<slug>` on the skills A to Z |
 
@@ -205,12 +215,107 @@ Run the rebuild on a timer for these.
 `chunking.py`), bump `INDEX_VERSION` in `indexer.py`. Otherwise the next
 rebuild skips every row whose source has not changed.
 
+## External entries' source text
+
+A catalogue entry published elsewhere has only a summary on this site. The
+index also keeps a copy of the text of the page its source address points at,
+so a question can be answered from the content itself.
+
+### What is fetched
+
+Only the source page itself, not the pages it links to. How it is read
+depends on the source:
+
+| Source | How it is read |
+| --- | --- |
+| `www.gov.uk` | From the GOV.UK Content API (`/api/content/<path>`), which gives the body without the page around it. A guide's parts come under their own titles. A publication's documents are listed as links. An index-style page with no body, such as the Service Manual, the Service Standard or the Service Toolkit, is the list of pages beneath it, with their descriptions |
+| `github.com` | The repository page's rendered README |
+| Any other site | The page's main content: `<main>`, or `role="main"`, or `#main-content`, or the body. Navigation, headers, footers, scripts, forms and the GOV.UK Design System's furniture (breadcrumbs, back links, banners, visually hidden text) are left out |
+
+The HTML becomes Markdown with its headings, lists, tables, code and links,
+and links are made absolute.
+
+- **Too little text:** a page with under 200 characters of text has nothing
+  to index. Most often it is drawn by JavaScript, which a fetch does not run.
+- **Not a web page:** a PDF or other file is not read.
+- **Size:** a copy is cut off at 200,000 characters.
+
+### The rules it fetches by
+
+- **Https only**, through the same guards as content discovery and the
+  catalogue import: no private or loopback addresses, checked again on every
+  redirect.
+- **robots.txt is honoured**, for the agent `wagtail-govuk-content-index`.
+  A missing robots.txt allows everything. One that cannot be read (a 5xx, or
+  the host is down) means that host is skipped until the next run.
+- **It identifies itself** with a User-Agent of the form
+  `wagtail-govuk-content-index/1.0 (+<site address>)`, and does not pretend
+  to be a browser. Sites behind bot protection may refuse it.
+- **Conditional requests:** a page that has not changed answers 304 and
+  costs almost nothing.
+- **Politeness:** a second between two requests to the same host.
+- **Limits:** a 10-second timeout and a 5 MB cap on each download.
+
+### What happens when it cannot
+
+Each source has a `HarvestedSource` row, shared by every entry that points at
+it. Its status is how the last attempt went:
+
+| Status | Meaning | The copy |
+| --- | --- | --- |
+| Fetched | Read, or confirmed unchanged | Replaced or kept |
+| Refused by the source | A 401, 403 or 429, or robots.txt does not allow it | Kept |
+| Could not be fetched | Any other failure | Kept |
+| No text found | Read, with too little text | Removed |
+| Not fetched | Not https, or not a web page | Removed |
+
+A source that is briefly down keeps the text fetched before. One that is read
+and has no text any more loses it.
+
+### When it fetches
+
+- **On publish:** when an external entry is published with a source address
+  that has never been fetched, or that has changed, a fetch is queued once
+  the publish has committed. It runs as a Django task. With the immediate
+  backend configured today, it runs straight away and can add up to the
+  10-second timeout to that publish. With a worker backend, the same code
+  runs in the background.
+- **On a timer:** `harvest_external_sources` fetches every source, re-indexes
+  what changed, and removes rows that no live entry uses:
+
+  ```bash
+  .venv/bin/python manage.py harvest_external_sources [--url URL ...] [--force]
+  ```
+
+  It prints a line for each source and the totals. Refused and failed sources
+  are expected, so they do not fail the run; only an unexpected error does.
+  `--force` fetches every page in full, without the conditional request.
+- **From the admin:** the external entry's edit view has a **Source text**
+  panel. It shows the last attempt, the reason if it failed, and how much
+  text is held, and has a **Fetch now** button. Fetch now needs permission
+  to publish the entry.
+
+### How the MCP server shows it
+
+- **Search:** the copy is searched like any other content. A result for an
+  external entry has `source_checked_at`, when its copy was last checked.
+- **`get_document`:** the notice says whether the text includes a copy, and
+  when it was last checked. The copy is third-party content that may have
+  changed, and the source is authoritative. Where there is no copy, the
+  notice says why.
+- **Server instructions:** they tell clients the same, and to cite the
+  `source_url`.
+
+Sections of a copied page link to the source address. Its heading ids are not
+carried over.
+
 ### Data
 
 | Model | What it holds |
 | --- | --- |
 | `IndexedDocument` | One per page, role or skill. Its source (exactly one of `page`, `role`, `skill`), `kind`, `origin` (`site`, or `external` for a catalogue entry published elsewhere), `site` and `url_path`, `source_url`, `title`, `description`, `type_label`, `breadcrumbs`, `metadata`, the whole `markdown`, `last_updated`, and the hash and index version |
 | `IndexedChunk` | One per section: `position`, `heading_path`, `anchor` and `text` |
+| `HarvestedSource` | One per external source address: `status`, `reason`, `http_status`, the copy (`title`, `markdown`, `content_hash`), `etag` and `last_modified` for conditional requests, the source's own `source_updated_at`, `fetched_at` (the last attempt), `succeeded_at` and `failures` |
 
 Addresses are stored as paths. The full address is the site's root URL
 followed by the path, so a change of hostname needs no rebuild.
@@ -219,7 +324,7 @@ followed by the path, so a change of hostname needs no rebuild.
 
 | Path | What it holds |
 | --- | --- |
-| `govuk/models/content_index.py` | `IndexedDocument`, `IndexedChunk` |
+| `govuk/models/content_index.py` | `IndexedDocument`, `IndexedChunk`, `HarvestedSource` |
 | `govuk/content_index/extract.py` | A converter for each page type, roles and skills; what is eligible |
 | `govuk/content_index/markdown.py` | Blocks and rich text as Markdown, with full link addresses |
 | `govuk/content_index/chunking.py` | Splitting at headings, and catalogue heading ids |
@@ -232,4 +337,10 @@ followed by the path, so a change of hostname needs no rebuild.
 | `govuk/mcp/app.py` | The HTTP app: hosts, maintenance and the rate limit |
 | `govuk/mcp/asgi.py` | What uvicorn runs |
 | `govuk/management/commands/run_mcp_server.py` | Starts the server |
-| `govuk/tests/test_content_index.py`, `test_content_index_search.py`, `test_mcp_server.py` | Tests |
+| `govuk/content_index/fetch.py` | The guarded fetch, and robots.txt |
+| `govuk/content_index/sources.py` | Reading a source page as Markdown: GOV.UK's Content API, GitHub, any other page |
+| `govuk/content_index/harvest.py` | Fetching a source, storing how it went, re-indexing its entries; fetching them all |
+| `govuk/content_index/tasks.py` | The fetch queued on publish |
+| `govuk/management/commands/harvest_external_sources.py` | Fetching every source |
+| `SourceTextPanel` in `govuk/models/catalogue/pages.py`; `catalogue_fetch_source_view` in `govuk/wagtail_hooks/catalogue.py` | The Source text panel and Fetch now |
+| `govuk/tests/test_content_index.py`, `test_content_index_search.py`, `test_content_index_harvest.py`, `test_mcp_server.py` | Tests |

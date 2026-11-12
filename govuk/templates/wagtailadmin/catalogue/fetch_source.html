@@ -1,0 +1,15 @@
+{% extends "wagtailadmin/generic/base.html" %}
+{% load i18n %}
+{% block main_content %}
+    <p class="w-mb-4">
+        {% blocktrans with url=page.source_url %}Fetch {{ url }} now and update the content index's copy of its text.{% endblocktrans %}
+    </p>
+    <p class="help w-mb-6">
+        {% trans "The site's robots.txt is respected. If the page cannot be fetched, the text last fetched is kept." %}
+    </p>
+    <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="button">{% trans "Fetch now" %}</button>
+        <a class="button button-secondary" href="{{ edit_url }}">{% trans "Cancel" %}</a>
+    </form>
+{% endblock %}

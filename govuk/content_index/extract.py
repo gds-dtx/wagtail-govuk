@@ -41,6 +41,7 @@ from govuk.models import (
     FrameworkMainPage,
     FrameworkSkillsPage,
     GovukRole,
+    HarvestedSource,
     IndexedDocument,
     TagListingsPage,
     entry_page_models,
@@ -138,6 +139,10 @@ class IndexContext:
     @cached_property
     def senior_roles_by_source(self) -> dict:
         return GovukRole.senior_roles_by_source_role_id()
+
+    @cached_property
+    def harvested(self) -> dict[str, HarvestedSource]:
+        return {source.url: source for source in HarvestedSource.objects.all()}
 
     @cached_property
     def type_labels(self) -> dict[int, str]:
@@ -274,6 +279,8 @@ def _entry_page(entry, document: DocumentData, links: Links, ctx: IndexContext) 
         document.origin = IndexedDocument.Origin.EXTERNAL
     document.metadata.update(_entry_metadata(entry, links, ctx))
     parts = [Part(entry.long_description or "")]
+    if isinstance(entry, ContentEntryExternalPage):
+        parts += _source_text(entry, document, ctx)
 
     if isinstance(entry, ContentEntryRequirementsPage):
         parts.append(Part(stream_markdown(entry.body, links), anchors=True))
@@ -311,6 +318,26 @@ def _entry_page(entry, document: DocumentData, links: Links, ctx: IndexContext) 
         # Laid out as a content page's body, whose headings get no ids.
         parts.append(Part(stream_markdown(entry.body, links)))
     document.parts.extend(parts)
+
+
+def _source_text(entry, document: DocumentData, ctx: IndexContext) -> list[Part]:
+    """An external entry's source page, as ``harvest`` fetched it.
+
+    Only what the source says about its text is recorded here, not when it
+    was last checked: that changes on every run, and would rewrite the row
+    each time. The MCP server reads it from the source's row instead.
+    """
+    source = ctx.harvested.get(entry.source_url)
+    if source is None or not source.markdown:
+        document.metadata["source_text"] = "unavailable"
+        document.metadata["source_text_reason"] = source.reason if source else "Not fetched yet."
+        return []
+    document.metadata["source_text"] = "fetched"
+    document.metadata["source_title"] = source.title
+    document.metadata["source_updated_at"] = (
+        source.source_updated_at.isoformat() if source.source_updated_at else ""
+    )
+    return [Part(source.markdown)]
 
 
 def _sub_page(page, document: DocumentData, links: Links, ctx: IndexContext) -> None:

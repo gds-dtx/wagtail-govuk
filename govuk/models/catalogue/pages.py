@@ -532,11 +532,36 @@ class ContentEntryGenericPage(ContentEntryPage):
         verbose_name = "catalogue entry: generic"
 
 
+class SourceTextPanel(Panel):
+    """How the content index last fetched an external entry's source page, with
+    a link to fetch it now. Shown only with the index on (``FEATURE_MCP``)."""
+
+    class BoundPanel(Panel.BoundPanel):
+        template_name = "wagtailadmin/catalogue/source_text_panel.html"
+
+        def is_shown(self):
+            from govuk.content_index import content_index_enabled
+
+            return content_index_enabled() and super().is_shown()
+
+        def get_context_data(self, parent_context=None):
+            from ..content_index import HarvestedSource
+
+            context = super().get_context_data(parent_context)
+            page = self.instance
+            context["source"] = (
+                HarvestedSource.objects.filter(url=page.source_url).first() if page.source_url else None
+            )
+            if page.pk and page.source_url:
+                context["fetch_url"] = reverse("govuk_catalogue_fetch_source", args=[page.pk])
+            return context
+
+
 class ContentEntryExternalPage(ContentEntryPage):
     """An entry published elsewhere: its card, and its address, go to the source."""
 
     subpage_types = []
-    content_panels = ContentEntryPage.entry_panels()
+    content_panels = ContentEntryPage.entry_panels(SourceTextPanel(heading="Source text"))
 
     class Meta:
         verbose_name = "catalogue entry: external"

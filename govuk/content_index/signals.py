@@ -24,7 +24,13 @@ from wagtail.signals import (
     unpublished,
 )
 
-from govuk.models import GovukRole, GovukSkill
+from govuk.models import (
+    ContentEntryExternalPage,
+    GovukRole,
+    GovukSkill,
+    HarvestedSource,
+    catalogue_enabled,
+)
 
 from . import content_index_enabled, indexer
 
@@ -46,6 +52,26 @@ def _after_commit(update, *args, **kwargs) -> None:
 
 def _page_changed(sender, instance, **kwargs):
     _after_commit(indexer.page_changed, instance.pk)
+
+
+def _harvest_new_source(url: str) -> None:
+    from .tasks import harvest_source_task
+
+    harvest_source_task.enqueue(url)
+
+
+def _external_entry_published(sender, instance, **kwargs):
+    """Fetch an external entry's source the first time it is published with it.
+
+    After that the source is refreshed on the timer (``harvest_external_sources``)
+    or with the admin's Fetch now, so a publish that keeps the source is not
+    slowed by fetching it again.
+    """
+    if not isinstance(instance, ContentEntryExternalPage) or not catalogue_enabled():
+        return
+    url = instance.source_url
+    if url and not HarvestedSource.objects.filter(url=url).exists():
+        _after_commit(_harvest_new_source, url)
 
 
 def _page_moved(sender, instance, parent_page_before=None, **kwargs):
@@ -74,6 +100,9 @@ def _skill_deleted(sender, instance, **kwargs):
 def connect() -> None:
     page_published.connect(_page_changed, dispatch_uid="govuk.content_index.page_published")
     page_unpublished.connect(_page_changed, dispatch_uid="govuk.content_index.page_unpublished")
+    page_published.connect(
+        _external_entry_published, dispatch_uid="govuk.content_index.external_entry_published"
+    )
     post_page_move.connect(_page_moved, dispatch_uid="govuk.content_index.post_page_move")
     published.connect(_snippet_changed, dispatch_uid="govuk.content_index.published")
     unpublished.connect(_snippet_changed, dispatch_uid="govuk.content_index.unpublished")

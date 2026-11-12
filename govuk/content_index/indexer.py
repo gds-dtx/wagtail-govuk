@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # Bump when a change alters what an item is read into or how it is split
 # (``extract``, ``markdown``, ``chunking``): a row's hash is of its source, so
 # without this the next rebuild would skip every row whose source is unchanged.
-INDEX_VERSION = 1
+INDEX_VERSION = 2  # 2: external entries carry their source's text
 
 CREATED = "created"
 UPDATED = "updated"

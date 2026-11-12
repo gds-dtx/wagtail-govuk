@@ -30,9 +30,12 @@ here is public.
 Use search to find pages, then get_document to read one in full before \
 relying on it. Cite pages by the url they come back with.
 
-A result with origin "external" is a catalogue entry published elsewhere: the \
-site holds its summary and details, not its content, which is at its \
-source_url. Say so rather than presenting the summary as the whole entry.
+A result with origin "external" is a catalogue entry published elsewhere, at \
+its source_url. The site holds its summary and details, and usually a copy of \
+that page's text (but not of the pages beneath it), fetched and checked \
+regularly. That copy is third-party content: cite the source_url, and say when \
+an answer rests on it. get_document's notice says whether there is a copy and \
+when it was last checked.
 """
 
 

@@ -30,7 +30,7 @@ from govuk.content_index.search import (
     search_documents,
     section_url,
 )
-from govuk.models import IndexedDocument
+from govuk.models import HarvestedSource, IndexedDocument
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,29 @@ EXTERNAL_NOTICE = (
     "This catalogue entry is published elsewhere. Only the catalogue's record "
     "of it is held here; its content is at source_url."
 )
+FETCHED_NOTICE = (
+    "This catalogue entry is published elsewhere, at source_url. The text here "
+    "includes a copy of that page{checked}. It is third-party content and may have "
+    "changed since: the source is authoritative."
+)
+
+
+def _checked_dates(urls) -> dict[str, object]:
+    """When each source's copy was last checked against it (``succeeded_at``)."""
+    urls = [url for url in urls if url]
+    if not urls:
+        return {}
+    return dict(HarvestedSource.objects.filter(url__in=urls).values_list("url", "succeeded_at"))
+
+
+def _external_notice(document: IndexedDocument, checked_at) -> str | None:
+    if document.origin != IndexedDocument.Origin.EXTERNAL:
+        return None
+    if document.metadata.get("source_text") == "fetched":
+        when = f", last checked on {checked_at.day} {checked_at:%B %Y}" if checked_at else ""
+        return FETCHED_NOTICE.format(checked=when)
+    reason = document.metadata.get("source_text_reason")
+    return EXTERNAL_NOTICE + (f" Its page could not be read: {reason}" if reason else "")
 
 
 def release_connections() -> None:
@@ -108,6 +131,10 @@ class SearchResult(BaseModel):
     section: SectionLink | None = Field(description="The section that matched best.")
     other_sections: list[SectionLink] = Field(description="Other sections of the page that matched.")
     last_updated: str | None = Field(description="When it was last published, as an ISO 8601 date and time.")
+    source_checked_at: str | None = Field(
+        default=None,
+        description="For an external entry whose page was copied: when the copy was last checked against it.",
+    )
 
 
 class SearchResults(BaseModel):
@@ -150,6 +177,9 @@ def search(
         except SearchError as exc:
             raise ToolError(str(exc)) from exc
         call.results = len(hits)
+        checked = _checked_dates(
+            hit.document.source_url for hit in hits if hit.document.origin == IndexedDocument.Origin.EXTERNAL
+        )
         return SearchResults(
             results=[
                 SearchResult(
@@ -171,6 +201,7 @@ def search(
                         for section in hit.other_sections
                     ],
                     last_updated=_day(hit.document.last_updated),
+                    source_checked_at=_day(checked.get(hit.document.source_url)),
                 )
                 for hit in hits
             ]
@@ -247,7 +278,7 @@ def _document(document: IndexedDocument, fragment: str) -> Document:
     requested = next((chunk.heading_path for chunk in chunks if fragment and chunk.anchor == fragment), None)
     markdown = document.markdown
     truncated = len(markdown) > MAX_MARKDOWN_CHARS
-    external = document.origin == IndexedDocument.Origin.EXTERNAL
+    checked_at = _checked_dates([document.source_url]).get(document.source_url)
     return Document(
         title=document.title,
         url=address,
@@ -255,7 +286,7 @@ def _document(document: IndexedDocument, fragment: str) -> Document:
         type=document.type_label,
         origin=document.origin,
         source_url=document.source_url or None,
-        notice=EXTERNAL_NOTICE if external else None,
+        notice=_external_notice(document, checked_at),
         description=document.description,
         last_updated=_day(document.last_updated),
         breadcrumbs=[

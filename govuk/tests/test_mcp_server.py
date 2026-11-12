@@ -73,7 +73,7 @@ class ToolTests(TestCase):
         document = tools.get_document(url=entry.get_url_parts()[2])
         self.assertEqual(document.origin, "external")
         self.assertEqual(document.source_url, "https://www.gov.uk/guidance/external-policy")
-        self.assertEqual(document.notice, tools.EXTERNAL_NOTICE)
+        self.assertEqual(document.notice, tools.EXTERNAL_NOTICE + " Its page could not be read: Not fetched yet.")
         self.assertEqual(document.metadata["owner_organisation"], "Example Department")
 
     def test_a_section_address_names_the_section(self):

@@ -5,9 +5,12 @@ into ``IndexedChunk`` sections at its headings. Written by
 ``govuk.content_index`` as editors publish, and rebuilt by
 ``manage.py rebuild_content_index``; read by the MCP server.
 
-Gated by ``FEATURE_FLAGS["MCP"]``. The rows hold only what the site already
-publishes to anyone, so there is nothing here a signed-out reader could not
-see on the page itself.
+``HarvestedSource`` holds a copy of the text of each page an external
+catalogue entry points at, which the index adds to that entry.
+
+Gated by ``FEATURE_FLAGS["MCP"]``. The rows hold only what is already
+published to anyone, here or at an entry's source, so there is nothing here a
+signed-out reader could not see on the page itself.
 """
 
 from django.db import models
@@ -122,3 +125,46 @@ class IndexedChunk(models.Model):
 
     def __str__(self) -> str:
         return f"{self.document} #{self.position}"
+
+
+class HarvestedSource(models.Model):
+    """The text of an external catalogue entry's source page, fetched for the index.
+
+    One per address, so entries that share a source share its copy. ``status``
+    is how the last attempt went; ``markdown`` is the last text fetched, which a
+    failed or refused attempt leaves in place. Written by
+    ``govuk.content_index.harvest``.
+    """
+
+    class Status(models.TextChoices):
+        OK = "ok", "Fetched"
+        FAILED = "failed", "Could not be fetched"
+        BLOCKED = "blocked", "Refused by the source"
+        NO_TEXT = "no_text", "No text found"
+        SKIPPED = "skipped", "Not fetched"
+
+    url = models.URLField(max_length=500, unique=True)
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.SKIPPED)
+    reason = models.CharField(max_length=300, blank=True)
+    http_status = models.PositiveSmallIntegerField(null=True, blank=True)
+    # Where the page was in the end, after any redirects.
+    fetched_url = models.URLField(max_length=500, blank=True)
+    title = models.CharField(max_length=255, blank=True)
+    markdown = models.TextField(blank=True)
+    content_hash = models.CharField(max_length=64, blank=True)
+    # For conditional requests: a source that has not changed answers 304.
+    etag = models.CharField(max_length=200, blank=True)
+    last_modified = models.CharField(max_length=100, blank=True)
+    # The source's own date for its content, where it gives one (GOV.UK does).
+    source_updated_at = models.DateTimeField(null=True, blank=True)
+    # The last attempt, and the last one that reached the page.
+    fetched_at = models.DateTimeField(null=True, blank=True)
+    succeeded_at = models.DateTimeField(null=True, blank=True)
+    failures = models.PositiveIntegerField(default=0, help_text="Failed attempts since the last success.")
+
+    class Meta:
+        verbose_name = "harvested source"
+        ordering = ["url"]
+
+    def __str__(self) -> str:
+        return self.url

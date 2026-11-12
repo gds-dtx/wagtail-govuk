@@ -89,7 +89,7 @@ Read once at startup from the environment into `settings.FEATURE_FLAGS`
 | `SKILLS` | `FEATURE_SKILLS` | The Capability Framework: roles, skills, changelog, its page types, wording and sidebar settings, and the CSV downloads |
 | `FEEDBACK` | `FEATURE_FEEDBACK` | The built-in feedback form at `/feedback`, and its snippet listing. When on, it shadows any CMS page at `/feedback` |
 | `GUIDANCE` | `FEATURE_GUIDANCE` | The content catalogue: the content main page, group and entry page types, the catalogue vocabulary snippets, and the catalogue import and export. See [docs/content-catalogue.md](docs/content-catalogue.md) |
-| `MCP` | `FEATURE_MCP` | The content index (every published, public page, role and skill as Markdown, kept current on publish, and `manage.py rebuild_content_index`) and the MCP server that searches it (`manage.py run_mcp_server`, served at `/mcp`). See [docs/mcp-server.md](docs/mcp-server.md) |
+| `MCP` | `FEATURE_MCP` | The content index (every published, public page, role and skill as Markdown, kept current on publish, and `manage.py rebuild_content_index`) and the MCP server that searches it (`manage.py run_mcp_server`, served at `/mcp`). External catalogue entries' source pages are fetched into it (`manage.py harvest_external_sources`). See [docs/mcp-server.md](docs/mcp-server.md) |
 
 A flag gates structure only. With it off, the feature's page
 types cannot be created, return 404 if the page import puts one in the tree,

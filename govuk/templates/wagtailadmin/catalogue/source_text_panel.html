@@ -1,0 +1,28 @@
+{% load i18n %}
+<p class="help w-mb-4">
+    {% trans "The content index keeps a copy of the source page's text, so the site's MCP server can answer from it. It is fetched when the entry is first published with its source address, and checked again on a timer." %}
+</p>
+{% if source %}
+    <dl class="w-mb-4">
+        <dt class="w-font-bold">{% trans "Last attempt" %}</dt>
+        <dd class="w-mb-2">
+            {{ source.get_status_display }}{% if source.fetched_at %}, {{ source.fetched_at|date:"j F Y, H:i" }}{% endif %}
+            {% if source.reason %}<br>{{ source.reason }}{% endif %}
+        </dd>
+        <dt class="w-font-bold">{% trans "Text held" %}</dt>
+        <dd class="w-mb-2">
+            {% if source.markdown %}
+                {% blocktrans with count=source.markdown|length|floatformat:"0g" %}{{ count }} characters{% endblocktrans %}{% if source.title %}, from “{{ source.title }}”{% endif %}{% if source.succeeded_at %}, {% trans "checked" %} {{ source.succeeded_at|date:"j F Y" }}{% endif %}
+            {% else %}
+                {% trans "None" %}
+            {% endif %}
+        </dd>
+    </dl>
+{% elif fetch_url %}
+    <p class="w-mb-4">{% trans "Not fetched yet." %}</p>
+{% endif %}
+{% if fetch_url %}
+    <a class="button button-secondary" href="{{ fetch_url }}">{% trans "Fetch now" %}</a>
+{% else %}
+    <p class="help">{% trans "Give the entry a source address and save it to fetch its page." %}</p>
+{% endif %}
