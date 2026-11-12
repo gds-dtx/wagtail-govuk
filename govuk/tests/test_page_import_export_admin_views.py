@@ -55,6 +55,36 @@ class PageImportExportAdminViewTests(TestCase):
         self.assertContains(response, "Select one or more skills to export.")
         self.assertContains(response, "Select one or more roles to export.")
 
+    def test_each_export_list_has_its_own_select_all(self):
+        GovukSkill.objects.create(title="Forensics", body="<p>Evidence.</p>")
+        GovukRole.objects.create(title="Incident responder", body="<p>Incidents.</p>")
+
+        response = self.client.get(self.index_url)
+
+        self.assertContains(response, 'data-controller="w-bulk"', count=1)
+        for group, label in [
+            ("pages", "Select all pages"),
+            ("skills", "Select all skills"),
+            ("roles", "Select all roles"),
+        ]:
+            with self.subTest(group=group):
+                self.assertContains(response, label, count=1)
+                # One select-all plus one per row, all in the same group, so
+                # ticking it reaches that list and no other.
+                self.assertContains(
+                    response, f'data-w-bulk-group-param="{group}"'
+                )
+        self.assertContains(response, 'data-w-bulk-target="all"', count=3)
+        # Benefits and Apply, plus the site's home page.
+        self.assertContains(response, 'data-w-bulk-group-param="pages"', count=4)
+
+    def test_an_empty_list_offers_no_select_all(self):
+        response = self.client.get(self.index_url)
+
+        self.assertContains(response, "Select all pages")
+        self.assertNotContains(response, "Select all skills")
+        self.assertNotContains(response, "Select all roles")
+
     @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
     def test_import_export_index_hides_skills_and_roles_sections_when_disabled(self):
         response = self.client.get(self.index_url)
