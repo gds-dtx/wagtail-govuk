@@ -31,4 +31,5 @@ FEATURE_FLAGS = {
     "SKILLS": True,
     "FEEDBACK": True,
     "GUIDANCE": True,
+    "MCP": True,
 }

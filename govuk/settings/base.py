@@ -508,6 +508,25 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
+        # The MCP server (manage.py run_mcp_server), which runs under uvicorn
+        # rather than gunicorn.
+        "uvicorn.error": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "uvicorn.access": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        # Never below INFO: the MCP SDK's debug logging carries the messages it
+        # receives, and those hold what people asked.
+        "mcp": {
+            "handlers": ["console"],
+            "level": "INFO" if LOG_LEVEL == "DEBUG" else LOG_LEVEL,
+            "propagate": False,
+        },
     },
 }
 
@@ -548,6 +567,17 @@ MAINTENANCE_RESUME_TEXT = os.getenv("MAINTENANCE_RESUME_TEXT", "")
 # prose for a reader ("9am on Monday 19 November 2018") and nothing can parse
 # it into a date, so the header takes its own number.
 MAINTENANCE_RETRY_AFTER = int(os.getenv("MAINTENANCE_RETRY_AFTER", 60 * 60))
+
+# The MCP server (FEATURE_MCP; govuk/mcp/, started by manage.py run_mcp_server).
+# Requests one client address may make in a minute; 0 turns the limit off. The
+# count is kept in the default cache, so it is per process unless CACHE_URL
+# names a shared one: the load balancer's own limit is the one to rely on.
+MCP_RATE_LIMIT_PER_MINUTE = int(os.getenv("MCP_RATE_LIMIT_PER_MINUTE", "60"))
+# The proxies whose X-Forwarded-For is believed, as uvicorn's
+# --forwarded-allow-ips takes them. Behind the load balancer, set it to the
+# VPC's range: then the address the rate limit counts is the client's, not the
+# load balancer's, and one a client wrote into the header itself is ignored.
+MCP_FORWARDED_ALLOW_IPS = os.getenv("MCP_FORWARDED_ALLOW_IPS", "127.0.0.1")
 
 # When enabled, logs inbound Django requests (including headers) at INFO level.
 INCOMING_REQUEST_INFO_LOGGING = _bool_env("INCOMING_REQUEST_INFO_LOGGING")

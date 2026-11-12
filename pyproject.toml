@@ -39,6 +39,11 @@ dependencies = [
   # control).
   "markdown-it-py==4.2.0",
   "PyYAML==6.0.3",
+  # The MCP server (FEATURE_MCP, govuk/mcp/): the official SDK, and the ASGI
+  # server it runs under. Pinned exactly: SDK 2.x is new, and parts of it are
+  # marked provisional.
+  "mcp==2.3.0",
+  "uvicorn==0.54.0",
 ]
 
 [dependency-groups]

@@ -5,13 +5,113 @@ publishes. It is built in stages:
 
 1. **The content index** (done): every published, public page, role and skill,
    held as Markdown and split into sections, kept current as editors publish.
-2. The MCP server, with tools to search the index and read a document.
+2. **The MCP server** (done): tools to search the index and read a document,
+   served at `/mcp`.
 3. The text of catalogue entries published elsewhere, fetched from their
    sources into the index.
 4. Tools for the catalogue's entries and the framework's roles and skills.
 
-It is behind the `MCP` feature flag (`FEATURE_MCP`). With the flag off,
-nothing is written to the index and the rebuild command refuses to run.
+It is behind the `MCP` feature flag (`FEATURE_MCP`). With the flag off:
+
+- nothing is written to the index;
+- the rebuild command refuses to run;
+- the MCP server will not start.
+
+The flag is on in `govuk/settings/development.py`.
+
+## Trying it locally
+
+1. Build the index once. After that it keeps itself current as you publish:
+
+   ```bash
+   .venv/bin/python manage.py rebuild_content_index
+   ```
+
+2. Start the server. It runs beside `runserver`, on its own port:
+
+   ```bash
+   .venv/bin/python manage.py run_mcp_server          # http://127.0.0.1:8001/mcp
+   .venv/bin/python manage.py run_mcp_server --reload # restarts when the code changes
+   ```
+
+   `http://127.0.0.1:8001/mcp/health` answers when it is up.
+
+3. Connect a client to it:
+
+   - **Claude Code:**
+     `claude mcp add --transport http govuk-local http://127.0.0.1:8001/mcp`,
+     then ask it about the site's content.
+   - **The MCP Inspector**, to call the tools by hand:
+     `npx @modelcontextprotocol/inspector`. Choose the Streamable HTTP
+     transport and the address above. Browsers on localhost are allowed in
+     development.
+
+The addresses the tools return are built from the default site's hostname and
+port (**Settings › Sites**). For links that open on `runserver`, set the port
+to 8000.
+
+## The MCP server
+
+### Tools
+
+| Tool | Takes | Returns |
+| --- | --- | --- |
+| `search` | `query`; optionally `origin` (`site` or `external`), `kind` (`page`, `role` or `skill`), `type` (such as `Standard`) and `limit` (1 to 25, 10 by default) | The best matches, one per page. Each has its address, type, origin, description, the text around the match, the section that matched best with a link to it, other sections that matched, and when it was last published |
+| `get_document` | `url`: an address from `search`, any address or path on the site, or an external entry's source address | The page in full as Markdown, with its sections, breadcrumbs, the site's details about it (a catalogue entry's owner, scope and review dates, for example) and, for an external entry, a notice that its content is elsewhere |
+
+- **Read only:** both tools are marked as read-only and as reading only
+  this site.
+- **Search syntax:** queries use web search syntax: quote a phrase, or put
+  `-` before a word to leave it out.
+- **Long pages:** a page longer than 100,000 characters is cut short, with
+  `truncated` set.
+
+### Rules around it
+
+- **Hosts:** it answers only the hosts the site does (`ALLOWED_HOSTS`).
+  Requests from a browser on another site are refused.
+- **Maintenance:** it is closed with a 503 whenever the site is, whether by
+  `MAINTENANCE_MODE` or by the Maintenance mode setting. There is no
+  signed-in staff member to let through.
+- **Rate limit:** each client address may make `MCP_RATE_LIMIT_PER_MINUTE`
+  requests a minute (60 by default). One question can take several requests.
+  The count is kept per process unless `CACHE_URL` names a shared cache, so
+  treat this as a second line of defence behind the load balancer's own
+  limit.
+- **Health check:** `/mcp/health` is exempt from maintenance and the rate
+  limit, as the site's own health check is.
+- **Logging:** each tool call is logged with its tool, outcome, number of
+  results and duration. What was asked is never logged: people may type
+  their own circumstances into a question. The SDK's own logging is held at
+  INFO or above for the same reason, because at DEBUG it logs the messages
+  it receives.
+- **Stateless:** there are no sessions, so any container can answer any
+  request.
+
+### Deploying it
+
+The infrastructure is in `gds-dtx/wagtail-iac` and `gds-dtx/wagtail-instances`,
+and does not run the MCP server yet. It needs:
+
+- **A container** from the same image, alongside the site's, running
+  `python manage.py run_mcp_server --host 0.0.0.0 --port 8001`. It needs the
+  site's environment, including `FEATURE_MCP=true`. Set `--workers` to suit
+  the task's CPU.
+- **A health check** of `GET /mcp/health` on port 8001. The image's
+  `HEALTHCHECK` checks gunicorn's port, so the MCP container needs its own
+  check in the task definition.
+- **A load balancer rule** sending `/mcp` and `/mcp/*` to that container's
+  target group, ahead of the site's default rule. The site stays on the same
+  domain.
+- **`MCP_FORWARDED_ALLOW_IPS`** set to the VPC's range. Then the address the
+  rate limit counts is the client's, not the load balancer's, and an address
+  a client writes into `X-Forwarded-For` itself is ignored.
+- **A rate limit at the load balancer or web application firewall**, per
+  client IP, on `/mcp`. This is the limit to rely on.
+- **`FEATURE_MCP=true`** on the site's own container too, so the index is
+  written as editors publish.
+- **The index rebuilt on deployment** (`rebuild_content_index`), and on a
+  timer afterwards.
 
 ## The content index
 
@@ -126,4 +226,10 @@ followed by the path, so a change of hostname needs no rebuild.
 | `govuk/content_index/indexer.py` | Storing rows, the rebuild, and what each change re-indexes |
 | `govuk/content_index/signals.py` | The publish, move and restriction handlers |
 | `govuk/management/commands/rebuild_content_index.py` | The rebuild command |
-| `govuk/tests/test_content_index.py` | Tests |
+| `govuk/content_index/search.py` | Searching the index, and finding a document by its address |
+| `govuk/mcp/tools.py` | The `search` and `get_document` tools, and their logging |
+| `govuk/mcp/server.py` | The tools registered with the MCP SDK, the instructions it gives clients, and the health check |
+| `govuk/mcp/app.py` | The HTTP app: hosts, maintenance and the rate limit |
+| `govuk/mcp/asgi.py` | What uvicorn runs |
+| `govuk/management/commands/run_mcp_server.py` | Starts the server |
+| `govuk/tests/test_content_index.py`, `test_content_index_search.py`, `test_mcp_server.py` | Tests |

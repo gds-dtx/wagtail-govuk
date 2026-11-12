@@ -69,6 +69,8 @@ Optional:
 - `FEATURE_SKILLS`, `FEATURE_FEEDBACK`, `FEATURE_GUIDANCE`, `FEATURE_MCP`: Feature flags, all off by default. See [Feature flags](#feature-flags).
 - `GUIDANCE_GITHUB_TOKEN`: Optional GitHub token used when the content catalogue is imported from a GitHub repo, to lift GitHub's unauthenticated rate limit. Read-only access to public repositories is enough.
 - `SCHEDULED_PUBLISHING`: Defaults to `false`, which hides the go-live and expiry fields in the admin. Turn it on only once something runs `manage.py publish_scheduled` on a timer.
+- `MCP_RATE_LIMIT_PER_MINUTE`: Requests one client address may make to the MCP server in a minute (defaults to `60`; `0` turns the limit off). A second line of defence behind the load balancer's own limit.
+- `MCP_FORWARDED_ALLOW_IPS`: The proxies whose `X-Forwarded-For` the MCP server believes (defaults to `127.0.0.1`). Set it to the VPC's range behind the load balancer.
 - `MAINTENANCE_MODE`: Emergency close of the whole site behind the 503 page, for everyone including editors. `MAINTENANCE_RESUME_TEXT` sets the "back at" wording and `MAINTENANCE_RETRY_AFTER` the `Retry-After` header in seconds (defaults to `3600`). Planned maintenance is the **Maintenance mode** site setting instead.
 - `MEDIA_S3_BUCKET`: Store uploaded images and documents in this S3 bucket instead of on the local filesystem. `MEDIA_S3_REGION`, `MEDIA_S3_LOCATION` (key prefix, defaults to `media`), `MEDIA_S3_CUSTOM_DOMAIN` and `MEDIA_S3_QUERYSTRING_AUTH` configure it further. Credentials come from the task role.
 - `CACHE_URL`: Redis URL(s) for a shared cache. Needs `redis` added to the dependencies; keys are prefixed with `CACHE_KEY_PREFIX` or `DOMAIN`.
@@ -87,7 +89,7 @@ Read once at startup from the environment into `settings.FEATURE_FLAGS`
 | `SKILLS` | `FEATURE_SKILLS` | The Capability Framework: roles, skills, changelog, its page types, wording and sidebar settings, and the CSV downloads |
 | `FEEDBACK` | `FEATURE_FEEDBACK` | The built-in feedback form at `/feedback`, and its snippet listing. When on, it shadows any CMS page at `/feedback` |
 | `GUIDANCE` | `FEATURE_GUIDANCE` | The content catalogue: the content main page, group and entry page types, the catalogue vocabulary snippets, and the catalogue import and export. See [docs/content-catalogue.md](docs/content-catalogue.md) |
-| `MCP` | `FEATURE_MCP` | The content index: every published, public page, role and skill as Markdown, kept current on publish, and `manage.py rebuild_content_index`. See [docs/mcp-server.md](docs/mcp-server.md) |
+| `MCP` | `FEATURE_MCP` | The content index (every published, public page, role and skill as Markdown, kept current on publish, and `manage.py rebuild_content_index`) and the MCP server that searches it (`manage.py run_mcp_server`, served at `/mcp`). See [docs/mcp-server.md](docs/mcp-server.md) |
 
 A flag gates structure only. With it off, the feature's page
 types cannot be created, return 404 if the page import puts one in the tree,

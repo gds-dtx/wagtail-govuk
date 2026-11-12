@@ -13,6 +13,7 @@ render. A part with ``anchors`` set is counted the same way, so a section's
 browser, so their sections have none.
 """
 
+import html
 import re
 from dataclasses import dataclass, field
 
@@ -60,6 +61,19 @@ def parts_markdown(parts: list[Part]) -> str:
     return "\n\n".join(out) + ("\n" if out else "")
 
 
+def _heading_text(markdown: str) -> tuple[str, str]:
+    """A Markdown heading's text as the page shows it, and as the page reads
+    it for the heading's id: its text runs joined by spaces."""
+    rendered = _markdown.renderInline(markdown)
+    if "<" not in rendered:
+        # Plain text. BeautifulSoup would only warn that one which looks like
+        # a filename ("README.md") might be meant as a path to open.
+        text = html.unescape(rendered).strip()
+        return re.sub(r"\s+", " ", text), text
+    heading = BeautifulSoup(rendered, "html.parser")
+    return re.sub(r"\s+", " ", heading.get_text()).strip(), heading.get_text(" ", strip=True)
+
+
 def chunk_parts(parts: list[Part], max_chars: int = MAX_CHUNK_CHARS) -> list[Chunk]:
     sections = [_Section()]
     open_headings: list[tuple[int, str]] = []
@@ -83,16 +97,10 @@ def chunk_parts(parts: list[Part], max_chars: int = MAX_CHUNK_CHARS) -> list[Chu
             match = None if in_fence else _HEADING.match(line)
             if match:
                 level = len(match.group(1))
-                heading = BeautifulSoup(_markdown.renderInline(match.group(2)), "html.parser")
-                text = re.sub(r"\s+", " ", heading.get_text()).strip()
-                # Read as the page reads its own heading for the id, text runs
-                # joined by spaces; h4s are counted too, as the page counts
-                # them, so a later duplicate's suffix matches.
-                anchor = (
-                    anchors.create(heading.get_text(" ", strip=True), level)
-                    if anchors and 2 <= level <= 4
-                    else ""
-                )
+                text, id_text = _heading_text(match.group(2))
+                # h4s are counted too, as the page counts them, so a later
+                # duplicate's suffix matches.
+                anchor = anchors.create(id_text, level) if anchors and 2 <= level <= 4 else ""
                 if level in (2, 3):
                     start(level, text, anchor)
                     continue
