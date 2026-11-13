@@ -93,7 +93,7 @@ class BedrockClaudeTests(SimpleTestCase):
     def _claude(self, create):
         sdk = mock.Mock()
         sdk.with_options.return_value.messages.create.side_effect = create
-        claude = BedrockClaude("anthropic.claude-opus-5-5", "eu-west-2")
+        claude = BedrockClaude("eu.anthropic.claude-opus-5-5", "eu-west-2")
         claude._client = sdk
         return claude, sdk
 
@@ -110,7 +110,7 @@ class BedrockClaudeTests(SimpleTestCase):
         self.assertEqual((reply.usage.input_tokens, reply.usage.output_tokens, reply.usage.cache_read_tokens), (100, 20, 5))
         sdk.with_options.assert_called_once_with(timeout=6)
         sent = sdk.with_options.return_value.messages.create.call_args.kwargs
-        self.assertEqual(sent["model"], "anthropic.claude-opus-5-5")
+        self.assertEqual(sent["model"], "eu.anthropic.claude-opus-5-5")
         self.assertEqual(sent["output_config"], {"effort": "low", "format": {"type": "json_schema", "schema": {"type": "object"}}})
         self.assertEqual(sent["system"][0]["cache_control"], {"type": "ephemeral"})
         for gone in ("thinking", "temperature", "tool_choice"):
@@ -149,6 +149,19 @@ class BedrockClaudeTests(SimpleTestCase):
     @override_settings(ASK_CLAUDE="")
     def test_off_unless_configured(self):
         self.assertIsNone(claude_module.get_claude())
+
+    def test_bedrock_is_the_runtime_endpoint_and_mantle_is_asked_for(self):
+        from anthropic import AnthropicBedrock, AnthropicBedrockMantle
+
+        expected = {"bedrock": ("bedrock-runtime", AnthropicBedrock), "bedrock-mantle": ("bedrock-mantle", AnthropicBedrockMantle)}
+        for backend, (endpoint, client_class) in expected.items():
+            with self.subTest(backend=backend), override_settings(ASK_CLAUDE=backend), mock.patch.dict(
+                "os.environ", {"AWS_ACCESS_KEY_ID": "x", "AWS_SECRET_ACCESS_KEY": "y"}
+            ):
+                claude = claude_module.get_claude()
+                self.assertEqual(claude.endpoint, endpoint)
+                self.assertIsInstance(claude._sdk(), client_class)
+                claude._client = None  # the cached instance is shared
 
     @override_settings(ASK_CLAUDE="openai")
     def test_an_unknown_backend_is_refused(self):

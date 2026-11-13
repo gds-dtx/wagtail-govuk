@@ -617,12 +617,15 @@ CONTENT_INDEX_EMBEDDING_REGION = (
 ASK_RATE_LIMIT_PER_MINUTE = int(os.getenv("ASK_RATE_LIMIT_PER_MINUTE", "20"))
 
 # Claude, for Ask: re-ranking the matches and writing a summary of them
-# (govuk/ask/claude.py). "bedrock" calls Claude in Amazon Bedrock (the
-# bedrock-mantle endpoint) with the task's role; "fake" answers without a
-# model, for tests and local runs; unset, Ask uses no model at all. Each use
-# is also switched on in the admin (Settings > Ask).
+# (govuk/ask/claude.py). "bedrock" calls Claude on Amazon Bedrock's
+# bedrock-runtime endpoint with the task's role, through the EU inference
+# profile by default, so requests are processed in EU regions;
+# "bedrock-mantle" calls the bedrock-mantle endpoint instead (its model IDs
+# have no "eu." prefix); "fake" answers without a model, for tests and local
+# runs; unset, Ask uses no model at all. Each use is also switched on in the
+# admin (Settings > Ask).
 ASK_CLAUDE = os.getenv("ASK_CLAUDE", "").strip().lower()
-ASK_CLAUDE_MODEL = os.getenv("ASK_CLAUDE_MODEL", "anthropic.claude-opus-5-5").strip()
+ASK_CLAUDE_MODEL = os.getenv("ASK_CLAUDE_MODEL", "eu.anthropic.claude-opus-5-5").strip()
 ASK_CLAUDE_REGION = (os.getenv("ASK_CLAUDE_REGION") or CONTENT_INDEX_EMBEDDING_REGION).strip()
 # Matches sent to Claude to re-rank, and the floor below which a match found
 # by meaning alone is not sent: Claude judges what is close, so this is

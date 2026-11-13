@@ -101,10 +101,20 @@ information.", which editors cannot remove.
 
 ## Claude
 
-Two calls, both to Claude Opus 5.5 at low effort through Claude in Amazon
-Bedrock (`govuk/ask/claude.py`). Both ask for JSON to a schema (structured
-outputs), have a timeout and no retries, and are logged without the question
-or the answer.
+Two calls, both to Claude Opus 5.5 at low effort on Amazon Bedrock
+(`govuk/ask/claude.py`). Both ask for JSON to a schema (structured outputs),
+have a timeout and no retries, and are logged without the question or the
+answer.
+
+- **The endpoint:** `bedrock-runtime` (`ASK_CLAUDE=bedrock`, the SDK's
+  `AnthropicBedrock` client).
+- **The model:** the EU inference profile, `eu.anthropic.claude-opus-5-5`.
+  Bedrock processes each request in one of the EU regions that profile lists,
+  never outside the EU.
+- **The other endpoint:** `bedrock-mantle` (`ASK_CLAUDE=bedrock-mantle`, with
+  `anthropic.claude-opus-5-5`) also works, wherever an account and region
+  offer the model there. In the dev account's eu-west-2 they do not: it
+  answers that the model does not exist.
 
 ### Re-ranking
 
@@ -280,12 +290,13 @@ In `gds-dtx/wagtail-iac`:
   user.
 - **No new schedule:** the nightly `rebuild_content_index` embeds what is
   missing at its end.
-- **Claude:** `ASK_CLAUDE=bedrock`, the task role allowed
-  `bedrock-mantle:CreateInference`, and `/ask/summary/` sent to the MCP
-  service by its listener rule. The model must be enabled for the account in
-  `ASK_CLAUDE_REGION`.
-- **Where Claude runs:** check whether the model ID routes globally or within
-  the EU before questions from the public go through it.
+- **Claude:** `ASK_CLAUDE=bedrock` with `ASK_CLAUDE_MODEL` the EU inference
+  profile, and `/ask/summary/` sent to the MCP service by its listener rule.
+  The task role needs `bedrock:InvokeModel` on two things:
+  - the inference profile (`arn:aws:bedrock:<region>:<account>:inference-profile/eu.anthropic.claude-opus-5-5`);
+  - the model in every region the profile routes to
+    (`arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-5-5`), allowed
+    only through that profile.
 
 `enable_ask` in wagtail-iac (branch `feat/ask`) does all of this but the
 checks.

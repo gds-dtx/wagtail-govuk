@@ -6,9 +6,19 @@ what is in it. Claude Opus 5.5 at low effort: thinking cannot be turned off on
 it, and low keeps it quick. Each call has its own timeout and no retries: a
 reader is waiting, and Ask works without Claude.
 
-``settings.ASK_CLAUDE``: "bedrock" for Claude in Amazon Bedrock (the
-``bedrock-mantle`` endpoint, signed with the task's AWS credentials), "fake"
-for a stand-in that answers from what it was given, or unset for none.
+``settings.ASK_CLAUDE``:
+
+- "bedrock": Claude on Amazon Bedrock's ``bedrock-runtime`` endpoint
+  (InvokeModel), through an inference profile such as
+  ``eu.anthropic.claude-opus-5-5``, which keeps processing in EU regions. The
+  SDK's ``AnthropicBedrock`` client, signed with the task's AWS credentials.
+- "bedrock-mantle": Claude in Amazon Bedrock's ``bedrock-mantle`` endpoint
+  (``AnthropicBedrockMantle``), where an account and region offer the model
+  there. Its model IDs have no profile prefix (``anthropic.claude-opus-5-5``).
+- "fake": a stand-in that answers from what it was given, for tests.
+- unset: no model.
+
+Both Bedrock endpoints take the same Messages API request.
 
 Nothing here logs or raises with the question or the answer.
 """
@@ -68,20 +78,27 @@ class Reply:
     usage: Usage
 
 
-class BedrockClaude:
-    """Claude in Amazon Bedrock, through the SDK's Mantle client."""
+RUNTIME, MANTLE = "bedrock-runtime", "bedrock-mantle"
 
-    def __init__(self, model: str, region: str):
+
+class BedrockClaude:
+    """Claude on Amazon Bedrock, through one of the SDK's two Bedrock clients."""
+
+    def __init__(self, model: str, region: str, endpoint: str = RUNTIME):
+        if endpoint not in (RUNTIME, MANTLE):
+            raise ImproperlyConfigured(f"Unknown Bedrock endpoint {endpoint!r}.")
         self.model = model
         self.region = region
+        self.endpoint = endpoint
         self._client = None
 
     def _sdk(self):
         if self._client is None:
-            from anthropic import AnthropicBedrockMantle
+            from anthropic import AnthropicBedrock, AnthropicBedrockMantle
 
+            client_class = AnthropicBedrock if self.endpoint == RUNTIME else AnthropicBedrockMantle
             # Retries are per call (below): none, since a reader is waiting.
-            self._client = AnthropicBedrockMantle(aws_region=self.region, max_retries=0)
+            self._client = client_class(aws_region=self.region, max_retries=0)
         return self._client
 
     def complete(
@@ -104,6 +121,12 @@ class BedrockClaude:
         except anthropic.RateLimitError as exc:
             raise ClaudeError("Claude is busy (429).") from exc
         except anthropic.APIStatusError as exc:
+            if exc.status_code in (403, 404):
+                # Access and model ID problems: Bedrock's own message says
+                # which, and holds nothing of the request. (A 400's could.)
+                logger.warning(
+                    "Bedrock answered %s for model %s: %s", exc.status_code, self.model, str(exc.message)[:300]
+                )
             raise ClaudeError(f"Claude refused the request ({exc.status_code}).") from exc
         except anthropic.APIConnectionError as exc:
             raise ClaudeError("Claude could not be reached.") from exc
@@ -161,8 +184,8 @@ class FakeClaude:
 
 
 @lru_cache(maxsize=4)
-def _bedrock(model: str, region: str) -> BedrockClaude:
-    return BedrockClaude(model, region)
+def _bedrock(model: str, region: str, endpoint: str) -> BedrockClaude:
+    return BedrockClaude(model, region, endpoint)
 
 
 _fake = FakeClaude()
@@ -173,8 +196,10 @@ def get_claude():
     backend = settings.ASK_CLAUDE
     if not backend or backend == "none":
         return None
-    if backend == "bedrock":
-        return _bedrock(settings.ASK_CLAUDE_MODEL, settings.ASK_CLAUDE_REGION)
+    if backend in ("bedrock", RUNTIME):
+        return _bedrock(settings.ASK_CLAUDE_MODEL, settings.ASK_CLAUDE_REGION, RUNTIME)
+    if backend == MANTLE:
+        return _bedrock(settings.ASK_CLAUDE_MODEL, settings.ASK_CLAUDE_REGION, MANTLE)
     if backend == "fake":
         return _fake
-    raise ImproperlyConfigured(f"ASK_CLAUDE {backend!r} is not one of bedrock, fake or none.")
+    raise ImproperlyConfigured(f"ASK_CLAUDE {backend!r} is not one of bedrock, bedrock-mantle, fake or none.")
