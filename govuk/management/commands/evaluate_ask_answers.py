@@ -7,7 +7,8 @@ Runs each question as the /ask/ page does with both uses of Claude on
 one HTML page: the question, the cards, the summary, and three checks:
 
 - **expected shown**: at least one expected answer is among the cards;
-- **expected cited**: the summary links to at least one of them;
+- **expected cited**: the summary links to at least one of them, or to an
+  expected page within one;
 - **out of scope**: a question the site cannot answer shows no cards.
 
 Two calls to Claude a question: it costs money, and counts towards the day's
@@ -15,6 +16,7 @@ budget. Summaries cached in the last day are reused.
 """
 
 import html
+import re
 from collections import Counter
 
 from django.conf import settings
@@ -110,7 +112,11 @@ class Command(BaseCommand):
             row["checks"] = {"out of scope": not cards}
         else:
             expected = [card for card in cards if card["expected"]]
-            cited = any(f'href="{html.escape(card["url"], quote=True)}"' in row["summary"] for card in expected)
+            # A link to an expected card, or straight to an expected page within one.
+            links = {html.unescape(href) for href in re.findall(r'href="([^"]*)"', row["summary"])}
+            cited = any(card["url"] in links for card in expected) or any(
+                "/" + path.strip("/") + "/" in link for link in links for path in question.expect
+            )
             row["checks"] = {"expected shown": bool(expected), "expected cited": cited}
         return row
 

@@ -18,6 +18,8 @@ from govuk.catalogue import presentation
 from govuk.content_index.extract import entry_for
 from govuk.models import IndexedDocument, entry_page_models
 
+from .scope import describe
+
 MAX_CARDS = 6
 
 
@@ -35,6 +37,8 @@ def _section_line(hit) -> dict | None:
 
 def _entry_card(entry, page, hit, request, vocab) -> dict:
     card = presentation.card(presentation.EntryView.from_page(entry, request), vocab)
+    scope = getattr(entry, "scope", None)
+    card["applies_to"] = describe(scope.label if scope else "", getattr(entry, "owner_organisation", ""))
     if page is not entry:
         card["section"] = {"title": page.title, "url": page.get_url(request) or ""}
     elif not card["external"]:

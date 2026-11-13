@@ -15,6 +15,7 @@ from django.conf import settings
 
 from . import prompts, usage
 from .claude import ClaudeError, ClaudeRefused
+from .scope import scopes_for
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ def rerank(question: str, hits: list, claude) -> Reranked:
         reply = claude.complete(
             purpose="rerank",
             system=prompts.RERANK_SYSTEM,
-            prompt=prompts.rerank_prompt(question, candidates),
+            prompt=prompts.rerank_prompt(question, candidates, scopes_for(hit.document for _, hit in candidates)),
             schema=prompts.RERANK_SCHEMA,
             max_tokens=MAX_TOKENS,
             timeout=settings.ASK_RERANK_TIMEOUT_SECONDS,

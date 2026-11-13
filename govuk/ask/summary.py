@@ -9,10 +9,12 @@ anywhere else, so the endpoint only ever summarises what search found for a
 question asked on the site, and reads the pages' text from the index, never
 from the request. It lasts ``TICKET_MAX_AGE`` seconds.
 
-Claude refers to each card by its marker ([d1]...); each becomes a link with
-the card's title, and any marker it was not given is dropped. The text is
-rendered from a little Markdown (paragraphs, lists, bold) and cleaned with
-nh3 before the links go in.
+Claude refers to each card by its marker ([d1]...), and to a page within a
+card's entry (a page of a guide, a point of a standard) by the part's marker
+([d1.2]); each becomes a link with its title, and any marker it was not given
+is dropped, as is the title written again straight after its own link. The
+text is rendered from a little Markdown (paragraphs, lists, bold) and cleaned
+with nh3 before the links go in.
 
 A summary is cached for a day under the hash of the question, the cards, the
 model and ``PROMPT_VERSION``. Neither the question nor the summary is logged
@@ -43,7 +45,7 @@ SUMMARY_PATH = "/ask/summary/"
 TICKET_SALT = "govuk.ask.summary"
 TICKET_MAX_AGE = 10 * 60
 MAX_TOKENS = 6000
-MARKER = re.compile(r"\[(d\d{1,2})\]")
+MARKER = re.compile(r"\[(d\d{1,2}(?:\.\d{1,2})?)\]")
 ALLOWED_TAGS = {"p", "ul", "ol", "li", "strong", "em"}
 
 OK, NONE, UNAVAILABLE = "ok", "none", "unavailable"
@@ -70,6 +72,7 @@ def make_ticket(question: str, cards: list[dict]) -> str:
                     "u": card["url"],
                     "y": card.get("type") or "",
                     "x": (card.get("description") or "")[:500],
+                    "a": card.get("applies_to") or "",
                     "s": list(dict.fromkeys(card.get("source_sections") or []))[:6],
                 }
                 for card in cards
@@ -92,44 +95,108 @@ def read_ticket(ticket: str) -> dict:
     return data
 
 
+def _path(document) -> str:
+    """Where a part is: its path on the site, or for one published elsewhere, its source."""
+    if document.origin == document.Origin.EXTERNAL:
+        return document.source_url
+    return document.url_path
+
+
 def _pages(cards: list[dict]) -> list[dict]:
-    """Each card with the text of the sections it was found by, read from the index."""
+    """Each card with the text of the sections it was found by, read from the index.
+
+    A section from a page with another title than the card's (a page within
+    the card's entry) goes under that page as a part, with a marker of its
+    own; the rest are the card's own. Its address comes from the index.
+    """
     wanted = [section for card in cards for section in card.get("s", [])]
     chunks = {chunk.pk: chunk for chunk in IndexedChunk.objects.filter(pk__in=wanted).select_related("document")}
     pages = []
     for number, card in enumerate(cards, start=1):
-        sections = []
+        key = f"d{number}"
+        own, parts = [], {}
         for section_id in card.get("s", []):
             chunk = chunks.get(section_id)
             if chunk is None:  # unpublished, or rebuilt, since the search
                 continue
-            heading = " › ".join(part for part in (chunk.document.title, chunk.heading_path) if part)
-            sections.append({"heading": heading, "text": chunk.text})
+            document = chunk.document
+            if document.title == card["t"]:
+                own.append({"heading": chunk.heading_path or document.title, "text": chunk.text})
+                continue
+            part = parts.get(document.pk)
+            if part is None:
+                part = parts[document.pk] = {
+                    "key": f"{key}.{len(parts) + 1}",
+                    "title": document.title,
+                    "url": _path(document),
+                    "sections": [],
+                }
+            part["sections"].append({"heading": chunk.heading_path or document.title, "text": chunk.text})
         pages.append(
-            {"key": f"d{number}", "title": card["t"], "type": card.get("y"), "description": card.get("x"), "sections": sections}
+            {
+                "key": key,
+                "title": card["t"],
+                "url": card.get("u"),
+                "type": card.get("y"),
+                "applies_to": card.get("a"),
+                "description": card.get("x"),
+                "sections": own,
+                "parts": list(parts.values()),
+            }
         )
     return pages
 
 
-def _link(card: dict) -> str:
-    title = escape(card["t"])
-    url = str(card.get("u") or "")
+def links_for(pages: list[dict]) -> dict[str, tuple[str, str]]:
+    """Every marker Claude may use, and the title and address it links to."""
+    links = {}
+    for page in pages:
+        links[page["key"]] = (page["title"], page.get("url") or "")
+        for part in page.get("parts", []):
+            links[part["key"]] = (part["title"], part["url"])
+    return links
+
+
+def card_links(cards: list[dict]) -> dict[str, tuple[str, str]]:
+    """The markers of a ticket's cards alone, without their parts."""
+    return {f"d{number}": (card["t"], card.get("u") or "") for number, card in enumerate(cards, start=1)}
+
+
+def _link(title: str, url: str) -> str:
+    title = escape(title)
     if not (url.startswith("/") or url.startswith("https://") or url.startswith("http://")):
         return title
     return f'<a class="govuk-link" href="{escape(url, quote=True)}">{title}</a>'
 
 
-def render(text: str, cards: list[dict]) -> str:
-    """Claude's text as safe HTML, each valid marker a link to its card."""
+def _without_repeats(html: str, title: str) -> str:
+    """The title dropped where it is written again straight after its own link:
+    "<a>GOV.UK Pay</a>, which describes GOV.UK Pay." and the like."""
+    name = r"(?:the\s+)?" + re.escape(escape(title))
+    link_end = re.escape(f">{escape(title)}</a>")
+    # ", which describes GOV.UK Pay." / ", the GOV.UK Pay." / ", GOV.UK Pay."
+    html = re.sub(
+        rf"({link_end}),\s*(?:(?:which|that)\s+(?:describes|covers|explains|is)\s+)?{name}(?=[.,;:])",
+        r"\1",
+        html,
+        flags=re.IGNORECASE,
+    )
+    # "<a>GOV.UK Design System</a> GOV.UK Design System" / "... on Internal Access"
+    return re.sub(rf"({link_end})\s+(?:on\s+)?{name}\b", r"\1", html, flags=re.IGNORECASE)
+
+
+def render(text: str, links: dict[str, tuple[str, str]]) -> str:
+    """Claude's text as safe HTML, each valid marker a link to its card or part."""
     html = MarkdownIt("commonmark", {"html": False}).render(str(text or ""))
     html = nh3.clean(html, tags=ALLOWED_TAGS, attributes={})
-    by_key = {f"d{number}": card for number, card in enumerate(cards, start=1)}
 
     def link(match) -> str:
-        card = by_key.get(match.group(1))
-        return _link(card) if card else ""
+        target = links.get(match.group(1))
+        return _link(*target) if target else ""
 
     html = MARKER.sub(link, html)
+    for title, _ in links.values():
+        html = _without_repeats(html, title)
     html = re.sub(r"[ \t]+([.,;:)])", r"\1", html)
     html = re.sub(r"[ \t]{2,}", " ", html).strip()
     text_only = re.sub(r"<[^>]+>", "", html).strip()
@@ -175,7 +242,7 @@ def summarise(ticket: str) -> Summary:
         logger.warning("Ask summary failed: %s", exc)
         return Summary(UNAVAILABLE)
     usage.record(reply.usage)
-    html = render(reply.data.get("summary", ""), data["c"])
+    html = render(reply.data.get("summary", ""), links_for(pages))
     result = Summary(OK if html else NONE, html)
     cache.set(key, (result.status, result.html), settings.ASK_SUMMARY_CACHE_SECONDS)
     logger.info(

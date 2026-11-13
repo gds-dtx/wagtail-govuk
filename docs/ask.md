@@ -123,11 +123,26 @@ answer.
 - **What Claude reads:** the question, and up to `ASK_RERANK_CANDIDATES` (20)
   matches from hybrid search down to `ASK_RERANK_FLOOR` (0.2), lower than the
   page's own threshold, since Claude judges what is close. Each match is
-  marked `d1`, `d2`… with its title, type, description, best section and a
-  snippet.
+  marked `d1`, `d2`… with:
+  - its title, type, description, best section and a snippet;
+  - who it applies to: the catalogue's scope and owner, for example "Single
+    organisation (Home Office)";
+  - for a page within an entry, which entry it is part of (`govuk/ask/scope.py`).
+    Such a page takes its entry's scope and owner.
 - **What it answers:** whether the question is one the site is for, and the
   markers of up to six matches that help, best first, each with a reason.
   Markers it was not given are dropped. Out of scope means nothing close.
+- **Who is asking:** the site does not know. It could be anyone in any
+  department, another public body or a supplier. Unless the question says
+  where they work:
+  - pages for the public sector or central government come first;
+  - a single organisation's pages come after them, as examples or
+    alternatives;
+  - devolved-government pages appear only for questions about the devolved
+    nations.
+
+  If the question names their organisation, or its kind, its pages come
+  first.
 - **If it fails** (after `ASK_RERANK_TIMEOUT_SECONDS`, 6), refuses, or the
   budget is spent, the page ranks by search alone, as without Claude.
 
@@ -141,12 +156,26 @@ answer.
 - **Why a ticket:** the endpoint only summarises what search found for a
   question asked on the site, and reads the pages' text from the content
   index, never from the request. A ticket lasts 10 minutes.
-- **What Claude reads:** the question, and for each card its title, type,
-  description and the text of up to three sections it was found by.
-- **What it answers:** about 100 words in plain English, naming each page by
-  its marker. Each marker becomes a link with the card's title; an unknown
-  one is dropped. The text is rendered from a little Markdown (paragraphs,
-  lists, bold) and cleaned with nh3 before the links go in.
+- **What Claude reads:** the question, and for each card:
+  - its title, type, who it applies to, and description;
+  - the text of up to four sections it was found by.
+
+  A page within the card's entry, such as a page of The GDS Way, is a part of
+  the card with its own marker (`d1.2`). Its sections come first, so the
+  most specific text is what Claude reads.
+- **What it answers:** about 100 words in plain English, naming each page or
+  part by its marker:
+  - it leads with what applies across government, unless the question says
+    where the person works;
+  - it says whose a single organisation's page is;
+  - it treats that page's requirements as that organisation's alone.
+- **How it is rendered:**
+  - each marker becomes a link with its title, a part's going straight to
+    the part, whose address comes from the index;
+  - unknown markers are dropped, as is a title written again straight after
+    its own link ("GOV.UK Pay, which describes GOV.UK Pay");
+  - the text is rendered from a little Markdown (paragraphs, lists, bold) and
+    cleaned with nh3 before the links go in.
 - **On the page:** under "Summary", shown whole in a polite live region so it
   is read out once, labelled "Written by AI from the pages below. Check them
   before you act on it." Without JavaScript, a note says a summary needs it.
@@ -156,7 +185,9 @@ answer.
 
 ### Prompts
 
-In `govuk/ask/prompts.py`. Bump `PROMPT_VERSION` with any change. The question
+In `govuk/ask/prompts.py`, now at version 2. Version 2 added who each page
+applies to, an entry's parts, and the rule that a marker replaces a page's
+name. Bump `PROMPT_VERSION` with any change. The question
 and the pages are wrapped in tags with their text escaped, and the
 instructions say both are data: a page copied from another site could hold
 text written to look like instructions.
