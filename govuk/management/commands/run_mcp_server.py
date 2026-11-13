@@ -1,4 +1,4 @@
-"""Run the MCP server under uvicorn.
+"""Run the uvicorn service: the MCP server, and Ask's summary.
 
 Locally, the defaults serve it at http://127.0.0.1:8001/mcp. Deployed, the
 container runs ``manage.py run_mcp_server --host 0.0.0.0`` beside the site's
@@ -8,7 +8,7 @@ gunicorn, and the load balancer sends ``/mcp`` to it.
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from govuk.content_index import mcp_enabled
+from govuk.content_index import ask_enabled, mcp_enabled
 
 
 class Command(BaseCommand):
@@ -23,8 +23,8 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        if not mcp_enabled():
-            raise CommandError("The MCP server is off (FEATURE_MCP).")
+        if not (mcp_enabled() or ask_enabled()):
+            raise CommandError("The MCP server and Ask are both off (FEATURE_MCP and FEATURE_ASK).")
         import uvicorn
 
         uvicorn.run(

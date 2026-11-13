@@ -4,6 +4,10 @@ One card an entry: a match within an entry (a point of a code, a step, a
 page of a guide) is shown on its entry's card, as the part that matched
 best, since the section pages list entries and not their parts. Other pages,
 roles and skills get a card of the same shape, with their type.
+
+Each card also carries ``source_documents`` and ``source_sections``, the ids
+of the index's documents and sections it was found by (from every match
+folded onto it), for the summary and the evaluation.
 """
 
 from urllib.parse import urlsplit
@@ -63,25 +67,28 @@ def cards_for(hits, request, *, limit: int = MAX_CARDS) -> list[dict]:
     entry_models = entry_page_models()
     vocab = None
     cards: list[dict] = []
-    seen: set[tuple] = set()
+    seen: dict[tuple, dict] = {}
     for hit in hits:
         document = hit.document
         page = pages.get(document.page_id) if document.page_id else None
         entry = None
         if page is not None:
             entry = page if isinstance(page, entry_models) else entry_for(page)
+        key = ("entry", entry.pk) if entry is not None else ("document", document.pk)
+        if key in seen:
+            seen[key]["source_documents"].append(document.pk)
+            seen[key]["source_sections"].extend(hit.section_ids)
+            continue
+        if len(cards) >= limit:
+            continue  # still folding later parts onto the cards there are
         if entry is not None:
-            key = ("entry", entry.pk)
-            if key in seen:
-                continue
             if vocab is None:
                 vocab = presentation.vocabularies()
             card = _entry_card(entry, page, hit, request, vocab)
         else:
-            key = ("document", document.pk)
             card = _other_card(document, page, hit, request)
-        seen.add(key)
+        card["source_documents"] = [document.pk]
+        card["source_sections"] = list(hit.section_ids)
+        seen[key] = card
         cards.append(card)
-        if len(cards) >= limit:
-            break
     return cards

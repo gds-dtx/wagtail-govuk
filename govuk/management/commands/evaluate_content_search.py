@@ -41,6 +41,11 @@ class Command(BaseCommand):
             help="The threshold to try (default CONTENT_INDEX_MIN_SIMILARITY).",
         )
         parser.add_argument("--show-misses", action="store_true", help="List each question that missed.")
+        parser.add_argument(
+            "--rerank",
+            action="store_true",
+            help="Re-rank each question's matches with Claude, as Ask does (hybrid only). Costs money.",
+        )
         parser.add_argument("--json", help="Also write every result to this file.")
 
     def handle(self, *args, **options):
@@ -60,11 +65,28 @@ class Command(BaseCommand):
                 self.stderr.write(f"  {path}")
 
         modes = (KEYWORD, SEMANTIC, HYBRID) if options["mode"] == "all" else (options["mode"],)
+        claude = None
+        if options["rerank"]:
+            from govuk.ask.claude import get_claude
+
+            claude = get_claude()
+            if claude is None:
+                raise CommandError("Claude is not set up (ASK_CLAUDE).")
+            modes = (HYBRID,)
         report = {"file": options["file"], "limit": options["limit"], "min_similarity": threshold, "modes": []}
         for mode in modes:
-            results = ev.evaluate(questions, mode=mode, limit=options["limit"], min_similarity=threshold)
-            self._print_mode(mode, results, options, threshold)
-            report["modes"].append(ev.as_json(mode, results))
+            results = ev.evaluate(
+                questions,
+                mode=mode,
+                limit=options["limit"],
+                min_similarity=threshold,
+                rerank_with=claude,
+                candidates=settings.ASK_RERANK_CANDIDATES,
+                floor=settings.ASK_RERANK_FLOOR,
+            )
+            label = f"{mode}, re-ranked by {claude.model}" if claude else mode
+            self._print_mode(label, results, options, threshold)
+            report["modes"].append(ev.as_json(label, results))
         if options["json"]:
             with open(options["json"], "w", encoding="utf-8") as out:
                 json.dump(report, out, indent=2, default=str)
@@ -104,6 +126,13 @@ class Command(BaseCommand):
         timing = ev.latency(results)
         if timing:
             write(f"  Time per search: median {timing['p50_ms']} ms, p95 {timing['p95_ms']} ms")
+        reranked = [result for result in results if result.rerank]
+        if reranked:
+            statuses = ", ".join(
+                f"{sum(1 for r in reranked if r.rerank == status)} {status}" for status in ("ok", "refused", "failed")
+            )
+            tokens = sum(result.tokens for result in reranked)
+            write(f"  Re-ranking: {statuses}; {tokens:,} tokens ({tokens // max(1, len(reranked)):,} a question)")
         if options["show_misses"]:
             self._print_misses(results)
 

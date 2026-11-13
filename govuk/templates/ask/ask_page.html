@@ -48,6 +48,29 @@
                 </form>
             </div>
         </div>
+        {% if asked and summary_ticket %}
+            {% comment %}
+                Filled in by main.js (setAskSummary) once the page has loaded.
+                Hidden until then, so without JavaScript only the note shows.
+            {% endcomment %}
+            <div class="govuk-grid-row">
+                <div class="govuk-grid-column-two-thirds">
+                    <div class="app-ask-summary"
+                         data-ask-summary
+                         data-url="{{ summary_url }}"
+                         data-ticket="{{ summary_ticket }}"
+                         hidden>
+                        <h2 class="govuk-heading-m">Summary</h2>
+                        <div aria-live="polite">
+                            <p class="govuk-body js-ask-summary-status">Writing a summary of these matches…</p>
+                            <div class="govuk-body js-ask-summary-body" hidden></div>
+                        </div>
+                        <p class="govuk-body-s app-ask-summary__label js-ask-summary-label" hidden>Written by AI from the pages below. Check them before you act on it.</p>
+                    </div>
+                    <noscript><p class="govuk-body">Turn on JavaScript to see a short summary of these matches.</p></noscript>
+                </div>
+            </div>
+        {% endif %}
         {% if asked %}
             {% if cards %}
                 <h2 class="govuk-heading-l">{{ cards|length }} close match{{ cards|length|pluralize:"es" }}</h2>

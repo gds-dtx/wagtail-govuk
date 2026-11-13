@@ -1439,6 +1439,16 @@ main > :nth-last-child(1 of .section-cards-container) {
     position: relative;
     z-index: 1;
 }
+/* Ask's AI summary (ask/ask_page.html), set off from the cards below it. */
+.app-ask-summary {
+    margin-bottom: 30px;
+    padding: 15px 20px 5px;
+    border-left: 5px solid #1d70b8;
+    background-color: #f3f2f1;
+}
+.app-ask-summary__label {
+    color: #505a5f;
+}
 /* The question box block (blocks/question_box.html). */
 .app-question-box {
     margin-bottom: 30px;

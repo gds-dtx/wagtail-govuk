@@ -615,6 +615,30 @@ CONTENT_INDEX_EMBEDDING_REGION = (
 # minute (0 turns the limit off), counted in the default cache as the MCP
 # server's are.
 ASK_RATE_LIMIT_PER_MINUTE = int(os.getenv("ASK_RATE_LIMIT_PER_MINUTE", "20"))
+
+# Claude, for Ask: re-ranking the matches and writing a summary of them
+# (govuk/ask/claude.py). "bedrock" calls Claude in Amazon Bedrock (the
+# bedrock-mantle endpoint) with the task's role; "fake" answers without a
+# model, for tests and local runs; unset, Ask uses no model at all. Each use
+# is also switched on in the admin (Settings > Ask).
+ASK_CLAUDE = os.getenv("ASK_CLAUDE", "").strip().lower()
+ASK_CLAUDE_MODEL = os.getenv("ASK_CLAUDE_MODEL", "anthropic.claude-opus-5-5").strip()
+ASK_CLAUDE_REGION = (os.getenv("ASK_CLAUDE_REGION") or CONTENT_INDEX_EMBEDDING_REGION).strip()
+# Matches sent to Claude to re-rank, and the floor below which a match found
+# by meaning alone is not sent: Claude judges what is close, so this is
+# lower than CONTENT_INDEX_MIN_SIMILARITY.
+ASK_RERANK_CANDIDATES = int(os.getenv("ASK_RERANK_CANDIDATES", "20"))
+ASK_RERANK_FLOOR = float(os.getenv("ASK_RERANK_FLOOR", "0.2"))
+# Seconds to wait for each call before doing without it.
+ASK_RERANK_TIMEOUT_SECONDS = float(os.getenv("ASK_RERANK_TIMEOUT_SECONDS", "6"))
+ASK_SUMMARY_TIMEOUT_SECONDS = float(os.getenv("ASK_SUMMARY_TIMEOUT_SECONDS", "30"))
+# Summaries one client address may ask for in a minute (0 turns it off).
+ASK_SUMMARY_RATE_LIMIT_PER_MINUTE = int(os.getenv("ASK_SUMMARY_RATE_LIMIT_PER_MINUTE", "10"))
+# Tokens (in and out) Claude may use in a day, across every task; past it,
+# Ask goes back to cards without a model until midnight UTC.
+ASK_DAILY_TOKEN_BUDGET = int(os.getenv("ASK_DAILY_TOKEN_BUDGET", "2000000"))
+# How long a summary is kept for the same question and matches.
+ASK_SUMMARY_CACHE_SECONDS = int(os.getenv("ASK_SUMMARY_CACHE_SECONDS", str(24 * 60 * 60)))
 # How alike in meaning (cosine similarity, 0 to 1) a match found by meaning
 # alone must be to the question to be returned, by Ask and the MCP server's
 # search; Ask also hides one that shares only some of the question's words

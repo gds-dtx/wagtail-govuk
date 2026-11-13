@@ -103,6 +103,9 @@ class SearchHit:
     # How alike in meaning its closest section, or the document as a whole,
     # is to the query (cosine, 0 to 1); None without embeddings.
     similarity: float | None = None
+    # The ``IndexedChunk`` ids of the section and the other sections, for
+    # whatever wants their text (Ask's summary).
+    section_ids: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -360,6 +363,7 @@ def _hit(entry: dict, terms: list[str]) -> SearchHit:
         other_sections=[
             Section(chunk.heading_path, section_url(address, chunk.anchor)) for chunk in others
         ],
+        section_ids=[best.pk, *(chunk.pk for chunk in others)],
         **how,
     )
 

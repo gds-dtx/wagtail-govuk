@@ -16,7 +16,7 @@ from govuk.api import (
     api_root_view,
     api_router,
 )
-from govuk.ask.views import ask_view
+from govuk.ask.views import ask_summary_view, ask_view
 from govuk.view_robots import robots_txt_view
 from govuk.view_securitytxt import security_txt_view
 from govuk.views import (
@@ -89,6 +89,7 @@ urlpatterns = [
     path("accounts/", include("allauth.urls")),
     path("search/", search_view, name="search"),
     path("ask/", ask_view, name="ask"),
+    path("ask/summary/", ask_summary_view, name="ask_summary"),
     path("search/suggest/", search_suggest_view, name="search_suggest"),
     # Before the Wagtail catch-all: /download/ itself is a page, and these are
     # the files it links to.

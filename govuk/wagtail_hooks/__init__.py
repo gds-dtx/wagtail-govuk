@@ -23,7 +23,11 @@ from wagtail import hooks
 from wagtail.contrib.settings.models import register_setting
 from wagtail.snippets.models import register_snippet
 
-from govuk.models import CapabilityFrameworkWordingSettings, SidebarSettings
+from govuk.models import (
+    AskSettings,
+    CapabilityFrameworkWordingSettings,
+    SidebarSettings,
+)
 
 from . import admin_views, catalogue  # noqa: F401  (imported for their hook registrations)
 from .rich_text import (
@@ -104,6 +108,8 @@ if settings.FEATURE_FLAGS.get("SKILLS"):
             if getattr(item, "model", None) not in _framework_settings_models
         ]
 
+if settings.FEATURE_FLAGS.get("ASK"):
+    register_setting(AskSettings, icon="search", order=6)
 if settings.FEATURE_FLAGS.get("FEEDBACK"):
     _register_snippet_if_needed(FeedbackViewSet)
 if settings.FEATURE_FLAGS.get("GUIDANCE"):

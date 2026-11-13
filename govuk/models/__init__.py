@@ -14,6 +14,7 @@ string references (``"govuk.GovukRole"``) so nothing here depends on import
 order across submodules.
 """
 
+from .ask import AskSettings, AskUsage
 from .blocks import (
     ContentBodyBlock,
     GovukTableBlock,
@@ -159,6 +160,8 @@ __all__ = [
     "ContentDiscoverySettings",
     "ContentDiscoverySource",
     "ContentPage",
+    "AskSettings",
+    "AskUsage",
     "CatalogueLayout",
     "CatalogueProfession",
     "CatalogueScope",

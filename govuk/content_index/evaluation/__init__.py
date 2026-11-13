@@ -16,7 +16,8 @@ answer came; ``summarise`` turns that into the numbers
 - **hidden**: expected answers search found but the similarity threshold hid,
   the sign it is set too high.
 
-"Shown" is what Ask shows: the hits ``search.is_close`` passes, in order.
+"Shown" is what Ask shows: the hits ``search.is_close`` passes, in order;
+or, re-ranked (``rerank_with``), the hits Claude chose, in its order.
 Matches are counted by document, before Ask folds an entry's parts onto its
 card; a part of an entry counts for the entry.
 
@@ -131,6 +132,9 @@ class QuestionResult:
     semantic: str = ""
     seconds: float = 0.0
     error: str = ""
+    # Re-ranked: how it went ("ok", "refused", "failed"), and the tokens used.
+    rerank: str = ""
+    tokens: int = 0
 
     @property
     def first_rank(self) -> int | None:
@@ -138,7 +142,21 @@ class QuestionResult:
         return min(found) if found else None
 
 
-def evaluate(questions, *, mode: str, limit: int = DEFAULT_LIMIT, min_similarity: float) -> list[QuestionResult]:
+def evaluate(
+    questions,
+    *,
+    mode: str,
+    limit: int = DEFAULT_LIMIT,
+    min_similarity: float,
+    rerank_with=None,
+    candidates: int = 20,
+    floor: float = 0.2,
+) -> list[QuestionResult]:
+    """``rerank_with`` a Claude (``govuk.ask.claude``) re-ranks each question's
+    matches as Ask does: ``candidates`` of them, down to ``floor``. Each call
+    costs money, and counts towards the day's budget."""
+    from govuk.ask.rerank import OK, rerank
+
     results = []
     for question in questions:
         result = QuestionResult(question.question, question.category, question.match, question.expect)
@@ -147,17 +165,25 @@ def evaluate(questions, *, mode: str, limit: int = DEFAULT_LIMIT, min_similarity
             outcome = search(
                 question.question,
                 mode=mode,
-                limit=limit,
-                min_similarity=None if mode == KEYWORD else min_similarity,
+                limit=candidates if rerank_with else limit,
+                min_similarity=None if mode == KEYWORD else (floor if rerank_with else min_similarity),
                 max_length=QUESTION_MAX_LENGTH,
             )
         except SearchError as exc:
             result.error = str(exc)
             results.append(result)
             continue
+        shown = None
+        if rerank_with is not None and outcome.hits:
+            reranked = rerank(question.question, outcome.hits, rerank_with)
+            result.rerank, result.tokens = reranked.status, reranked.tokens
+            if reranked.status == OK:
+                shown = reranked.hits
         result.seconds = time.monotonic() - started
         result.semantic = outcome.semantic
-        shown = [hit for hit in outcome.hits if is_close(hit, min_similarity, semantic=outcome.semantic)]
+        if shown is None:
+            shown = [hit for hit in outcome.hits if is_close(hit, min_similarity, semantic=outcome.semantic)]
+            shown = shown[:limit]
         result.shown = [Shown(hit.document.title, hit.url, hit.matched_words, hit.similarity) for hit in shown]
         similarities = [hit.similarity for hit in outcome.hits if hit.similarity is not None]
         result.best_similarity = max(similarities) if similarities else None

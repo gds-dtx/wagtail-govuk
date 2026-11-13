@@ -18,7 +18,10 @@ either flag is on. With both off:
 - nothing is written to the index;
 - the rebuild command refuses to run.
 
-With `FEATURE_MCP` off, the MCP server will not start.
+The same uvicorn service also serves Ask's summary at `/ask/summary/` when
+`FEATURE_ASK` is on (see [docs/ask.md](ask.md#the-summary)). It starts with
+either flag on, and serves `/mcp` only with `FEATURE_MCP`. The MCP rate limit
+counts `/mcp` requests only.
 
 The flag is on in `govuk/settings/development.py`.
 

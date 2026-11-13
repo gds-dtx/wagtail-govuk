@@ -49,6 +49,10 @@ dependencies = [
   # stored in PostgreSQL's vector type (the pgvector extension) through this
   # package's Django field. No numpy needed from 0.5.
   "pgvector==0.5.1",
+  # Ask's re-ranking and summary (govuk/ask/claude.py): Claude in Amazon
+  # Bedrock through the SDK's Mantle client. [bedrock] brings boto3 and
+  # botocore for its SigV4 signing.
+  "anthropic[bedrock]==2.3.0",
 ]
 
 [dependency-groups]

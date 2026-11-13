@@ -59,12 +59,13 @@ def create_server() -> MCPServer:
     server.add_tool(tools.search, name="search", title="Search the site", annotations=READ_ONLY)
     server.add_tool(tools.get_document, name="get_document", title="Read a page", annotations=READ_ONLY)
 
-    @server.custom_route(HEALTH_PATH, methods=["GET"])
-    async def health(request: Request) -> JSONResponse:
-        database_ok = await sync_to_async(_check_database_health)()
-        return JSONResponse(
-            {"health": {"database": "ok" if database_ok else "error"}},
-            status_code=200 if database_ok else 503,
-        )
-
+    server.custom_route(HEALTH_PATH, methods=["GET"])(health)
     return server
+
+
+async def health(request: Request) -> JSONResponse:
+    database_ok = await sync_to_async(_check_database_health)()
+    return JSONResponse(
+        {"health": {"database": "ok" if database_ok else "error"}},
+        status_code=200 if database_ok else 503,
+    )

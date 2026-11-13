@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", function () {
   openLinkedDetails();
   setPageFeedback();
   setSiteSearchAutocomplete();
+  setAskSummary();
   setSkipLink();
 });
 
@@ -457,6 +458,46 @@ function setPageFeedback() {
     success.hidden = false;
     success.focus();
   });
+}
+
+function setAskSummary() {
+  // Ask's AI summary (ask/ask_page.html). The cards are already on the page;
+  // this fetches the summary of them once it has loaded, from the ticket the
+  // page carries, and shows it whole in a polite live region, so it is read
+  // out once rather than word by word. Without JavaScript the page says a
+  // summary needs it; if the summary cannot be had, the region goes away.
+  const region = document.querySelector("[data-ask-summary]");
+  if (!region) {
+    return;
+  }
+  const status = region.querySelector(".js-ask-summary-status");
+  const body = region.querySelector(".js-ask-summary-body");
+  const label = region.querySelector(".js-ask-summary-label");
+  region.hidden = false;
+
+  const data = new URLSearchParams();
+  data.set("ticket", region.dataset.ticket || "");
+  fetch(region.dataset.url, {
+    method: "POST",
+    body: data,
+    credentials: "omit",
+    headers: { Accept: "application/json" },
+  })
+    .then((response) => (response.ok ? response.json() : null))
+    .then((result) => {
+      if (!result || result.status !== "ok" || !result.html) {
+        region.remove();
+        return;
+      }
+      // The server built this HTML from a fixed set of tags and its own links.
+      body.innerHTML = result.html;
+      status.hidden = true;
+      body.hidden = false;
+      label.hidden = false;
+    })
+    .catch(() => {
+      region.remove();
+    });
 }
 
 function setSiteSearchAutocomplete() {
