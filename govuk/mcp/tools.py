@@ -17,11 +17,13 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Annotated, Any, Literal
 
+from django.conf import settings
 from django.db import connections
 from mcp.server.mcpserver.exceptions import ToolError
 from pydantic import BaseModel, Field
 
 from govuk.content_index.search import (
+    HYBRID,
     MAX_LIMIT,
     MAX_QUERY_LENGTH,
     SearchError,
@@ -168,12 +170,22 @@ def search(
     standards, policies, guidance, methods and tools, and the Capability
     Framework's roles and skills.
 
-    Returns the best matches, one per page, each with the text around the match
-    and the section it is in. Read a result in full with get_document.
+    Matches by meaning as well as by words, so a question in plain words
+    works as well as keywords. Returns the best matches, one per page, each
+    with the text around the match and the section it is in. Read a result
+    in full with get_document.
     """
     with _tool_call("search") as call:
         try:
-            hits = search_documents(query, origin=origin, kind=kind, type_label=type, limit=limit)
+            hits = search_documents(
+                query,
+                origin=origin,
+                kind=kind,
+                type_label=type,
+                limit=limit,
+                mode=HYBRID,
+                min_similarity=settings.CONTENT_INDEX_MIN_SIMILARITY,
+            )
         except SearchError as exc:
             raise ToolError(str(exc)) from exc
         call.results = len(hits)

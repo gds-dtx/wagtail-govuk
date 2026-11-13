@@ -44,6 +44,11 @@ dependencies = [
   # marked provisional.
   "mcp==2.3.0",
   "uvicorn==0.54.0",
+  # Ask (FEATURE_ASK, govuk/ask/) and the MCP server's search match questions
+  # by meaning as well as by their words: the content index's embeddings are
+  # stored in PostgreSQL's vector type (the pgvector extension) through this
+  # package's Django field. No numpy needed from 0.5.
+  "pgvector==0.5.1",
 ]
 
 [dependency-groups]

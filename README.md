@@ -66,12 +66,16 @@ Optional:
 - `OIDC_JWKS_URL`: JWKS URL for API bearer token verification. Defaults to `https://sso.service.security.gov.uk/.well-known/jwks.json`.
 - `OIDC_ISSUER`: Expected JWT issuer for API bearer token verification. Defaults to `https://sso.service.security.gov.uk`.
 - `OIDC_TOKEN_AUDIENCE` / `OIDC_TOKEN_AUDIENCES`: Expected JWT audience, or a comma-separated list of them, for API bearer token verification. Defaults to `OIDC_CLIENT_ID`.
-- `FEATURE_SKILLS`, `FEATURE_FEEDBACK`, `FEATURE_GUIDANCE`, `FEATURE_MCP`: Feature flags, all off by default. See [Feature flags](#feature-flags).
+- `FEATURE_SKILLS`, `FEATURE_FEEDBACK`, `FEATURE_GUIDANCE`, `FEATURE_MCP`, `FEATURE_ASK`: Feature flags, all off by default. See [Feature flags](#feature-flags).
 - `GUIDANCE_GITHUB_TOKEN`: Optional GitHub token used when the content catalogue is imported from a GitHub repo, to lift GitHub's unauthenticated rate limit. Read-only access to public repositories is enough.
 - `SCHEDULED_PUBLISHING`: Defaults to `false`, which hides the go-live and expiry fields in the admin. Turn it on only once something runs `manage.py publish_scheduled` on a timer.
 - `MCP_RATE_LIMIT_PER_MINUTE`: Requests one client address may make to the MCP server in a minute (defaults to `60`; `0` turns the limit off). A second line of defence behind the WAF's own limit.
 - `MCP_CLIENT_IP_HEADER`: A request header holding the client's address, set by a proxy that overwrites whatever the client sent. Behind CloudFront, set it to `true-client-ip`, which CloudFront's viewer-request function sets. Unset, the MCP server's rate limit counts the connection's address.
 - `MCP_FORWARDED_ALLOW_IPS`: The proxies whose `X-Forwarded-For` uvicorn believes for the connection's address (defaults to `127.0.0.1`). It cannot give the client's address behind CloudFront; use `MCP_CLIENT_IP_HEADER` there.
+- `CLIENT_IP_HEADER`: The same as `MCP_CLIENT_IP_HEADER`, for Ask's rate limit. Defaults to `MCP_CLIENT_IP_HEADER`.
+- `CONTENT_INDEX_EMBEDDINGS`: `bedrock` to embed the content index with Amazon Titan Text Embeddings V2 on Amazon Bedrock, so Ask and the MCP server's search match by meaning as well as words. Unset, search matches words only. `CONTENT_INDEX_EMBEDDING_REGION` (defaults to `AWS_REGION`, then `eu-west-2`) and `CONTENT_INDEX_EMBEDDING_DIMENSIONS` (`256`, `512` or `1024`, the default) configure it. Credentials come from the task role. See [docs/ask.md](docs/ask.md).
+- `CONTENT_INDEX_MIN_SIMILARITY`: How alike in meaning (0 to 1, defaults to `0.35`) a match found by meaning alone must be to be shown. Set it from `manage.py evaluate_content_search`.
+- `ASK_RATE_LIMIT_PER_MINUTE`: Questions one client address may ask in a minute (defaults to `20`; `0` turns the limit off).
 - `MAINTENANCE_MODE`: Emergency close of the whole site behind the 503 page, for everyone including editors. `MAINTENANCE_RESUME_TEXT` sets the "back at" wording and `MAINTENANCE_RETRY_AFTER` the `Retry-After` header in seconds (defaults to `3600`). Planned maintenance is the **Maintenance mode** site setting instead.
 - `MEDIA_S3_BUCKET`: Store uploaded images and documents in this S3 bucket instead of on the local filesystem. `MEDIA_S3_REGION`, `MEDIA_S3_LOCATION` (key prefix, defaults to `media`), `MEDIA_S3_CUSTOM_DOMAIN` and `MEDIA_S3_QUERYSTRING_AUTH` configure it further. Credentials come from the task role.
 - `CACHE_URL`: Redis URL(s) for a shared cache. Needs `redis` added to the dependencies; keys are prefixed with `CACHE_KEY_PREFIX` or `DOMAIN`.
@@ -91,6 +95,7 @@ Read once at startup from the environment into `settings.FEATURE_FLAGS`
 | `FEEDBACK` | `FEATURE_FEEDBACK` | The built-in feedback form at `/feedback`, and its snippet listing. When on, it shadows any CMS page at `/feedback` |
 | `GUIDANCE` | `FEATURE_GUIDANCE` | The content catalogue: the content main page, group and entry page types, the catalogue vocabulary snippets, and the catalogue import and export. See [docs/content-catalogue.md](docs/content-catalogue.md) |
 | `MCP` | `FEATURE_MCP` | The content index (every published, public page, role and skill as Markdown, kept current on publish, and `manage.py rebuild_content_index`) and the MCP server that searches it (`manage.py run_mcp_server`, served at `/mcp`). External catalogue entries' source pages are fetched into it (`manage.py harvest_external_sources`). See [docs/mcp-server.md](docs/mcp-server.md) |
+| `ASK` | `FEATURE_ASK` | The question box block and the `/ask/` page it posts to, which shows the content index's closest matches to a question as catalogue cards. The content index is kept while either `MCP` or `ASK` is on. See [docs/ask.md](docs/ask.md) |
 
 A flag gates structure only. With it off, the feature's page
 types cannot be created, return 404 if the page import puts one in the tree,

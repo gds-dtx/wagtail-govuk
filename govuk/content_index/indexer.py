@@ -29,6 +29,7 @@ from govuk.models import (
     entry_page_models,
 )
 
+from .embeddings import document_text, section_text, text_hash
 from .extract import (
     IndexContext,
     eligible_pages,
@@ -43,7 +44,7 @@ logger = logging.getLogger(__name__)
 # Bump when a change alters what an item is read into or how it is split
 # (``extract``, ``markdown``, ``chunking``): a row's hash is of its source, so
 # without this the next rebuild would skip every row whose source is unchanged.
-INDEX_VERSION = 2  # 2: external entries carry their source's text
+INDEX_VERSION = 3  # 2: external entries carry their source's text; 3: embedding hashes
 
 CREATED = "created"
 UPDATED = "updated"
@@ -75,21 +76,24 @@ def _store(source: dict, data, *, force: bool) -> str:
         and existing.index_version == INDEX_VERSION
     ):
         return UNCHANGED
+    # Stored as cut, so ``embeddings.wanted_texts`` reads back the same text.
+    title, type_label = data.title[:255], data.type_label[:80]
     fields = {
         "kind": data.kind,
         "origin": data.origin,
         "site_id": data.site_id,
         "url_path": data.url_path[:500],
         "source_url": data.source_url[:500],
-        "title": data.title[:255],
+        "title": title,
         "description": data.description,
-        "type_label": data.type_label[:80],
+        "type_label": type_label,
         "breadcrumbs": data.breadcrumbs,
         "metadata": data.metadata,
         "markdown": data.markdown,
         "last_updated": data.last_updated,
         "content_hash": digest,
         "index_version": INDEX_VERSION,
+        "embedding_hash": text_hash(document_text(title, type_label, data.description)),
     }
     if existing is None:
         document = IndexedDocument.objects.create(**source, **fields)
@@ -106,6 +110,7 @@ def _store(source: dict, data, *, force: bool) -> str:
             heading_path=chunk.heading_path[:500],
             anchor=chunk.anchor[:200],
             text=chunk.text,
+            embedding_hash=text_hash(section_text(title, type_label, chunk.heading_path[:500], chunk.text)),
         )
         for position, chunk in enumerate(data.chunks())
     )

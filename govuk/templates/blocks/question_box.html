@@ -1,0 +1,23 @@
+{% comment %}
+    The question box: a question in a text area, posted to /ask/, which shows
+    the closest matches on the site. Posted rather than put in the address, so
+    the question is not kept in the address bar, the browser's history or any
+    access log on the way. Nothing at all while Ask is off.
+{% endcomment %}
+{% if ask_on %}
+    <form class="app-question-box" action="{% url 'ask' %}" method="post" novalidate>
+        <div class="govuk-form-group">
+            <h2 class="govuk-label-wrapper">
+                <label class="govuk-label govuk-label--l" for="{{ field_id }}">{{ value.label }}</label>
+            </h2>
+            {% if value.hint %}<div id="{{ field_id }}-hint" class="govuk-hint">{{ value.hint }}</div>{% endif %}
+            {% include "ask/includes/privacy_hint.html" with privacy_id=field_id|add:"-privacy" %}
+            <textarea class="govuk-textarea"
+                      id="{{ field_id }}"
+                      name="question"
+                      rows="3"
+                      aria-describedby="{% if value.hint %}{{ field_id }}-hint {% endif %}{{ field_id }}-privacy"></textarea>
+        </div>
+        <button type="submit" class="govuk-button govuk-!-margin-bottom-0" data-module="govuk-button">{{ value.button_text }}</button>
+    </form>
+{% endif %}

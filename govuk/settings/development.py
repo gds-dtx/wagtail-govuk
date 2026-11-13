@@ -32,4 +32,5 @@ FEATURE_FLAGS = {
     "FEEDBACK": True,
     "GUIDANCE": True,
     "MCP": True,
+    "ASK": True,
 }

@@ -8,7 +8,7 @@ since a few always will. Only an unexpected error fails it.
 
 from django.core.management.base import BaseCommand, CommandError
 
-from govuk.content_index import content_index_enabled
+from govuk.content_index import FLAGS_OFF, content_index_enabled
 from govuk.content_index.harvest import harvest_all
 from govuk.models import HarvestedSource, catalogue_enabled
 
@@ -26,7 +26,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         if not content_index_enabled():
-            raise CommandError("The content index is off (FEATURE_MCP).")
+            raise CommandError(FLAGS_OFF)
         if not catalogue_enabled():
             raise CommandError("The content catalogue is off (FEATURE_GUIDANCE).")
         result = harvest_all(force=options["force"], urls=options["url"])

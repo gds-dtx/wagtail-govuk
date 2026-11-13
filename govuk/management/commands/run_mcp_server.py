@@ -8,7 +8,7 @@ gunicorn, and the load balancer sends ``/mcp`` to it.
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from govuk.content_index import content_index_enabled
+from govuk.content_index import mcp_enabled
 
 
 class Command(BaseCommand):
@@ -23,7 +23,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        if not content_index_enabled():
+        if not mcp_enabled():
             raise CommandError("The MCP server is off (FEATURE_MCP).")
         import uvicorn
 

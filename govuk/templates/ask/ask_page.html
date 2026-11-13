@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% comment %}
+    The question box's page. Asked, it shows the closest matches as catalogue
+    cards, with the question again above them to change and search again.
+    Not asked, or with an error, it is the question box alone, its question
+    the page's heading.
+{% endcomment %}
+{% block title %}{% if error %}Error: {% endif %}{% if asked %}Results for your question{% else %}{{ label }}{% endif %}{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-padding-bottom-6">
+        <div class="govuk-grid-row">
+            <div class="govuk-grid-column-two-thirds">
+                {% if error %}
+                    <div class="govuk-error-summary" data-module="govuk-error-summary">
+                        <div role="alert">
+                            <h2 class="govuk-error-summary__title">There is a problem</h2>
+                            <div class="govuk-error-summary__body">
+                                <ul class="govuk-list govuk-error-summary__list">
+                                    <li><a href="#ask-question">{{ error }}</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+                {% if asked %}<h1 class="govuk-heading-xl">Results for your question</h1>{% endif %}
+                <form action="{% url 'ask' %}" method="post" novalidate>
+                    <div class="govuk-form-group{% if error %} govuk-form-group--error{% endif %}">
+                        {% if asked %}
+                            <label class="govuk-label govuk-label--s" for="ask-question">Your question</label>
+                        {% else %}
+                            <h1 class="govuk-label-wrapper">
+                                <label class="govuk-label govuk-label--l" for="ask-question">{{ label }}</label>
+                            </h1>
+                        {% endif %}
+                        {% include "ask/includes/privacy_hint.html" with privacy_id="ask-question-privacy" %}
+                        {% if error %}
+                            <p id="ask-question-error" class="govuk-error-message">
+                                <span class="govuk-visually-hidden">Error:</span> {{ error }}
+                            </p>
+                        {% endif %}
+                        <textarea class="govuk-textarea{% if error %} govuk-textarea--error{% endif %}"
+                                  id="ask-question"
+                                  name="question"
+                                  rows="3"
+                                  aria-describedby="ask-question-privacy{% if error %} ask-question-error{% endif %}">{{ question|default:"" }}</textarea>
+                    </div>
+                    <button type="submit" class="govuk-button" data-module="govuk-button">{% if asked %}Search again{% else %}Search{% endif %}</button>
+                </form>
+            </div>
+        </div>
+        {% if asked %}
+            {% if cards %}
+                <h2 class="govuk-heading-l">{{ cards|length }} close match{{ cards|length|pluralize:"es" }}</h2>
+                <p class="govuk-body">The closest matches on this site to what you asked. Check each one to be sure it applies to what you are doing.</p>
+                <ul class="app-catalogue-cards">
+                    {% for card in cards %}{% include "catalogue/includes/card.html" with heading_level=3 show_type=True %}{% endfor %}
+                </ul>
+            {% else %}
+                <h2 class="govuk-heading-l">Nothing close to your question</h2>
+                <p class="govuk-body">We could not find anything on this site close to what you asked. You could:</p>
+                <ul class="govuk-list govuk-list--bullet">
+                    <li>use other words, or say what you are trying to do</li>
+                    {% if browse_url %}<li><a class="govuk-link" href="{{ browse_url }}">browse everything in the catalogue</a></li>{% endif %}
+                </ul>
+            {% endif %}
+        {% endif %}
+    </div>
+{% endblock %}

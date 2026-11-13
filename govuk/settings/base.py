@@ -535,9 +535,12 @@ FEATURE_FLAGS = {
     "SKILLS": _bool_env("FEATURE_SKILLS"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
     "GUIDANCE": _bool_env("FEATURE_GUIDANCE"),
-    # The content index (govuk/content_index/) and the MCP server that reads
-    # it. Off, nothing is written to the index on publish.
+    # The MCP server (govuk/mcp/), and Ask (govuk/ask/): the question box
+    # editors can place on a page, and the /ask/ page of matches it leads to.
+    # Both read the content index (govuk/content_index/), which is kept while
+    # either is on; with both off, nothing is written to it on publish.
     "MCP": _bool_env("FEATURE_MCP"),
+    "ASK": _bool_env("FEATURE_ASK"),
 }
 
 # Optional. Sent to the GitHub API when the content catalogue is imported from a
@@ -579,6 +582,7 @@ MCP_RATE_LIMIT_PER_MINUTE = int(os.getenv("MCP_RATE_LIMIT_PER_MINUTE", "60"))
 # only CloudFront can reach the load balancer, which forwards nothing without
 # its secret X-ALB-Protection header, so a client cannot write its own. The
 # rate limit counts this address. Unset, it counts the connection's.
+# Read by Ask's rate limit too, as CLIENT_IP_HEADER below.
 MCP_CLIENT_IP_HEADER = os.getenv("MCP_CLIENT_IP_HEADER", "").strip().lower()
 # The proxies whose X-Forwarded-For uvicorn believes for the connection's
 # address (its --forwarded-allow-ips). Only what the rate limit counts when
@@ -586,6 +590,38 @@ MCP_CLIENT_IP_HEADER = os.getenv("MCP_CLIENT_IP_HEADER", "").strip().lower()
 # CloudFront it cannot give the client's address: the load balancer appends
 # CloudFront's, which is outside any range worth trusting.
 MCP_FORWARDED_ALLOW_IPS = os.getenv("MCP_FORWARDED_ALLOW_IPS", "127.0.0.1")
+
+# The header holding the client's address, for any rate limit counted per
+# client (see MCP_CLIENT_IP_HEADER above). Deployed, the same header as the
+# MCP server's.
+CLIENT_IP_HEADER = os.getenv("CLIENT_IP_HEADER", MCP_CLIENT_IP_HEADER).strip().lower()
+
+# The content index's embeddings: each section and document as a vector of
+# what it means, so a question finds what it asks about even when it shares
+# no words with it. "bedrock" calls Amazon Bedrock with the ECS task's role
+# (locally, whatever AWS credentials boto3 finds); unset, search matches words
+# only. manage.py embed_content_index (run at the end of
+# rebuild_content_index) fills in what is missing; publishing never calls it.
+CONTENT_INDEX_EMBEDDINGS = os.getenv("CONTENT_INDEX_EMBEDDINGS", "").strip().lower()
+CONTENT_INDEX_EMBEDDING_MODEL = os.getenv(
+    "CONTENT_INDEX_EMBEDDING_MODEL", "amazon.titan-embed-text-v2:0"
+).strip()
+CONTENT_INDEX_EMBEDDING_DIMENSIONS = int(os.getenv("CONTENT_INDEX_EMBEDDING_DIMENSIONS", "1024"))
+CONTENT_INDEX_EMBEDDING_REGION = (
+    os.getenv("CONTENT_INDEX_EMBEDDING_REGION") or os.getenv("AWS_REGION") or "eu-west-2"
+).strip()
+
+# Ask (FEATURE_ASK; govuk/ask/). Questions one client address may ask in a
+# minute (0 turns the limit off), counted in the default cache as the MCP
+# server's are.
+ASK_RATE_LIMIT_PER_MINUTE = int(os.getenv("ASK_RATE_LIMIT_PER_MINUTE", "20"))
+# How alike in meaning (cosine similarity, 0 to 1) a match found by meaning
+# alone must be to the question to be returned, by Ask and the MCP server's
+# search; Ask also hides one that shares only some of the question's words
+# below it. Set from manage.py evaluate_content_search: high enough that a
+# question the site cannot answer finds nothing, low enough to keep the
+# right answers.
+CONTENT_INDEX_MIN_SIMILARITY = float(os.getenv("CONTENT_INDEX_MIN_SIMILARITY", "0.35"))
 
 # When enabled, logs inbound Django requests (including headers) at INFO level.
 INCOMING_REQUEST_INFO_LOGGING = _bool_env("INCOMING_REQUEST_INFO_LOGGING")

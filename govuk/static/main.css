@@ -1430,6 +1430,19 @@ main > :nth-last-child(1 of .section-cards-container) {
     margin-bottom: 0;
     color: #505a5f;
 }
+/* The part of an entry that matched best (Ask's results). Above the card's
+   whole-card link, so it can be followed on its own. */
+.app-catalogue-card__section {
+    margin-bottom: 10px;
+}
+.app-catalogue-card__section .govuk-link {
+    position: relative;
+    z-index: 1;
+}
+/* The question box block (blocks/question_box.html). */
+.app-question-box {
+    margin-bottom: 30px;
+}
 .app-catalogue-points {
     margin: 0 0 30px;
     padding: 0;

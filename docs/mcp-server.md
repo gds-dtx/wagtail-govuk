@@ -11,11 +11,14 @@ publishes. It is built in stages:
    published elsewhere points at, fetched into the index.
 4. Tools for the catalogue's entries and the framework's roles and skills.
 
-It is behind the `MCP` feature flag (`FEATURE_MCP`). With the flag off:
+It is behind the `MCP` feature flag (`FEATURE_MCP`). The content index is
+shared with Ask ([docs/ask.md](ask.md), `FEATURE_ASK`), and is kept while
+either flag is on. With both off:
 
 - nothing is written to the index;
-- the rebuild command refuses to run;
-- the MCP server will not start.
+- the rebuild command refuses to run.
+
+With `FEATURE_MCP` off, the MCP server will not start.
 
 The flag is on in `govuk/settings/development.py`.
 
@@ -70,6 +73,8 @@ to 8000.
   this site.
 - **Search syntax:** queries use web search syntax: quote a phrase, or put
   `-` before a word to leave it out.
+- **By meaning too:** `search` runs the index's hybrid search (see
+  [Search](#search)), so a question in plain words finds what it means.
 - **Long pages:** a page longer than 100,000 characters is cut short, with
   `truncated` set.
 
@@ -138,6 +143,9 @@ unpinned, so everything below belongs behind an opt-in variable.
   - **Monitor mode:** the WAF's managed rules default to count only
     (`waf_monitor_mode`).
   - **The WAF itself** is off unless `enable_cloudfront_waf` is set.
+- **For search by meaning:** `CONTENT_INDEX_EMBEDDINGS=bedrock`, and the
+  task role allowed `bedrock:InvokeModel` on Titan Text Embeddings V2 (see
+  [docs/ask.md](ask.md#deploying-it)).
 - **`FEATURE_MCP=true`** in the instance's `wagtail_variables`, so the site,
   the MCP service and the scheduled tasks all have it. The site needs it to
   write the index as editors publish.
@@ -236,9 +244,64 @@ Run the rebuild on a timer for these.
 - One item that fails is reported and the rest still index. The command then
   exits with an error, so a scheduled run shows up as failed.
 
+With embeddings on, the rebuild then embeds what has no vector yet (see
+[Embeddings](#embeddings)); `--no-embed` leaves that.
+
 **When you change how items are read** (`extract.py`, `markdown.py` or
-`chunking.py`), bump `INDEX_VERSION` in `indexer.py`. Otherwise the next
-rebuild skips every row whose source has not changed.
+`chunking.py`), or what is embedded for them (`section_text` and
+`document_text` in `embeddings.py`), bump `INDEX_VERSION` in `indexer.py`.
+Otherwise the next rebuild skips every row whose source has not changed.
+
+### Embeddings
+
+Each section, and each document as its card reads (title, type and
+description), has a vector of what it means, so search can find text that
+says what a question asks in other words. Turned on by
+`CONTENT_INDEX_EMBEDDINGS=bedrock`: Amazon Titan Text Embeddings V2, 1024
+dimensions, on Amazon Bedrock, with the ECS task's role.
+
+- **Stored by the text's hash.** A row records the SHA-256 of what is
+  embedded for it (`embedding_hash`), and `ContentEmbedding` holds one
+  vector per hash and model. Sections are remade whenever their document
+  changes, but text that did not change keeps its vector, so only new or
+  changed text is sent to the model, and a forced rebuild sends nothing.
+- **Never on publish.** Storing a row only hashes its text.
+  `manage.py embed_content_index [--dry-run]`, which the nightly rebuild
+  runs at its end, embeds what is missing and removes vectors nothing uses.
+  Until then, a new section is found by its words alone.
+- **A stale row** records the hash of text other than what it would embed
+  now: `embeddings.py` changed without `INDEX_VERSION` being bumped. The
+  command reports them; a forced rebuild mends them.
+- **The vector type** is pgvector's, which Aurora PostgreSQL has built in;
+  migration 0098 creates the extension. The column has no fixed length, so
+  another length or model needs no migration. There is no approximate
+  index: every search compares against every vector, which takes
+  milliseconds at a few thousand rows. Add an HNSW index if the index grows
+  past about 50,000 sections.
+- **On SQLite**, which tests and local runs use, vectors are stored as text
+  and compared in Python. Locally, `CONTENT_INDEX_EMBEDDINGS=fake` embeds by
+  words alone, to try the code without AWS; with AWS credentials boto3 can
+  find, `bedrock` works locally too.
+
+### Search
+
+`content_index.search.search` has three modes:
+
+| Mode | What it matches | Used by |
+| --- | --- | --- |
+| `keyword` | Every word asked, ranked by PostgreSQL full-text search | `search_documents` by default; the evaluation's baseline |
+| `hybrid` | Every word; any of the words, less those that say nothing ("how", "trying"); and the sections and documents closest in meaning. The ranked lists are merged by reciprocal rank fusion (`FUSION_WEIGHTS`) | The MCP server's `search` tool, and Ask |
+| `semantic` | Meaning alone | The evaluation, to compare |
+
+- **Each hit records how it matched:** `matched_words` (`every`, `some`,
+  or `None` for meaning alone) and `similarity` (0 to 1).
+- **A poor match by meaning alone is dropped** below
+  `CONTENT_INDEX_MIN_SIMILARITY`, since the meaning lists always return
+  something, even for a question the site cannot answer.
+- **When the model cannot be reached**, a hybrid search runs on its words
+  and says so (`SearchOutcome.semantic`). The warning it logs names the
+  reason, never the query. A query's vector is cached for a day under the
+  query's hash.
 
 ## External entries' source text
 
@@ -348,14 +411,16 @@ followed by the path, so a change of hostname needs no rebuild.
 
 | Path | What it holds |
 | --- | --- |
-| `govuk/models/content_index.py` | `IndexedDocument`, `IndexedChunk`, `HarvestedSource` |
+| `govuk/models/content_index.py` | `IndexedDocument`, `IndexedChunk`, `HarvestedSource`, `ContentEmbedding` |
+| `govuk/content_index/embeddings.py` | What is embedded, the Bedrock and fake models, filling the store |
+| `govuk/management/commands/embed_content_index.py` | Embedding what is missing |
 | `govuk/content_index/extract.py` | A converter for each page type, roles and skills; what is eligible |
 | `govuk/content_index/markdown.py` | Blocks and rich text as Markdown, with full link addresses |
 | `govuk/content_index/chunking.py` | Splitting at headings, and catalogue heading ids |
 | `govuk/content_index/indexer.py` | Storing rows, the rebuild, and what each change re-indexes |
 | `govuk/content_index/signals.py` | The publish, move and restriction handlers |
 | `govuk/management/commands/rebuild_content_index.py` | The rebuild command |
-| `govuk/content_index/search.py` | Searching the index, and finding a document by its address |
+| `govuk/content_index/search.py` | Searching the index by words and meaning, and finding a document by its address |
 | `govuk/mcp/tools.py` | The `search` and `get_document` tools, and their logging |
 | `govuk/mcp/server.py` | The tools registered with the MCP SDK, the instructions it gives clients, and the health check |
 | `govuk/mcp/app.py` | The HTTP app: hosts, maintenance and the rate limit |
@@ -366,4 +431,4 @@ followed by the path, so a change of hostname needs no rebuild.
 | `govuk/content_index/harvest.py` | Fetching a source, storing how it went, re-indexing its entries; fetching them all |
 | `govuk/management/commands/harvest_external_sources.py` | Fetching every source |
 | `SourceTextPanel` in `govuk/models/catalogue/pages.py`; `catalogue_fetch_source_view` in `govuk/wagtail_hooks/catalogue.py` | The Source text panel and Fetch now |
-| `govuk/tests/test_content_index.py`, `test_content_index_search.py`, `test_content_index_harvest.py`, `test_mcp_server.py` | Tests |
+| `govuk/tests/test_content_index.py`, `test_content_index_search.py`, `test_content_index_harvest.py`, `test_content_index_embeddings.py`, `test_mcp_server.py` | Tests |

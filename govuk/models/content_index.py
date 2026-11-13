@@ -7,14 +7,17 @@ into ``IndexedChunk`` sections at its headings. Written by
 
 ``HarvestedSource`` holds a copy of the text of each page an external
 catalogue entry points at, which the index adds to that entry.
+``ContentEmbedding`` holds a vector of what each section and document means,
+found by the hash of the text it was made from.
 
-Gated by ``FEATURE_FLAGS["MCP"]``. The rows hold only what is already
+Kept while ``FEATURE_FLAGS["MCP"]`` or ``["ASK"]`` is on. The rows hold only what is already
 published to anyone, here or at an entry's source, so there is nothing here a
 signed-out reader could not see on the page itself.
 """
 
 from django.db import models
 from django.db.models import Q
+from pgvector.django import VectorField
 
 
 class IndexedDocument(models.Model):
@@ -79,6 +82,10 @@ class IndexedDocument(models.Model):
     content_hash = models.CharField(max_length=64)
     index_version = models.PositiveIntegerField(default=0)
     indexed_at = models.DateTimeField(auto_now=True)
+    # The hash of what is embedded for the document as a whole (its title,
+    # type and description: what its card says), the key of its
+    # ``ContentEmbedding``. See ``content_index.embeddings``.
+    embedding_hash = models.CharField(max_length=64, blank=True, db_index=True)
 
     class Meta:
         verbose_name = "indexed document"
@@ -113,6 +120,10 @@ class IndexedChunk(models.Model):
     # every time (the catalogue's pages do), so a link can go straight to it.
     anchor = models.CharField(max_length=200, blank=True)
     text = models.TextField()
+    # The hash of what is embedded for the section, the key of its
+    # ``ContentEmbedding``. Set when the section is stored, without calling
+    # anything; the vector is made later (``embed_content_index``).
+    embedding_hash = models.CharField(max_length=64, blank=True, db_index=True)
 
     class Meta:
         verbose_name = "indexed chunk"
@@ -168,3 +179,34 @@ class HarvestedSource(models.Model):
 
     def __str__(self) -> str:
         return self.url
+
+
+class ContentEmbedding(models.Model):
+    """A vector of what one piece of text means, made by one embedding model.
+
+    Found by the SHA-256 of the text (``text_hash``), not tied to the section
+    or document it came from: those are deleted and remade whenever their
+    document changes, and the text that did not change keeps its vector, so
+    only new or changed text is sent to the model. One row per model, so
+    another model can be tried without losing the first one's vectors. Rows
+    no section or document points at any more are removed by
+    ``embed_content_index``.
+
+    The vector has no fixed length, so a model with another length needs no
+    migration; with no index on it, every search compares against them all,
+    which at the index's size takes milliseconds.
+    """
+
+    model = models.CharField(max_length=100)
+    text_hash = models.CharField(max_length=64)
+    vector = VectorField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "content embedding"
+        constraints = [
+            models.UniqueConstraint(fields=["model", "text_hash"], name="govuk_contentembedding_model_text")
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.model} {self.text_hash[:12]}"

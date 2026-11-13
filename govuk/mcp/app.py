@@ -18,18 +18,18 @@ site's own is, or the orchestrator would replace a closed or busy container.
 """
 
 import logging
-import time
 
 from asgiref.sync import sync_to_async
 from django.conf import settings
-from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import JSONResponse
 from wagtail.models import Site
 
-from govuk.content_index import content_index_enabled
+from govuk import rate_limit
+from govuk.content_index import mcp_enabled
 from govuk.models import MaintenanceModeSettings
+from govuk.rate_limit import first_address
 
 from . import HEALTH_PATH, MCP_PATH
 from .server import create_server
@@ -37,7 +37,7 @@ from .tools import release_connections
 
 logger = logging.getLogger(__name__)
 
-RATE_LIMIT_WINDOW_SECONDS = 60
+RATE_LIMIT_WINDOW_SECONDS = rate_limit.DEFAULT_WINDOW_SECONDS
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "[::1]")
 
 
@@ -113,8 +113,7 @@ class RateLimitMiddleware:
         if self.client_ip_header:
             for name, value in scope.get("headers") or []:
                 if name == self.client_ip_header:
-                    # One address, as the proxy sets it; the first, if a list.
-                    address = value.decode("latin-1").split(",")[0].strip()
+                    address = first_address(value.decode("latin-1"))
                     if address:
                         return address
         return (scope.get("client") or ("unknown", 0))[0]
@@ -123,23 +122,14 @@ class RateLimitMiddleware:
         if scope["type"] != "http" or self.limit <= 0 or scope["path"] == HEALTH_PATH:
             await self.app(scope, receive, send)
             return
-        client = self._client(scope)
-        now = time.time()
-        key = f"govuk-mcp-rate:{client}:{int(now // self.window)}"
-        if await cache.aadd(key, 1, timeout=self.window * 2):
-            count = 1
-        else:
-            try:
-                count = await cache.aincr(key)
-            except ValueError:  # the window ended between the two calls
-                count = 1
+        count, retry_after = await rate_limit.ahit("mcp", self._client(scope), window=self.window)
         if count > self.limit:
             if count == self.limit + 1:
                 logger.warning("MCP rate limit reached", extra={"limit": self.limit})
             response = JSONResponse(
                 {"error": "Too many requests. Try again in a minute."},
                 status_code=429,
-                headers={"Retry-After": str(self.window - int(now % self.window))},
+                headers={"Retry-After": str(retry_after)},
             )
             await response(scope, receive, send)
             return
@@ -147,7 +137,7 @@ class RateLimitMiddleware:
 
 
 def create_app():
-    if not content_index_enabled():
+    if not mcp_enabled():
         raise ImproperlyConfigured("The MCP server is off (FEATURE_MCP).")
     server = create_server()
     app = server.streamable_http_app(

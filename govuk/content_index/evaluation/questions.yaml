@@ -1,0 +1,351 @@
+# Questions with known answers, for manage.py evaluate_content_search.
+#
+# DRAFT: the expected answers were chosen from the catalogue as imported on
+# 13 November 2026 and are to be reviewed by someone who knows it. A wrong
+# expected answer makes the numbers wrong, so a review matters more than more
+# questions.
+#
+# Each question:
+#   question  what someone might type into the question box
+#   category  find (names the thing), requirement (what must I do), broad
+#             (several answers), paraphrase (shares few or no words with the
+#             answer's title), shorthand (an acronym or a typo), out_of_scope
+#             (nothing on the site answers it)
+#   expect    the answers, as the end of their path on the site; a match
+#             inside an entry (one of its points or pages) counts for the
+#             entry. Empty for out_of_scope: there, a pass is nothing close.
+#   match     any: one of the answers in the top results is a hit (the
+#             default); all: every answer should be there (recall)
+#   note      optional: why these answers, for the reviewer
+
+# -- find ---------------------------------------------------------------------------
+
+- question: I'm trying to find cloud policy
+  category: find
+  expect:
+    - standards-and-policies/cloud-first-policy/
+    - example-technology-code-of-practice/use-cloud-first/
+
+- question: Cloud First policy
+  category: find
+  expect: [standards-and-policies/cloud-first-policy/]
+
+- question: Where is the Technology Code of Practice?
+  category: find
+  expect: [standards-and-policies/example-technology-code-of-practice/]
+
+- question: GovAssure
+  category: find
+  expect: [standards-and-policies/govassure/]
+
+- question: Secure by Design
+  category: find
+  expect: [standards-and-policies/secure-by-design/]
+
+- question: The Service Standard
+  category: find
+  expect: [standards-and-policies/service-standard/]
+
+- question: AI Playbook
+  category: find
+  expect: [guidance/ai-playbook/]
+
+- question: Government design principles
+  category: find
+  expect: [standards-and-policies/gov-design-principles/]
+
+- question: API standards
+  category: find
+  expect: [standards-and-policies/api-technical-and-data-standards/]
+
+- question: Design System
+  category: find
+  expect: [resources-and-tools/gov-uk-design-system/]
+
+- question: GDS Way
+  category: find
+  expect: [guidance/example-gds-way-repo/]
+
+- question: Python style guide
+  category: find
+  expect: [example-gds-way-repo/programming-languages-2/python/]
+
+- question: Legacy risk assessment
+  category: find
+  expect: [guidance/legacy-it-risk-assessment-framework/]
+
+- question: Functional Standard for digital
+  category: find
+  expect: [standards-and-policies/govs-005/]
+
+- question: Roadmap for modern digital government
+  category: find
+  expect: [standards-and-policies/roadmap-for-modern-digital-government/]
+
+# -- requirement --------------------------------------------------------------------
+
+- question: What are the requirements for internal services?
+  category: requirement
+  expect:
+    - standards-and-policies/service-standard/
+    - standards-and-policies/example-technology-code-of-practice/
+    - standards-and-policies/govs-005/
+  note: >-
+    Reviewer: the Service Standard and the Technology Code of Practice both
+    apply to internal services in central government; GovS 005 covers all
+    digital activity. Is there a better answer in the catalogue?
+
+- question: What do I have to do to make my service secure?
+  category: requirement
+  expect:
+    - standards-and-policies/secure-by-design/
+    - standards-and-policies/cyber-security-standard/
+    - example-technology-code-of-practice/make-things-secure/
+
+- question: Does my service have to be accessible?
+  category: requirement
+  expect:
+    - example-technology-code-of-practice/make-things-accessible/
+    - example-gds-way-repo/accessibility/
+    - standards-and-policies/service-standard/
+
+- question: Do I have to use the cloud?
+  category: requirement
+  expect:
+    - standards-and-policies/cloud-first-policy/
+    - example-technology-code-of-practice/use-cloud-first/
+
+- question: Do we have to publish our code as open source?
+  category: requirement
+  expect:
+    - example-technology-code-of-practice/be-open-and-use-open-source/
+    - guidance/ai-open-code-vulnerability-risk/
+
+- question: What must go on GOV.UK?
+  category: requirement
+  expect: [standards-and-policies/gov-uk-proposition/]
+
+- question: What rules are there for buying technology?
+  category: requirement
+  expect:
+    - example-technology-code-of-practice/define-your-purchasing-strategy/
+    - standards-and-policies/example-technology-code-of-practice/
+
+- question: What do I need to do about legacy systems?
+  category: requirement
+  expect:
+    - guidance/prevent-technical-debt-and-legacy/
+    - guidance/managing-legacy-technology/
+    - guidance/legacy-it-risk-assessment-framework/
+
+- question: Can staff use their own phones for work?
+  category: requirement
+  expect: [standards-and-policies/example-byod-mobiles-policy/]
+
+- question: How should we handle personal data?
+  category: requirement
+  expect:
+    - guidance/gdpr-guidance-and-resources/
+    - example-technology-code-of-practice/make-privacy-integral/
+
+# -- broad --------------------------------------------------------------------------
+
+- question: What standards do I have to meet?
+  category: broad
+  match: all
+  expect:
+    - standards-and-policies/service-standard/
+    - standards-and-policies/example-technology-code-of-practice/
+    - standards-and-policies/cyber-security-standard/
+  note: >-
+    Reviewer: the three most services must meet. GovS 005 and Secure by
+    Design are candidates too.
+
+- question: What cyber security guidance is there?
+  category: broad
+  match: all
+  expect:
+    - standards-and-policies/cyber-security-standard/
+    - standards-and-policies/secure-by-design/
+    - standards-and-policies/govassure/
+    - guidance/cyber-risk-management/
+
+- question: Which design systems can I use?
+  category: broad
+  match: all
+  expect:
+    - resources-and-tools/gov-uk-design-system/
+    - resources-and-tools/moj-design-system/
+    - resources-and-tools/ho-design-system/
+    - resources-and-tools/dwp-design-system/
+
+- question: Guidance on using AI in government
+  category: broad
+  match: all
+  expect:
+    - guidance/ai-playbook/
+    - guidance/ai-insights-series/
+    - resources-and-tools/ai-knowledge-hub/
+
+- question: Departments' engineering standards
+  category: broad
+  match: all
+  expect:
+    - standards-and-policies/hmrc-engineering-standards/
+    - standards-and-policies/ho-engineering-standards/
+    - standards-and-policies/dfe-engineering-standards/
+    - standards-and-policies/companies-house-engineering-standards/
+    - standards-and-policies/hmcts-engineering-standards/
+    - standards-and-policies/nhs-engineering-standards/
+
+- question: What is the government's digital strategy?
+  category: broad
+  match: all
+  expect:
+    - standards-and-policies/blueprint-for-modern-digital-government/
+    - standards-and-policies/roadmap-for-modern-digital-government/
+
+- question: How do I run my service in production?
+  category: broad
+  expect:
+    - example-gds-way-repo/hosting/
+    - example-gds-way-repo/monitoring/
+    - example-gds-way-repo/incident-management/
+    - example-gds-way-repo/alerting/
+
+# -- paraphrase ---------------------------------------------------------------------
+
+- question: How do I take card payments from the public?
+  category: paraphrase
+  expect: [resources-and-tools/gov-uk-pay/]
+
+- question: I need to send text messages to users
+  category: paraphrase
+  expect: [resources-and-tools/example-gov-uk-notify/]
+
+- question: How can people log in and prove who they are?
+  category: paraphrase
+  expect: [resources-and-tools/gov-uk-one-login/]
+
+- question: I want to build a quick mock-up of a service to test with users
+  category: paraphrase
+  expect: [resources-and-tools/gov-uk-prototype-kit/]
+
+- question: Make an online form without a development team
+  category: paraphrase
+  expect:
+    - resources-and-tools/gov-uk-forms/
+    - resources-and-tools/moj-forms/
+
+- question: Something went wrong in production, how do we learn from it?
+  category: paraphrase
+  expect:
+    - guidance/incident-reviews/
+    - example-gds-way-repo/incident-management/
+
+- question: How do I make my service work for people using screen readers?
+  category: paraphrase
+  expect:
+    - example-gds-way-repo/accessibility/
+    - example-technology-code-of-practice/make-things-accessible/
+
+- question: Where should we keep passwords and API keys?
+  category: paraphrase
+  expect:
+    - example-gds-way-repo/storing-credentials/
+    - example-gds-way-repo/managing-sensitive-information/
+
+- question: How do I stop being stuck with one cloud supplier?
+  category: paraphrase
+  expect: [guidance/managing-technical-lock-in-the-cloud/]
+
+- question: Can we host data outside the UK?
+  category: paraphrase
+  expect: [guidance/multi-region-cloud-and-software-as-a-service/]
+
+- question: How do we get a penetration test done?
+  category: paraphrase
+  expect: [example-gds-way-repo/how-to-do-penetration-tests/]
+
+- question: Free training and certificates for technologists
+  category: paraphrase
+  expect: [resources-and-tools/get-tech-certified/]
+
+- question: Single sign-on for staff across government
+  category: paraphrase
+  expect: [resources-and-tools/internal-access/]
+
+- question: How do I reduce the energy and carbon footprint of our technology?
+  category: paraphrase
+  expect: [example-technology-code-of-practice/make-your-technology-sustainable/]
+
+- question: What skills and roles are there in digital and data?
+  category: paraphrase
+  expect: [guidance/government-digital-and-data-capability-framework/]
+
+# -- shorthand ----------------------------------------------------------------------
+
+- question: TCoP
+  category: shorthand
+  expect: [standards-and-policies/example-technology-code-of-practice/]
+  note: Expected to fail by words; the test is whether meaning finds it.
+
+- question: BYOD
+  category: shorthand
+  expect: [standards-and-policies/example-byod-mobiles-policy/]
+
+- question: SSO
+  category: shorthand
+  expect:
+    - resources-and-tools/internal-access/
+    - resources-and-tools/gov-uk-one-login/
+
+- question: GDPR
+  category: shorthand
+  expect: [guidance/gdpr-guidance-and-resources/]
+
+- question: secure by desing
+  category: shorthand
+  expect: [standards-and-policies/secure-by-design/]
+
+- question: tecnology code of practise
+  category: shorthand
+  expect: [standards-and-policies/example-technology-code-of-practice/]
+
+- question: SLOs
+  category: shorthand
+  expect: [example-gds-way-repo/slo/]
+
+- question: WAF
+  category: shorthand
+  expect: [example-gds-way-repo/web-application-firewall/]
+
+# -- out of scope -------------------------------------------------------------------
+
+- question: How do I renew my passport?
+  category: out_of_scope
+  expect: []
+
+- question: What's the weather like in London tomorrow?
+  category: out_of_scope
+  expect: []
+
+- question: Write me a poem about cats
+  category: out_of_scope
+  expect: []
+
+- question: How much is child benefit?
+  category: out_of_scope
+  expect: []
+
+- question: Book a driving test
+  category: out_of_scope
+  expect: []
+
+- question: Recipe for a Victoria sponge
+  category: out_of_scope
+  expect: []
+
+- question: Who won the football last night?
+  category: out_of_scope
+  expect: []

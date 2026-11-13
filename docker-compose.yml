@@ -4,7 +4,9 @@
 
 services:
   db:
-    image: postgres:17-alpine
+    # PostgreSQL with the pgvector extension, which the content index's
+    # embeddings need (deployed, Aurora PostgreSQL has it built in).
+    image: pgvector/pgvector:pg17
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:

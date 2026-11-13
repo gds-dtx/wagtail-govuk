@@ -560,6 +560,48 @@ class BannerBlock(blocks.StructBlock):
         return value
 
 
+ASK_DEFAULT_LABEL = "What are you wanting to do with technology?"
+
+
+class QuestionBoxBlock(blocks.StructBlock):
+    """A box to type a question in, which leads to the matches for it (/ask/).
+
+    The question is sent to the site's own search over its published content,
+    which shows the closest matches as cards; nothing here answers it. Only
+    shown while Ask is on (``FEATURE_FLAGS["ASK"]``): off, the block renders
+    nothing, so it can be placed before the feature is.
+    """
+
+    label = blocks.CharBlock(
+        max_length=120,
+        default=ASK_DEFAULT_LABEL,
+        help_text="The question the box asks, shown above it.",
+    )
+    hint = blocks.CharBlock(
+        required=False,
+        max_length=250,
+        default="For example, ‘What standards do I have to meet?’",
+        help_text="Optional. Shown under the question, for example the kind of thing to ask.",
+    )
+    button_text = blocks.CharBlock(max_length=40, default="Search")
+
+    class Meta:
+        icon = "search"
+        label = "Question box"
+        template = "blocks/question_box.html"
+
+    def get_context(self, value, parent_context=None):
+        from uuid import uuid4
+
+        from govuk.content_index import ask_enabled
+
+        context = super().get_context(value, parent_context=parent_context)
+        context["ask_on"] = ask_enabled()
+        # Unique on the page, should an editor place two.
+        context["field_id"] = f"ask-question-{uuid4().hex[:8]}"
+        return context
+
+
 class ContentBodyBlock(blocks.StreamBlock):
     """Prose, tables, cards and banners, in whatever order the page needs them.
 
@@ -573,6 +615,7 @@ class ContentBodyBlock(blocks.StreamBlock):
     banner = BannerBlock()
     inset_text = InsetTextBlock(features=FRAMEWORK_WELCOME_RICH_TEXT_FEATURES)
     raw_html = BodyRawHtmlBlock()
+    question_box = QuestionBoxBlock()
 
     class Meta:
         required = False

@@ -7,15 +7,24 @@
     first in their section and in "all".
 
     Takes "card" (catalogue.context.card) and "heading_level" (2 or 3).
+    With "show_type", the card's type is shown as a badge, for a list of
+    mixed types (Ask's matches); a card with a "section" names the part of it
+    that matched best.
 {% endcomment %}
 <li class="app-catalogue-card{% if card.primary %} app-catalogue-card--primary{% endif %}">
     {% if heading_level == 2 %}<h2 class="govuk-heading-s app-catalogue-card__title">{% else %}<h3 class="govuk-heading-s app-catalogue-card__title">{% endif %}
         <a class="govuk-link govuk-link--no-visited-state app-catalogue-card__link" href="{{ card.url }}">{{ card.title }}</a>
     {% if heading_level == 2 %}</h2>{% else %}</h3>{% endif %}
-    {% if card.withdrawn %}
-        <p class="app-catalogue-card__badges"><strong class="app-catalogue-badge app-catalogue-badge--red">Withdrawn</strong></p>
+    {% if card.withdrawn or show_type and card.type %}
+        <p class="app-catalogue-card__badges">
+            {% if show_type and card.type %}<strong class="app-catalogue-badge app-catalogue-badge--grey">{{ card.type }}</strong>{% endif %}
+            {% if card.withdrawn %}<strong class="app-catalogue-badge app-catalogue-badge--red">Withdrawn</strong>{% endif %}
+        </p>
     {% endif %}
     <p class="govuk-body-s app-catalogue-card__description">{{ card.description }}</p>
+    {% if card.section %}
+        <p class="govuk-body-s app-catalogue-card__section">Most relevant part: <a class="govuk-link" href="{{ card.section.url }}">{{ card.section.title }}</a></p>
+    {% endif %}
     {% if card.source_name %}
         <p class="govuk-body-s app-catalogue-card__source">Source: {{ card.source_name }}</p>
     {% endif %}
