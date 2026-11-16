@@ -233,7 +233,7 @@
                             </div>
                         </div>
                     {% endif %}
-                    <div class="{% if self.hero_uses_masthead %}masthead {% if self.hero_is_combined %}masthead--combined{% endif %}{% endif %}">
+                    <div class="{% if self.hero_uses_masthead %}masthead {% if self.hero_is_combined %}masthead--combined{% endif %}{% if self.hero_is_combined_ask %} masthead--question-box{% endif %}{% endif %}">
                         <div class="hero">
                             <div class="hero__content">
                                 {% if self.hero_title or self.title %}
@@ -244,6 +244,11 @@
                                 {% elif self.search_description %}
                                     <p class="hero__description rich-text-content govuk-body-l">{{ self.search_description }}</p>
                                 {% endif %}
+                                {% with question_box=self.hero_question_box %}
+                                    {% if question_box %}
+                                        {% include "blocks/question_box.html" with value=question_box ask_on=True field_id="hero-ask-question" inverse=True %}
+                                    {% endif %}
+                                {% endwith %}
                             </div>
                         </div>
                     </div>

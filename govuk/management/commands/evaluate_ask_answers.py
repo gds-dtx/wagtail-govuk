@@ -22,6 +22,7 @@ from collections import Counter
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
+from wagtail.models import Site
 
 from govuk.ask import rerank as reranking, summary
 from govuk.ask.cards import MAX_CARDS, cards_for
@@ -59,6 +60,8 @@ class Command(BaseCommand):
             raise CommandError(str(exc)) from exc
         if options["only"]:
             questions = [question for question in questions if question.category == options["only"]]
+        # The default site's instructions (Settings > Ask), as the summary endpoint uses.
+        self.site = Site.objects.filter(is_default_site=True).first()
 
         rows, totals = [], Counter()
         for question in questions:
@@ -94,7 +97,7 @@ class Command(BaseCommand):
             return row
         hits = None
         if outcome.hits:
-            reranked = reranking.rerank(question.question, outcome.hits, claude)
+            reranked = reranking.rerank(question.question, outcome.hits, claude, site=self.site)
             row["ranking"] = reranked.status
             if reranked.status == reranking.OK:
                 hits = reranked.hits
@@ -104,7 +107,7 @@ class Command(BaseCommand):
         cards = cards_for(hits, None, limit=MAX_CARDS)
         row["cards"] = cards
         if cards:
-            result = summary.summarise(summary.make_ticket(question.question, cards))
+            result = summary.summarise(summary.make_ticket(question.question, cards), self.site)
             row["summary"] = result.html if result.status == summary.OK else f"({result.status})"
         for card in cards:
             card["expected"] = _expected_card(card, question)

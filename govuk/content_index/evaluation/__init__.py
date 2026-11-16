@@ -151,6 +151,7 @@ def evaluate(
     rerank_with=None,
     candidates: int = 20,
     floor: float = 0.2,
+    site=None,
 ) -> list[QuestionResult]:
     """``rerank_with`` a Claude (``govuk.ask.claude``) re-ranks each question's
     matches as Ask does: ``candidates`` of them, down to ``floor``. Each call
@@ -175,7 +176,7 @@ def evaluate(
             continue
         shown = None
         if rerank_with is not None and outcome.hits:
-            reranked = rerank(question.question, outcome.hits, rerank_with)
+            reranked = rerank(question.question, outcome.hits, rerank_with, site=site)
             result.rerank, result.tokens = reranked.status, reranked.tokens
             if reranked.status == OK:
                 shown = reranked.hits

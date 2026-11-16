@@ -561,6 +561,8 @@ class BannerBlock(blocks.StructBlock):
 
 
 ASK_DEFAULT_LABEL = "What are you wanting to do with technology?"
+ASK_DEFAULT_HINT = "For example, ‘What standards do I have to meet?’"
+ASK_DEFAULT_BUTTON_TEXT = "Search"
 
 
 class QuestionBoxBlock(blocks.StructBlock):
@@ -575,15 +577,21 @@ class QuestionBoxBlock(blocks.StructBlock):
     label = blocks.CharBlock(
         max_length=120,
         default=ASK_DEFAULT_LABEL,
-        help_text="The question the box asks, shown above it.",
+        label="Screen reader label",
+        help_text="Not shown: read out by screen readers as the box's name, so say what to type in it.",
     )
     hint = blocks.CharBlock(
         required=False,
-        max_length=250,
-        default="For example, ‘What standards do I have to meet?’",
-        help_text="Optional. Shown under the question, for example the kind of thing to ask.",
+        max_length=120,
+        default=ASK_DEFAULT_HINT,
+        label="Placeholder",
+        help_text="Optional. Shown greyed inside the box until something is typed: the kind of thing to ask, in a few words.",
     )
-    button_text = blocks.CharBlock(max_length=40, default="Search")
+    button_text = blocks.CharBlock(
+        max_length=40,
+        default=ASK_DEFAULT_BUTTON_TEXT,
+        help_text="Not shown: the button shows a magnifier. Read out by screen readers as the button's name.",
+    )
 
     class Meta:
         icon = "search"

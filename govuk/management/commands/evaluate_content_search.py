@@ -14,6 +14,7 @@ import json
 
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
+from wagtail.models import Site
 
 from govuk.content_index import FLAGS_OFF, content_index_enabled, evaluation as ev
 from govuk.content_index.search import HYBRID, KEYWORD, MODES, SEMANTIC
@@ -83,6 +84,7 @@ class Command(BaseCommand):
                 rerank_with=claude,
                 candidates=settings.ASK_RERANK_CANDIDATES,
                 floor=settings.ASK_RERANK_FLOOR,
+                site=Site.objects.filter(is_default_site=True).first(),
             )
             label = f"{mode}, re-ranked by {claude.model}" if claude else mode
             self._print_mode(label, results, options, threshold)

@@ -1,4 +1,5 @@
-from django.test import SimpleTestCase, TestCase
+from django.conf import settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.models import ContentPage
@@ -15,6 +16,7 @@ class HeroStyleMixinPropertyTests(SimpleTestCase):
             HeroStyle.LARGE_TEXT: (True, False, False, False),
             HeroStyle.STYLED: (False, True, False, True),
             HeroStyle.COMBINED: (False, False, True, True),
+            HeroStyle.COMBINED_ASK: (False, False, True, True),
         }
         for style, expected in cases.items():
             page = ContentPage(title="x", hero_style=style)
@@ -56,6 +58,33 @@ class HeroStyleRenderingTests(TestCase):
         response = self._render(HeroStyle.COMBINED)
         self.assertContains(response, "masthead--combined")
         self.assertContains(response, "govuk-service-navigation--inverse")
+
+    @override_settings(FEATURE_FLAGS={**settings.FEATURE_FLAGS, "ASK": True, "MCP": True})
+    def test_combined_with_a_question_box_puts_it_in_the_band(self):
+        from govuk.models import PhaseBannerSettings
+
+        banner = PhaseBannerSettings.for_site(self.site)
+        banner.enabled = True
+        banner.save()
+        html = self._render(HeroStyle.COMBINED_ASK).content.decode()
+        self.assertIn("masthead--combined masthead--question-box", html)
+        self.assertIn("govuk-service-navigation--inverse", html)
+        band = html[html.index("masthead--combined"):html.index("govuk-phase-banner")]
+        self.assertIn('class="app-question-box app-question-box--inverse"', band)
+        self.assertIn('action="/ask/"', band)
+        self.assertIn('id="hero-ask-question"', band)
+        self.assertIn('class="app-question-box__button"', band)
+        self.assertIn("What are you wanting to do with technology?", band)  # the hidden label
+        self.assertIn('placeholder="For example, ‘What standards do I have to meet?’"', band)
+
+    @override_settings(FEATURE_FLAGS={**settings.FEATURE_FLAGS, "ASK": False})
+    def test_combined_with_a_question_box_is_the_combined_hero_without_ask(self):
+        html = self._render(HeroStyle.COMBINED_ASK).content.decode()
+        self.assertIn("masthead--combined", html)
+        self.assertNotIn("app-question-box", html)
+
+    def test_only_the_question_box_style_has_its_own_band_class(self):
+        self.assertNotIn("masthead--question-box", self._render(HeroStyle.COMBINED).content.decode())
 
     def test_styled_renders_a_plain_masthead_band(self):
         response = self._render(HeroStyle.STYLED)

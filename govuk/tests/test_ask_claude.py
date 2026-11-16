@@ -211,10 +211,86 @@ class PromptTests(SimpleTestCase):
         self.assertEqual(text.count("<section"), 3)
         self.assertEqual(text.count("part text"), 2)
 
-    def test_the_instructions_put_whole_government_pages_first(self):
-        for instructions in (prompts.RERANK_SYSTEM, prompts.SUMMARY_SYSTEM):
-            self.assertIn("You do not know who is asking unless the question says", instructions)
-        self.assertIn("Never write the name as well as the marker", prompts.SUMMARY_SYSTEM)
+    def test_the_built_in_instructions_put_whole_sector_pages_first(self):
+        for kind in ("rerank", "summary"):
+            text = prompts.instructions(kind).text
+            self.assertIn("You do not know who is asking unless the question says", text)
+            self.assertNotIn("UK government technology website", text)
+        self.assertIn("Never write the name as well as the marker", prompts.DEFAULT_SUMMARY_INSTRUCTIONS)
+
+
+@override_settings(**ON)
+class InstructionsTests(TestCase):
+    def setUp(self):
+        cache.clear()
+        self.site = Site.objects.get(is_default_site=True)
+        self.site.site_name = "tech.gov.uk"
+        self.site.save()
+
+    def _edit(self, **fields):
+        ask_settings = AskSettings.for_site(self.site)
+        for name, value in fields.items():
+            setattr(ask_settings, name, value)
+        ask_settings.save()
+
+    def test_built_in_with_the_sites_name_and_the_guard(self):
+        rerank = prompts.instructions("rerank", self.site)
+        self.assertTrue(rerank.text.startswith("You help people find what they need on tech.gov.uk."))
+        self.assertTrue(rerank.text.endswith(prompts.RERANK_GUARD))
+        self.assertEqual(rerank.tag, str(prompts.PROMPT_VERSION))
+        self.assertNotIn("{site_name}", prompts.instructions("summary").text)
+
+    def test_edited_instructions_and_the_guard_still_after_them(self):
+        self._edit(summary_instructions="  Be brief about {site_name}.  ", rerank_instructions="   ")
+        summary_text = prompts.instructions("summary", self.site)
+        self.assertEqual(summary_text.text, "Be brief about tech.gov.uk.\n\n" + prompts.SUMMARY_GUARD)
+        self.assertRegex(summary_text.tag, rf"^{prompts.PROMPT_VERSION}-edited-[0-9a-f]{{8}}$")
+        # Blank (or only spaces) is the built-in.
+        self.assertEqual(prompts.instructions("rerank", self.site).tag, str(prompts.PROMPT_VERSION))
+
+    def test_claude_is_sent_the_sites_instructions(self):
+        publish("Payments", "<p>Take card payments online.</p>")
+        indexer.rebuild()
+        self._edit(rerank_instructions="Rank for {site_name}.", summary_instructions="Summarise for {site_name}.")
+        claude = mock.Mock(wraps=FakeClaude())
+        hits = search("card payments", mode=HYBRID).hits
+        reranking.rerank("card payments", hits, claude, site=self.site)
+        self.assertTrue(claude.complete.call_args.kwargs["system"].startswith("Rank for tech.gov.uk."))
+        fake_claude, patcher = fake()
+        self.addCleanup(patcher.stop)
+        ticket = summary.make_ticket("card payments", [{"title": "Payments", "url": "/payments/", "source_sections": []}])
+        with mock.patch.object(fake_claude, "complete", wraps=fake_claude.complete) as complete:
+            summary.summarise(ticket, self.site)
+        self.assertTrue(complete.call_args.kwargs["system"].startswith("Summarise for tech.gov.uk."))
+
+    def test_new_instructions_are_not_hidden_behind_a_cached_summary(self):
+        fake_claude, patcher = fake()
+        self.addCleanup(patcher.stop)
+        ticket = summary.make_ticket("card payments", [{"title": "Payments", "url": "/payments/", "source_sections": []}])
+        summary.summarise(ticket, self.site)
+        summary.summarise(ticket, self.site)
+        self.assertEqual(fake_claude.calls, ["summary"])
+        self._edit(summary_instructions="Something else.")
+        summary.summarise(ticket, self.site)
+        self.assertEqual(fake_claude.calls, ["summary", "summary"])
+
+    def test_too_long_is_refused(self):
+        from django.core.exceptions import ValidationError
+
+        ask_settings = AskSettings.for_site(self.site)
+        ask_settings.summary_instructions = "x" * (prompts.MAX_INSTRUCTIONS_CHARS + 1)
+        with self.assertRaises(ValidationError):
+            ask_settings.full_clean()
+
+    def test_the_admin_shows_the_built_in_instructions_beside_the_fields(self):
+        from django.contrib.auth import get_user_model
+
+        admin = get_user_model().objects.create_superuser("admin", "admin@example.gov.uk", "x")
+        self.client.force_login(admin)
+        response = self.client.get(reverse("wagtailsettings:edit", args=["govuk", "asksettings", self.site.pk]))
+        self.assertContains(response, "Built-in re-ranking instructions")
+        self.assertContains(response, 'name="summary_instructions"')
+        self.assertContains(response, "You help people find what they need on {site_name}.")
 
 
 # -- re-ranking ------------------------------------------------------------------------

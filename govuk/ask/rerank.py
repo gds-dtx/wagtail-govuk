@@ -35,14 +35,16 @@ class Reranked:
     tokens: int = 0
 
 
-def rerank(question: str, hits: list, claude) -> Reranked:
+def rerank(question: str, hits: list, claude, *, site=None) -> Reranked:
+    """``site``'s instructions (Settings > Ask), or the built-in ones without it."""
+    instructions = prompts.instructions("rerank", site)
     candidates = [(f"d{number}", hit) for number, hit in enumerate(hits[: settings.ASK_RERANK_CANDIDATES], start=1)]
     by_key = dict(candidates)
     started = time.monotonic()
     try:
         reply = claude.complete(
             purpose="rerank",
-            system=prompts.RERANK_SYSTEM,
+            system=instructions.text,
             prompt=prompts.rerank_prompt(question, candidates, scopes_for(hit.document for _, hit in candidates)),
             schema=prompts.RERANK_SCHEMA,
             max_tokens=MAX_TOKENS,
@@ -80,7 +82,7 @@ def rerank(question: str, hits: list, claude) -> Reranked:
             "chosen": len(chosen),
             "in_scope": in_scope,
             "tokens": reply.usage.total,
-            "prompt_version": prompts.PROMPT_VERSION,
+            "prompt_version": instructions.tag,
             "duration_ms": round((time.monotonic() - started) * 1000),
         },
     )

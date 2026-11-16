@@ -6,9 +6,41 @@ so the daily token budget (``ASK_DAILY_TOKEN_BUDGET``) holds across them.
 Neither holds a question or an answer.
 """
 
+from html import escape
+
+from django import forms
+from django.core.validators import MaxLengthValidator
 from django.db import models
-from wagtail.admin.panels import FieldPanel, HelpPanel
+from wagtail.admin.panels import FieldPanel, HelpPanel, MultiFieldPanel
 from wagtail.contrib.settings.models import BaseSiteSetting
+
+from govuk.ask import prompts
+
+
+def _built_in(kind: str, label: str) -> HelpPanel:
+    """The built-in instructions, shown beside the field that can replace them."""
+    return HelpPanel(
+        heading=f"Built-in {label} instructions",
+        content=(
+            "<p>Used while the field below is blank. Copy them into it to start "
+            "from them. <code>{site_name}</code> is replaced with the site's name.</p>"
+            f'<pre style="white-space: pre-wrap">{escape(prompts.DEFAULTS[kind])}</pre>'
+        ),
+    )
+
+
+def _instructions_field(label: str) -> models.TextField:
+    return models.TextField(
+        blank=True,
+        verbose_name=f"{label} instructions",
+        validators=[MaxLengthValidator(prompts.MAX_INSTRUCTIONS_CHARS)],
+        help_text=(
+            "Leave blank to use the built-in instructions. Write {site_name} for "
+            "the site's name. The site always adds a line after these telling "
+            "Claude to ignore any instructions in the question or the pages. The "
+            "shape of Claude's reply is fixed whatever these say."
+        ),
+    )
 
 
 class AskSettings(BaseSiteSetting):
@@ -31,6 +63,9 @@ class AskSettings(BaseSiteSetting):
         ),
     )
 
+    rerank_instructions = _instructions_field("Re-ranking")
+    summary_instructions = _instructions_field("Summary")
+
     panels = [
         HelpPanel(
             content=(
@@ -42,6 +77,22 @@ class AskSettings(BaseSiteSetting):
         ),
         FieldPanel("use_ai_ranking"),
         FieldPanel("show_ai_summary"),
+        MultiFieldPanel(
+            [
+                _built_in("rerank", "re-ranking"),
+                FieldPanel("rerank_instructions", widget=forms.Textarea(attrs={"rows": 20})),
+            ],
+            heading="Re-ranking instructions",
+            classname="collapsed",
+        ),
+        MultiFieldPanel(
+            [
+                _built_in("summary", "summary"),
+                FieldPanel("summary_instructions", widget=forms.Textarea(attrs={"rows": 20})),
+            ],
+            heading="Summary instructions",
+            classname="collapsed",
+        ),
     ]
 
     class Meta:

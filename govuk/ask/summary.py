@@ -17,7 +17,7 @@ text is rendered from a little Markdown (paragraphs, lists, bold) and cleaned
 with nh3 before the links go in.
 
 A summary is cached for a day under the hash of the question, the cards, the
-model and ``PROMPT_VERSION``. Neither the question nor the summary is logged
+model, ``PROMPT_VERSION`` and the instructions used. Neither the question nor the summary is logged
 or stored anywhere else.
 """
 
@@ -203,19 +203,23 @@ def render(text: str, links: dict[str, tuple[str, str]]) -> str:
     return html if text_only else ""
 
 
-def _cache_key(data: dict, model: str) -> str:
-    sources = repr([(card["t"], card.get("u"), card.get("s")) for card in data["c"]])
-    digest = hashlib.sha256(f"{model}\n{prompts.PROMPT_VERSION}\n{data['q']}\n{sources}".encode()).hexdigest()
+def _cache_key(data: dict, model: str, instructions: str) -> str:
+    sources = repr([(card["t"], card.get("u"), card.get("a"), card.get("s")) for card in data["c"]])
+    digest = hashlib.sha256(
+        f"{model}\n{prompts.PROMPT_VERSION}\n{instructions}\n{data['q']}\n{sources}".encode()
+    ).hexdigest()
     return f"govuk-ask-summary:{digest}"
 
 
-def summarise(ticket: str) -> Summary:
-    """The summary for a ticket. Raises ``TicketError`` for a bad ticket."""
+def summarise(ticket: str, site=None) -> Summary:
+    """The summary for a ticket, by ``site``'s instructions (Settings > Ask), or
+    the built-in ones without it. Raises ``TicketError`` for a bad ticket."""
     data = read_ticket(ticket)
     claude = get_claude()
     if claude is None or not data["c"]:
         return Summary(UNAVAILABLE)
-    key = _cache_key(data, claude.model)
+    instructions = prompts.instructions("summary", site)
+    key = _cache_key(data, claude.model, instructions.text)
     cached = cache.get(key)
     if cached is not None:
         return Summary(*cached)
@@ -226,7 +230,7 @@ def summarise(ticket: str) -> Summary:
     try:
         reply = claude.complete(
             purpose="summary",
-            system=prompts.SUMMARY_SYSTEM,
+            system=instructions.text,
             prompt=prompts.summary_prompt(data["q"], pages),
             schema=prompts.SUMMARY_SCHEMA,
             max_tokens=MAX_TOKENS,
@@ -251,7 +255,7 @@ def summarise(ticket: str) -> Summary:
             "status": result.status,
             "cards": len(data["c"]),
             "tokens": reply.usage.total,
-            "prompt_version": prompts.PROMPT_VERSION,
+            "prompt_version": instructions.tag,
             "duration_ms": round((time.monotonic() - started) * 1000),
         },
     )

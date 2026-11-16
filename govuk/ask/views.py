@@ -80,7 +80,7 @@ def _matches(question: str, request) -> dict:
         if usage.over_budget():
             ranking = "over_budget"
         else:
-            reranked = reranking.rerank(question, outcome.hits, claude)
+            reranked = reranking.rerank(question, outcome.hits, claude, site=ask_settings.site)
             ranking = "ai" if reranked.status == reranking.OK else reranked.status
             if reranked.status == reranking.OK:
                 hits = reranked.hits
@@ -147,7 +147,7 @@ def summary_response(ticket: str, site) -> tuple[int, dict]:
     if not summary.summary_enabled(site):
         return 404, {"status": summary.UNAVAILABLE}
     try:
-        result = summary.summarise(ticket)
+        result = summary.summarise(ticket, site)
     except summary.TicketError:
         return 400, {"status": summary.UNAVAILABLE}
     return 200, {"status": result.status, "html": result.html}

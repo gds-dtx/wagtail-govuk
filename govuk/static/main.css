@@ -1449,9 +1449,112 @@ main > :nth-last-child(1 of .section-cards-container) {
 .app-ask-summary__label {
     color: #505a5f;
 }
-/* The question box block (blocks/question_box.html). */
+/* The question box (blocks/question_box.html), in a page's body or in the
+   combined hero with a question box: one large line and a square button with
+   a magnifier, as GOV.UK's own large search box. Two thirds of the width of a
+   full-width page, as the hero's own content is; beside a sidebar the text
+   column is narrower already, and it fills that. The colours are variables,
+   to try others with Settings > Customise > Extra CSS. */
 .app-question-box {
+    --app-question-box-height: 44px;
+    --app-question-box-button-colour: var(--govuk-brand-colour, #1d70b8);
+    --app-question-box-button-text-colour: #ffffff;
     margin-bottom: 30px;
+}
+.app-question-box__bar {
+    display: flex;
+    align-items: stretch;
+}
+.app-question-box__input {
+    flex: 1 1 auto;
+    height: var(--app-question-box-height);
+    margin: 0;
+    padding: 0 15px;
+}
+.app-question-box__button {
+    flex: 0 0 var(--app-question-box-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--app-question-box-height);
+    height: var(--app-question-box-height);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: var(--app-question-box-button-colour);
+    color: var(--app-question-box-button-text-colour);
+    cursor: pointer;
+}
+.app-question-box__button:hover {
+    filter: brightness(0.85);
+}
+/* Focus, on the box and the button alike: GOV.UK's 3px yellow outline round
+   a 4px black line, the whole way round. The focused one is raised above the
+   other, so the button never covers the box's outline, or the box the
+   button's. */
+.app-question-box__input:focus,
+.app-question-box__button:focus {
+    position: relative;
+    z-index: 1;
+    outline: 3px solid #ffdd00;
+    outline-offset: 0;
+}
+.app-question-box__button:focus {
+    box-shadow: inset 0 0 0 4px #0b0c0c;
+    filter: none;
+}
+.app-question-box__icon {
+    display: block;
+    width: 27px;
+    height: 27px;
+}
+@media (min-width: 40.0625em) {
+    .app-question-box {
+        --app-question-box-height: 50px;
+    }
+    .body-segment .app-question-box,
+    .govuk-grid-column-full .app-question-box {
+        width: 66.6%;
+    }
+}
+/* The combined hero with a question box (masthead--question-box): its own
+   larger title, at GOV.UK's XL heading size. The other hero styles keep
+   theirs. */
+.masthead--question-box .hero__title {
+    font-family: GDS Transport, arial, sans-serif;
+    font-weight: 700;
+    font-size: 2rem;
+    line-height: 1.09375;
+    margin-bottom: 20px;
+}
+@media (min-width: 40.0625em) {
+    .masthead--question-box .hero__title {
+        font-size: 3rem;
+        line-height: 1.0416666667;
+        margin-bottom: 30px;
+    }
+}
+/* In the combined hero, on the brand-colour band: no border on the box
+   (focus still shows GOV.UK's yellow and black), and a light blue button
+   with a magnifier in the brand colour, lighter on hover, as GOV.UK's home
+   page has. To be redesigned. */
+.app-question-box--inverse {
+    --app-question-box-button-colour: #d2e2f1;
+    --app-question-box-button-text-colour: var(--govuk-brand-colour, #1d70b8);
+    margin-top: 20px;
+    margin-bottom: 20px;
+}
+.app-question-box--inverse .app-question-box__input {
+    border: 0;
+}
+/* With no border to add to, the whole 4px black line is the inner shadow. */
+.app-question-box--inverse .app-question-box__input:focus {
+    box-shadow: inset 0 0 0 4px #0b0c0c;
+}
+.app-question-box--inverse .app-question-box__button:hover {
+    background-color: #f4f8fb;
+    filter: none;
 }
 .app-catalogue-points {
     margin: 0 0 30px;

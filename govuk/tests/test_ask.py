@@ -238,10 +238,16 @@ class QuestionBoxTests(TestCase):
     def test_it_posts_the_question_to_ask(self):
         html = self.client.get(self.page.url).content.decode()
         self.assertIn(f'action="{reverse("ask")}" method="post"', html)
-        self.assertIn("What do you need?", html)
-        self.assertIn('name="question"', html)
-        self.assertIn("Do not include personal or sensitive information.", html)
-        self.assertIn(">Go</button>", html)
+        box = html.split('class="app-question-box"', 1)[1].split("</form>", 1)[0]
+        self.assertIn('<label class="govuk-visually-hidden" for="ask-question-', box)
+        self.assertIn("What do you need?", box)
+        self.assertRegex(box, r'<input class="govuk-input app-question-box__input"[^>]*type="text"')
+        self.assertIn('placeholder="For example, cloud"', box)
+        self.assertIn('name="question"', box)
+        self.assertIn('<span class="govuk-visually-hidden">Go</span>', box)
+        self.assertIn("app-question-box__icon", box)
+        for gone in ("govuk-hint", "<textarea", "personal or sensitive"):
+            self.assertNotIn(gone, box)
 
     @override_settings(FEATURE_FLAGS={**FLAGS, "ASK": False})
     def test_nothing_while_ask_is_off(self):
