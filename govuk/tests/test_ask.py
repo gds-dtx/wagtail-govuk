@@ -125,17 +125,22 @@ class AskPageTests(WithFakeModel):
         super().setUp()
         self.url = reverse("ask")
 
-    def test_the_form_on_its_own(self):
+    def test_opened_directly_it_goes_to_the_home_page(self):
         response = self.client.get(self.url)
-        self.assertContains(response, "What are you wanting to do with technology?")
+        self.assertRedirects(response, "/", fetch_redirect_response=False)
+
+    def test_its_own_form_while_the_home_page_has_no_question_box(self):
+        response = self.client.post(self.url, {"question": "payments"})
+        self.assertContains(response, '<textarea class="govuk-textarea"')
         self.assertContains(response, "Do not include personal or sensitive information.")
+        self.assertNotContains(response, "app-question-box")
         self.assertIn("no-store", response["Cache-Control"])
         self.assertEqual(response["X-Robots-Tag"], "noindex")
 
     def test_the_closest_matches_as_cards(self):
         response = self.client.post(self.url, {"question": "How do I take money from the public?"})
         self.assertContains(response, "Results for your question")
-        self.assertContains(response, "close match")
+        self.assertContains(response, "<h2 class=\"govuk-heading-l\">Close matches</h2>")
         self.assertContains(response, 'class="app-catalogue-card')
         self.assertContains(response, self.pay.url)
         self.assertContains(response, "How do I take money from the public?")  # in the box again
@@ -148,7 +153,7 @@ class AskPageTests(WithFakeModel):
 
     def test_an_empty_or_long_question_is_an_error(self):
         empty = self.client.post(self.url, {"question": "   "})
-        self.assertContains(empty, "Enter your question")
+        self.assertContains(empty, "Please enter a question or search query")
         self.assertContains(empty, "govuk-error-summary")
         long = self.client.post(self.url, {"question": "word " * 70})
         self.assertContains(long, "300 characters or fewer")
@@ -174,6 +179,23 @@ class AskPageTests(WithFakeModel):
     @override_settings(FEATURE_FLAGS={**FLAGS, "ASK": False})
     def test_off_with_the_flag(self):
         self.assertEqual(self.client.get(self.url).status_code, 404)
+        self.assertEqual(self.client.post(self.url, {"question": "payments"}).status_code, 404)
+
+    def test_with_javascript_it_comes_back_before_searching(self):
+        with mock.patch("govuk.ask.views._matches") as matches:
+            response = self.client.post(self.url, {"question": "payments <now>", "js": "1"})
+        matches.assert_not_called()
+        self.assertContains(response, 'data-ask-matches data-url="/ask/matches/"')
+        self.assertContains(response, 'data-question="payments &lt;now&gt;"')
+        self.assertContains(response, "Thinking…")  # no summary, so in the matches' place
+        self.assertNotContains(response, "data-ask-summary")
+        self.assertNotContains(response, 'class="app-catalogue-card')
+        self.assertIn("no-store", response["Cache-Control"])
+
+    def test_with_javascript_an_empty_question_is_still_an_error(self):
+        response = self.client.post(self.url, {"question": " ", "js": "1"})
+        self.assertContains(response, "Please enter a question or search query")
+        self.assertNotContains(response, "data-ask-matches")
 
     @override_settings(ASK_RATE_LIMIT_PER_MINUTE=2)
     def test_a_client_asking_too_often_is_told_to_wait(self):
@@ -189,6 +211,140 @@ class AskPageTests(WithFakeModel):
         second = self.client.post(self.url, {"question": "payments"}, HTTP_TRUE_CLIENT_IP="203.0.113.2")
         third = self.client.post(self.url, {"question": "payments"}, HTTP_TRUE_CLIENT_IP="203.0.113.1")
         self.assertEqual([r.status_code for r in (first, second, third)], [200, 200, 429])
+
+
+class AskMatchesTests(WithFakeModel):
+    """/ask/matches/: the matches for main.js to put in the page it went straight to."""
+
+    def setUp(self):
+        super().setUp()
+        self.url = reverse("ask_matches")
+
+    def _post(self, question, **headers):
+        return self.client.post(self.url, {"question": question}, **headers)
+
+    def test_the_matches_section_and_how_many(self):
+        response = self._post("How do I take money from the public?")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "ok")
+        self.assertGreaterEqual(body["count"], 1)
+        self.assertIn('class="app-catalogue-card', body["html"])
+        self.assertIn(self.pay.url, body["html"])
+        self.assertIn(">Close matches</h2>", body["html"])
+        self.assertEqual(body["ticket"], "")  # no model, so no summary
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertEqual(response["X-Robots-Tag"], "noindex")
+
+    def test_nothing_close(self):
+        body = self._post("Write me a poem about cats").json()
+        self.assertEqual(body["count"], 0)
+        self.assertIn("Nothing close to your question", body["html"])
+
+    def test_an_empty_or_long_question_is_refused(self):
+        for question in ("  ", "word " * 70):
+            response = self._post(question)
+            self.assertEqual(response.status_code, 400)
+            self.assertEqual(response.json()["status"], "invalid")
+
+    def test_only_post(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+
+    def test_it_needs_no_csrf_token(self):
+        from django.test import Client
+
+        self.assertEqual(Client(enforce_csrf_checks=True).post(self.url, {"question": "payments"}).status_code, 200)
+
+    @override_settings(FEATURE_FLAGS={**FLAGS, "ASK": False})
+    def test_off_with_the_flag(self):
+        self.assertEqual(self._post("payments").status_code, 404)
+
+    @override_settings(ASK_RATE_LIMIT_PER_MINUTE=1)
+    def test_a_client_asking_too_often_is_told_to_wait(self):
+        self.assertEqual(self._post("payments").status_code, 200)
+        response = self._post("payments")
+        self.assertEqual(response.status_code, 429)
+        self.assertEqual(response.json()["status"], "error")
+        self.assertIn("Wait a minute", response.json()["html"])
+        self.assertTrue(1 <= int(response["Retry-After"]) <= 60)
+
+    def test_the_question_is_never_logged(self):
+        with self.assertLogs("govuk.ask", level="INFO") as logs:
+            self._post("take money from my private client")
+        output = "\n".join(logs.output) + "".join(str(vars(record)) for record in logs.records)
+        self.assertNotIn("private", output)
+
+
+class AskInTheHomeBandTests(WithFakeModel):
+    """With the combined hero with a question box on the home page, /ask/ has its band."""
+
+    def setUp(self):
+        from govuk.models.pages import HeroStyle
+
+        home = Site.objects.get(is_default_site=True).root_page.specific
+        home.title = "Technology in government"
+        home.hero_title = ""
+        home.hero_intro = "<p>Find what you need to build services.</p>"
+        home.hero_style = HeroStyle.COMBINED_ASK
+        home.save_revision().publish()
+        self.home = home
+        super().setUp()
+        self.url = reverse("ask")
+
+    @staticmethod
+    def _band(html: str) -> str:
+        start = html.index("masthead--question-box")
+        return html[start:html.index("</form>", start)]
+
+    @staticmethod
+    def _below(html: str) -> str:
+        return html[html.index("</form>", html.index("masthead--question-box")):]
+
+    def test_the_home_page_has_the_note_under_its_box(self):
+        band = self._band(self.client.get("/").content.decode())
+        self.assertIn('class="govuk-body-s app-question-box__privacy"', band)
+        self.assertIn("Do not include personal or sensitive information.", band)
+        self.assertIn('aria-describedby="hero-ask-question-privacy"', band)
+        self.assertIn('data-empty-error="Please enter a question or search query"', band)
+
+    def test_the_matches_under_the_home_pages_band(self):
+        html = self.client.post(self.url, {"question": "How do I take money from the public?"}).content.decode()
+        band = self._band(html)
+        self.assertIn('<h1 class="hero__title">Technology in government</h1>', html)
+        self.assertIn('id="ask-question"', band)
+        self.assertIn('value="How do I take money from the public?"', band)
+        self.assertIn("Do not include personal or sensitive information.", band)
+        self.assertIn("govuk-service-navigation--inverse", html)
+        below = self._below(html)
+        self.assertIn('class="app-catalogue-card', below)
+        self.assertNotIn("<textarea", html)
+        self.assertNotIn("Results for your question</h1>", html)
+        self.assertIn("<title>Results for your question", html)
+        self.assertNotIn("Edit this page", html)
+
+    def test_the_home_pages_intro_is_repeated(self):
+        html = self.client.post(self.url, {"question": "payments"}).content.decode()
+        hero = html[html.index("masthead--question-box"):html.index("<form", html.index("masthead--question-box"))]
+        self.assertIn("Find what you need to build services.", hero)
+
+    def test_an_empty_question_is_an_error_under_the_box(self):
+        html = self.client.post(self.url, {"question": "  "}).content.decode()
+        band = self._band(html)
+        self.assertIn('<p id="ask-question-error" class="govuk-error-message app-question-box__error">', band)
+        self.assertIn("Please enter a question or search query", band)
+        self.assertIn('aria-invalid="true"', band)
+        self.assertIn('aria-describedby="ask-question-error ask-question-privacy"', band)
+        self.assertNotIn("govuk-input--error", band)  # no red border on the band
+        below = self._below(html)
+        self.assertIn("govuk-error-summary", below)
+        self.assertIn('<a href="#ask-question">Please enter a question or search query</a>', below)
+        self.assertNotIn("app-catalogue-card", below)
+
+    def test_a_long_question_is_kept_in_the_box(self):
+        html = self.client.post(self.url, {"question": "word " * 70}).content.decode()
+        band = self._band(html)
+        self.assertIn("300 characters or fewer", band)
+        self.assertIn('value="word word', band)
 
 
 @override_settings(FEATURE_FLAGS=FLAGS, CONTENT_INDEX_EMBEDDINGS="", ASK_RATE_LIMIT_PER_MINUTE=0)
@@ -237,7 +393,7 @@ class QuestionBoxTests(TestCase):
 
     def test_it_posts_the_question_to_ask(self):
         html = self.client.get(self.page.url).content.decode()
-        self.assertIn(f'action="{reverse("ask")}" method="post"', html)
+        self.assertRegex(html, rf'<form class="app-question-box"\s+action="{reverse("ask")}"\s+method="post"')
         box = html.split('class="app-question-box"', 1)[1].split("</form>", 1)[0]
         self.assertIn('<label class="govuk-visually-hidden" for="ask-question-', box)
         self.assertIn("What do you need?", box)
@@ -246,8 +402,9 @@ class QuestionBoxTests(TestCase):
         self.assertIn('name="question"', box)
         self.assertIn('<span class="govuk-visually-hidden">Go</span>', box)
         self.assertIn("app-question-box__icon", box)
-        for gone in ("govuk-hint", "<textarea", "personal or sensitive"):
+        for gone in ("govuk-hint", "<textarea", "personal or sensitive", "govuk-error-message", "aria-invalid"):
             self.assertNotIn(gone, box)
+        self.assertIn('data-empty-error="Please enter a question or search query"', box)
 
     @override_settings(FEATURE_FLAGS={**FLAGS, "ASK": False})
     def test_nothing_while_ask_is_off(self):

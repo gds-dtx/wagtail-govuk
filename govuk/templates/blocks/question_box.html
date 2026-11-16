@@ -13,21 +13,38 @@
     goes as soon as anything is typed). The /ask/ page the question goes to
     carries the note not to include personal information.
 
+    Sent empty, it is not sent: main.js (setQuestionBoxes) shows the error
+    message under the box instead ("empty_error"). Without JavaScript, /ask/
+    shows it ("error"), and any other error about the question, with the
+    question again in the box ("question").
+
     With "inverse", for the brand-colour band of the combined hero with a
-    question box (base.html): no border on the box.
+    question box (base.html, and /ask/, which draws the home page's band): no
+    border on the box, the error message in white, and the note not to
+    include personal information under it.
 {% endcomment %}
 {% if ask_on %}
-    <form class="app-question-box{% if inverse %} app-question-box--inverse{% endif %}" action="{% url 'ask' %}" method="post" novalidate>
+    <form class="app-question-box{% if inverse %} app-question-box--inverse{% endif %}{% if error %} app-question-box--error{% endif %}"
+          action="{% url 'ask' %}"
+          method="post"
+          novalidate
+          data-question-box
+          data-ask-form
+          data-error-id="{{ field_id }}-error"
+          data-empty-error="{{ empty_error }}">
         <label class="govuk-visually-hidden" for="{{ field_id }}">{{ value.label }}</label>
         <div class="app-question-box__bar">
-            <input class="govuk-input app-question-box__input"
+            <input class="govuk-input app-question-box__input{% if error and not inverse %} govuk-input--error{% endif %}"
                    id="{{ field_id }}"
                    name="question"
                    type="text"
                    maxlength="300"
                    autocomplete="off"
-                   enterkeyhint="search"{% if value.hint %}
-                   placeholder="{{ value.hint }}"{% endif %}>
+                   enterkeyhint="search"{% if question %}
+                   value="{{ question }}"{% endif %}{% if value.hint %}
+                   placeholder="{{ value.hint }}"{% endif %}{% if error %}
+                   aria-invalid="true"{% endif %}{% if error or inverse %}
+                   aria-describedby="{% if error %}{{ field_id }}-error{% endif %}{% if error and inverse %} {% endif %}{% if inverse %}{{ field_id }}-privacy{% endif %}"{% endif %}>
             <button type="submit" class="app-question-box__button">
                 <span class="govuk-visually-hidden">{{ value.button_text }}</span>
                 <svg class="app-question-box__icon"
@@ -43,5 +60,13 @@
                 </svg>
             </button>
         </div>
+        {% if error %}
+            <p id="{{ field_id }}-error" class="govuk-error-message app-question-box__error">
+                <span class="govuk-visually-hidden">Error:</span> {{ error }}
+            </p>
+        {% endif %}
+        {% if inverse %}
+            {% include "ask/includes/privacy_hint.html" with privacy_id=field_id|add:"-privacy" privacy_class="govuk-body-s app-question-box__privacy" %}
+        {% endif %}
     </form>
 {% endif %}

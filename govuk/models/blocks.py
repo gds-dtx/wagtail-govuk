@@ -563,6 +563,9 @@ class BannerBlock(blocks.StructBlock):
 ASK_DEFAULT_LABEL = "What are you wanting to do with technology?"
 ASK_DEFAULT_HINT = "For example, ‘What standards do I have to meet?’"
 ASK_DEFAULT_BUTTON_TEXT = "Search"
+# Shown under the box when it is sent empty: by main.js, which then sends
+# nothing, or by /ask/ without JavaScript.
+ASK_EMPTY_ERROR = "Please enter a question or search query"
 
 
 class QuestionBoxBlock(blocks.StructBlock):
@@ -607,6 +610,8 @@ class QuestionBoxBlock(blocks.StructBlock):
         context["ask_on"] = ask_enabled()
         # Unique on the page, should an editor place two.
         context["field_id"] = f"ask-question-{uuid4().hex[:8]}"
+        # Set here so none comes from the page around the block.
+        context.update(question="", error="", empty_error=ASK_EMPTY_ERROR)
         return context
 
 

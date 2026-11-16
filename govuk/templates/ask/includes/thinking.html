@@ -1,0 +1,8 @@
+{% comment %}"Thinking…" beside two circles growing and shrinking in turn (main.css, .app-ask-thinking). "thinking_class" adds main.js's hook.{% endcomment %}
+<p class="govuk-body app-ask-thinking{% if thinking_class %} {{ thinking_class }}{% endif %}">
+    <span class="app-ask-thinking__orb" aria-hidden="true">
+        <span class="app-ask-thinking__circle app-ask-thinking__circle--first"></span>
+        <span class="app-ask-thinking__circle app-ask-thinking__circle--second"></span>
+    </span>
+    Thinking…
+</p>

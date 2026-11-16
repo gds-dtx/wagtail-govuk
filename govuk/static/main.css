@@ -1449,6 +1449,74 @@ main > :nth-last-child(1 of .section-cards-container) {
 .app-ask-summary__label {
     color: #505a5f;
 }
+
+/* While the summary is written: "Thinking…" beside two overlapping circles,
+   purple and turquoise, on one line, one growing as the other shrinks. The
+   overlap is the two multiplied (#ba4aff x #11e0f1 = #0c41f1); the group is
+   isolated, so they multiply only with each other, not with the grey box
+   behind them. Still for those who ask for less motion. The colours are
+   variables, for Settings > Customise > Extra CSS. */
+.app-ask-thinking {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+/* main.js hides it once the summary is in; "display: flex" would otherwise
+   override the hidden attribute. */
+.app-ask-thinking[hidden] {
+    display: none;
+}
+.app-ask-thinking__orb {
+    --app-ask-thinking-first-colour: #ba4aff;
+    --app-ask-thinking-second-colour: #11e0f1;
+    position: relative;
+    flex: 0 0 auto;
+    width: 51px;
+    height: 32px;
+    isolation: isolate;
+}
+.app-ask-thinking__circle {
+    position: absolute;
+    top: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    mix-blend-mode: multiply;
+    /* Its own layer, so the browser scales it without redrawing it each
+       frame. */
+    will-change: transform;
+    backface-visibility: hidden;
+    transform: translateZ(0) scale(1);
+    animation: app-ask-thinking-breathe 2s ease-in-out infinite;
+}
+.app-ask-thinking__circle--first {
+    left: 0;
+    background-color: var(--app-ask-thinking-first-colour);
+}
+/* Half a cycle behind: largest as the first is smallest. */
+.app-ask-thinking__circle--second {
+    left: 19px;
+    background-color: var(--app-ask-thinking-second-colour);
+    animation-delay: -1s;
+}
+/* A whole breath, 32px to 18px and back, eased each way, so it never stops
+   and turns back sharply. */
+@keyframes app-ask-thinking-breathe {
+    0%,
+    100% {
+        transform: translateZ(0) scale(1);
+    }
+    50% {
+        transform: translateZ(0) scale(0.55);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .app-ask-thinking__circle {
+        animation: none;
+        transform: translateZ(0) scale(0.8);
+    }
+}
+
 /* The question box (blocks/question_box.html), in a page's body or in the
    combined hero with a question box: one large line and a square button with
    a magnifier, as GOV.UK's own large search box. Two thirds of the width of a
@@ -1489,6 +1557,7 @@ main > :nth-last-child(1 of .section-cards-container) {
 .app-question-box__button:hover {
     filter: brightness(0.85);
 }
+
 /* Focus, on the box and the button alike: GOV.UK's 3px yellow outline round
    a 4px black line, the whole way round. The focused one is raised above the
    other, so the button never covers the box's outline, or the box the
@@ -1518,6 +1587,7 @@ main > :nth-last-child(1 of .section-cards-container) {
         width: 66.6%;
     }
 }
+
 /* The combined hero with a question box (masthead--question-box): its own
    larger title, at GOV.UK's XL heading size. The other hero styles keep
    theirs. */
@@ -1535,6 +1605,7 @@ main > :nth-last-child(1 of .section-cards-container) {
         margin-bottom: 30px;
     }
 }
+
 /* In the combined hero, on the brand-colour band: no border on the box
    (focus still shows GOV.UK's yellow and black), and a light blue button
    with a magnifier in the brand colour, lighter on hover, as GOV.UK's home
@@ -1543,7 +1614,7 @@ main > :nth-last-child(1 of .section-cards-container) {
     --app-question-box-button-colour: #d2e2f1;
     --app-question-box-button-text-colour: var(--govuk-brand-colour, #1d70b8);
     margin-top: 20px;
-    margin-bottom: 20px;
+    margin-bottom: 0px;
 }
 .app-question-box--inverse .app-question-box__input {
     border: 0;
@@ -1555,6 +1626,20 @@ main > :nth-last-child(1 of .section-cards-container) {
 .app-question-box--inverse .app-question-box__button:hover {
     background-color: #f4f8fb;
     filter: none;
+}
+.app-question-box__error {
+    margin-top: 10px;
+    margin-bottom: 0;
+}
+.app-question-box--inverse .app-question-box__error {
+    color: #ffffff;
+}
+.app-question-box__privacy {
+    margin-top: 10px;
+    margin-bottom: 0;
+}
+.app-question-box--inverse .app-question-box__privacy {
+    color: #ffffff;
 }
 .app-catalogue-points {
     margin: 0 0 30px;

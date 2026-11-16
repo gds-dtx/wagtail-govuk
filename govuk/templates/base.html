@@ -246,7 +246,7 @@
                                 {% endif %}
                                 {% with question_box=self.hero_question_box %}
                                     {% if question_box %}
-                                        {% include "blocks/question_box.html" with value=question_box ask_on=True field_id="hero-ask-question" inverse=True %}
+                                        {% include "blocks/question_box.html" with value=question_box ask_on=True field_id=question_box.field_id question=question_box.question error=question_box.error empty_error=question_box.empty_error inverse=True %}
                                     {% endif %}
                                 {% endwith %}
                             </div>

@@ -1,91 +1,93 @@
 {% extends "base.html" %}
 {% comment %}
-    The question box's page. Asked, it shows the closest matches as catalogue
-    cards, with the question again above them to change and search again.
-    Not asked, or with an error, it is the question box alone, its question
-    the page's heading.
+    Ask's page, for a question posted from a question box (a GET goes to the
+    home page). With the combined hero with a question box on the home page
+    ("in_band"), it is drawn under the home page's hero style, with the question
+    in its box and an error about it under the box (base.html, from the
+    view's stand-in for the page, govuk/ask/hero.py); below the hero, the
+    error summary for an error, else the matches. Otherwise it has its own
+    form, with the question again above the matches.
+
+    Without JavaScript the search is done before the page is sent.
 {% endcomment %}
-{% block title %}{% if error %}Error: {% endif %}{% if asked %}Results for your question{% else %}{{ label }}{% endif %}{% endblock %}
+{% block title %}{% if error %}Error: {% endif %}{% if asked %}Query results{% else %}{{ label }}{% endif %}{% endblock %}
 {% block content %}
-    <div class="govuk-width-container govuk-!-padding-bottom-6">
-        <div class="govuk-grid-row">
-            <div class="govuk-grid-column-two-thirds">
-                {% if error %}
-                    <div class="govuk-error-summary" data-module="govuk-error-summary">
-                        <div role="alert">
-                            <h2 class="govuk-error-summary__title">There is a problem</h2>
-                            <div class="govuk-error-summary__body">
-                                <ul class="govuk-list govuk-error-summary__list">
-                                    <li><a href="#ask-question">{{ error }}</a></li>
-                                </ul>
-                            </div>
+    <div class="govuk-width-container govuk-!-padding-bottom-6{% if in_band %} govuk-!-padding-top-0{% endif %}">
+        {% if in_band %}
+            {% if error %}
+                <div class="govuk-grid-row">
+                    <div class="govuk-grid-column-two-thirds">{% include "ask/includes/error_summary.html" %}</div>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="govuk-grid-row">
+                <div class="govuk-grid-column-two-thirds">
+                    {% if error %}{% include "ask/includes/error_summary.html" %}{% endif %}
+                    {% if asked %}<h1 class="govuk-heading-xl">Results for your question</h1>{% endif %}
+                    <form action="{% url 'ask' %}" method="post" novalidate data-ask-form>
+                        <div class="govuk-form-group{% if error %} govuk-form-group--error{% endif %}">
+                            {% if asked %}
+                                <label class="govuk-label govuk-label--s" for="{{ field_id }}">Your question</label>
+                            {% else %}
+                                <h1 class="govuk-label-wrapper">
+                                    <label class="govuk-label govuk-label--l" for="{{ field_id }}">{{ label }}</label>
+                                </h1>
+                            {% endif %}
+                            {% include "ask/includes/privacy_hint.html" with privacy_id="ask-question-privacy" %}
+                            {% if error %}
+                                <p id="{{ field_id }}-error" class="govuk-error-message">
+                                    <span class="govuk-visually-hidden">Error:</span> {{ error }}
+                                </p>
+                            {% endif %}
+                            <textarea class="govuk-textarea{% if error %} govuk-textarea--error{% endif %}"
+                                      id="{{ field_id }}"
+                                      name="question"
+                                      rows="3"
+                                      aria-describedby="ask-question-privacy{% if error %} {{ field_id }}-error{% endif %}">{{ question|default:"" }}</textarea>
                         </div>
-                    </div>
-                {% endif %}
-                {% if asked %}<h1 class="govuk-heading-xl">Results for your question</h1>{% endif %}
-                <form action="{% url 'ask' %}" method="post" novalidate>
-                    <div class="govuk-form-group{% if error %} govuk-form-group--error{% endif %}">
-                        {% if asked %}
-                            <label class="govuk-label govuk-label--s" for="ask-question">Your question</label>
-                        {% else %}
-                            <h1 class="govuk-label-wrapper">
-                                <label class="govuk-label govuk-label--l" for="ask-question">{{ label }}</label>
-                            </h1>
-                        {% endif %}
-                        {% include "ask/includes/privacy_hint.html" with privacy_id="ask-question-privacy" %}
-                        {% if error %}
-                            <p id="ask-question-error" class="govuk-error-message">
-                                <span class="govuk-visually-hidden">Error:</span> {{ error }}
-                            </p>
-                        {% endif %}
-                        <textarea class="govuk-textarea{% if error %} govuk-textarea--error{% endif %}"
-                                  id="ask-question"
-                                  name="question"
-                                  rows="3"
-                                  aria-describedby="ask-question-privacy{% if error %} ask-question-error{% endif %}">{{ question|default:"" }}</textarea>
-                    </div>
-                    <button type="submit" class="govuk-button" data-module="govuk-button">{% if asked %}Search again{% else %}Search{% endif %}</button>
-                </form>
+                        <button type="submit" class="govuk-button" data-module="govuk-button">{% if asked %}Search again{% else %}Search{% endif %}</button>
+                    </form>
+                </div>
             </div>
-        </div>
-        {% if asked and summary_ticket %}
+        {% endif %}
+        {% if asked and summary_ticket or deferred and summary_on %}
             {% comment %}
-                Filled in by main.js (setAskSummary) once the page has loaded.
-                Hidden until then, so without JavaScript only the note shows.
+                Shown by main.js (setAskSummary) once the page has loaded,
+                "Thinking…" until the summary is in: fetched at once with the
+                matches on the page, or once main.js has them ("deferred").
+                Without JavaScript, only the note shows.
             {% endcomment %}
             <div class="govuk-grid-row">
                 <div class="govuk-grid-column-two-thirds">
+                    <h2 class="govuk-heading-l">Query results</h2>
                     <div class="app-ask-summary"
                          data-ask-summary
                          data-url="{{ summary_url }}"
-                         data-ticket="{{ summary_ticket }}"
+                         data-ticket="{{ summary_ticket|default:'' }}"
                          hidden>
-                        <h2 class="govuk-heading-m">Summary</h2>
+                        <h3 class="govuk-heading-m">Summary</h3>
                         <div aria-live="polite">
-                            <p class="govuk-body js-ask-summary-status">Writing a summary of these matches…</p>
+                            {% include "ask/includes/thinking.html" with thinking_class="js-ask-summary-status" %}
                             <div class="govuk-body js-ask-summary-body" hidden></div>
                         </div>
-                        <p class="govuk-body-s app-ask-summary__label js-ask-summary-label" hidden>Written by AI from the pages below. Check them before you act on it.</p>
+                        <p class="govuk-body-s app-ask-summary__label js-ask-summary-label" hidden>Generated by AI using the pages below. Check them before you act on it.</p>
                     </div>
                     <noscript><p class="govuk-body">Turn on JavaScript to see a short summary of these matches.</p></noscript>
                 </div>
             </div>
         {% endif %}
-        {% if asked %}
-            {% if cards %}
-                <h2 class="govuk-heading-l">{{ cards|length }} close match{{ cards|length|pluralize:"es" }}</h2>
-                <p class="govuk-body">The closest matches on this site to what you asked. Check each one to be sure it applies to what you are doing.</p>
-                <ul class="app-catalogue-cards">
-                    {% for card in cards %}{% include "catalogue/includes/card.html" with heading_level=3 show_type=True %}{% endfor %}
-                </ul>
-            {% else %}
-                <h2 class="govuk-heading-l">Nothing close to your question</h2>
-                <p class="govuk-body">We could not find anything on this site close to what you asked. You could:</p>
-                <ul class="govuk-list govuk-list--bullet">
-                    <li>use other words, or say what you are trying to do</li>
-                    {% if browse_url %}<li><a class="govuk-link" href="{{ browse_url }}">browse everything in the catalogue</a></li>{% endif %}
-                </ul>
-            {% endif %}
+        {% if deferred %}
+            {% comment %}
+                The page came straight here: main.js (setAskMatches) posts the
+                question to /ask/matches/ and puts the matches here, then
+                starts the summary. "Thinking…" here only without a summary.
+            {% endcomment %}
+            <div data-ask-matches data-url="{{ matches_url }}" data-question="{{ question }}" aria-busy="true">
+                {% if not summary_on %}{% include "ask/includes/thinking.html" %}{% endif %}
+            </div>
+            <p class="govuk-visually-hidden" aria-live="polite" data-ask-matches-status></p>
+        {% elif asked %}
+            {% include "ask/includes/matches.html" %}
         {% endif %}
     </div>
 {% endblock %}

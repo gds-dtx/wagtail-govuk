@@ -12,7 +12,10 @@ document.addEventListener("DOMContentLoaded", function () {
   openLinkedDetails();
   setPageFeedback();
   setSiteSearchAutocomplete();
+  setQuestionBoxes();
+  setAskForms();
   setAskSummary();
+  setAskMatches();
   setSkipLink();
 });
 
@@ -460,29 +463,86 @@ function setPageFeedback() {
   });
 }
 
-function setAskSummary() {
-  // Ask's AI summary (ask/ask_page.html). The cards are already on the page;
-  // this fetches the summary of them once it has loaded, from the ticket the
-  // page carries, and shows it whole in a polite live region, so it is read
-  // out once rather than word by word. Without JavaScript the page says a
-  // summary needs it; if the summary cannot be had, the region goes away.
-  const region = document.querySelector("[data-ask-summary]");
-  if (!region) {
-    return;
-  }
-  const status = region.querySelector(".js-ask-summary-status");
-  const body = region.querySelector(".js-ask-summary-body");
-  const label = region.querySelector(".js-ask-summary-label");
-  region.hidden = false;
+function setQuestionBoxes() {
+  // Ask's question boxes (blocks/question_box.html): one sent empty is not
+  // sent. The error message goes under the box instead, the box is marked
+  // as in error and focused, and the message is read out.
+  document.querySelectorAll("form[data-question-box]").forEach((form) => {
+    const input = form.querySelector('input[name="question"]');
+    const message = form.dataset.emptyError;
+    if (!input || !message) {
+      return;
+    }
+    form.addEventListener("submit", (event) => {
+      if (input.value.trim() !== "") {
+        return;
+      }
+      event.preventDefault();
+      const errorId = form.dataset.errorId;
+      let error = document.getElementById(errorId);
+      if (!error) {
+        error = document.createElement("p");
+        error.id = errorId;
+        error.className = "govuk-error-message app-question-box__error";
+        form.querySelector(".app-question-box__bar").after(error);
+      }
+      // Read out as it appears: sent with Enter, the box already has focus.
+      error.setAttribute("role", "alert");
+      error.innerHTML = '<span class="govuk-visually-hidden">Error:</span> ';
+      error.append(message);
+      form.classList.add("app-question-box--error");
+      if (!form.classList.contains("app-question-box--inverse")) {
+        input.classList.add("govuk-input--error");
+      }
+      input.setAttribute("aria-invalid", "true");
+      const described = (input.getAttribute("aria-describedby") || "").split(" ").filter(Boolean);
+      if (!described.includes(errorId)) {
+        input.setAttribute("aria-describedby", [errorId, ...described].join(" "));
+      }
+      input.value = "";
+      input.focus();
+    });
+  });
+}
 
+function setAskForms() {
+  // Forms that post a question to /ask/: with JavaScript, they say so
+  // ("js"), and /ask/ comes back at once, without the matches, for
+  // setAskMatches to fetch. Registered after setQuestionBoxes, so a box sent
+  // empty (stopped there) is left alone.
+  document.querySelectorAll("form[data-ask-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      if (event.defaultPrevented || form.querySelector('input[name="js"]')) {
+        return;
+      }
+      const flag = document.createElement("input");
+      flag.type = "hidden";
+      flag.name = "js";
+      flag.value = "1";
+      form.append(flag);
+    });
+  });
+}
+
+function askPost(url, fields) {
   const data = new URLSearchParams();
-  data.set("ticket", region.dataset.ticket || "");
-  fetch(region.dataset.url, {
+  Object.entries(fields).forEach(([name, value]) => data.set(name, value));
+  return fetch(url, {
     method: "POST",
     body: data,
     credentials: "omit",
     headers: { Accept: "application/json" },
-  })
+  });
+}
+
+function fetchAskSummary(region) {
+  // Fetches the summary for the ticket on the region, and shows it whole in
+  // its polite live region, so it is read out once rather than word by word.
+  // If it cannot be had, the region goes away.
+  const status = region.querySelector(".js-ask-summary-status");
+  const body = region.querySelector(".js-ask-summary-body");
+  const label = region.querySelector(".js-ask-summary-label");
+  askPost(region.dataset.url, { ticket: region.dataset.ticket || "" })
     .then((response) => (response.ok ? response.json() : null))
     .then((result) => {
       if (!result || result.status !== "ok" || !result.html) {
@@ -497,6 +557,70 @@ function setAskSummary() {
     })
     .catch(() => {
       region.remove();
+    });
+}
+
+function setAskSummary() {
+  // Ask's AI summary (ask/ask_page.html), shown saying "Thinking…" as soon
+  // as the page loads. With the matches already on the page, its ticket is
+  // there too and the summary is fetched now; otherwise setAskMatches
+  // fetches it once it has the matches. Without JavaScript the page says a
+  // summary needs it.
+  const region = document.querySelector("[data-ask-summary]");
+  if (!region) {
+    return;
+  }
+  region.hidden = false;
+  if (region.dataset.ticket) {
+    fetchAskSummary(region);
+  }
+}
+
+function setAskMatches() {
+  // /ask/ came straight here (setAskForms): fetches the matches for the
+  // question from /ask/matches/ and puts them in the page, says how many in
+  // a polite status, then starts the summary, or removes its box when there
+  // is none to write.
+  const container = document.querySelector("[data-ask-matches]");
+  if (!container) {
+    return;
+  }
+  const announce = document.querySelector("[data-ask-matches-status]");
+  const region = document.querySelector("[data-ask-summary]");
+  const show = (html) => {
+    // The server rendered this from its own template.
+    container.innerHTML = html;
+    container.removeAttribute("aria-busy");
+    if (announce) {
+      const heading = container.querySelector("h2");
+      announce.textContent = heading ? heading.textContent : "";
+    }
+  };
+  askPost(container.dataset.url, { question: container.dataset.question || "" })
+    .then((response) => response.json().catch(() => null))
+    .then((result) => {
+      if (!result || !result.html) {
+        throw new Error("No matches");
+      }
+      show(result.html);
+      if (!region) {
+        return;
+      }
+      if (result.ticket) {
+        region.dataset.ticket = result.ticket;
+        fetchAskSummary(region);
+      } else {
+        region.remove();
+      }
+    })
+    .catch(() => {
+      show(
+        '<h2 class="govuk-heading-l">Sorry, there is a problem</h2>' +
+          '<p class="govuk-body">The matches could not be found. Try again later.</p>',
+      );
+      if (region) {
+        region.remove();
+      }
     });
 }
 

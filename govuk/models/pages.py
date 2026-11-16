@@ -87,14 +87,28 @@ class HeroStyleMixin(models.Model):
     @property
     def hero_question_box(self) -> dict | None:
         """The question box to draw in the hero's band, with Ask's default
-        wording, for the combined-with-question-box style."""
+        wording, for the combined-with-question-box style. /ask/ draws the
+        home page's band with the question asked in it (``govuk.ask.hero``)."""
         from govuk.content_index import ask_enabled
 
         if self.hero_style != HeroStyle.COMBINED_ASK or not ask_enabled():
             return None
-        from .blocks import ASK_DEFAULT_BUTTON_TEXT, ASK_DEFAULT_HINT, ASK_DEFAULT_LABEL
+        from .blocks import (
+            ASK_DEFAULT_BUTTON_TEXT,
+            ASK_DEFAULT_HINT,
+            ASK_DEFAULT_LABEL,
+            ASK_EMPTY_ERROR,
+        )
 
-        return {"label": ASK_DEFAULT_LABEL, "hint": ASK_DEFAULT_HINT, "button_text": ASK_DEFAULT_BUTTON_TEXT}
+        return {
+            "label": ASK_DEFAULT_LABEL,
+            "hint": ASK_DEFAULT_HINT,
+            "button_text": ASK_DEFAULT_BUTTON_TEXT,
+            "field_id": "hero-ask-question",
+            "question": "",
+            "error": "",
+            "empty_error": ASK_EMPTY_ERROR,
+        }
 
 
 class BreadcrumbMixin(models.Model):
