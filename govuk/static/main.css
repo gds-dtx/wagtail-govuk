@@ -136,6 +136,20 @@
     max-width: 100%;
     height: auto;
 }
+
+/* A horizontal rule in rich text: a 3px line in the brand colour, spaced as
+   GOV.UK's large section break. An hr with its own classes (a section break
+   written in a Raw HTML block) keeps them. */
+.rich-text-content hr:not([class]) {
+    margin: 20px 0;
+    border: 0;
+    border-bottom: 3px solid var(--govuk-brand-colour, #1d70b8);
+}
+@media (min-width: 40.0625em) {
+    .rich-text-content hr:not([class]) {
+        margin: 30px 0;
+    }
+}
 img.full-width {
     width: 100%;
     height: auto;
