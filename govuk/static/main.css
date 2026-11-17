@@ -23,6 +23,12 @@
 .masthead--combined + .govuk-phase-banner {
     margin-bottom: 20px;
 }
+/* With no phase banner after it, the band itself keeps the content off it,
+   by the same 20px (30px on wider screens), as <main> has no padding with a
+   combined hero. With a banner, the band stays flush against it. */
+.masthead--combined:not(:has(+ .govuk-phase-banner)) {
+    margin-bottom: 20px !important;
+}
 
 .masthead-breadcrumbs {
     background-color: var(--govuk-brand-colour, #1d70b8);
@@ -150,6 +156,9 @@ img.full-width {
     }
     .masthead--combined + .govuk-phase-banner {
         margin-bottom: 30px;
+    }
+    .masthead--combined:not(:has(+ .govuk-phase-banner)) {
+        margin-bottom: 30px !important;
     }
     .govuk-width-container, .hero {
         margin-right: 30px;
