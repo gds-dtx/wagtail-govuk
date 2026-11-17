@@ -4,6 +4,10 @@
     button: across the page with full_width, or as a panel in the text column
     beside a sidebar.
 
+    Across the page, only the heading and text are held to two thirds (the
+    Design System's reading width). The HTML and button take the container's
+    full width, so an editor can lay out their own grid columns in the HTML.
+
     The style is chosen here rather than interpolated into the class: a page
     import writes stream data without running the block's validation, so the
     stored value cannot be trusted inside an attribute. scheme and
@@ -17,8 +21,10 @@
 <div class="body-banner body-banner--{{ scheme }}{% if is_dark %} body-banner--inverse{% endif %}{% if custom_class %} {{ custom_class }}{% endif %} {% if full_width %}body-band{% else %}body-panel{% endif %}">
     {% if full_width %}
         <div class="govuk-width-container">
+        {% if value.heading or value.text %}
             <div class="govuk-grid-row">
                 <div class="govuk-grid-column-two-thirds">
+        {% endif %}
     {% endif %}
                     {% if value.heading %}
                         <h2 class="govuk-heading-l body-banner__heading">{{ value.heading }}</h2>
@@ -26,6 +32,12 @@
                     {% if value.text %}
                         <div class="govuk-body-l rich-text-content body-banner__text">{{ value.text|richtext }}</div>
                     {% endif %}
+    {% if full_width %}
+        {% if value.heading or value.text %}
+                </div>
+            </div>
+        {% endif %}
+    {% endif %}
                     {% if value.raw_html %}
                         <div class="rich-text-content body-banner__html">{{ value.raw_html|raw_html_block }}</div>
                     {% endif %}
@@ -37,8 +49,6 @@
                            data-module="govuk-button">{{ value.button_text }}</a>
                     {% endif %}
     {% if full_width %}
-                </div>
-            </div>
         </div>
     {% endif %}
 </div>

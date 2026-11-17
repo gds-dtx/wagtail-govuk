@@ -395,6 +395,32 @@ class BannerBlockTests(SimpleTestCase):
         self.assertLess(html.index("body-banner__text"), html.index("hero__logo"))
         self.assertLess(html.index("hero__logo"), html.index("govuk-button"))
 
+    def test_across_the_page_only_the_heading_and_text_are_two_thirds(self):
+        block, value = self._value(raw_html='<figure class="hero__logo">Crest</figure>')
+
+        html = block.render(value, context={"full_width": True})
+
+        column = html.index("govuk-grid-column-two-thirds")
+        column_end = html.index("</div>", html.index("body-banner__text"))
+        column_end = html.index("</div>", column_end + 1)
+        self.assertLess(column, html.index("body-banner__heading"))
+        self.assertLess(html.index("body-banner__text"), column_end)
+        self.assertLess(column_end, html.index("body-banner__html"))
+        self.assertLess(column_end, html.index("govuk-button"))
+
+    def test_html_alone_has_no_two_thirds_column(self):
+        block, value = self._value(
+            heading="",
+            text="",
+            raw_html='<div class="govuk-grid-row"><div class="govuk-grid-column-one-third">Side</div></div>',
+        )
+
+        html = block.render(value, context={"full_width": True})
+
+        self.assertNotIn("govuk-grid-column-two-thirds", html)
+        self.assertIn("govuk-width-container", html)
+        self.assertIn("govuk-grid-column-one-third", html)
+
     def test_raw_html_is_cleaned_when_rendered(self):
         """A page import writes stream data without running clean."""
         block, value = self._value(raw_html="<p>Kept</p><script>go()</script>")
