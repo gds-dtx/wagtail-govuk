@@ -346,7 +346,6 @@ class AISearchTests(WithFakeModel):
     def test_always_open_at_the_foot_of_the_home_pages_band(self):
         html = self._get("/")
         band = self._band(html)
-        self.assertIn("masthead--combined masthead--question-box", html)  # its larger title
         self.assertIn("app-ask-search app-ask-search--inverse", band)
         self.assertNotIn("hidden", self._area(html).split(">", 1)[0])
         self.assertIn(
@@ -375,7 +374,6 @@ class AISearchTests(WithFakeModel):
         self.assertIn('class="app-ask-search"', area)  # below the navigation, not inverse
         self.assertIn("hidden>", area.split("<form", 1)[0])
         self.assertLess(header.index("govuk-service-navigation"), header.index('id="app-ask-search"'))
-        self.assertNotIn("masthead--question-box", html)
 
     def test_on_another_combined_hero_it_opens_at_the_foot_of_the_band(self):
         from govuk.models.pages import HeroStyle
@@ -386,7 +384,6 @@ class AISearchTests(WithFakeModel):
         self.assertIn("app-ask-search app-ask-search--inverse", band)
         self.assertIn("hidden>", self._area(html).split("<form", 1)[0])
         self.assertIn("js-ask-search-toggle", self._header(html))
-        self.assertNotIn("masthead--question-box", html)
 
     def test_not_always_open_the_home_page_has_the_button(self):
         self.customise.ask_search_on_home_page = False
@@ -394,7 +391,6 @@ class AISearchTests(WithFakeModel):
         html = self._get("/")
         self.assertIn("js-ask-search-toggle", self._header(html))
         self.assertIn("hidden>", self._area(html).split("<form", 1)[0])
-        self.assertNotIn("masthead--question-box", html)
 
     def test_its_lead_text_is_a_setting(self):
         from govuk.models import AskSettings

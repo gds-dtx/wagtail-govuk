@@ -1588,11 +1588,9 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
-/* A combined hero with AI search's search area open in it, on the home page
-   ("Always show AI search on the home page") and /ask/
-   (masthead--question-box): a larger title, at GOV.UK's XL heading size.
-   Other heroes keep theirs. */
-.masthead--question-box .hero__title {
+/* The combined hero's title, at GOV.UK's XL heading size. Other heroes keep
+   theirs. */
+.masthead--combined .hero__title {
     font-family: GDS Transport, arial, sans-serif;
     font-weight: 700;
     font-size: 2rem;
@@ -1600,7 +1598,7 @@ main > :nth-last-child(1 of .section-cards-container) {
     margin-bottom: 20px;
 }
 @media (min-width: 40.0625em) {
-    .masthead--question-box .hero__title {
+    .masthead--combined .hero__title {
         font-size: 3rem;
         line-height: 1.0416666667;
         margin-bottom: 30px;

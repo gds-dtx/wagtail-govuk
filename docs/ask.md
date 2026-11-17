@@ -117,9 +117,6 @@ the box's visible label.
   yellow and black focus state. As on GOV.UK's home page, the button is
   light blue (#d2e2f1), lighter on hover (#f4f8fb), with the magnifier in the
   brand colour (#1d70b8 by default).
-- **A larger title:** a combined hero with the search area open in it (the
-  home page with "Always show", and `/ask/`) has GOV.UK's XL heading size,
-  48px (32px on phones). The band carries `masthead--question-box`.
 - **The button** (`includes/ask_search_toggle.html`): without JavaScript, a
   link to `/ask/`, where the search area is always open. With it
   (`main.js`, `setAskSearchToggle`), a button that opens and closes the area
