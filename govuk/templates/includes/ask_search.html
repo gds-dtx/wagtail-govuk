@@ -1,0 +1,24 @@
+{% comment %}
+    AI search's search area (govuk/ask/search_area.py): the lead text, the
+    question box with the search placeholder greyed in it, and the note not
+    to include personal information. Closed ("hidden") until main.js
+    (setAskSearchToggle) opens it from the magnifier button; open on /ask/,
+    and on the home page with "Always show AI search on the home page".
+
+    With "inverse", at the foot of a combined hero's band (base.html), in the
+    hero's own width; otherwise below the navigation, in the page's width, on
+    a light grey strip; on /ask/ without a combined hero ("in_main"), at the
+    top of the page's content, with no strip.
+{% endcomment %}
+<div id="{{ area.panel_id }}"
+     class="app-ask-search{% if inverse %} app-ask-search--inverse{% endif %}{% if area.in_main %} app-ask-search--page{% endif %}"
+     data-ask-search{% if not area.open %}
+     hidden{% endif %}>
+    {% if inverse %}
+        {% include "blocks/question_box.html" with value=area ask_on=True field_id=area.field_id question=area.question error=area.error empty_error=area.empty_error inverse=True lead=True lead_heading=False %}
+    {% else %}
+        <div class="govuk-width-container">
+            {% include "blocks/question_box.html" with value=area ask_on=True field_id=area.field_id question=area.question error=area.error empty_error=area.empty_error inverse=False lead=True lead_heading=area.in_main %}
+        </div>
+    {% endif %}
+</div>

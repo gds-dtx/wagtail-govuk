@@ -611,7 +611,7 @@ class QuestionBoxBlock(blocks.StructBlock):
         # Unique on the page, should an editor place two.
         context["field_id"] = f"ask-question-{uuid4().hex[:8]}"
         # Set here so none comes from the page around the block.
-        context.update(question="", error="", empty_error=ASK_EMPTY_ERROR)
+        context.update(question="", error="", empty_error=ASK_EMPTY_ERROR, lead=False, lead_heading=False)
         return context
 
 

@@ -50,6 +50,7 @@ def navigation_and_breadcrumbs(request):
             "footer_settings": None,
             "customise_settings": None,
             "error_pages_settings": None,
+            "ask_search": None,
         }
 
     site_root = site.root_page.specific
@@ -101,6 +102,14 @@ def navigation_and_breadcrumbs(request):
     show_breadcrumbs = getattr(current_page_specific, "show_breadcrumbs", True)
 
     customise_settings = CustomiseSettings.for_site(site)
+    # AI search (govuk/ask/search_area.py); /ask/ passes its own.
+    from govuk.ask.search_area import search_area
+
+    ask_search = search_area(
+        request,
+        customise_settings,
+        is_home=bool(current_page and current_page.pk == site_root.pk),
+    )
 
     return {
         **template_context,
@@ -111,4 +120,5 @@ def navigation_and_breadcrumbs(request):
         "footer_settings": FooterSettings.for_site(site),
         "customise_settings": customise_settings,
         "error_pages_settings": ErrorPagesSettings.for_site(site),
+        "ask_search": ask_search,
     }

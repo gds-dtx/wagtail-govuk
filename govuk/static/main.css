@@ -1588,9 +1588,10 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
-/* The combined hero with a question box (masthead--question-box): its own
-   larger title, at GOV.UK's XL heading size. The other hero styles keep
-   theirs. */
+/* A combined hero with AI search's search area open in it, on the home page
+   ("Always show AI search on the home page") and /ask/
+   (masthead--question-box): a larger title, at GOV.UK's XL heading size.
+   Other heroes keep theirs. */
 .masthead--question-box .hero__title {
     font-family: GDS Transport, arial, sans-serif;
     font-weight: 700;
@@ -1606,7 +1607,7 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
-/* In the combined hero, on the brand-colour band: no border on the box
+/* In a combined hero, on the brand-colour band: no border on the box
    (focus still shows GOV.UK's yellow and black), and a light blue button
    with a magnifier in the brand colour, lighter on hover, as GOV.UK's home
    page has. To be redesigned. */
@@ -1640,6 +1641,137 @@ main > :nth-last-child(1 of .section-cards-container) {
 }
 .app-question-box--inverse .app-question-box__privacy {
     color: #ffffff;
+}
+/* AI search's lead text, shown above the box as its label. */
+.app-question-box__lead {
+    margin-bottom: 15px;
+}
+.app-question-box--inverse .app-question-box__lead {
+    color: #ffffff;
+}
+
+/* AI search's search area (includes/ask_search.html): below the navigation
+   on a light grey strip, the box two thirds of the width; at the foot of a
+   combined hero, in the band as it is; at the top of /ask/'s content, with
+   no strip. The strip's colour is a variable, for Settings > Customise >
+   Extra CSS. */
+.app-ask-search {
+    --app-ask-search-background: #f3f2f1;
+    padding: 25px 0 30px;
+    border-bottom: 1px solid #b1b4b6;
+    background-color: var(--app-ask-search-background);
+}
+.app-ask-search[hidden] {
+    display: none;
+}
+.app-ask-search .app-question-box {
+    margin-bottom: 0;
+}
+.app-ask-search--inverse,
+.app-ask-search--page {
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+}
+.app-ask-search--page {
+    padding-bottom: 10px;
+}
+@media (min-width: 40.0625em) {
+    .app-ask-search .govuk-width-container > .app-question-box {
+        width: 66.6%;
+    }
+}
+
+/* AI search's magnifier button, where the site search box would be
+   (includes/ask_search_toggle.html): white in the header bar and an inverse
+   navigation, the link colour in a light one. A cross while its search area
+   is open. GOV.UK's yellow and black focus state. */
+.app-search-toggle-group {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    color: #ffffff;
+}
+.govuk-header__container:has(.app-search-toggle-group) {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+.app-search-toggle-group + .app-header__sign-in {
+    margin-left: 0;
+}
+.govuk-service-navigation .app-search-toggle-group {
+    color: var(--govuk-link-colour, #1d70b8);
+}
+/* In the navigation bar's row, centred on its height (the bar lines its
+   items up at the top). */
+@media (min-width: 40.0625em) {
+    .govuk-service-navigation .app-search-toggle-group {
+        align-self: center;
+    }
+}
+.govuk-service-navigation--inverse .app-search-toggle-group {
+    color: #ffffff;
+}
+.app-search-toggle,
+.app-search-toggle:link,
+.app-search-toggle:visited {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+}
+.app-search-toggle[hidden] {
+    display: none;
+}
+/* Hover: a light tint, and a 3px line along the foot in the button's own
+   colour, as a GOV.UK link's underline thickens on hover. */
+.app-search-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    box-shadow: inset 0 -3px currentColor;
+}
+.govuk-service-navigation:not(.govuk-service-navigation--inverse) .app-search-toggle:hover {
+    background-color: rgba(29, 112, 184, 0.1);
+}
+/* Open (the cross): its colours swapped, as GOV.UK's own search toggle does
+   while its search area is open: white with the cross in the brand colour on
+   the header bar and an inverse navigation, the brand colour with a white
+   cross on a light navigation. Focus, after, still wins. */
+.app-search-toggle[aria-expanded="true"],
+.app-search-toggle[aria-expanded="true"]:hover {
+    background-color: #ffffff;
+    color: var(--govuk-brand-colour, #1d70b8);
+}
+.govuk-service-navigation:not(.govuk-service-navigation--inverse) .app-search-toggle[aria-expanded="true"],
+.govuk-service-navigation:not(.govuk-service-navigation--inverse) .app-search-toggle[aria-expanded="true"]:hover {
+    background-color: var(--govuk-link-colour, #1d70b8);
+    color: #ffffff;
+}
+.app-search-toggle:focus,
+.app-search-toggle[aria-expanded="true"]:focus,
+.govuk-service-navigation .app-search-toggle[aria-expanded="true"]:focus {
+    outline: 3px solid transparent;
+    background-color: #ffdd00;
+    box-shadow: inset 0 -4px #0b0c0c;
+    color: #0b0c0c;
+}
+.app-search-toggle__open,
+.app-search-toggle__close {
+    display: block;
+}
+.app-search-toggle__close,
+.app-search-toggle[aria-expanded="true"] .app-search-toggle__open {
+    display: none;
+}
+.app-search-toggle[aria-expanded="true"] .app-search-toggle__close {
+    display: block;
 }
 .app-catalogue-points {
     margin: 0 0 30px;

@@ -80,7 +80,7 @@ only name: it isn't reliably read out, and it goes as soon as anything is
 typed. That's why the label is still there, though hidden.
 
 The note "Do not include personal or sensitive information." isn't under
-this box. It's under the box in the hero's band (below), and on `/ask/`.
+this box. It's under the box in AI search's search area (below).
 
 **Sent empty**, the box isn't sent. `main.js` (`setQuestionBoxes`) shows the
 Design System's error message under it, "Please enter a question or search
@@ -88,52 +88,66 @@ query", marks the box as in error and announces the message. Without
 JavaScript, `/ask/` shows the same message (`ASK_EMPTY_ERROR` in
 `govuk/models/blocks.py`).
 
-### In the hero
+### AI search
 
-For a box in the hero itself, choose the hero style **Combined service
-navigation and hero styling, with a question box**:
+AI search replaces the site search box with a magnifier button, which opens
+a search area to ask a question in. Choose it in **Settings > Customise >
+Search box**:
 
-- **What it is:** the combined hero, with the question box in its band,
-  under the title and intro. The phase banner still comes after the band.
-  The box can't be placed there otherwise: the body starts below the
-  phase banner.
-- **Its title** is larger than the other styles' titles: GOV.UK's XL heading
-  size, 48px (32px on phones). The band carries its own class,
-  `masthead--question-box`, for anything else that should differ for this
-  style alone.
-- **Wording and look:** it uses the block's default wording: the hidden
-  label, the placeholder and the button's name. In the band the box has no
-  border, though it still shows GOV.UK's yellow and black focus state. As on
-  GOV.UK's home page, the button is light blue (#d2e2f1), lighter on hover
-  (#f4f8fb), with the magnifier in the brand colour (#1d70b8 by default).
-- **The note** "Do not include personal or sensitive information." is a
-  short line under the box (`govuk-body-s`, white), which the box's
-  `aria-describedby` points to. An error message about the question goes
-  between the box and the note, in white.
-- **Without Ask:** with `FEATURE_ASK` off, it's the combined hero alone.
-- **Its future:** the wording isn't editable yet. This is a stopgap until
-  the hero's design is reworked, and it sits apart from the other styles
-  (`HeroStyle.COMBINED_ASK`, `hero_question_box`), so it can be changed or
-  removed on its own. Removing it would need a data migration moving its
-  pages to `combined`.
+| Setting | What it does |
+| --- | --- |
+| Search type | **Normal search** (the default: the site search box) or **AI search**. AI search needs `FEATURE_ASK`; without it, normal search is shown |
+| Search location | Where the button goes: the header bar or the service navigation, as the box would. **Hidden** shows no button |
+| Always show AI search on the home page | The search area is always open on the home page, and the button isn't shown there |
+| Search placeholder | The greyed wording inside the box, as for the site search box. Defaults to "Search" |
+
+The **lead text** above the box, "What would you like to find out about?" by
+default, is set in **Settings > Ask** (`AskSettings.search_lead_text`). It is
+the box's visible label.
+
+- **The search area** (`includes/ask_search.html`): the lead text, the box
+  and the note "Do not include personal or sensitive information." under it
+  (`govuk-body-s`), which the box's `aria-describedby` points to. An error
+  message about the question goes between the box and the note.
+- **Where it opens:** at the foot of a combined hero's band, under the
+  title and intro, in white, as the home page had it with the old hero style.
+  On any other page, below the navigation, on a light grey strip
+  (`--app-ask-search-background`), the box two thirds of the width.
+- **On the band** the box has no border, though it still shows GOV.UK's
+  yellow and black focus state. As on GOV.UK's home page, the button is
+  light blue (#d2e2f1), lighter on hover (#f4f8fb), with the magnifier in the
+  brand colour (#1d70b8 by default).
+- **A larger title:** a combined hero with the search area open in it (the
+  home page with "Always show", and `/ask/`) has GOV.UK's XL heading size,
+  48px (32px on phones). The band carries `masthead--question-box`.
+- **The button** (`includes/ask_search_toggle.html`): without JavaScript, a
+  link to `/ask/`, where the search area is always open. With it
+  (`main.js`, `setAskSearchToggle`), a button that opens and closes the area
+  on the page (`aria-expanded`), shows a cross while it's open, puts the
+  cursor in the box, and closes on Escape. A page that draws its own band in
+  place of the shared hero (a catalogue page, a page with role navigation)
+  has no area to open, and the link stays.
+- **The old hero style** "Combined service navigation and hero styling, with
+  a question box" is gone. Migration 0102 made its pages combined heroes,
+  in their revisions too, and gave a site whose home page had it AI search,
+  always open on the home page.
 
 ### /ask/
 
 - **POST, not GET.** The question goes in the request body, so it is not kept
   in the address bar, the browser's history, or any access log on the way:
   CloudFront's, the load balancer's or the app's. The cost is that a refresh
-  asks to send it again. Opened directly (a GET), it redirects to the home
-  page, where the question is asked.
-- **Its layout follows the home page.** With the combined hero with a
-  question box on the home page, `/ask/` is drawn under the home page's
-  band: its service navigation, title and intro, with the question asked
-  in the box to change and search again (`govuk/ask/hero.py`, a stand-in for
-  the page that `base.html` draws the hero from; there's no "Edit this
-  page" link). Below the band are the summary and the cards. An error about
-  the question (empty, too long, too many questions) is shown under the
-  box in the band, and in the Design System's error summary below the
-  band, which links to the box. With any other hero style on the home page,
-  `/ask/` has its own form above the matches, as before.
+  asks to send it again. Opened directly (a GET, as from AI search's button
+  without JavaScript), it's the search area alone, to ask in.
+- **The search area is always open on it**, with the question asked in the
+  box to change and search again, whatever the search type. With a combined
+  hero on the home page, `/ask/` is drawn under the home page's band, the
+  area at its foot (`govuk/ask/hero.py`, a stand-in for the page that
+  `base.html` draws the hero from; there's no "Edit this page" link).
+  Otherwise the area heads the page, its lead text the page's heading.
+  Below it are the summary and the cards. An error about the question
+  (empty, too long, too many questions) is shown under the box, and in the
+  Design System's error summary, which links to the box.
 - **Straight there, with JavaScript.** A form posting to `/ask/` adds `js=1`
   as it is sent (`main.js`, `setAskForms`). `/ask/` then only checks the
   question (empty or too long is still an error on the page) and comes back

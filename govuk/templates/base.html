@@ -119,7 +119,11 @@
                         </a>
                     </div>
                     {% if customise_settings.search_location == "header" %}
-                        {% include "includes/site_search.html" %}
+                        {% if ask_search.replaces_site_search %}
+                            {% if ask_search.toggle %}{% include "includes/ask_search_toggle.html" %}{% endif %}
+                        {% else %}
+                            {% include "includes/site_search.html" %}
+                        {% endif %}
                     {% endif %}
                     {% if customise_settings.sign_in_location == "header" %}
                         <div class="app-header__sign-in">
@@ -196,11 +200,22 @@
                             site whose menu would otherwise be empty.
                         {% endcomment %}
                         {% if customise_settings.search_location == "navigation" %}
-                            {% include "includes/site_search.html" %}
+                            {% if ask_search.replaces_site_search %}
+                                {% if ask_search.toggle %}{% include "includes/ask_search_toggle.html" %}{% endif %}
+                            {% else %}
+                                {% include "includes/site_search.html" %}
+                            {% endif %}
                         {% endif %}
                     </div>
                 </div>
             </section>
+            {% comment %}
+                AI search's search area, below the navigation, on a page with
+                no combined hero (with one, it is at the foot of the band).
+            {% endcomment %}
+            {% if ask_search.panel and not ask_search.in_main and not self.hero_is_combined %}
+                {% include "includes/ask_search.html" with area=ask_search inverse=False %}
+            {% endif %}
             {% if not self.hero_is_combined and phase_banner_settings and phase_banner_settings.enabled %}
                 {% include "includes/phase_banner.html" with phase_banner_settings=phase_banner_settings %}
             {% endif %}
@@ -233,7 +248,7 @@
                             </div>
                         </div>
                     {% endif %}
-                    <div class="{% if self.hero_uses_masthead %}masthead {% if self.hero_is_combined %}masthead--combined{% endif %}{% if self.hero_is_combined_ask %} masthead--question-box{% endif %}{% endif %}">
+                    <div class="{% if self.hero_uses_masthead %}masthead {% if self.hero_is_combined %}masthead--combined{% endif %}{% if self.hero_is_combined and ask_search.open %} masthead--question-box{% endif %}{% endif %}">
                         <div class="hero">
                             <div class="hero__content">
                                 {% if self.hero_title or self.title %}
@@ -244,11 +259,9 @@
                                 {% elif self.search_description %}
                                     <p class="hero__description rich-text-content govuk-body-l">{{ self.search_description }}</p>
                                 {% endif %}
-                                {% with question_box=self.hero_question_box %}
-                                    {% if question_box %}
-                                        {% include "blocks/question_box.html" with value=question_box ask_on=True field_id=question_box.field_id question=question_box.question error=question_box.error empty_error=question_box.empty_error inverse=True %}
-                                    {% endif %}
-                                {% endwith %}
+                                {% if ask_search.panel and self.hero_is_combined %}
+                                    {% include "includes/ask_search.html" with area=ask_search inverse=True %}
+                                {% endif %}
                             </div>
                         </div>
                     </div>

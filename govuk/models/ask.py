@@ -16,6 +16,8 @@ from wagtail.contrib.settings.models import BaseSiteSetting
 
 from govuk.ask import prompts
 
+DEFAULT_SEARCH_LEAD_TEXT = "What would you like to find out about?"
+
 
 def _built_in(kind: str, label: str) -> HelpPanel:
     """The built-in instructions, shown beside the field that can replace them."""
@@ -63,6 +65,18 @@ class AskSettings(BaseSiteSetting):
         ),
     )
 
+    search_lead_text = models.CharField(
+        max_length=120,
+        blank=True,
+        default=DEFAULT_SEARCH_LEAD_TEXT,
+        verbose_name="AI search lead text",
+        help_text=(
+            "Shown above the box in AI search's search area, and read out as "
+            "its name. Blank for the default. The greyed wording inside the box "
+            "is the search placeholder in Settings > Customise."
+        ),
+    )
+
     rerank_instructions = _instructions_field("Re-ranking")
     summary_instructions = _instructions_field("Summary")
 
@@ -77,6 +91,7 @@ class AskSettings(BaseSiteSetting):
         ),
         FieldPanel("use_ai_ranking"),
         FieldPanel("show_ai_summary"),
+        FieldPanel("search_lead_text"),
         MultiFieldPanel(
             [
                 _built_in("rerank", "re-ranking"),

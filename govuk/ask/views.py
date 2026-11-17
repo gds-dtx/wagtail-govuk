@@ -6,10 +6,10 @@ summary, which the browser fetches afterwards from ``SUMMARY_PATH``. That
 path is served by the uvicorn service deployed (``govuk.mcp.app``), and by
 ``ask_summary_view`` here otherwise.
 
-With the combined hero with a question box on the home page, the page is
-drawn under the home page's band, the question in its box (``hero.py``);
-otherwise it has its own form. Opened directly (a GET), it goes to the home
-page, which is where the question is asked.
+The page always has AI search's search area open (``search_area.py``), with
+the question in its box: at the foot of the home page's band when the home
+page has a combined hero (``hero.py``), otherwise at the top of the page. A
+GET, from the magnifier button without JavaScript, is the area alone.
 
 Sent by main.js (the box adds ``js``), a question is only checked before the
 page is sent, so the browser goes straight there: the page shows the summary
@@ -25,7 +25,7 @@ import time
 
 from django.conf import settings
 from django.http import Http404, JsonResponse
-from django.shortcuts import redirect, render
+from django.shortcuts import render
 from django.template.loader import render_to_string
 from django.utils.cache import add_never_cache_headers
 from django.views.decorators.csrf import csrf_exempt
@@ -35,13 +35,14 @@ from wagtail.models import Site
 from govuk import rate_limit
 from govuk.content_index import ask_enabled
 from govuk.content_index.search import HYBRID, SearchError, is_close, search
-from govuk.models import AskSettings, ContentMainPage
-from govuk.models.blocks import ASK_DEFAULT_LABEL, ASK_EMPTY_ERROR
+from govuk.models import AskSettings, ContentMainPage, CustomiseSettings
+from govuk.models.blocks import ASK_EMPTY_ERROR
 
 from . import rerank as reranking, summary, usage
 from .cards import MAX_CARDS, cards_for
 from .claude import get_claude
-from .hero import ASK_FIELD_ID, home_hero
+from .hero import home_hero
+from .search_area import FIELD_ID, search_area
 
 logger = logging.getLogger(__name__)
 
@@ -145,16 +146,15 @@ def ask_view(request):
     if not ask_enabled():
         raise Http404
     site = Site.find_for_request(request)
-    if request.method == "GET":
-        root = site.root_page if site else None
-        return redirect((root.get_url(request) if root else None) or "/")
-    context = {"label": ASK_DEFAULT_LABEL, "max_length": QUESTION_MAX_LENGTH, "asked": False, "field_id": ASK_FIELD_ID}
+    context = {"max_length": QUESTION_MAX_LENGTH, "asked": False, "field_id": FIELD_ID}
     status = 200
     retry_after = None
     question = _question(request)
     context["question"] = question
-    error = _question_error(question)
-    if error:
+    error = _question_error(question) if request.method == "POST" else ""
+    if request.method == "GET":
+        pass  # the search area alone, to ask in
+    elif error:
         context["error"] = error
     elif request.POST.get("js") == "1":
         # main.js will fetch the matches: the page goes at once.
@@ -179,10 +179,19 @@ def ask_view(request):
                 context.update(asked=True, summary_url=summary.SUMMARY_PATH, **matches)
                 if not matches["cards"]:
                     context["browse_url"] = _browse_url(request)
-    hero = home_hero(site, question=question, error=context.get("error", ""))
+    hero = home_hero(site)
     if hero is not None:
         # base.html draws the hero from ``self``: here, the home page's.
-        context.update(self=hero, in_band=True)
+        context["self"] = hero
+    context["ask_search"] = search_area(
+        request,
+        CustomiseSettings.for_site(site) if site else None,
+        ask_page=True,
+        question=question,
+        error=context.get("error", ""),
+        in_main=hero is None,
+    )
+    context["label"] = context["ask_search"]["label"]
     response = _no_store(render(request, "ask/ask_page.html", context, status=status))
     if retry_after is not None:
         response["Retry-After"] = str(retry_after)

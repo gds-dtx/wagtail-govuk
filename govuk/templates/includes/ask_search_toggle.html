@@ -1,0 +1,32 @@
+{% comment %}
+    AI search's magnifier button, in place of the site search box (header bar
+    or service navigation). Without JavaScript it is a link to /ask/, where
+    the search area is always open. main.js (setAskSearchToggle) swaps the
+    link for the button, which opens and closes the search area on this page
+    instead, so long as the page has one to open.
+{% endcomment %}
+<div class="app-search-toggle-group">
+    <a class="app-search-toggle js-ask-search-link" href="{% url 'ask' %}">
+        <span class="govuk-visually-hidden">Search</span>
+        {% include "includes/search_icon.html" %}
+    </a>
+    <button type="button"
+            class="app-search-toggle js-ask-search-toggle"
+            aria-controls="{{ ask_search.panel_id }}"
+            aria-expanded="false"
+            hidden>
+        <span class="govuk-visually-hidden">Search</span>
+        {% include "includes/search_icon.html" %}
+        <svg class="app-search-toggle__close"
+             width="20"
+             height="20"
+             viewBox="0 0 20 20"
+             fill="none"
+             xmlns="http://www.w3.org/2000/svg"
+             aria-hidden="true"
+             focusable="false">
+            <line x1="2" y1="2" x2="18" y2="18" stroke="currentColor" stroke-width="3"></line>
+            <line x1="18" y1="2" x2="2" y2="18" stroke="currentColor" stroke-width="3"></line>
+        </svg>
+    </button>
+</div>

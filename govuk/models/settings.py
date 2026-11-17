@@ -159,24 +159,43 @@ class CustomiseSettings(BaseSiteSetting):
             ("hidden", "Hidden"),
         ],
         default="header",
-        help_text="Where the search box appears.",
+        help_text="Where the search box, or AI search's magnifier button, appears.",
     )
-    show_site_name_in_search_box = models.BooleanField(
+    search_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("site", "Normal search"),
+            ("ask", "AI search"),
+        ],
+        default="site",
+        help_text=(
+            "AI search replaces the search box with a magnifier button, which "
+            "opens a search area to ask a question in (Ask). It needs Ask to be "
+            "on for this instance; without it, normal search is shown."
+        ),
+    )
+    ask_search_on_home_page = models.BooleanField(
         default=False,
-        help_text="Include the site name in the header search label and placeholder.",
+        verbose_name="Always show AI search on the home page (AI search only)",
+        help_text=(
+            "The search area is always open on the home page, "
+            "at the foot of a combined hero or below the navigation otherwise, "
+            "and the magnifier button is not shown there."
+        ),
     )
     search_placeholder = models.CharField(
         max_length=100,
         blank=True,
         default="",
         help_text=(
-            "Wording shown in the header search box, for example "
-            "Search for roles or skills. Defaults to Search."
+            "Wording shown greyed in the search box until something is typed, "
+            "for example Search for roles or skills, in the header's box or "
+            "AI search's. Defaults to Search."
         ),
     )
     enable_search_results_page = models.BooleanField(
         default=True,
-        verbose_name="Allow free-text search results",
+        verbose_name="Allow free-text search results (Normal search only)",
         help_text=(
             "Let visitors search for any phrase and see a results page. Turn "
             "this off to keep only the suggestions that jump straight to a "
@@ -253,9 +272,10 @@ class CustomiseSettings(BaseSiteSetting):
         FieldPanel("sign_in_location"),
         MultiFieldPanel(
             [
+                FieldPanel("search_type"),
                 FieldPanel("search_location"),
+                FieldPanel("ask_search_on_home_page"),
                 FieldPanel("enable_search_results_page"),
-                FieldPanel("show_site_name_in_search_box"),
                 FieldPanel("search_placeholder"),
             ],
             heading="Search box",

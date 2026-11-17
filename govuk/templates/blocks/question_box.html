@@ -18,10 +18,12 @@
     shows it ("error"), and any other error about the question, with the
     question again in the box ("question").
 
-    With "inverse", for the brand-colour band of the combined hero with a
-    question box (base.html, and /ask/, which draws the home page's band): no
-    border on the box, the error message in white, and the note not to
-    include personal information under it.
+    With "lead", for AI search's search area (includes/ask_search.html): the
+    label is shown, above the box, as the area's lead text ("lead_heading":
+    as the page's heading, on /ask/ without a combined hero), and the note
+    not to include personal information is under it. With "inverse", in a
+    combined hero's brand-colour band: no border on the box, and the lead,
+    the note and any error message in white.
 {% endcomment %}
 {% if ask_on %}
     <form class="app-question-box{% if inverse %} app-question-box--inverse{% endif %}{% if error %} app-question-box--error{% endif %}"
@@ -32,7 +34,15 @@
           data-ask-form
           data-error-id="{{ field_id }}-error"
           data-empty-error="{{ empty_error }}">
-        <label class="govuk-visually-hidden" for="{{ field_id }}">{{ value.label }}</label>
+        {% if lead and lead_heading %}
+            <h1 class="govuk-label-wrapper">
+                <label class="govuk-label govuk-label--l app-question-box__lead" for="{{ field_id }}">{{ value.label }}</label>
+            </h1>
+        {% elif lead %}
+            <label class="govuk-label govuk-label--m app-question-box__lead" for="{{ field_id }}">{{ value.label }}</label>
+        {% else %}
+            <label class="govuk-visually-hidden" for="{{ field_id }}">{{ value.label }}</label>
+        {% endif %}
         <div class="app-question-box__bar">
             <input class="govuk-input app-question-box__input{% if error and not inverse %} govuk-input--error{% endif %}"
                    id="{{ field_id }}"
@@ -43,8 +53,8 @@
                    enterkeyhint="search"{% if question %}
                    value="{{ question }}"{% endif %}{% if value.hint %}
                    placeholder="{{ value.hint }}"{% endif %}{% if error %}
-                   aria-invalid="true"{% endif %}{% if error or inverse %}
-                   aria-describedby="{% if error %}{{ field_id }}-error{% endif %}{% if error and inverse %} {% endif %}{% if inverse %}{{ field_id }}-privacy{% endif %}"{% endif %}>
+                   aria-invalid="true"{% endif %}{% if error or lead %}
+                   aria-describedby="{% if error %}{{ field_id }}-error{% endif %}{% if error and lead %} {% endif %}{% if lead %}{{ field_id }}-privacy{% endif %}"{% endif %}>
             <button type="submit" class="app-question-box__button">
                 <span class="govuk-visually-hidden">{{ value.button_text }}</span>
                 <svg class="app-question-box__icon"
@@ -65,7 +75,7 @@
                 <span class="govuk-visually-hidden">Error:</span> {{ error }}
             </p>
         {% endif %}
-        {% if inverse %}
+        {% if lead %}
             {% include "ask/includes/privacy_hint.html" with privacy_id=field_id|add:"-privacy" privacy_class="govuk-body-s app-question-box__privacy" %}
         {% endif %}
     </form>

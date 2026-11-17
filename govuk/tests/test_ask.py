@@ -125,25 +125,42 @@ class AskPageTests(WithFakeModel):
         super().setUp()
         self.url = reverse("ask")
 
-    def test_opened_directly_it_goes_to_the_home_page(self):
+    def test_opened_directly_it_is_the_search_area_alone(self):
         response = self.client.get(self.url)
-        self.assertRedirects(response, "/", fetch_redirect_response=False)
-
-    def test_its_own_form_while_the_home_page_has_no_question_box(self):
-        response = self.client.post(self.url, {"question": "payments"})
-        self.assertContains(response, '<textarea class="govuk-textarea"')
-        self.assertContains(response, "Do not include personal or sensitive information.")
-        self.assertNotContains(response, "app-question-box")
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode()
+        area = html[html.index('id="app-ask-search"'):html.index("</form>", html.index('id="app-ask-search"'))]
+        self.assertIn("app-ask-search--page", area)
+        self.assertNotIn("hidden", area.split(">", 1)[0])
+        self.assertIn(
+            '<label class="govuk-label govuk-label--l app-question-box__lead" for="app-ask-search-question">'
+            "What would you like to find out about?</label>",
+            area,
+        )
+        self.assertIn('<h1 class="govuk-label-wrapper">', area)
+        self.assertIn('placeholder="Search"', area)
+        self.assertIn("Do not include personal or sensitive information.", area)
+        self.assertNotIn("app-catalogue-card", html)
+        self.assertNotIn("data-ask-matches", html)
+        self.assertIn('class="app-site-search', html)  # the site search box is still the header's
         self.assertIn("no-store", response["Cache-Control"])
         self.assertEqual(response["X-Robots-Tag"], "noindex")
 
+    def test_without_a_combined_hero_on_the_home_page_the_area_heads_the_page(self):
+        html = self.client.post(self.url, {"question": "payments"}).content.decode()
+        main = html[html.index('<main'):]
+        self.assertIn('id="app-ask-search"', main)
+        self.assertIn('value="payments"', main)
+        self.assertNotIn("<textarea", html)
+        self.assertNotIn("masthead--combined", html)
+
     def test_the_closest_matches_as_cards(self):
         response = self.client.post(self.url, {"question": "How do I take money from the public?"})
-        self.assertContains(response, "Results for your question")
-        self.assertContains(response, "<h2 class=\"govuk-heading-l\">Close matches</h2>")
+        self.assertContains(response, "<title>Query results")
+        self.assertContains(response, '<h3 class="govuk-heading-m">Close matches')
         self.assertContains(response, 'class="app-catalogue-card')
         self.assertContains(response, self.pay.url)
-        self.assertContains(response, "How do I take money from the public?")  # in the box again
+        self.assertContains(response, 'value="How do I take money from the public?"')  # in the box again
         self.assertIn("no-store", response["Cache-Control"])
 
     def test_nothing_close(self):
@@ -231,7 +248,7 @@ class AskMatchesTests(WithFakeModel):
         self.assertGreaterEqual(body["count"], 1)
         self.assertIn('class="app-catalogue-card', body["html"])
         self.assertIn(self.pay.url, body["html"])
-        self.assertIn(">Close matches</h2>", body["html"])
+        self.assertIn(">Close matches<", body["html"])
         self.assertEqual(body["ticket"], "")  # no model, so no summary
         self.assertIn("no-store", response["Cache-Control"])
         self.assertEqual(response["X-Robots-Tag"], "noindex")
@@ -275,74 +292,183 @@ class AskMatchesTests(WithFakeModel):
         self.assertNotIn("private", output)
 
 
-class AskInTheHomeBandTests(WithFakeModel):
-    """With the combined hero with a question box on the home page, /ask/ has its band."""
+class AISearchTests(WithFakeModel):
+    """AI search: the magnifier button in place of the site search box, and its search area."""
 
     def setUp(self):
+        from govuk.models import CustomiseSettings
         from govuk.models.pages import HeroStyle
 
-        home = Site.objects.get(is_default_site=True).root_page.specific
+        site = Site.objects.get(is_default_site=True)
+        home = site.root_page.specific
         home.title = "Technology in government"
         home.hero_title = ""
         home.hero_intro = "<p>Find what you need to build services.</p>"
-        home.hero_style = HeroStyle.COMBINED_ASK
+        home.hero_style = HeroStyle.COMBINED
         home.save_revision().publish()
         self.home = home
+        self.customise = CustomiseSettings.for_site(site)
+        self.customise.search_type = "ask"
+        self.customise.ask_search_on_home_page = True
+        self.customise.search_placeholder = "For example, cloud"
+        self.customise.save()
         super().setUp()
         self.url = reverse("ask")
 
     @staticmethod
+    def _area(html: str) -> str:
+        start = html.index('id="app-ask-search"')
+        return html[html.rindex("<div", 0, start):html.index("</form>", start)]
+
+    @staticmethod
+    def _header(html: str) -> str:
+        return html[html.index('<header class="govuk-template__header">'):html.index("</header>")]
+
+    @staticmethod
     def _band(html: str) -> str:
-        start = html.index("masthead--question-box")
+        start = html.index("masthead--combined")
         return html[start:html.index("</form>", start)]
 
     @staticmethod
     def _below(html: str) -> str:
-        return html[html.index("</form>", html.index("masthead--question-box")):]
+        return html[html.index("</form>", html.index('id="app-ask-search"')):]
 
-    def test_the_home_page_has_the_note_under_its_box(self):
-        band = self._band(self.client.get("/").content.decode())
+    def _get(self, url: str) -> str:
+        return self.client.get(url).content.decode()
+
+    def _page(self, title: str, **fields):
+        page = publish(title, "<p>Body.</p>", parent=self.home)
+        for name, value in fields.items():
+            setattr(page, name, value)
+        page.save_revision().publish()
+        return page
+
+    def test_always_open_at_the_foot_of_the_home_pages_band(self):
+        html = self._get("/")
+        band = self._band(html)
+        self.assertIn("masthead--combined masthead--question-box", html)  # its larger title
+        self.assertIn("app-ask-search app-ask-search--inverse", band)
+        self.assertNotIn("hidden", self._area(html).split(">", 1)[0])
+        self.assertIn(
+            '<label class="govuk-label govuk-label--m app-question-box__lead" for="app-ask-search-question">'
+            "What would you like to find out about?</label>",
+            band,
+        )
+        self.assertIn('placeholder="For example, cloud"', band)
         self.assertIn('class="govuk-body-s app-question-box__privacy"', band)
-        self.assertIn("Do not include personal or sensitive information.", band)
-        self.assertIn('aria-describedby="hero-ask-question-privacy"', band)
-        self.assertIn('data-empty-error="Please enter a question or search query"', band)
+        self.assertIn('aria-describedby="app-ask-search-question-privacy"', band)
+        header = self._header(html)
+        self.assertNotIn("app-search-toggle", header)  # open here, so no button
+        self.assertNotIn("app-site-search", header)
+
+    def test_elsewhere_the_button_opens_it_below_the_navigation(self):
+        html = self._get(self._page("Guidance").url)
+        header = self._header(html)
+        self.assertNotIn("app-site-search", header)
+        self.assertIn('<a class="app-search-toggle js-ask-search-link" href="/ask/">', header)
+        self.assertRegex(
+            header,
+            r'<button type="button"\s+class="app-search-toggle js-ask-search-toggle"\s+'
+            r'aria-controls="app-ask-search"\s+aria-expanded="false"\s+hidden>',
+        )
+        area = self._area(html)
+        self.assertIn('class="app-ask-search"', area)  # below the navigation, not inverse
+        self.assertIn("hidden>", area.split("<form", 1)[0])
+        self.assertLess(header.index("govuk-service-navigation"), header.index('id="app-ask-search"'))
+        self.assertNotIn("masthead--question-box", html)
+
+    def test_on_another_combined_hero_it_opens_at_the_foot_of_the_band(self):
+        from govuk.models.pages import HeroStyle
+
+        html = self._get(self._page("Standards", hero_style=HeroStyle.COMBINED).url)
+        self.assertNotIn('id="app-ask-search"', self._header(html))
+        band = self._band(html)
+        self.assertIn("app-ask-search app-ask-search--inverse", band)
+        self.assertIn("hidden>", self._area(html).split("<form", 1)[0])
+        self.assertIn("js-ask-search-toggle", self._header(html))
+        self.assertNotIn("masthead--question-box", html)
+
+    def test_not_always_open_the_home_page_has_the_button(self):
+        self.customise.ask_search_on_home_page = False
+        self.customise.save()
+        html = self._get("/")
+        self.assertIn("js-ask-search-toggle", self._header(html))
+        self.assertIn("hidden>", self._area(html).split("<form", 1)[0])
+        self.assertNotIn("masthead--question-box", html)
+
+    def test_its_lead_text_is_a_setting(self):
+        from govuk.models import AskSettings
+
+        ask = AskSettings.for_site(Site.objects.get(is_default_site=True))
+        ask.search_lead_text = "Ask us anything"
+        ask.save()
+        self.assertIn(">Ask us anything</label>", self._get("/"))
+
+    def test_with_search_hidden_there_is_no_button(self):
+        self.customise.search_location = "hidden"
+        self.customise.save()
+        html = self._get(self._page("Guidance").url)
+        self.assertNotIn("app-search-toggle", html)
+        self.assertNotIn('id="app-ask-search"', html)
+        self.assertNotIn("app-site-search", html)
+        self.assertIn('id="app-ask-search"', self._get("/"))  # still always open on the home page
+
+    def test_in_the_navigation_bar(self):
+        self.customise.search_location = "navigation"
+        self.customise.save()
+        header = self._header(self._get(self._page("Guidance").url))
+        navigation = header[header.index("govuk-service-navigation"):]
+        self.assertIn("js-ask-search-toggle", navigation)
+
+    @override_settings(FEATURE_FLAGS={**FLAGS, "ASK": False})
+    def test_without_ask_it_is_the_site_search_box(self):
+        html = self._get("/")
+        self.assertIn("app-site-search", self._header(html))
+        self.assertNotIn("app-search-toggle", html)
+        self.assertNotIn('id="app-ask-search"', html)
+
+    def test_the_site_search_type_keeps_the_box(self):
+        self.customise.search_type = "site"
+        self.customise.save()
+        html = self._get("/")
+        self.assertIn("app-site-search", self._header(html))
+        self.assertNotIn('id="app-ask-search"', html)
+
+    def test_ask_opened_directly_is_the_home_pages_band_with_the_area_open(self):
+        html = self._get(self.url)
+        self.assertIn('<h1 class="hero__title">Technology in government</h1>', html)
+        self.assertIn("app-ask-search--inverse", self._band(html))
+        self.assertNotIn("hidden", self._area(html).split(">", 1)[0])
+        self.assertNotIn("app-search-toggle", self._header(html))
+        self.assertNotIn("app-catalogue-card", html)
 
     def test_the_matches_under_the_home_pages_band(self):
         html = self.client.post(self.url, {"question": "How do I take money from the public?"}).content.decode()
         band = self._band(html)
         self.assertIn('<h1 class="hero__title">Technology in government</h1>', html)
-        self.assertIn('id="ask-question"', band)
+        self.assertIn("Find what you need to build services.", band)
         self.assertIn('value="How do I take money from the public?"', band)
-        self.assertIn("Do not include personal or sensitive information.", band)
         self.assertIn("govuk-service-navigation--inverse", html)
-        below = self._below(html)
-        self.assertIn('class="app-catalogue-card', below)
-        self.assertNotIn("<textarea", html)
-        self.assertNotIn("Results for your question</h1>", html)
-        self.assertIn("<title>Results for your question", html)
+        self.assertIn('class="app-catalogue-card', self._below(html))
+        self.assertIn("<title>Query results", html)
         self.assertNotIn("Edit this page", html)
-
-    def test_the_home_pages_intro_is_repeated(self):
-        html = self.client.post(self.url, {"question": "payments"}).content.decode()
-        hero = html[html.index("masthead--question-box"):html.index("<form", html.index("masthead--question-box"))]
-        self.assertIn("Find what you need to build services.", hero)
 
     def test_an_empty_question_is_an_error_under_the_box(self):
         html = self.client.post(self.url, {"question": "  "}).content.decode()
         band = self._band(html)
-        self.assertIn('<p id="ask-question-error" class="govuk-error-message app-question-box__error">', band)
+        self.assertIn(
+            '<p id="app-ask-search-question-error" class="govuk-error-message app-question-box__error">', band
+        )
         self.assertIn("Please enter a question or search query", band)
         self.assertIn('aria-invalid="true"', band)
-        self.assertIn('aria-describedby="ask-question-error ask-question-privacy"', band)
+        self.assertIn('aria-describedby="app-ask-search-question-error app-ask-search-question-privacy"', band)
         self.assertNotIn("govuk-input--error", band)  # no red border on the band
         below = self._below(html)
-        self.assertIn("govuk-error-summary", below)
-        self.assertIn('<a href="#ask-question">Please enter a question or search query</a>', below)
+        self.assertIn('<a href="#app-ask-search-question">Please enter a question or search query</a>', below)
         self.assertNotIn("app-catalogue-card", below)
 
     def test_a_long_question_is_kept_in_the_box(self):
-        html = self.client.post(self.url, {"question": "word " * 70}).content.decode()
-        band = self._band(html)
+        band = self._band(self.client.post(self.url, {"question": "word " * 70}).content.decode())
         self.assertIn("300 characters or fewer", band)
         self.assertIn('value="word word', band)
 

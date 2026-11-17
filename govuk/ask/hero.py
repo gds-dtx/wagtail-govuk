@@ -2,14 +2,13 @@
 
 ``base.html`` draws the hero from the page it is given (``self``): its
 style, title and intro. /ask/ is no page, so it is given this in its place,
-a copy of the home page's, with the question asked in the box and any error
-about it under the box. Only for the combined hero with a question box: with
-another style on the home page, /ask/ keeps its own form (``ask_page.html``).
+a copy of the home page's, when the home page has a combined hero: the search
+area is then open at the foot of the band, with the question in its box. With
+another style on the home page, /ask/ has no hero, and the search area is at
+the top of its content (``govuk/ask/search_area.py``).
 """
 
-from govuk.models.pages import HeroStyle, HeroStyleMixin
-
-ASK_FIELD_ID = "ask-question"
+from govuk.models.pages import HeroStyleMixin
 
 
 class HomeHero:
@@ -22,24 +21,18 @@ class HomeHero:
     hero_is_styled = HeroStyleMixin.hero_is_styled
     hero_is_combined = HeroStyleMixin.hero_is_combined
     hero_uses_masthead = HeroStyleMixin.hero_uses_masthead
-    hero_is_combined_ask = HeroStyleMixin.hero_is_combined_ask
 
-    def __init__(self, home, box: dict, *, question: str = "", error: str = ""):
+    def __init__(self, home):
         self.hero_style = home.hero_style
         self.title = home.title
         self.hero_title = getattr(home, "hero_title", "")
         self.hero_intro = getattr(home, "hero_intro", "")
         self.search_description = home.search_description
-        self.hero_question_box = {**box, "field_id": ASK_FIELD_ID, "question": question, "error": error}
 
 
-def home_hero(site, *, question: str = "", error: str = "") -> HomeHero | None:
-    """The home page's hero with ``question`` in its box, or None when the
-    home page has no question box in its hero (or Ask is off)."""
+def home_hero(site) -> HomeHero | None:
+    """The home page's hero, or None when it has no combined hero."""
     home = site.root_page.specific if site else None
-    if home is None or getattr(home, "hero_style", None) != HeroStyle.COMBINED_ASK:
+    if home is None or not getattr(home, "hero_is_combined", False):
         return None
-    box = home.hero_question_box
-    if box is None:
-        return None
-    return HomeHero(home, box, question=question, error=error)
+    return HomeHero(home)

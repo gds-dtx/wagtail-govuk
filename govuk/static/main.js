@@ -14,6 +14,7 @@ document.addEventListener("DOMContentLoaded", function () {
   setSiteSearchAutocomplete();
   setQuestionBoxes();
   setAskForms();
+  setAskSearchToggle();
   setAskSummary();
   setAskMatches();
   setSkipLink();
@@ -502,6 +503,44 @@ function setQuestionBoxes() {
       input.value = "";
       input.focus();
     });
+  });
+}
+
+function setAskSearchToggle() {
+  // AI search's magnifier button (includes/ask_search_toggle.html). Without
+  // JavaScript it is a link to /ask/; here it becomes a button that opens
+  // and closes the search area on this page, so long as the page has one
+  // (a page drawing its own band has none, and the link stays). Opening it
+  // puts the cursor in the box; Escape closes it and returns to the button.
+  const button = document.querySelector(".js-ask-search-toggle");
+  if (!button) {
+    return;
+  }
+  const panel = document.getElementById(button.getAttribute("aria-controls"));
+  const link = document.querySelector(".js-ask-search-link");
+  if (!panel) {
+    return;
+  }
+  const input = panel.querySelector('input[name="question"]');
+  const setOpen = (open) => {
+    button.setAttribute("aria-expanded", open ? "true" : "false");
+    panel.hidden = !open;
+    if (open && input) {
+      input.focus();
+    }
+  };
+  if (link) {
+    link.hidden = true;
+  }
+  button.hidden = false;
+  button.addEventListener("click", () => {
+    setOpen(button.getAttribute("aria-expanded") !== "true");
+  });
+  panel.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !panel.hidden) {
+      setOpen(false);
+      button.focus();
+    }
   });
 }
 

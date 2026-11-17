@@ -36,10 +36,6 @@ class HeroStyle(models.TextChoices):
     LARGE_TEXT = "large_text", "Large text"
     STYLED = "styled", "Hero styling"
     COMBINED = "combined", "Combined service navigation and hero styling"
-    # For Ask (FEATURE_ASK): the combined hero with the question
-    # box in its band, above the phase banner, which nothing in the body can
-    # reach. Without Ask it is the combined hero alone. To be redesigned.
-    COMBINED_ASK = "combined_ask", "Combined service navigation and hero styling, with a question box"
 
 
 class HeroStyleMixin(models.Model):
@@ -73,42 +69,11 @@ class HeroStyleMixin(models.Model):
 
     @property
     def hero_is_combined(self) -> bool:
-        return self.hero_style in {HeroStyle.COMBINED, HeroStyle.COMBINED_ASK}
+        return self.hero_style == HeroStyle.COMBINED
 
     @property
     def hero_uses_masthead(self) -> bool:
-        return self.hero_style in {HeroStyle.STYLED, HeroStyle.COMBINED, HeroStyle.COMBINED_ASK}
-
-    @property
-    def hero_is_combined_ask(self) -> bool:
-        """This style's own band class (``masthead--question-box``), with or without Ask."""
-        return self.hero_style == HeroStyle.COMBINED_ASK
-
-    @property
-    def hero_question_box(self) -> dict | None:
-        """The question box to draw in the hero's band, with Ask's default
-        wording, for the combined-with-question-box style. /ask/ draws the
-        home page's band with the question asked in it (``govuk.ask.hero``)."""
-        from govuk.content_index import ask_enabled
-
-        if self.hero_style != HeroStyle.COMBINED_ASK or not ask_enabled():
-            return None
-        from .blocks import (
-            ASK_DEFAULT_BUTTON_TEXT,
-            ASK_DEFAULT_HINT,
-            ASK_DEFAULT_LABEL,
-            ASK_EMPTY_ERROR,
-        )
-
-        return {
-            "label": ASK_DEFAULT_LABEL,
-            "hint": ASK_DEFAULT_HINT,
-            "button_text": ASK_DEFAULT_BUTTON_TEXT,
-            "field_id": "hero-ask-question",
-            "question": "",
-            "error": "",
-            "empty_error": ASK_EMPTY_ERROR,
-        }
+        return self.hero_style in {HeroStyle.STYLED, HeroStyle.COMBINED}
 
 
 class BreadcrumbMixin(models.Model):
