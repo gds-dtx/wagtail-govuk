@@ -1,14 +1,12 @@
-"""The content catalogue's import and export, in the admin.
+"""Admin views for catalogue import/export and fetching an external entry's source.
 
-Linked from a content main page's edit view (``CatalogueToolsPanel``). Both
-need permission to publish the main page: an import publishes pages beneath
-it, and an export includes entries not yet published. Both 404 on a site
-without the catalogue (``FEATURE_FLAGS["CATALOGUE"]``).
+Each needs publish permission on its page (an export includes unpublished entries).
 """
 
 from django import forms
+from django.contrib import messages
 from django.http import Http404, HttpResponse, HttpResponseNotAllowed
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import path, reverse
 from wagtail import hooks
 from wagtail.admin.auth import permission_denied
@@ -21,7 +19,12 @@ from govuk.catalogue.import_catalogue import (
     files_from_zip,
     import_catalogue,
 )
-from govuk.models import ContentMainPage, catalogue_enabled
+from govuk.features import catalogue_enabled, content_index_enabled
+from govuk.models import (
+    ContentEntryExternalPage,
+    ContentMainPage,
+    HarvestedSource,
+)
 
 
 class CatalogueImportForm(forms.Form):
@@ -129,6 +132,41 @@ def catalogue_export_view(request, page_id):
     return response
 
 
+def catalogue_fetch_source_view(request, page_id):
+    if not (catalogue_enabled() and content_index_enabled()):
+        raise Http404
+    page = get_object_or_404(ContentEntryExternalPage, pk=page_id)
+    if not page.permissions_for_user(request.user).can_publish():
+        return permission_denied(request)
+    if not page.source_url:
+        raise Http404
+    edit_url = reverse("wagtailadmin_pages:edit", args=[page.pk])
+    if request.method == "POST":
+        from govuk.content_index.harvest import harvest_source
+
+        source = harvest_source(page.source_url, force=True)
+        if source.status == HarvestedSource.Status.OK:
+            messages.success(request, f"Fetched {page.source_url}: {len(source.markdown):,} characters.")
+        elif source.markdown:
+            messages.warning(request, f"{source.reason} The text fetched before is kept.")
+        else:
+            messages.error(request, source.reason or "The page could not be fetched.")
+        return redirect(edit_url)
+    if request.method != "GET":
+        return HttpResponseNotAllowed(["GET", "POST"])
+    return render(
+        request,
+        "wagtailadmin/catalogue/fetch_source.html",
+        {
+            "page": page,
+            "edit_url": edit_url,
+            "header_title": f"Fetch the source of {page.title}",
+            "page_title": "Fetch the source",
+            "header_icon": "download",
+        },
+    )
+
+
 @hooks.register("register_admin_urls")
 def register_catalogue_admin_urls():
     return [
@@ -141,5 +179,10 @@ def register_catalogue_admin_urls():
             "catalogue/<int:page_id>/export/",
             catalogue_export_view,
             name="govuk_catalogue_export",
+        ),
+        path(
+            "catalogue/<int:page_id>/fetch-source/",
+            catalogue_fetch_source_view,
+            name="govuk_catalogue_fetch_source",
         ),
     ]

@@ -35,6 +35,8 @@ dependencies = [
   "nh3==0.3.7",
   # Content catalogue import: Markdown to page blocks (output cleaned by nh3).
   "markdown-it-py==4.2.0",
+  # Content index embeddings in PostgreSQL's vector type. No numpy needed from 0.5.
+  "pgvector==0.5.1",
   "PyYAML==6.0.3",
 ]
 

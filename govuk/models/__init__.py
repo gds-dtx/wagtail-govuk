@@ -74,6 +74,12 @@ from .content_discovery import (
     ContentDiscoverySource,
     ExternalContentItem,
 )
+from .content_index import (
+    ContentEmbedding,
+    HarvestedSource,
+    IndexedChunk,
+    IndexedDocument,
+)
 from .feedback import Feedback, PageUsefulnessVote
 from .framework import (
     CapabilityFrameworkWordingSettings,
@@ -173,6 +179,10 @@ __all__ = [
     "ContentRequirementPage",
     "ContentStepPage",
     "CustomiseSettings",
+    "ContentEmbedding",
+    "HarvestedSource",
+    "IndexedChunk",
+    "IndexedDocument",
     "SearchSettings",
     "DEFAULT_JWT_LIFETIME",
     "EdDSAKeyPair",
