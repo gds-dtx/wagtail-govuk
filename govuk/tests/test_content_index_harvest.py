@@ -23,6 +23,7 @@ from govuk.content_index.sources import (
     SourceSkipped,
     read_source,
 )
+from govuk.mcp import tools
 from govuk.models import ContentEntryExternalPage, HarvestedSource, IndexedDocument
 from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
 
@@ -248,6 +249,16 @@ class HarvestTests(TestCase):
         self.assertEqual(result.counts["removed"], 1)
         self.assertGreaterEqual(result.counts["ok"], 2)
         self.assertTrue(any(line.startswith("ok       " + SOURCE) for line in result.lines))
+
+    def test_the_mcp_server_says_where_the_text_came_from(self):
+        harvest.harvest_source(SOURCE, fetcher=FakeWeb({API: api_response(guide())}))
+        document = tools.get_document(url=SOURCE)
+        self.assertIn("includes a copy of that page, last checked on", document.notice)
+        result = tools.search(query="devices patched").results[0]
+        self.assertIsNotNone(result.source_checked_at)
+        harvest.harvest_source(OTHER_SOURCE, fetcher=FakeWeb({OTHER_API: FetchError("The source answered 403.", status=403)}))
+        other = tools.get_document(url=OTHER_SOURCE)
+        self.assertTrue(other.notice.endswith("Its page could not be read: The source answered 403."))
 
 
 

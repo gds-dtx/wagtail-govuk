@@ -493,6 +493,23 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
+        # The ASGI service (manage.py run_service) runs under uvicorn.
+        "uvicorn.error": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "uvicorn.access": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        # Never below INFO: the MCP SDK's debug logs hold what people asked.
+        "mcp": {
+            "handlers": ["console"],
+            "level": "INFO" if LOG_LEVEL == "DEBUG" else LOG_LEVEL,
+            "propagate": False,
+        },
         "django.server": {
             "handlers": ["console"],
             "level": LOG_LEVEL,
@@ -557,6 +574,22 @@ CONTENT_INDEX_EMBEDDING_REGION = (
 ).strip()
 # Minimum cosine similarity (0 to 1) for a meaning-only match in hybrid search.
 CONTENT_INDEX_MIN_SIMILARITY = float(os.getenv("CONTENT_INDEX_MIN_SIMILARITY", "0.35"))
+
+# Features of the ASGI service (govuk/service/): each returns its routes, or None.
+SERVICE_CONTRIBUTIONS = [
+    "govuk.mcp.service.contribution",
+]
+# Header holding the client address for per-client rate limits; unset, the
+# connection's address. Only safe if a proxy overwrites it: deployed, CloudFront
+# sets true-client-ip and is the only route to the load balancer.
+CLIENT_IP_HEADER = os.getenv("CLIENT_IP_HEADER", "").strip().lower()
+# uvicorn's --forwarded-allow-ips. Behind CloudFront this cannot yield the
+# client's address (the load balancer appends CloudFront's), hence CLIENT_IP_HEADER.
+SERVICE_FORWARDED_ALLOW_IPS = os.getenv("SERVICE_FORWARDED_ALLOW_IPS", "127.0.0.1")
+
+# MCP requests per client per minute (0 = off). Per process unless CACHE_URL is
+# shared, so the WAF's limit is the one to rely on.
+MCP_RATE_LIMIT_PER_MINUTE = int(os.getenv("MCP_RATE_LIMIT_PER_MINUTE", "60"))
 # Seconds, sent as the 503's Retry-After header. The resume text above is
 # prose for a reader ("9am on Monday 19 November 2018") and nothing can parse
 # it into a date, so the header takes its own number.
