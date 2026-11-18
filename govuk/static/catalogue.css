@@ -342,3 +342,13 @@
     margin-bottom: 0;
     padding-bottom: 20px;
 }
+
+.app-catalogue-card__section {
+    margin-bottom: 10px;
+}
+
+/* Above the whole-card link, so it can be followed on its own. */
+.app-catalogue-card__section .govuk-link {
+    position: relative;
+    z-index: 1;
+}

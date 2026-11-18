@@ -33,3 +33,6 @@ FEATURE_FLAGS = {
     "CATALOGUE": True,
     "AI": True,
 }
+
+# Serve AI search's service paths from Django so it works without run_service.
+AI_SEARCH_IN_DJANGO = True

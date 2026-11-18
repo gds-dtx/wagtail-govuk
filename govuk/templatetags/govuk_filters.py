@@ -127,3 +127,11 @@ def page_body(value):
     than asking an editor to write the markup.
     """
     return mark_safe(rewrite_csv_download_links(expand_db_html(str(value or ""))))
+
+
+@register.simple_tag(takes_context=True)
+def hero_source(context):
+    """The page base.html draws the hero from: ``hero_page``, else ``self``.
+
+    A tag because ``hero_page|default:self`` raises where there is no ``self``."""
+    return context.get("hero_page") or context.get("self")

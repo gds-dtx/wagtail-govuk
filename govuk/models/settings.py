@@ -1,4 +1,5 @@
 from datetime import timedelta
+from html import escape
 from uuid import uuid4
 
 import jwt
@@ -7,17 +8,24 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
 )
+from django import forms
 from django.core.exceptions import ValidationError
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import (
+    MaxLengthValidator,
+    MaxValueValidator,
+    MinValueValidator,
+)
 from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 from modelcluster.fields import ParentalKey
 from modelcluster.models import ClusterableModel
-from wagtail.admin.panels import FieldPanel, InlinePanel, MultiFieldPanel
+from wagtail.admin.panels import FieldPanel, HelpPanel, InlinePanel, MultiFieldPanel
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
 from wagtail.fields import RichTextField, StreamField
 from wagtail.models import Orderable
+
+from govuk.features import ai_enabled
 
 from .blocks import LinkBlock
 from .constants import (
@@ -274,11 +282,109 @@ class CustomiseSettings(BaseSiteSetting):
         return bool(self.render_custom_css())
 
 
+def _built_in_instructions(kind: str, label: str) -> HelpPanel:
+    """AI search's built-in instructions, shown above the field that replaces them."""
+    from govuk.ai_search import prompts
+
+    return HelpPanel(
+        heading=f"Built-in {label} instructions",
+        content=(
+            "<p>Used while the field below is blank. "
+            "<code>{site_name}</code> is replaced with the site's name.</p>"
+            f'<pre style="white-space: pre-wrap">{escape(prompts.DEFAULTS[kind])}</pre>'
+        ),
+    )
+
+
+def _instructions_field(label: str) -> models.TextField:
+    from govuk.ai_search.prompts import MAX_INSTRUCTIONS_CHARS
+
+    return models.TextField(
+        blank=True,
+        verbose_name=f"{label} instructions",
+        validators=[MaxLengthValidator(MAX_INSTRUCTIONS_CHARS)],
+        help_text=(
+            "Blank uses the built-in instructions. Write {site_name} for the "
+            "site's name. Claude is always told to ignore instructions in the "
+            "question or the pages."
+        ),
+    )
+
+
+DEFAULT_AI_SEARCH_LEAD_TEXT = "What would you like to find out about?"
+
+
+def _search_panels() -> list:
+    """Normal search's fields, plus AI search's when the AI features are on."""
+    normal = [
+        FieldPanel("search_location"),
+        FieldPanel("search_placeholder"),
+        FieldPanel("enable_search_results_page"),
+    ]
+    if not ai_enabled():
+        return normal
+    return [
+        FieldPanel("search_type"),
+        *normal,
+        MultiFieldPanel(
+            [
+                FieldPanel("ai_search_on_home_page"),
+                FieldPanel("ai_search_lead_text"),
+            ],
+            heading="AI search",
+        ),
+        MultiFieldPanel(
+            [
+                HelpPanel(
+                    content=(
+                        "<p>Both need Claude set up (AI_CLAUDE) and JavaScript "
+                        "in the reader's browser. If Claude is unavailable, the "
+                        "page shows the matches without it.</p>"
+                    )
+                ),
+                FieldPanel("use_ai_ranking"),
+                FieldPanel("show_ai_summary"),
+            ],
+            heading="AI search: Claude",
+        ),
+        MultiFieldPanel(
+            [
+                _built_in_instructions("rerank", "re-ranking"),
+                FieldPanel("rerank_instructions", widget=forms.Textarea(attrs={"rows": 20})),
+            ],
+            heading="Re-ranking instructions",
+            classname="collapsed",
+        ),
+        MultiFieldPanel(
+            [
+                _built_in_instructions("summary", "summary"),
+                FieldPanel("summary_instructions", widget=forms.Textarea(attrs={"rows": 20})),
+            ],
+            heading="Summary instructions",
+            classname="collapsed",
+        ),
+    ]
+
+
+
+
 @register_setting(icon="search", order=2)
 class SearchSettings(BaseSiteSetting):
-    """The site's search box (Settings > Search): where it is, its wording,
-    and whether a search can be submitted for a page of results."""
+    """Settings > Search: normal search, or AI search with ``FEATURE_AI``.
 
+    Without the flag AI search's fields are not in the form, so a save keeps them.
+    """
+
+    class SearchType(models.TextChoices):
+        NORMAL = "normal", "Normal search"
+        AI = "ai", "AI search"
+
+    search_type = models.CharField(
+        max_length=20,
+        choices=SearchType.choices,
+        default=SearchType.NORMAL,
+        help_text="AI search replaces the search box with a button that opens a box to ask a question in.",
+    )
     search_location = models.CharField(
         max_length=20,
         choices=[
@@ -287,7 +393,7 @@ class SearchSettings(BaseSiteSetting):
             ("hidden", "Hidden"),
         ],
         default="header",
-        help_text="Where the search box appears.",
+        help_text="Where the search box, or AI search's button, appears.",
     )
     search_placeholder = models.CharField(
         max_length=100,
@@ -300,7 +406,7 @@ class SearchSettings(BaseSiteSetting):
     )
     enable_search_results_page = models.BooleanField(
         default=True,
-        verbose_name="Allow free-text search results",
+        verbose_name="Allow free-text search results (Normal search only)",
         help_text=(
             "Let visitors search for any phrase and see a results page. Turn "
             "this off to keep only the suggestions that jump straight to a "
@@ -309,16 +415,42 @@ class SearchSettings(BaseSiteSetting):
             "is not served."
         ),
     )
+    ai_search_on_home_page = models.BooleanField(
+        default=False,
+        verbose_name="Always show AI search on the home page (AI search only)",
+        help_text="The search box is always open on the home page, instead of the button.",
+    )
+    ai_search_lead_text = models.CharField(
+        max_length=120,
+        blank=True,
+        default=DEFAULT_AI_SEARCH_LEAD_TEXT,
+        verbose_name="AI search lead text",
+        help_text="Shown above AI search's box and used as its label. Blank for the default.",
+    )
+    use_ai_ranking = models.BooleanField(
+        default=False,
+        verbose_name="Re-rank matches with AI",
+        help_text="Claude picks and orders the matches that answer the question.",
+    )
+    show_ai_summary = models.BooleanField(
+        default=False,
+        verbose_name="Show an AI summary",
+        help_text="Claude writes a short summary of the matches, marked as written by AI.",
+    )
+    rerank_instructions = _instructions_field("Re-ranking")
+    summary_instructions = _instructions_field("Summary")
 
-    panels = [
-        FieldPanel("search_location"),
-        FieldPanel("search_placeholder"),
-        FieldPanel("enable_search_results_page"),
-    ]
+    panels = _search_panels()
 
     class Meta:
         verbose_name = "Search"
         verbose_name_plural = "Search"
+
+    @property
+    def ai_search_on(self) -> bool:
+        """Chosen, and the AI features on."""
+        return self.search_type == self.SearchType.AI and ai_enabled()
+
 
 
 @register_setting(icon="error", order=5)

@@ -108,6 +108,16 @@ if settings.FEATURE_FLAGS.get("FEEDBACK"):
         path("feedback/", feedback_view, name="feedback"),
     ]
 
+if settings.AI_SEARCH_IN_DJANGO:
+    # Development only; deployed, the load balancer sends these to the ASGI
+    # service and Django never calls Claude.
+    from govuk.ai_search.views import matches_view, summary_view
+
+    urlpatterns += [
+        path("search/ai/matches/", matches_view, name="ai_search_matches"),
+        path("search/ai/summary/", summary_view, name="ai_search_summary"),
+    ]
+
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 urlpatterns = urlpatterns + [
