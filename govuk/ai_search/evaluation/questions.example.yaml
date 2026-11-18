@@ -1,0 +1,46 @@
+# Example questions file for evaluate_content_search and evaluate_ai_search.
+# Keep your own outside this repo (it names your pages), e.g.:
+#
+#   manage.py evaluate_content_search path/to/questions.yaml --mode all
+#
+# Have someone who knows the content review the answers. About fifty, across
+# the categories, give steady numbers.
+#
+#   question  what someone might type into the search box
+#   category  find (names the thing), requirement (what must I do), broad
+#             (several answers), paraphrase (few words shared with the
+#             answer's title), shorthand (acronym or typo), out_of_scope
+#             (nothing on the site answers it)
+#   expect    end of each answer's path; a match inside an entry counts for
+#             the entry. Empty for out_of_scope (pass = nothing close).
+#   match     any (default): one answer in the top results; all: every answer
+#   note      optional: why these answers, for the reviewer
+
+- question: Where is the accessibility guidance?
+  category: find
+  expect: [guidance/accessibility/]
+
+- question: What must I do before my service goes live?
+  category: requirement
+  expect: [standards/service-standard/]
+  note: The standard's points cover what is assessed before going live.
+
+- question: Which tools help with testing?
+  category: broad
+  match: all
+  expect:
+    - tools/automated-testing/
+    - tools/user-research-lab/
+
+- question: How do I take money from the public?
+  category: paraphrase
+  expect: [tools/payments-platform/]
+  note: Says "money" and "the public"; the page says "payments".
+
+- question: wcag
+  category: shorthand
+  expect: [guidance/accessibility/]
+
+- question: Write me a poem about cats
+  category: out_of_scope
+  expect: []
