@@ -1,0 +1,12 @@
+{% load i18n %}
+{% if import_url %}
+    <p class="help w-mb-4">
+        {% trans "Import a catalogue in the catalogue repo's format to create its groups, entries and their pages beneath this page, or export them in that format." %}
+    </p>
+    <div class="w-flex w-gap-3 w-flex-wrap">
+        <a class="button button-secondary" href="{{ import_url }}">{% trans "Import a catalogue" %}</a>
+        <a class="button button-secondary" href="{{ export_url }}" download>{% trans "Export (zip)" %}</a>
+    </div>
+{% else %}
+    <p class="help">{% trans "Save the page to import a catalogue beneath it." %}</p>
+{% endif %}

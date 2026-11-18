@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
   setBackToTop();
   setChangelogToggle();
   openLinkedAccordionSection();
+  openLinkedDetails();
   setPageFeedback();
   setSiteSearchAutocomplete();
   setSkipLink();
@@ -288,6 +289,31 @@ function openLinkedAccordionSection() {
   window.addEventListener("hashchange", openFromHash);
 }
 
+function openLinkedDetails() {
+  // A data attribute, not an id, so the page does not jump down to the details.
+  function openFromHash() {
+    const hash = window.location.hash;
+    if (hash.length < 2) {
+      return;
+    }
+
+    let name = "";
+    try {
+      name = decodeURIComponent(hash.slice(1));
+    } catch (error) {
+      return;
+    }
+    document.querySelectorAll("details[data-open-on-hash]").forEach((details) => {
+      if (details.dataset.openOnHash === name) {
+        details.open = true;
+      }
+    });
+  }
+
+  openFromHash();
+  window.addEventListener("hashchange", openFromHash);
+}
+
 function setAutoHeadingNavigation() {
   const headingLayouts = document.querySelectorAll(
     "[data-auto-heading-layout]",
@@ -533,10 +559,9 @@ function setSiteSearchAutocomplete() {
         if (!item) {
           return "";
         }
-        // The kind is shown for a role or a skill; a page is just its name,
-        // and so is the query offered back.
+        // A page, and the query offered back, show no kind.
         const type =
-          item.type === "Role" || item.type === "Skill"
+          item.type && item.type !== "Page"
             ? '<span class="app-site-search__option-type">' +
               escapeHtml(item.type) +
               "</span>"

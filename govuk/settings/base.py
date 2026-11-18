@@ -515,7 +515,12 @@ LOGGING = {
 FEATURE_FLAGS = {
     "SKILLS": _bool_env("FEATURE_SKILLS"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
+    "CATALOGUE": _bool_env("FEATURE_CATALOGUE"),
 }
+
+# Optional; lifts GitHub's unauthenticated limit (60 requests an hour) for
+# catalogue imports. Needs only public read access.
+CATALOGUE_GITHUB_TOKEN = os.environ.get("CATALOGUE_GITHUB_TOKEN", "").strip()
 
 # Wagtail's go-live and expiry dates only fire if something runs the
 # publish_scheduled management command on a schedule. Nothing does: there is no

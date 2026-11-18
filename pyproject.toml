@@ -33,6 +33,9 @@ dependencies = [
   # Cleans a Raw HTML block to an allowlist of tags and attributes, on top of
   # the content security policy (see govuk/models/raw_html.py).
   "nh3==0.3.7",
+  # Content catalogue import: Markdown to page blocks (output cleaned by nh3).
+  "markdown-it-py==4.2.0",
+  "PyYAML==6.0.3",
 ]
 
 [dependency-groups]
