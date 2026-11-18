@@ -23,6 +23,10 @@
 .masthead--combined + .govuk-phase-banner {
     margin-bottom: 20px;
 }
+/* <main> has no padding with a combined hero, so the band spaces the content itself. */
+.masthead--combined:not(:has(+ .govuk-phase-banner)) {
+    margin-bottom: 20px !important;
+}
 
 .masthead-breadcrumbs {
     background-color: var(--govuk-brand-colour, #1d70b8);
@@ -63,6 +67,21 @@
 
 .hero__title {
     margin-top: 0;
+}
+
+.masthead--combined .hero__title {
+    font-family: GDS Transport, arial, sans-serif;
+    font-weight: 700;
+    font-size: 2rem;
+    line-height: 1.09375;
+    margin-bottom: 20px;
+}
+@media (min-width: 40.0625em) {
+    .masthead--combined .hero__title {
+        font-size: 3rem;
+        line-height: 1.0416666667;
+        margin-bottom: 30px;
+    }
 }
 
 .hero__description {
@@ -130,6 +149,18 @@
     max-width: 100%;
     height: auto;
 }
+
+/* An hr with its own classes (from a Raw HTML block) keeps its own styles. */
+.rich-text-content hr:not([class]) {
+    margin: 20px 0;
+    border: 0;
+    border-bottom: 3px solid var(--govuk-brand-colour, #1d70b8);
+}
+@media (min-width: 40.0625em) {
+    .rich-text-content hr:not([class]) {
+        margin: 30px 0;
+    }
+}
 img.full-width {
     width: 100%;
     height: auto;
@@ -150,6 +181,9 @@ img.full-width {
     }
     .masthead--combined + .govuk-phase-banner {
         margin-bottom: 30px;
+    }
+    .masthead--combined:not(:has(+ .govuk-phase-banner)) {
+        margin-bottom: 30px !important;
     }
     .govuk-width-container, .hero {
         margin-right: 30px;
@@ -244,9 +278,16 @@ main > :nth-last-child(1 of .section-cards-container) {
     background-color: var(--govuk-brand-colour, #1d70b8);
 }
 
-.body-banner--brand .body-banner__heading,
-.body-banner--brand .body-banner__text,
-.body-banner--brand .body-banner__text * {
+/* Focused elements and inverse buttons keep their own text colour. */
+.body-banner--inverse .body-banner__heading,
+.body-banner--inverse .body-banner__text,
+.body-banner--inverse .body-banner__text :not(:focus),
+.body-banner--inverse .body-banner__html {
+    color: #fff;
+}
+
+/* Separate, so a browser without selector lists in :not() drops only this rule. */
+.body-banner--inverse .body-banner__html :not(.govuk-button, .govuk-button *, :focus) {
     color: #fff;
 }
 

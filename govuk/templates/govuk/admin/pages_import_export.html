@@ -27,17 +27,33 @@
                 {% trans "Select one or more pages. Child pages are exported with each selected page in a structured JSON format including page settings and privacy restrictions." %}
             {% endif %}
         </p>
-        <form method="post" action="{% url 'govuk_pages_export' %}">
+        <form method="post"
+              action="{% url 'govuk_pages_export' %}"
+              data-controller="w-bulk">
             {% csrf_token %}
             <input type="hidden" name="site_id" value="{{ selected_site.id }}">
             <h3 class="w-h5 w-mb-2">{% trans "Pages" %}</h3>
+            {% if page_rows %}
+                <label class="w-flex w-items-center w-gap-2 w-mb-2">
+                    <input type="checkbox"
+                           data-action="w-bulk#toggleAll"
+                           data-w-bulk-target="all"
+                           data-w-bulk-group-param="pages">
+                    <span>{% trans "Select all pages" %}</span>
+                </label>
+            {% endif %}
             <div class="w-mb-4 w-p-4"
                  style="border: 1px solid #d8dde0;
                         max-height: 24rem;
                         overflow-y: auto">
                 {% for row in page_rows %}
                     <label class="w-flex w-items-start w-gap-2 w-mb-2">
-                        <input type="checkbox" name="page_ids" value="{{ row.id }}">
+                        <input type="checkbox"
+                               name="page_ids"
+                               value="{{ row.id }}"
+                               data-action="w-bulk#toggle"
+                               data-w-bulk-target="item"
+                               data-w-bulk-group-param="pages">
                         <span>
                             <span style="padding-left: {{ row.depth }}rem;">{{ row.title }}</span>
                             <code class="w-ml-2">{{ row.slug }}</code>
@@ -54,13 +70,27 @@
             {% if skills_feature_enabled %}
                 <h3 class="w-h5 w-mb-2">{% trans "Skills" %}</h3>
                 <p class="help w-mb-2">{% trans "Select one or more skills to export." %}</p>
+                {% if skill_rows %}
+                    <label class="w-flex w-items-center w-gap-2 w-mb-2">
+                        <input type="checkbox"
+                               data-action="w-bulk#toggleAll"
+                               data-w-bulk-target="all"
+                               data-w-bulk-group-param="skills">
+                        <span>{% trans "Select all skills" %}</span>
+                    </label>
+                {% endif %}
                 <div class="w-mb-4 w-p-4"
                      style="border: 1px solid #d8dde0;
                             max-height: 16rem;
                             overflow-y: auto">
                     {% for row in skill_rows %}
                         <label class="w-flex w-items-start w-gap-2 w-mb-2">
-                            <input type="checkbox" name="skill_ids" value="{{ row.id }}">
+                            <input type="checkbox"
+                                   name="skill_ids"
+                                   value="{{ row.id }}"
+                                   data-action="w-bulk#toggle"
+                                   data-w-bulk-target="item"
+                                   data-w-bulk-group-param="skills">
                             <span>
                                 {{ row.title }}
                                 <code class="w-ml-2">{{ row.slug }}</code>
@@ -72,13 +102,27 @@
                 </div>
                 <h3 class="w-h5 w-mb-2">{% trans "Roles" %}</h3>
                 <p class="help w-mb-2">{% trans "Select one or more roles to export." %}</p>
+                {% if role_rows %}
+                    <label class="w-flex w-items-center w-gap-2 w-mb-2">
+                        <input type="checkbox"
+                               data-action="w-bulk#toggleAll"
+                               data-w-bulk-target="all"
+                               data-w-bulk-group-param="roles">
+                        <span>{% trans "Select all roles" %}</span>
+                    </label>
+                {% endif %}
                 <div class="w-mb-4 w-p-4"
                      style="border: 1px solid #d8dde0;
                             max-height: 16rem;
                             overflow-y: auto">
                     {% for row in role_rows %}
                         <label class="w-flex w-items-start w-gap-2 w-mb-2">
-                            <input type="checkbox" name="role_ids" value="{{ row.id }}">
+                            <input type="checkbox"
+                                   name="role_ids"
+                                   value="{{ row.id }}"
+                                   data-action="w-bulk#toggle"
+                                   data-w-bulk-target="item"
+                                   data-w-bulk-group-param="roles">
                             <span>
                                 {{ row.title }}
                                 <code class="w-ml-2">{{ row.slug }}</code>
