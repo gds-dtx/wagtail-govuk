@@ -6,7 +6,12 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from wagtail.models import Site
 
-from govuk.models import ContentPage, CustomiseSettings, PhaseBannerSettings
+from govuk.models import (
+    ContentPage,
+    CustomiseSettings,
+    PhaseBannerSettings,
+    SearchSettings,
+)
 
 # Whichever module the run was given, rather than the one the author happens to
 # export: named outright the footer assertions below pass only on the machine
@@ -37,6 +42,7 @@ class HeaderLayoutTests(TestCase):
         self.page.save_revision().publish()
 
         self.settings = CustomiseSettings.for_site(self.site)
+        self.search = SearchSettings.for_site(self.site)
 
     def _get(self):
         return self.client.get(self.page.url)
@@ -126,8 +132,9 @@ class HeaderLayoutTests(TestCase):
     def test_the_search_moves_to_the_navigation_independently(self):
         # The search location is decoupled from the service name location: the
         # search can sit in the navigation while the name stays in the header.
-        self.settings.search_location = "navigation"
+        self.search.search_location = "navigation"
         self.settings.save()
+        self.search.save()
 
         response = self._get()
 
@@ -136,8 +143,9 @@ class HeaderLayoutTests(TestCase):
         self.assertContains(response, 'class="app-site-search"', count=1)
 
     def test_the_search_can_be_hidden(self):
-        self.settings.search_location = "hidden"
+        self.search.search_location = "hidden"
         self.settings.save()
+        self.search.save()
 
         self.assertNotContains(self._get(), 'class="app-site-search"')
 
@@ -153,8 +161,9 @@ class HeaderLayoutTests(TestCase):
         # autocomplete (the wrapper and its suggest URL stay) but has no form to
         # submit and no button at all, so Enter is inert. The magnifier becomes
         # a decorative icon inside the input (the app-site-search--icon variant).
-        self.settings.enable_search_results_page = False
+        self.search.enable_search_results_page = False
         self.settings.save()
+        self.search.save()
 
         response = self._get()
 
@@ -204,8 +213,9 @@ class HeaderLayoutTests(TestCase):
     def test_the_search_placeholder_can_be_set(self):
         self.assertContains(self._get(), 'placeholder="Search"')
 
-        self.settings.search_placeholder = "Search for roles or skills"
+        self.search.search_placeholder = "Search for roles or skills"
         self.settings.save()
+        self.search.save()
 
         self.assertContains(self._get(), 'placeholder="Search for roles or skills"')
 
@@ -228,6 +238,7 @@ class ServiceNavigationTests(TestCase):
         self.page.save_revision().publish()
 
         self.settings = CustomiseSettings.for_site(self.site)
+        self.search = SearchSettings.for_site(self.site)
 
     def _get(self):
         return self.client.get(self.page.url)
@@ -279,8 +290,9 @@ class ServiceNavigationTests(TestCase):
         """The search sits in the navigation bar on its own, without dragging an
         empty menu toggle in with it."""
         self.settings.sign_in_location = "hidden"
-        self.settings.search_location = "navigation"
+        self.search.search_location = "navigation"
         self.settings.save()
+        self.search.save()
 
         response = self._get()
 

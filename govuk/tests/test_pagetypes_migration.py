@@ -286,13 +286,14 @@ class PageTypesMigrationTests(TransactionTestCase):
         """Two booleans become three choices. Dropping the booleans and adding
         the choices with their defaults would give the development site the
         header-bar layout with a Sign in link, whatever it showed the day
-        before; the values are carried across instead."""
-        from govuk.models import CustomiseSettings
+        before; the values are carried across instead. Search moved to
+        SearchSettings in 0094."""
+        from govuk.models import CustomiseSettings, SearchSettings
 
         settings_row = CustomiseSettings.objects.get(site=self.site)
 
         self.assertEqual(settings_row.service_name_location, "navigation")
-        self.assertEqual(settings_row.search_location, "navigation")
+        self.assertEqual(SearchSettings.objects.get(site=self.site).search_location, "navigation")
         self.assertEqual(settings_row.sign_in_location, "hidden")
 
     def test_the_hero_colours_survive_as_the_css_they_always_produced(self):

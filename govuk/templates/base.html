@@ -118,7 +118,7 @@
                             {% endif %}
                         </a>
                     </div>
-                    {% if customise_settings.search_location == "header" %}
+                    {% if search_settings.search_location == "header" %}
                         {% include "includes/site_search.html" %}
                     {% endif %}
                     {% if customise_settings.sign_in_location == "header" %}
@@ -195,7 +195,7 @@
                             navigation bar whenever it is placed there, even on a
                             site whose menu would otherwise be empty.
                         {% endcomment %}
-                        {% if customise_settings.search_location == "navigation" %}
+                        {% if search_settings.search_location == "navigation" %}
                             {% include "includes/site_search.html" %}
                         {% endif %}
                     </div>
