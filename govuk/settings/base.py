@@ -700,7 +700,8 @@ WAGTAILSEARCH_BACKENDS = {
 SECURE_CSP = {
     "default-src": [CSP.SELF],
     "script-src": [CSP.SELF, CSP.NONCE],
-    "style-src": [CSP.SELF],
+    # Nonce for a banner block's custom colour; style attributes stay blocked.
+    "style-src": [CSP.SELF, CSP.NONCE],
     "img-src": [CSP.SELF, "data:", "blob:"],
     "font-src": [CSP.SELF],
     "connect-src": [CSP.SELF],
@@ -717,8 +718,13 @@ SECURE_CSP_ADMIN["script-src"] = [
     *SECURE_CSP_ADMIN.get("script-src", []),
     CSP.UNSAFE_INLINE,
 ]
+# Drop the nonce: a browser that sees one ignores 'unsafe-inline'.
 SECURE_CSP_ADMIN["style-src"] = [
-    *SECURE_CSP_ADMIN.get("style-src", []),
+    *(
+        source
+        for source in SECURE_CSP_ADMIN.get("style-src", [])
+        if source != CSP.NONCE
+    ),
     CSP.UNSAFE_INLINE,
 ]
 SECURE_CSP_ADMIN["connect-src"] = [

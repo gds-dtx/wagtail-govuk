@@ -32,8 +32,8 @@ function setSkipLink() {
 function setHyperlinkClasses() {
   const richTextContents = document.querySelectorAll(".rich-text-content");
   // A brand-coloured body banner is the masthead's colour too, so its links
-  // need the same inverse treatment.
-  const masthead = document.querySelectorAll(".masthead, .body-banner--brand");
+  // need the same inverse treatment, as do a dark custom-coloured banner's.
+  const masthead = document.querySelectorAll(".masthead, .body-banner--inverse");
   [richTextContents, masthead].forEach((content) => {
     content.forEach((element) => {
       const links = element.querySelectorAll("a");
@@ -43,7 +43,7 @@ function setHyperlinkClasses() {
         }
         if (
           element.classList.contains("masthead--combined") ||
-          element.classList.contains("body-banner--brand")
+          element.classList.contains("body-banner--inverse")
         ) {
           link.classList.add("govuk-link--inverse");
         }
