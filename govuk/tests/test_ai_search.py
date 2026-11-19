@@ -5,30 +5,21 @@ from unittest import mock
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
-from django.utils.text import slugify
 from wagtail.models import Site
 
-from govuk.ai_search import MATCHES_PATH
-from govuk.content_index import embeddings, indexer
-from govuk.content_index.embeddings import FakeEmbedder, embed_missing
+from govuk.ai_search import MATCHES_PATH, claude as claude_module
+from govuk.ai_search.claude import FakeClaude
+from govuk.content_index import indexer
 from govuk.content_index.search import SEMANTIC_OK
-from govuk.models import ContentPage, SearchSettings
+from govuk.models import SearchSettings
 from govuk.models.pages import HeroStyle
 from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
-from govuk.tests.page_helpers import text_body
+from govuk.tests.helpers import publish_page
+from govuk.tests.test_content_index_search import WithFakeModel
 
 FLAGS = {"SKILLS": False, "FEEDBACK": False, "CATALOGUE": True, "AI": True}
-CONCEPTS = {"money": "pay", "payments": "pay", "payment": "pay", "card": "pay", "public": "people", "people": "people"}
+ON = dict(FEATURE_FLAGS=FLAGS, AI_CLAUDE="fake", CONTENT_INDEX_EMBEDDINGS="", AI_SEARCH_RATE_LIMIT_PER_MINUTE=0)
 EMPTY = "Please enter a question or search query"
-
-
-def publish(title: str, html: str, parent=None) -> ContentPage:
-    parent = parent or Site.objects.get(is_default_site=True).root_page
-    page = parent.add_child(
-        instance=ContentPage(title=title, slug=slugify(title), body=text_body(html))
-    )
-    page.save_revision().publish()
-    return page
 
 
 def choose_ai_search(**fields) -> SearchSettings:
@@ -40,19 +31,17 @@ def choose_ai_search(**fields) -> SearchSettings:
     return search
 
 
-class WithFakeModel(TestCase):
-    """The index of a few pages, embedded by a fake model that knows ``CONCEPTS``."""
+def fake(responder=None, **kwargs):
+    """A ``FakeClaude`` patched in, and its patcher for the caller to stop."""
+    fake_claude = FakeClaude(responder, **kwargs)
+    patcher = mock.patch.object(claude_module, "_fake", fake_claude)
+    patcher.start()
+    return fake_claude, patcher
 
-    def setUp(self):
-        cache.clear()
-        self.fake = FakeEmbedder(concepts=CONCEPTS)
-        patcher = mock.patch.object(embeddings, "_fake", self.fake)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.pay = publish("GOV.UK Pay", "<h2>Taking payments</h2><p>Take card payments online.</p>")
-        self.testing = publish("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
-        indexer.rebuild()
-        embed_missing(embedder=self.fake)
+
+def _area(html: str) -> str:
+    start = html.index('id="app-ai-search"')
+    return html[html.rindex("<div", 0, start):html.index("</form>", start)]
 
 
 @override_settings(
@@ -69,16 +58,11 @@ class SearchPageTests(WithFakeModel):
         self.search = choose_ai_search()
         self.url = reverse("search")
 
-    @staticmethod
-    def _area(html: str) -> str:
-        start = html.index('id="app-ai-search"')
-        return html[html.rindex("<div", 0, start):html.index("</form>", start)]
-
     def test_opened_directly_it_is_the_search_area_alone(self):
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
         html = response.content.decode()
-        area = self._area(html)
+        area = _area(html)
         self.assertIn("app-ai-search-area--page", area)
         self.assertNotIn("hidden", area.split(">", 1)[0])
         self.assertIn(
@@ -274,11 +258,6 @@ class ButtonAndAreaTests(WithFakeModel):
         self.url = reverse("search")
 
     @staticmethod
-    def _area(html: str) -> str:
-        start = html.index('id="app-ai-search"')
-        return html[html.rindex("<div", 0, start):html.index("</form>", start)]
-
-    @staticmethod
     def _header(html: str) -> str:
         return html[html.index('<header class="govuk-template__header">'):html.index("</header>")]
 
@@ -295,7 +274,7 @@ class ButtonAndAreaTests(WithFakeModel):
         return self.client.get(url).content.decode()
 
     def _page(self, title: str, **fields):
-        page = publish(title, "<p>Body.</p>", parent=self.home)
+        page = publish_page(title, "<p>Body.</p>", parent=self.home)
         for name, value in fields.items():
             setattr(page, name, value)
         page.save_revision().publish()
@@ -305,7 +284,7 @@ class ButtonAndAreaTests(WithFakeModel):
         html = self._get("/")
         band = self._band(html)
         self.assertIn("app-ai-search-area app-ai-search-area--inverse", band)
-        self.assertNotIn("hidden", self._area(html).split(">", 1)[0])
+        self.assertNotIn("hidden", _area(html).split(">", 1)[0])
         self.assertIn(
             '<label class="govuk-label govuk-label--m app-ai-search-box__lead" for="app-ai-search-question">'
             "What would you like to find out about?</label>",
@@ -334,7 +313,7 @@ class ButtonAndAreaTests(WithFakeModel):
             r'<button type="button"\s+class="app-ai-search-toggle js-ai-search-toggle"\s+'
             r'aria-controls="app-ai-search"\s+aria-expanded="false"\s+hidden>',
         )
-        area = self._area(html)
+        area = _area(html)
         self.assertIn('class="app-ai-search-area"', area)  # below the navigation, not inverse
         self.assertIn("hidden>", area.split("<form", 1)[0])
         self.assertLess(header.index("govuk-service-navigation"), header.index('id="app-ai-search"'))
@@ -344,7 +323,7 @@ class ButtonAndAreaTests(WithFakeModel):
         self.assertNotIn('id="app-ai-search"', self._header(html))
         band = self._band(html)
         self.assertIn("app-ai-search-area app-ai-search-area--inverse", band)
-        self.assertIn("hidden>", self._area(html).split("<form", 1)[0])
+        self.assertIn("hidden>", _area(html).split("<form", 1)[0])
         self.assertIn("js-ai-search-toggle", self._header(html))
 
     def test_not_always_open_the_home_page_has_the_button(self):
@@ -352,7 +331,7 @@ class ButtonAndAreaTests(WithFakeModel):
         self.search.save()
         html = self._get("/")
         self.assertIn("js-ai-search-toggle", self._header(html))
-        self.assertIn("hidden>", self._area(html).split("<form", 1)[0])
+        self.assertIn("hidden>", _area(html).split("<form", 1)[0])
 
     def test_its_lead_text_is_a_setting(self):
         self.search.ai_search_lead_text = "Ask us anything"
@@ -394,7 +373,7 @@ class ButtonAndAreaTests(WithFakeModel):
         html = self._get(self.url)
         self.assertIn('<h1 class="hero__title">Technology in government</h1>', html)
         self.assertIn("app-ai-search-area--inverse", self._band(html))
-        self.assertNotIn("hidden", self._area(html).split(">", 1)[0])
+        self.assertNotIn("hidden", _area(html).split(">", 1)[0])
         self.assertNotIn("app-ai-search-toggle", self._header(html))
         self.assertNotIn("app-catalogue-card", html)
 
@@ -462,3 +441,7 @@ class CatalogueCardTests(TestCase):
 
     def test_nothing_close_offers_the_whole_catalogue(self):
         self.assertIn('href="/content/all/"', self._ask("zzzz qqqq"))
+
+
+
+

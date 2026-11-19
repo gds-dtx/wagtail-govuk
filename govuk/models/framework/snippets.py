@@ -232,9 +232,8 @@ class GovukSkill(
         that has no description yet. Never both. The published exports carry
         that sentence in the level's cell, so it arrives as a single point, and
         an editor typing it into the points box produces the same thing. Read
-        on from "You can:" with a bullet it looked like a broken sentence (Tim
-        Young, 11 September 2026); the live service prints it bare, in
-        whichever of its two wordings it was written, and so does this. The
+        on from "You can:" with a bullet it looks like a broken sentence, so it
+        is printed bare, in whichever of its two wordings it was written. The
         CSV export reads ``points_for_level`` directly and is not affected.
         """
         points = self.points_for_level(level)

@@ -30,90 +30,72 @@ class DeploymentAllowedHostsTests(SimpleTestCase):
             environ=environ, resolve_own_address=lambda: own_address
         )
 
-    def test_the_load_balancer_health_check_is_answered(self):
-        """The check connects to the task by IP and sends that IP as the Host.
-
-        A target group has no setting that would make it send the site's
-        domain instead, and its matcher only accepts 2xx, so a 400 here marks
-        a healthy container unhealthy and the orchestrator replaces it.
-        """
+    def test_only_the_site_domain_and_the_task_address_are_answered(self):
+        # The load balancer health check connects to the task by IP and sends
+        # that IP as the Host. A target group cannot send the site's domain
+        # instead and its matcher only accepts 2xx, so a 400 here marks a
+        # healthy container unhealthy and the orchestrator replaces it.
         hosts = self.hosts({"DOMAIN": self.DOMAIN})
 
-        self.assertTrue(validate_host(self.TASK_ADDRESS, hosts))
-
-    def test_the_site_domain_is_answered(self):
-        hosts = self.hosts({"DOMAIN": self.DOMAIN})
-
-        self.assertTrue(validate_host(self.DOMAIN, hosts))
-
-    def test_nothing_else_is_answered(self):
-        """The point of the allow-list survives adding to it."""
-        hosts = self.hosts({"DOMAIN": self.DOMAIN})
-
+        for host in (self.TASK_ADDRESS, self.DOMAIN):
+            with self.subTest(host=host):
+                self.assertTrue(validate_host(host, hosts))
         for host in ("example.com", "evil.test", "10.0.3.48"):
             with self.subTest(host=host):
                 self.assertFalse(validate_host(host, hosts))
 
-    def test_allowed_hosts_names_the_hosts_and_domain_is_the_fallback(self):
-        hosts = self.hosts(
-            {"ALLOWED_HOSTS": "one.example, two.example", "DOMAIN": self.DOMAIN}
-        )
-
-        self.assertEqual(hosts, ["one.example", "two.example", self.TASK_ADDRESS])
-
-    def test_blank_entries_are_dropped(self):
-        hosts = self.hosts({"ALLOWED_HOSTS": " one.example , , two.example ,"})
-
-        self.assertEqual(hosts, ["one.example", "two.example", self.TASK_ADDRESS])
-
-    def test_an_address_already_listed_is_not_repeated(self):
-        hosts = self.hosts({"ALLOWED_HOSTS": f"{self.DOMAIN},{self.TASK_ADDRESS}"})
-
-        self.assertEqual(hosts, [self.DOMAIN, self.TASK_ADDRESS])
-
-    def test_an_unresolvable_hostname_leaves_the_rest_intact(self):
-        """Nothing to add, rather than a settings module that will not import."""
-        hosts = self.hosts({"DOMAIN": self.DOMAIN}, own_address=None)
-
-        self.assertEqual(hosts, [self.DOMAIN])
-
-    def test_no_configuration_at_all_still_answers_the_health_check(self):
-        self.assertEqual(self.hosts({}), [self.TASK_ADDRESS])
-
-
-class RunserverDetectionTests(SimpleTestCase):
-    def test_detects_runserver_command(self):
-        self.assertTrue(is_runserver_process(argv=["manage.py", "runserver"]))
-
-    def test_detects_runserver_plus_command(self):
-        self.assertTrue(is_runserver_process(argv=["manage.py", "runserver_plus"]))
-
-    def test_ignores_other_management_commands(self):
-        self.assertFalse(is_runserver_process(argv=["manage.py", "migrate"]))
+    def test_the_hosts_listed(self):
+        cases = [
+            (
+                "ALLOWED_HOSTS names the hosts and DOMAIN is the fallback",
+                {"ALLOWED_HOSTS": "one.example, two.example", "DOMAIN": self.DOMAIN},
+                self.TASK_ADDRESS,
+                ["one.example", "two.example", self.TASK_ADDRESS],
+            ),
+            (
+                "blank entries are dropped",
+                {"ALLOWED_HOSTS": " one.example , , two.example ,"},
+                self.TASK_ADDRESS,
+                ["one.example", "two.example", self.TASK_ADDRESS],
+            ),
+            (
+                "an address already listed is not repeated",
+                {"ALLOWED_HOSTS": f"{self.DOMAIN},{self.TASK_ADDRESS}"},
+                self.TASK_ADDRESS,
+                [self.DOMAIN, self.TASK_ADDRESS],
+            ),
+            # Nothing to add, rather than a settings module that will not import.
+            ("an unresolvable hostname", {"DOMAIN": self.DOMAIN}, None, [self.DOMAIN]),
+            (
+                "no configuration still answers the health check",
+                {},
+                self.TASK_ADDRESS,
+                [self.TASK_ADDRESS],
+            ),
+        ]
+        for name, environ, own_address, expected in cases:
+            with self.subTest(name):
+                self.assertEqual(self.hosts(environ, own_address=own_address), expected)
 
 
-class GunicornDetectionTests(SimpleTestCase):
-    def test_detects_gunicorn_executable(self):
-        self.assertTrue(
-            is_gunicorn_process(
-                argv=["/venv/bin/gunicorn", "govuk.wsgi:application"],
-            )
-        )
+class ProcessDetectionTests(SimpleTestCase):
+    def test_runserver_detection(self):
+        for argv, expected in (
+            (["manage.py", "runserver"], True),
+            (["manage.py", "runserver_plus"], True),
+            (["manage.py", "migrate"], False),
+        ):
+            with self.subTest(argv=argv):
+                self.assertIs(is_runserver_process(argv=argv), expected)
 
-    def test_detects_python_module_invocation(self):
-        self.assertTrue(
-            is_gunicorn_process(
-                argv=["python", "-m", "gunicorn", "govuk.wsgi:application"],
-            )
-        )
-
-    def test_detects_gunicorn_modules(self):
-        self.assertTrue(
-            is_gunicorn_process(
-                argv=["python", "-c", "import govuk.wsgi"],
-                loaded_modules={"gunicorn.app.wsgiapp": object()},
-            )
-        )
+    def test_gunicorn_detection(self):
+        for argv, loaded_modules in (
+            (["/venv/bin/gunicorn", "govuk.wsgi:application"], None),
+            (["python", "-m", "gunicorn", "govuk.wsgi:application"], None),
+            (["python", "-c", "import govuk.wsgi"], {"gunicorn.app.wsgiapp": object()}),
+        ):
+            with self.subTest(argv=argv, loaded_modules=loaded_modules):
+                self.assertTrue(is_gunicorn_process(argv=argv, loaded_modules=loaded_modules))
 
 
 class ResolveWsgiSettingsModuleTests(SimpleTestCase):
@@ -138,38 +120,36 @@ class ResolveWsgiSettingsModuleTests(SimpleTestCase):
 
         self.assertEqual(resolved, "govuk.settings.production")
 
-    def test_rejects_development_settings_for_gunicorn(self):
-        with self.assertRaisesMessage(
-            ImproperlyConfigured,
+    def test_rejects_development_or_missing_settings_outside_runserver(self):
+        development_only = (
             "govuk.settings.development is only supported for local "
-            "`python manage.py runserver`.",
-        ):
-            resolve_wsgi_settings_module(
-                environ={"DJANGO_SETTINGS_MODULE": DEVELOPMENT_SETTINGS_MODULE},
-                argv=["/venv/bin/gunicorn", "govuk.wsgi:application"],
-            )
-
-    def test_rejects_missing_settings_for_gunicorn(self):
-        with self.assertRaisesMessage(
-            ImproperlyConfigured,
-            "DJANGO_SETTINGS_MODULE must be set to a deployed settings module "
-            "before starting Gunicorn.",
-        ):
-            resolve_wsgi_settings_module(
-                environ={},
-                argv=["/venv/bin/gunicorn", "govuk.wsgi:application"],
-            )
-
-    def test_rejects_development_settings_outside_runserver(self):
-        with self.assertRaisesMessage(
-            ImproperlyConfigured,
-            "govuk.settings.development is only supported for local "
-            "`python manage.py runserver`.",
-        ):
-            resolve_wsgi_settings_module(
-                environ={"DJANGO_SETTINGS_MODULE": DEVELOPMENT_SETTINGS_MODULE},
-                argv=["python", "-c", "import govuk.wsgi"],
-            )
+            "`python manage.py runserver`."
+        )
+        gunicorn = ["/venv/bin/gunicorn", "govuk.wsgi:application"]
+        cases = [
+            (
+                "development under gunicorn",
+                {"DJANGO_SETTINGS_MODULE": DEVELOPMENT_SETTINGS_MODULE},
+                gunicorn,
+                development_only,
+            ),
+            (
+                "missing under gunicorn",
+                {},
+                gunicorn,
+                "DJANGO_SETTINGS_MODULE must be set to a deployed settings module "
+                "before starting Gunicorn.",
+            ),
+            (
+                "development outside runserver",
+                {"DJANGO_SETTINGS_MODULE": DEVELOPMENT_SETTINGS_MODULE},
+                ["python", "-c", "import govuk.wsgi"],
+                development_only,
+            ),
+        ]
+        for name, environ, argv, message in cases:
+            with self.subTest(name), self.assertRaisesMessage(ImproperlyConfigured, message):
+                resolve_wsgi_settings_module(environ=environ, argv=argv)
 
 
 class WsgiModuleTests(SimpleTestCase):

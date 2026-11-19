@@ -1,27 +1,20 @@
 {% comment %}
-    GOV.UK's "Is this page useful?" prompt, at the foot of every page as the
-    live service shows it. Yes and No are real submit buttons in a
-    real form: without JavaScript the browser posts to page_feedback_view and
-    is sent back here with ?page_feedback=sent, and this template shows the
-    thank-you; with it, main.js posts in the background and swaps the panels
-    in place. Either way the answer is one line in the server log.
+    GOV.UK's "Is this page useful?" prompt, at the foot of every page. Yes and
+    No are real submit buttons in a real form: without JavaScript the browser
+    posts to page_feedback_view and is sent back here with ?page_feedback=sent,
+    and this template shows the thank-you; with it, main.js posts in the
+    background and swaps the panels in place. Either way the answer is logged
+    and stored.
 
     The class names are the ones govuk_publishing_components gives this
-    component, so a comparison with the live page is like for like. One
-    deliberate difference: live's band stops at the edges of its 1100px
-    content column. Ours runs the full width of the page, as the footer
-    below it does, with the question and buttons aligned to the content
-    column -- inside a narrower column a boxed band sat as an island on
-    wide screens.
+    component. The band runs the full width of the page, as the footer below it
+    does, with the question and buttons aligned to the content column.
 
-    A second deliberate difference: each button carries the question as
-    visually hidden text, so it is announced as "Is this page useful: Yes"
-    rather than a bare "Yes". Someone moving between buttons does not
-    necessarily hear the heading above them, and "Yes" on its own says
-    nothing about what is being agreed to. Live has a hidden span here too
-    but it repeats the word ("Yes Yes"), which is why this is not copied
-    from live. The visible label is still exactly "Yes" / "No", so the
-    accessible name contains it (WCAG 2.5.3 Label in Name).
+    Each button carries the question as visually hidden text, so it is
+    announced as "Is this page useful: Yes" rather than a bare "Yes": someone
+    moving between buttons does not necessarily hear the heading above them.
+    The visible label is still exactly "Yes" / "No", so the accessible name
+    contains it (WCAG 2.5.3 Label in Name).
 {% endcomment %}
 {% with sent=request.GET.page_feedback %}
     <div class="gem-c-feedback" id="page-feedback" data-module="page-feedback">

@@ -51,11 +51,10 @@
                                      class="govuk-accordion__section-content">
                                     {% if skill_section.is_scs %}
                                         {% comment %}
-                                            A Senior Civil Service skill has no levels table, so the
-                                            live service heads its entry the way it heads the column
-                                            on a Senior Civil Service role page: "Description,
-                                            including examples of leadership". Same wording setting
-                                            as that column.
+                                            A Senior Civil Service skill has no levels table, so its
+                                            entry is headed the way the column is on a Senior Civil
+                                            Service role page: "Description, including examples of
+                                            leadership". Same wording setting as that column.
                                         {% endcomment %}
                                         <h3 class="govuk-heading-s govuk-!-margin-bottom-2">{{ framework_wording.scs_skills_table_description_heading }}</h3>
                                     {% endif %}
@@ -75,7 +74,7 @@
                                             A sentence, not a heading: it introduces the list the way
                                             "You can:" introduces the points above it, and it is the
                                             same sentence the Senior Civil Service role page prints
-                                            in its skills table (T37.2).
+                                            in its skills table.
                                         {% endcomment %}
                                         <p class="govuk-body govuk-!-margin-bottom-1">{{ framework_wording.scs_leadership_examples_heading }}</p>
                                         <ul class="govuk-list govuk-list--bullet">
@@ -125,8 +124,8 @@
                                                             {% else %}
                                                                 {% comment %}
                                                                     A level the framework has marked "not defined" prints
-                                                                    that sentence on its own, as the live service does; a
-                                                                    level with nothing written at all gets the editors'
+                                                                    that sentence on its own rather than after "You can:";
+                                                                    a level with nothing written at all gets the editors'
                                                                     message.
                                                                 {% endcomment %}
                                                                 <p class="govuk-body govuk-!-margin-bottom-0">{{ level_row.placeholder|default:framework_wording.skill_level_no_description_message }}</p>
@@ -151,8 +150,7 @@
                                             {% comment %}
                                                 Every other skill's levels table ends in a rule that
                                                 sets its roles list off; a Senior Civil Service skill
-                                                has no table, so the live service draws the rule
-                                                itself (T37.3).
+                                                has no table, so the rule is drawn here.
                                             {% endcomment %}
                                             <hr class="govuk-section-break govuk-section-break--m govuk-section-break--visible">
                                         {% endif %}

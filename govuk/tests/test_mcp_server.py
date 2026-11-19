@@ -15,22 +15,28 @@ from wagtail.models import Site
 from govuk.content_index import indexer
 from govuk.mcp import MCP_PATH, tools
 from govuk.mcp.server import create_server
-from govuk.models import ContentEntryExternalPage, ContentPage, MaintenanceModeSettings
+from govuk.models import ContentEntryExternalPage, MaintenanceModeSettings
 from govuk.service import HEALTH_PATH
 from govuk.service.app import create_app
 from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
-from govuk.tests.page_helpers import text_body
+from govuk.tests.helpers import publish_page
 
 FLAGS = {"SKILLS": False, "FEEDBACK": False, "CATALOGUE": True, "AI": True}
 LIST_TOOLS = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
 MCP_HEADERS = {"Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25"}
 
 
-def _publish_page(title: str, html: str) -> ContentPage:
-    home = Site.objects.get(is_default_site=True).root_page
-    page = home.add_child(instance=ContentPage(title=title, slug=title.lower(), body=text_body(html)))
-    page.save_revision().publish()
-    return page
+def service_requests(*requests, app=None) -> list:
+    """Send ``(method, path, kwargs)`` requests to the service app, with its lifespan running."""
+    app = app or create_app()
+
+    async def run():
+        async with app.router.lifespan_context(app):
+            transport = httpx2.ASGITransport(app=app)
+            async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                return [await client.request(method, path, **kwargs) for method, path, kwargs in requests]
+
+    return async_to_sync(run)()
 
 
 @override_settings(FEATURE_FLAGS=FLAGS)
@@ -39,7 +45,7 @@ class ToolTests(TestCase):
         self.site = Site.objects.get(is_default_site=True)
         self.main = make_content_main_page(self.site.root_page)
         import_fixture(self.main)
-        self.page = _publish_page("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
+        self.page = publish_page("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
         indexer.rebuild()
 
     def test_search_returns_results_with_their_sections(self):
@@ -110,7 +116,7 @@ class ProtocolTests(TransactionTestCase):
     serialized_rollback = True
 
     def setUp(self):
-        _publish_page("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
+        publish_page("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
         indexer.rebuild()
 
     def _session(self, use):
@@ -156,37 +162,26 @@ class AppTests(TestCase):
     def setUp(self):
         cache.clear()
 
-    def _requests(self, *requests, app=None):
-        app = app or create_app()
-
-        async def run():
-            async with app.router.lifespan_context(app):
-                transport = httpx2.ASGITransport(app=app)
-                async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as client:
-                    return [await client.request(method, path, **kwargs) for method, path, kwargs in requests]
-
-        return async_to_sync(run)()
-
     def test_the_health_check(self):
-        (response,) = self._requests(("GET", HEALTH_PATH, {}))
+        (response,) = service_requests(("GET", HEALTH_PATH, {}))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"health": {"database": "ok"}})
 
     def test_only_the_sites_own_hosts_are_answered(self):
-        (response,) = self._requests(
+        (response,) = service_requests(
             ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": {**MCP_HEADERS, "Host": "evil.example"}})
         )
         self.assertEqual(response.status_code, 421)
 
     def test_a_browser_on_another_site_is_refused(self):
-        (response,) = self._requests(
+        (response,) = service_requests(
             ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": {**MCP_HEADERS, "Origin": "https://evil.example"}})
         )
         self.assertEqual(response.status_code, 403)
 
     @override_settings(MAINTENANCE_MODE=True, MAINTENANCE_RETRY_AFTER=120)
     def test_closed_for_maintenance_but_still_healthy(self):
-        closed, health = self._requests(
+        closed, health = service_requests(
             ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS}),
             ("GET", HEALTH_PATH, {}),
         )
@@ -198,14 +193,14 @@ class AppTests(TestCase):
         settings = MaintenanceModeSettings.for_site(Site.objects.get(is_default_site=True))
         settings.enabled = True
         settings.save()
-        (response,) = self._requests(("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS}))
+        (response,) = service_requests(("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS}))
         self.assertEqual(response.status_code, 503)
 
     @override_settings(MCP_RATE_LIMIT_PER_MINUTE=2)
     def test_a_client_over_the_limit_is_told_to_wait(self):
         # Requests the host check refuses still count: the limit comes first.
         request = ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": {**MCP_HEADERS, "Host": "evil.example"}})
-        responses = self._requests(request, request, request, ("GET", HEALTH_PATH, {}))
+        responses = service_requests(request, request, request, ("GET", HEALTH_PATH, {}))
         self.assertEqual([response.status_code for response in responses], [421, 421, 429, 200])
         self.assertTrue(1 <= int(responses[2].headers["Retry-After"]) <= 60)
 
@@ -219,20 +214,20 @@ class AppTests(TestCase):
     @override_settings(MCP_RATE_LIMIT_PER_MINUTE=1, CLIENT_IP_HEADER="true-client-ip")
     def test_behind_cloudfront_each_viewer_is_counted_apart(self):
         # One connection (CloudFront's) carrying three viewers' requests.
-        responses = self._requests(
+        responses = service_requests(
             self._from("203.0.113.1"), self._from("203.0.113.2"), self._from("203.0.113.1, 10.0.0.9")
         )
         self.assertEqual([response.status_code for response in responses], [421, 421, 429])
 
     @override_settings(MCP_RATE_LIMIT_PER_MINUTE=1, CLIENT_IP_HEADER="true-client-ip")
     def test_a_request_without_the_header_is_counted_by_its_connection(self):
-        responses = self._requests(self._from(None), self._from(None))
+        responses = service_requests(self._from(None), self._from(None))
         self.assertEqual([response.status_code for response in responses], [421, 429])
 
     @override_settings(MCP_RATE_LIMIT_PER_MINUTE=1)
     def test_the_header_is_ignored_unless_it_is_configured(self):
         # Otherwise a client could reset its own count by writing the header.
-        responses = self._requests(self._from("203.0.113.1"), self._from("203.0.113.2"))
+        responses = service_requests(self._from("203.0.113.1"), self._from("203.0.113.2"))
         self.assertEqual([response.status_code for response in responses], [421, 429])
 
     @override_settings(FEATURE_FLAGS={**FLAGS, "AI": False})
@@ -242,7 +237,7 @@ class AppTests(TestCase):
 
     @override_settings(SERVICE_CONTRIBUTIONS=["govuk.mcp.service.contribution", "govuk.tests.test_mcp_server._another"])
     def test_each_feature_adds_its_own_routes_beside_the_mcp_servers(self):
-        mcp, other = self._requests(
+        mcp, other = service_requests(
             ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS}),
             ("GET", "/another/", {}),
         )

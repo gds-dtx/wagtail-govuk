@@ -270,9 +270,7 @@ def framework_csv_view(request, name):
     """One of the framework's published CSVs, built from the content asked for.
 
     Generated at request time rather than kept as a file, so the download is
-    the published content by construction -- the live service's copies were
-    regenerated on a schedule and drifted, and its links now answer
-    AccessDenied. The label and columns match the published downloads.
+    the published content by construction and cannot drift from it.
     """
     if not settings.FEATURE_FLAGS.get("SKILLS"):
         raise Http404

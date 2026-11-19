@@ -60,9 +60,8 @@ extend-exclude = ["govuk/migrations"]
 
 [tool.ruff.lint]
 # Pyflakes is the rule set that earns its place here: it is what finds an
-# import or a variable nothing reads, and an unused import survived nine
-# review passes on this branch because nothing was looking. E4/E7/E9 are
-# the errors rather than the style opinions, and I keeps imports ordered.
+# import or a variable nothing reads. E4/E7/E9 are the errors rather than the
+# style opinions, and I keeps imports ordered.
 #
 # Deliberately not enabled: RUF012 wants ClassVar on every mutable class
 # attribute, which is 217 warnings about `panels = [...]` on Wagtail models

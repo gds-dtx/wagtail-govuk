@@ -2,40 +2,27 @@ import os
 from unittest.mock import patch
 
 from django.conf import settings
-from django.test import (
-    RequestFactory,
-    SimpleTestCase,
-    TestCase,
-    override_settings,
-)
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from wagtail.models import Site
 
 from govuk.context_processors import navigation_and_breadcrumbs
 from govuk.models import ContentPage, FrameworkSkillsPage
-
-
-def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
-    return {
-        "SKILLS": skills_enabled,
-        "FEEDBACK": False,
-    }
+from govuk.tests.helpers import feature_flags
 
 
 class NavigationAndBreadcrumbsContextTests(SimpleTestCase):
-    def setUp(self):
-        self.factory = RequestFactory()
+    def _context(self):
+        """The context for a request that matches no site."""
+        request = RequestFactory().get("/")
+        with patch("govuk.context_processors.Site.find_for_request", return_value=None) as find_for_request:
+            context = navigation_and_breadcrumbs(request)
+        find_for_request.assert_called_once_with(request)
+        return context
 
     @override_settings(ADDITIONAL_CSS=[])
-    @patch("govuk.context_processors.Site.find_for_request", return_value=None)
-    def test_exposes_debug_version_and_settings_module(self, mocked_find_for_request):
-        request = self.factory.get("/")
-
-        with patch.dict(
-            os.environ,
-            {"DJANGO_SETTINGS_MODULE": "govuk.settings.development"},
-            clear=False,
-        ):
-            context = navigation_and_breadcrumbs(request)
+    def test_exposes_debug_version_and_settings_module(self):
+        with patch.dict(os.environ, {"DJANGO_SETTINGS_MODULE": "govuk.settings.development"}, clear=False):
+            context = self._context()
 
         self.assertEqual(context["app_debug"], settings.DEBUG)
         self.assertEqual(context["app_version"], settings.VERSION)
@@ -47,93 +34,42 @@ class NavigationAndBreadcrumbsContextTests(SimpleTestCase):
         self.assertIsNone(context["phase_banner_settings"])
         self.assertIsNone(context["footer_settings"])
         self.assertIsNone(context["customise_settings"])
-        mocked_find_for_request.assert_called_once_with(request)
 
-    @patch("govuk.context_processors.Site.find_for_request", return_value=None)
-    def test_falls_back_to_loaded_settings_module_when_env_missing(
-        self, mocked_find_for_request
-    ):
-        request = self.factory.get("/")
-
+    def test_falls_back_to_loaded_settings_module_when_env_missing(self):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("DJANGO_SETTINGS_MODULE", None)
-            context = navigation_and_breadcrumbs(request)
+            context = self._context()
 
         self.assertEqual(context["django_settings_module"], settings.SETTINGS_MODULE)
-        mocked_find_for_request.assert_called_once_with(request)
 
-    @override_settings(ADDITIONAL_CSS=["/static/cyber.css", "/static/other.css"])
-    @patch("govuk.context_processors.Site.find_for_request", return_value=None)
-    def test_exposes_additional_css_when_configured(self, mocked_find_for_request):
-        request = self.factory.get("/")
-
-        context = navigation_and_breadcrumbs(request)
-
-        self.assertEqual(
-            context["additional_css"], ["/static/cyber.css", "/static/other.css"]
-        )
-        mocked_find_for_request.assert_called_once_with(request)
-
-    @override_settings(NOINDEX=False)
-    @patch("govuk.context_processors.Site.find_for_request", return_value=None)
-    def test_exposes_noindex_setting_value(self, mocked_find_for_request):
-        request = self.factory.get("/")
-
-        context = navigation_and_breadcrumbs(request)
-
-        self.assertFalse(context["noindex"])
-        mocked_find_for_request.assert_called_once_with(request)
+    def test_exposes_the_configured_settings(self):
+        for setting, key, value in (
+            ("ADDITIONAL_CSS", "additional_css", ["/static/cyber.css", "/static/other.css"]),
+            ("NOINDEX", "noindex", False),
+        ):
+            with self.subTest(setting), override_settings(**{setting: value}):
+                self.assertEqual(self._context()[key], value)
 
 
 class ServiceNavigationWithoutTheFrameworkTests(TestCase):
     """The navigation menu is on every page of the site, including the errors.
 
-    A framework page type such as ``FrameworkSkillsPage`` can be a child of the site
-    root with ``show_in_menus`` set: the page import carries the field along
-    with the rest of the payload. It 404s when fetched on a site without the
-    framework, so a link to it in the header is a link that does not work, in
-    the one place a reader sees on every page.
+    A framework page such as ``FrameworkSkillsPage`` can be a child of the site
+    root with ``show_in_menus`` set (the page import carries the field along).
+    It 404s on a site without the framework, so a header link to it would not work.
     """
 
     def setUp(self):
-        self.factory = RequestFactory()
-        self.site = Site.objects.get(is_default_site=True)
-        self.root_page = self.site.root_page.specific
+        root_page = Site.objects.get(is_default_site=True).root_page.specific
+        for page in (
+            ContentPage(title="Guidance", slug="guidance", body="", show_in_menus=True),
+            FrameworkSkillsPage(title="Skills A-Z", slug="skills-az", show_in_menus=True),
+        ):
+            root_page.add_child(instance=page).save_revision().publish()
 
-        self.content_page = self.root_page.add_child(
-            instance=ContentPage(
-                title="Guidance",
-                slug="guidance",
-                body="",
-                show_in_menus=True,
-            )
-        )
-        self.content_page.save_revision().publish()
+    def test_a_framework_page_is_a_navigation_item_only_with_the_framework(self):
+        for skills, titles in ((True, ["Guidance", "Skills A-Z"]), (False, ["Guidance"])):
+            with self.subTest(skills=skills), override_settings(FEATURE_FLAGS=feature_flags(skills=skills)):
+                items = navigation_and_breadcrumbs(RequestFactory().get("/"))["service_navigation_items"]
 
-        self.framework_page = self.root_page.add_child(
-            instance=FrameworkSkillsPage(
-                title="Skills A-Z",
-                slug="skills-az",
-                show_in_menus=True,
-            )
-        )
-        self.framework_page.save_revision().publish()
-
-    def _menu_titles(self):
-        return [
-            item["title"]
-            for item in navigation_and_breadcrumbs(self.factory.get("/"))[
-                "service_navigation_items"
-            ]
-        ]
-
-    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
-    def test_the_framework_site_still_gets_the_whole_menu(self):
-        self.assertEqual(self._menu_titles(), ["Guidance", "Skills A-Z"])
-
-    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
-    def test_a_framework_page_is_not_a_navigation_item(self):
-        titles = self._menu_titles()
-
-        self.assertNotIn("Skills A-Z", titles)
-        self.assertEqual(titles, ["Guidance"])
+                self.assertEqual([item["title"] for item in items], titles)
