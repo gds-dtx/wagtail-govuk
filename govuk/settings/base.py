@@ -573,6 +573,7 @@ CONTENT_INDEX_EMBEDDING_REGION = (
     os.getenv("CONTENT_INDEX_EMBEDDING_REGION") or os.getenv("AWS_REGION") or "eu-west-2"
 ).strip()
 # Minimum cosine similarity (0 to 1) for a meaning-only match in hybrid search.
+# Tune with manage.py evaluate_content_search.
 CONTENT_INDEX_MIN_SIMILARITY = float(os.getenv("CONTENT_INDEX_MIN_SIMILARITY", "0.35"))
 
 # Features of the ASGI service (govuk/service/): each returns its routes, or None.
