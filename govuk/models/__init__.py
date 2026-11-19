@@ -98,6 +98,7 @@ from .settings import (
     FooterSettings,
     MaintenanceModeSettings,
     PhaseBannerSettings,
+    SearchSettings,
 )
 from .signing import JWTGenerationError, SecretTextarea
 from .tags import (
@@ -130,6 +131,7 @@ __all__ = [
     "ContentPage",
     "ContentPageTag",
     "CustomiseSettings",
+    "SearchSettings",
     "DEFAULT_JWT_LIFETIME",
     "EdDSAKeyPair",
     "EdDSAKeySettings",

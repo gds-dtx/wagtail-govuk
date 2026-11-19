@@ -21,6 +21,7 @@ from govuk.models import (
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
+    SearchSettings,
 )
 
 SITE_NAME = "Government Digital and Data Profession Capability Framework"
@@ -392,14 +393,16 @@ class Command(BaseCommand):
         customise = CustomiseSettings.for_site(site)
         customise.header_logo = "govuk"
         customise.service_name_location = "navigation"
-        customise.search_location = "navigation"
-        # The framework's search box jumps straight to a role, skill or page as
-        # the reader types; it does not offer a free-text results page, so Enter
-        # on its own does nothing and /search/ is not served.
-        customise.enable_search_results_page = False
         customise.sign_in_location = "hidden"
         # The live service offers a "Back to top" link on its long role and
         # skill pages; the setting is off by default for other sites.
         customise.show_back_to_top = True
         customise.save()
+        search = SearchSettings.for_site(site)
+        search.search_location = "navigation"
+        # The framework's search box jumps straight to a role, skill or page as
+        # the reader types; it does not offer a free-text results page, so Enter
+        # on its own does nothing and /search/ is not served.
+        search.enable_search_results_page = False
+        search.save()
         self.stdout.write("Site settings: configured for the framework")

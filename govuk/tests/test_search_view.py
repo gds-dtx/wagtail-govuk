@@ -11,10 +11,10 @@ from govuk.models import (
     ContentDiscoverySettings,
     ContentDiscoverySource,
     ContentPage,
-    CustomiseSettings,
     ExternalContentItem,
     ExternalContentItemTag,
     GovukTag,
+    SearchSettings,
 )
 from govuk.search_backend import search_backend
 
@@ -497,16 +497,16 @@ class SearchRestrictionQueryCostTests(TestCase):
 
 
 class SearchResultsPageDisabledTests(TestCase):
-    """Customise can turn the free-text results page off.
+    """Settings > Search can turn the free-text results page off.
 
     The header box keeps its jump-to-a-role/skill/page suggestions (served by
     search_suggest_view), but a submitted or bookmarked /search/?query= URL is
-    not served -- see CustomiseSettings.enable_search_results_page.
+    not served -- see SearchSettings.enable_search_results_page.
     """
 
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
-        self.settings = CustomiseSettings.for_site(self.site)
+        self.settings = SearchSettings.for_site(self.site)
 
     def test_results_page_is_served_by_default(self):
         response = self.client.get(reverse("search"), {"query": "anything"})

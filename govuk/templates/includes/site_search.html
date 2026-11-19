@@ -3,14 +3,14 @@
     autocomplete, fed from data-suggest-url, when it and the library are
     present; without them the form submits to the results page as it is.
 
-    When Customise turns free-text results off (enable_search_results_page is
+    When Settings > Search turns free-text results off (enable_search_results_page is
     false) the wrapping <form> becomes a plain <div>: with no form, Enter and
     the button do nothing (the box is inert without JavaScript), and main.js's
     "if (form)" guard suppresses the free-text submit while the
     jump-to-a-suggestion path (window.location.assign) keeps working. The
     results page (search_view) also 404s in that state.
 {% endcomment %}
-{% if customise_settings and not customise_settings.enable_search_results_page %}
+{% if search_settings and not search_settings.enable_search_results_page %}
     {% comment %}Suggestions jump straight to a page; there is no results page to submit to.{% endcomment %}
     {% firstof False as results_enabled %}
 {% else %}
@@ -27,22 +27,13 @@
     {% else %}
     <div role="search" class="app-site-search__form">
     {% endif %}
-        <label class="govuk-visually-hidden" for="app-site-search__input">
-            Search
-            {% if customise_settings and customise_settings.show_site_name_in_search_box %}
-                {% if current_site.site_name %}
-                    {{ current_site.site_name }}
-                {% else %}
-                    this site
-                {% endif %}
-            {% endif %}
-        </label>
+        <label class="govuk-visually-hidden" for="app-site-search__input">Search</label>
         <input class="govuk-input app-site-search__input"
                id="app-site-search__input"
                name="query"
                type="search"
                value="{{ request.GET.query|default_if_none:'' }}"
-               placeholder="{% if customise_settings and customise_settings.search_placeholder %}{{ customise_settings.search_placeholder }}{% else %}Search{% if customise_settings and customise_settings.show_site_name_in_search_box %}{% if current_site.site_name %} {{ current_site.site_name }}{% else %} this site{% endif %}{% endif %}{% endif %}" />
+               placeholder="{% if search_settings and search_settings.search_placeholder %}{{ search_settings.search_placeholder }}{% else %}Search{% endif %}" />
         {% if results_enabled %}
         <button class="govuk-button govuk-button--inverse app-site-search__button"
                 data-module="govuk-button"

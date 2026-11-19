@@ -265,7 +265,7 @@ class ImportCapabilityFrameworkTests(TestCase):
         self.assertEqual(len(home.framework_welcome_body), 0)
 
     def test_site_settings_are_configured_on_first_import(self):
-        from govuk.models import CustomiseSettings
+        from govuk.models import CustomiseSettings, SearchSettings
 
         self._import()
 
@@ -273,10 +273,11 @@ class ImportCapabilityFrameworkTests(TestCase):
         customise = CustomiseSettings.for_site(site)
         self.assertEqual(customise.header_logo, "govuk")
         self.assertEqual(customise.service_name_location, "navigation")
-        self.assertEqual(customise.search_location, "navigation")
-        self.assertFalse(customise.enable_search_results_page)
         self.assertEqual(customise.sign_in_location, "hidden")
         self.assertTrue(customise.show_back_to_top)
+        search = SearchSettings.for_site(site)
+        self.assertEqual(search.search_location, "navigation")
+        self.assertFalse(search.enable_search_results_page)
 
     def test_a_second_import_leaves_editor_welcome_content_alone(self):
         """Because the importer never writes the welcome prose, an editor's own

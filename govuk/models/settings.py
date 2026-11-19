@@ -41,7 +41,7 @@ from .signing import (
 )
 
 
-@register_setting(icon="warning", order=3)
+@register_setting(icon="warning", order=4)
 class PhaseBannerSettings(BaseSiteSetting):
     enabled = models.BooleanField(
         default=False,
@@ -87,7 +87,7 @@ class PhaseBannerSettings(BaseSiteSetting):
         verbose_name = "Phase banner"
 
 
-@register_setting(icon="link", order=2)
+@register_setting(icon="link", order=3)
 class FooterSettings(BaseSiteSetting):
     footer_links = StreamField(
         [
@@ -149,40 +149,6 @@ class CustomiseSettings(BaseSiteSetting):
             "Where the sign in and sign out links appear. Choose Hidden for "
             "sites where visitors never sign in -- the sign in link is hidden, "
             "but a signed-in user can still sign out."
-        ),
-    )
-    search_location = models.CharField(
-        max_length=20,
-        choices=[
-            ("header", "Header bar"),
-            ("navigation", "Service navigation"),
-            ("hidden", "Hidden"),
-        ],
-        default="header",
-        help_text="Where the search box appears.",
-    )
-    show_site_name_in_search_box = models.BooleanField(
-        default=False,
-        help_text="Include the site name in the header search label and placeholder.",
-    )
-    search_placeholder = models.CharField(
-        max_length=100,
-        blank=True,
-        default="",
-        help_text=(
-            "Wording shown in the header search box, for example "
-            "Search for roles or skills. Defaults to Search."
-        ),
-    )
-    enable_search_results_page = models.BooleanField(
-        default=True,
-        verbose_name="Allow free-text search results",
-        help_text=(
-            "Let visitors search for any phrase and see a results page. Turn "
-            "this off to keep only the suggestions that jump straight to a "
-            "live page or snippet as the reader types -- pressing Enter or the "
-            "search button on its own then does nothing, and the results page "
-            "is not served."
         ),
     )
     content_max_width = models.PositiveIntegerField(
@@ -253,15 +219,6 @@ class CustomiseSettings(BaseSiteSetting):
         FieldPanel("sign_in_location"),
         MultiFieldPanel(
             [
-                FieldPanel("search_location"),
-                FieldPanel("enable_search_results_page"),
-                FieldPanel("show_site_name_in_search_box"),
-                FieldPanel("search_placeholder"),
-            ],
-            heading="Search box",
-        ),
-        MultiFieldPanel(
-            [
                 FieldPanel("show_page_feedback_prompt"),
                 # No heading overrides: the fields' own labels ("Feedback
                 # follow-up sentence" and so on) are what the revision-compare
@@ -317,7 +274,54 @@ class CustomiseSettings(BaseSiteSetting):
         return bool(self.render_custom_css())
 
 
-@register_setting(icon="error", order=4)
+@register_setting(icon="search", order=2)
+class SearchSettings(BaseSiteSetting):
+    """The site's search box (Settings > Search): where it is, its wording,
+    and whether a search can be submitted for a page of results."""
+
+    search_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+            ("hidden", "Hidden"),
+        ],
+        default="header",
+        help_text="Where the search box appears.",
+    )
+    search_placeholder = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            "Placeholder in the search box, for example Search for roles or "
+            "skills. Defaults to Search."
+        ),
+    )
+    enable_search_results_page = models.BooleanField(
+        default=True,
+        verbose_name="Allow free-text search results",
+        help_text=(
+            "Let visitors search for any phrase and see a results page. Turn "
+            "this off to keep only the suggestions that jump straight to a "
+            "live page or snippet as the reader types -- pressing Enter or the "
+            "search button on its own then does nothing, and the results page "
+            "is not served."
+        ),
+    )
+
+    panels = [
+        FieldPanel("search_location"),
+        FieldPanel("search_placeholder"),
+        FieldPanel("enable_search_results_page"),
+    ]
+
+    class Meta:
+        verbose_name = "Search"
+        verbose_name_plural = "Search"
+
+
+@register_setting(icon="error", order=5)
 class ErrorPagesSettings(BaseSiteSetting):
     not_found_heading = models.CharField(
         max_length=255,
@@ -447,7 +451,7 @@ class ErrorPagesSettings(BaseSiteSetting):
         verbose_name_plural = "Error pages"
 
 
-@register_setting(icon="cog", order=5)
+@register_setting(icon="cog", order=6)
 class MaintenanceModeSettings(BaseSiteSetting):
     """The admin switch that closes the service behind the 503 page.
 

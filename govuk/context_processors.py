@@ -9,6 +9,7 @@ from govuk.models import (
     ErrorPagesSettings,
     FooterSettings,
     PhaseBannerSettings,
+    SearchSettings,
     without_framework_pages,
 )
 
@@ -49,6 +50,7 @@ def navigation_and_breadcrumbs(request):
             "footer_settings": None,
             "customise_settings": None,
             "error_pages_settings": None,
+            "search_settings": None,
         }
 
     site_root = site.root_page.specific
@@ -108,4 +110,5 @@ def navigation_and_breadcrumbs(request):
         "footer_settings": FooterSettings.for_site(site),
         "customise_settings": customise_settings,
         "error_pages_settings": ErrorPagesSettings.for_site(site),
+        "search_settings": SearchSettings.for_site(site),
     }
