@@ -516,6 +516,9 @@ FEATURE_FLAGS = {
     "SKILLS": _bool_env("FEATURE_SKILLS"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
     "CATALOGUE": _bool_env("FEATURE_CATALOGUE"),
+    # Content index, MCP server and AI search. Off, publishing writes nothing
+    # to the index.
+    "AI": _bool_env("FEATURE_AI"),
 }
 
 # Optional; lifts GitHub's unauthenticated limit (60 requests an hour) for
@@ -540,6 +543,20 @@ SCHEDULED_PUBLISHING = _bool_env("SCHEDULED_PUBLISHING", default=False)
 # pattern's own form: "9am on Monday 19 November 2018".
 MAINTENANCE_MODE = _bool_env("MAINTENANCE_MODE", default=False)
 MAINTENANCE_RESUME_TEXT = os.getenv("MAINTENANCE_RESUME_TEXT", "")
+
+# Content index embeddings: "bedrock" (Titan V2, with the task's role), "fake"
+# (tests and local runs) or unset (words only). Filled by embed_content_index;
+# publishing never calls it.
+CONTENT_INDEX_EMBEDDINGS = os.getenv("CONTENT_INDEX_EMBEDDINGS", "").strip().lower()
+CONTENT_INDEX_EMBEDDING_MODEL = os.getenv(
+    "CONTENT_INDEX_EMBEDDING_MODEL", "amazon.titan-embed-text-v2:0"
+).strip()
+CONTENT_INDEX_EMBEDDING_DIMENSIONS = int(os.getenv("CONTENT_INDEX_EMBEDDING_DIMENSIONS", "1024"))
+CONTENT_INDEX_EMBEDDING_REGION = (
+    os.getenv("CONTENT_INDEX_EMBEDDING_REGION") or os.getenv("AWS_REGION") or "eu-west-2"
+).strip()
+# Minimum cosine similarity (0 to 1) for a meaning-only match in hybrid search.
+CONTENT_INDEX_MIN_SIMILARITY = float(os.getenv("CONTENT_INDEX_MIN_SIMILARITY", "0.35"))
 # Seconds, sent as the 503's Retry-After header. The resume text above is
 # prose for a reader ("9am on Monday 19 November 2018") and nothing can parse
 # it into a date, so the header takes its own number.

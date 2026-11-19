@@ -4,7 +4,8 @@
 
 services:
   db:
-    image: postgres:17-alpine
+    # pgvector for the content index's embeddings (Aurora has it built in).
+    image: pgvector/pgvector:pg17
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
