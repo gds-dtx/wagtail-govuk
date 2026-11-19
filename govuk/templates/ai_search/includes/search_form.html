@@ -1,0 +1,53 @@
+{% comment %}
+    Posted, not a GET, so the question stays out of the address bar, history and access logs.
+    "area" comes from govuk/ai_search/search_area.py.
+{% endcomment %}
+<form class="app-ai-search-box{% if inverse %} app-ai-search-box--inverse{% endif %}{% if area.error %} app-ai-search-box--error{% endif %}"
+      action="{% url 'search' %}"
+      method="post"
+      novalidate
+      data-ai-search-box
+      data-ai-search-form
+      data-error-id="{{ area.field_id }}-error"
+      data-empty-error="{{ area.empty_error }}">
+    {% if as_heading %}
+        <h1 class="govuk-label-wrapper">
+            <label class="govuk-label govuk-label--l app-ai-search-box__lead" for="{{ area.field_id }}">{{ area.label }}</label>
+        </h1>
+    {% else %}
+        <label class="govuk-label govuk-label--m app-ai-search-box__lead" for="{{ area.field_id }}">{{ area.label }}</label>
+    {% endif %}
+    <div class="app-ai-search-box__bar">
+        <input class="govuk-input app-ai-search-box__input{% if area.error and not inverse %} govuk-input--error{% endif %}"
+               id="{{ area.field_id }}"
+               name="question"
+               type="text"
+               maxlength="{{ area.max_length }}"
+               autocomplete="off"
+               enterkeyhint="search"{% if area.question %}
+               value="{{ area.question }}"{% endif %}{% if area.hint %}
+               placeholder="{{ area.hint }}"{% endif %}{% if area.error %}
+               aria-invalid="true"{% endif %}
+               aria-describedby="{% if area.error %}{{ area.field_id }}-error {% endif %}{{ area.field_id }}-privacy">
+        <button type="submit" class="app-ai-search-box__button">
+            <span class="govuk-visually-hidden">{{ area.button_text }}</span>
+            <svg class="app-ai-search-box__icon"
+                 width="27"
+                 height="27"
+                 viewBox="0 0 27 27"
+                 fill="none"
+                 xmlns="http://www.w3.org/2000/svg"
+                 aria-hidden="true"
+                 focusable="false">
+                <circle cx="12.0161" cy="11.0161" r="8.51613" stroke="currentColor" stroke-width="3"></circle>
+                <line x1="17.8668" y1="17.3587" x2="26.4475" y2="25.9393" stroke="currentColor" stroke-width="3"></line>
+            </svg>
+        </button>
+    </div>
+    {% if area.error %}
+        <p id="{{ area.field_id }}-error" class="govuk-error-message app-ai-search-box__error">
+            <span class="govuk-visually-hidden">Error:</span> {{ area.error }}
+        </p>
+    {% endif %}
+    {% include "ai_search/includes/privacy_hint.html" with privacy_id=area.field_id|add:"-privacy" %}
+</form>

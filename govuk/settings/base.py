@@ -578,6 +578,7 @@ CONTENT_INDEX_MIN_SIMILARITY = float(os.getenv("CONTENT_INDEX_MIN_SIMILARITY", "
 # Features of the ASGI service (govuk/service/): each returns its routes, or None.
 SERVICE_CONTRIBUTIONS = [
     "govuk.mcp.service.contribution",
+    "govuk.ai_search.service.contribution",
 ]
 # Header holding the client address for per-client rate limits; unset, the
 # connection's address. Only safe if a proxy overwrites it: deployed, CloudFront
@@ -590,6 +591,30 @@ SERVICE_FORWARDED_ALLOW_IPS = os.getenv("SERVICE_FORWARDED_ALLOW_IPS", "127.0.0.
 # MCP requests per client per minute (0 = off). Per process unless CACHE_URL is
 # shared, so the WAF's limit is the one to rely on.
 MCP_RATE_LIMIT_PER_MINUTE = int(os.getenv("MCP_RATE_LIMIT_PER_MINUTE", "60"))
+
+# AI search questions and summaries per client per minute (0 = off).
+AI_SEARCH_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_SEARCH_RATE_LIMIT_PER_MINUTE", "20"))
+AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE", "10"))
+# Development only: Django serves AI search's service paths too. Deployed,
+# Claude is only called from the ASGI service.
+AI_SEARCH_IN_DJANGO = _bool_env("AI_SEARCH_IN_DJANGO")
+
+# Claude for AI search: "bedrock" (EU inference profile by default, so requests
+# stay in EU regions), "fake" (tests and local runs) or unset (no model).
+AI_CLAUDE = os.getenv("AI_CLAUDE", "").strip().lower()
+AI_CLAUDE_MODEL = os.getenv("AI_CLAUDE_MODEL", "eu.anthropic.claude-opus-5-5").strip()
+AI_CLAUDE_REGION = (os.getenv("AI_CLAUDE_REGION") or CONTENT_INDEX_EMBEDDING_REGION).strip()
+# Matches sent to Claude to re-rank, and a similarity floor for meaning-only
+# matches (lower than CONTENT_INDEX_MIN_SIMILARITY, as Claude judges closeness).
+AI_SEARCH_RERANK_CANDIDATES = int(os.getenv("AI_SEARCH_RERANK_CANDIDATES", "20"))
+AI_SEARCH_RERANK_FLOOR = float(os.getenv("AI_SEARCH_RERANK_FLOOR", "0.2"))
+# Seconds to wait for each call before doing without it.
+AI_SEARCH_RERANK_TIMEOUT_SECONDS = float(os.getenv("AI_SEARCH_RERANK_TIMEOUT_SECONDS", "6"))
+AI_SEARCH_SUMMARY_TIMEOUT_SECONDS = float(os.getenv("AI_SEARCH_SUMMARY_TIMEOUT_SECONDS", "30"))
+# How long a summary is kept for the same question and matches.
+AI_SEARCH_SUMMARY_CACHE_SECONDS = int(os.getenv("AI_SEARCH_SUMMARY_CACHE_SECONDS", str(24 * 60 * 60)))
+# Daily Claude token budget (in and out); past it, no Claude until midnight UTC.
+AI_DAILY_TOKEN_BUDGET = int(os.getenv("AI_DAILY_TOKEN_BUDGET", "2000000"))
 # Seconds, sent as the 503's Retry-After header. The resume text above is
 # prose for a reader ("9am on Monday 19 November 2018") and nothing can parse
 # it into a date, so the header takes its own number.

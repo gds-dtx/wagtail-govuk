@@ -41,6 +41,8 @@ dependencies = [
   # and parts are marked provisional.
   "mcp==2.3.0",
   "uvicorn==0.54.0",
+  # AI search: Claude on Bedrock; [bedrock] brings boto3 for SigV4 signing.
+  "anthropic[bedrock]==2.3.0",
   "PyYAML==6.0.3",
 ]
 

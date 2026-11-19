@@ -9,6 +9,7 @@ from django.http import (
     Http404,
     HttpResponse,
     HttpResponseBadRequest,
+    HttpResponseNotAllowed,
     HttpResponseRedirect,
     HttpResponseServerError,
     JsonResponse,
@@ -17,6 +18,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 from wagtail.models import Site
 
@@ -146,13 +148,23 @@ def _pagination_query(query: str, tag: str, source: str) -> str:
     )
 
 
-@require_http_methods(["GET", "HEAD"])
+# CSRF-exempt: AI search's POST changes nothing, and a token in every page
+# would stop CloudFront caching them.
+@csrf_exempt
+@require_http_methods(["GET", "HEAD", "POST"])
 def search_view(request):
+    search_settings = _search_settings_for_request(request)
+    if search_settings.ai_search_on:
+        from govuk.ai_search.views import search_page
+
+        return search_page(request, search_settings)
+    if request.method == "POST":
+        return HttpResponseNotAllowed(["GET", "HEAD"])
     # When free-text results are turned off in Settings > Search, the box keeps
     # its jump-to-a-role/skill/page suggestions (search_suggest_view) but the
     # results page itself is not served, so a submitted or bookmarked
     # /search/?query= URL 404s rather than showing a listing.
-    if not _search_settings_for_request(request).enable_search_results_page:
+    if not search_settings.enable_search_results_page:
         raise Http404
     query = (request.GET.get("query") or "").strip()
     page_number = request.GET.get("page", 1)
