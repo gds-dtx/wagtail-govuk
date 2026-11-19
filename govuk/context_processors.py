@@ -4,12 +4,14 @@ from django.conf import settings
 from django.http import Http404
 from wagtail.models import Page, Site
 
+from govuk.features import catalogue_enabled
 from govuk.models import (
     CustomiseSettings,
     ErrorPagesSettings,
     FooterSettings,
     PhaseBannerSettings,
     SearchSettings,
+    without_catalogue_pages,
     without_framework_pages,
 )
 
@@ -31,6 +33,7 @@ def navigation_and_breadcrumbs(request):
 
     template_context = {
         "framework_enabled": framework_enabled,
+        "catalogue_enabled": catalogue_enabled(),
         "app_debug": settings.DEBUG,
         "app_version": getattr(settings, "VERSION", ""),
         "additional_css": additional_css,
@@ -62,7 +65,9 @@ def navigation_and_breadcrumbs(request):
 
     service_navigation_items = []
     menu_pages = (
-        without_framework_pages(site_root.get_children().live().in_menu())
+        without_catalogue_pages(
+            without_framework_pages(site_root.get_children().live().in_menu())
+        )
         .specific()
         .order_by("path")
     )

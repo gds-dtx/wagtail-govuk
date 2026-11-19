@@ -1,0 +1,16 @@
+<div class="app-catalogue-masthead">
+    <div class="govuk-width-container">
+        {% if caption %}<span class="govuk-caption-l app-catalogue-masthead__caption">{{ caption }}</span>{% endif %}
+        <h1 class="govuk-heading-xl app-catalogue-masthead__title">{{ page_heading }}</h1>
+        {% if masthead_facts %}
+            <dl class="app-catalogue-masthead__facts">
+                {% for fact in masthead_facts %}
+                    <div class="app-catalogue-masthead__fact">
+                        <dt>{{ fact.label }}:</dt>
+                        <dd>{{ fact.value }}</dd>
+                    </div>
+                {% endfor %}
+            </dl>
+        {% endif %}
+    </div>
+</div>

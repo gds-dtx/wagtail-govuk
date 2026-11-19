@@ -24,6 +24,7 @@
         <meta name="theme-color" content="#0b0c0c">
         <link rel="stylesheet" href="{% static 'govuk-frontend-6.0.0.min.css' %}" />
         <link rel="stylesheet" href="{% static 'main.css' %}" />
+        {% if catalogue_enabled %}<link rel="stylesheet" href="{% static 'catalogue.css' %}" />{% endif %}
         {% if additional_css %}
             {% for css_path in additional_css %}<link rel="stylesheet" href="{{ css_path }}" />{% endfor %}
         {% endif %}
