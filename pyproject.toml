@@ -37,6 +37,10 @@ dependencies = [
   "markdown-it-py==4.2.0",
   # Content index embeddings in PostgreSQL's vector type. No numpy needed from 0.5.
   "pgvector==0.5.1",
+  # MCP server and the ASGI service it runs in. Pinned exactly: SDK 2.x is new
+  # and parts are marked provisional.
+  "mcp==2.3.0",
+  "uvicorn==0.54.0",
   "PyYAML==6.0.3",
 ]
 

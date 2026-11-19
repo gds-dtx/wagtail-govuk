@@ -19,6 +19,7 @@ from govuk.content_index.search import (
     is_close,
     search,
 )
+from govuk.mcp import tools
 from govuk.models import ContentPage
 from govuk.tests.page_helpers import text_body
 
@@ -85,6 +86,9 @@ class HybridSearchTests(WithFakeModel):
         self.assertTrue(everything)
         self.assertEqual(kept, [])
 
+    def test_the_mcp_server_searches_by_meaning_too(self):
+        results = tools.search(query="take money from the public").results
+        self.assertEqual(results[0].title, "GOV.UK Pay")
 
 
 class CloseTests(SimpleTestCase):
