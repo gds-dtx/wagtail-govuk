@@ -5,12 +5,14 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest import mock
 
+import anthropic
 import httpx2
-from asgiref.sync import async_to_sync
+from anthropic import AnthropicBedrock
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
-from django.utils.text import slugify
 from wagtail.models import Site
 
 from govuk.ai_search import (
@@ -22,6 +24,7 @@ from govuk.ai_search import (
     summary,
     usage,
 )
+from govuk.ai_search.cards import cards_for
 from govuk.ai_search.claude import (
     BedrockClaude,
     ClaudeError,
@@ -29,22 +32,21 @@ from govuk.ai_search.claude import (
     FakeClaude,
     Usage,
 )
+from govuk.ai_search.scope import Scope, scopes_for
 from govuk.content_index import indexer
 from govuk.content_index.search import HYBRID, search
-from govuk.models import AISearchUsage, ContentPage, IndexedChunk, SearchSettings
+from govuk.models import (
+    AISearchUsage,
+    ContentEntryRequirementsPage,
+    IndexedChunk,
+    IndexedDocument,
+    SearchSettings,
+)
 from govuk.service import HEALTH_PATH
-from govuk.service.app import create_app
-from govuk.tests.page_helpers import text_body
-
-FLAGS = {"SKILLS": False, "FEEDBACK": False, "CATALOGUE": True, "AI": True}
-ON = dict(FEATURE_FLAGS=FLAGS, AI_CLAUDE="fake", CONTENT_INDEX_EMBEDDINGS="", AI_SEARCH_RATE_LIMIT_PER_MINUTE=0)
-
-
-def publish(title: str, html: str) -> ContentPage:
-    home = Site.objects.get(is_default_site=True).root_page
-    page = home.add_child(instance=ContentPage(title=title, slug=slugify(title), body=text_body(html)))
-    page.save_revision().publish()
-    return page
+from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
+from govuk.tests.helpers import publish_page
+from govuk.tests.test_ai_search import ON, choose_ai_search, fake
+from govuk.tests.test_mcp_server import service_requests
 
 
 @contextmanager
@@ -55,18 +57,7 @@ def budget_warning(test):
 
 
 def switch(*, ranking: bool = True, summary_on: bool = True) -> None:
-    settings = SearchSettings.for_site(Site.objects.get(is_default_site=True))
-    settings.search_type = SearchSettings.SearchType.AI
-    settings.use_ai_ranking = ranking
-    settings.show_ai_summary = summary_on
-    settings.save()
-
-
-def fake(responder=None, **kwargs) -> FakeClaude:
-    fake_claude = FakeClaude(responder, **kwargs)
-    patcher = mock.patch.object(claude_module, "_fake", fake_claude)
-    patcher.start()
-    return fake_claude, patcher
+    choose_ai_search(use_ai_ranking=ranking, show_ai_summary=summary_on)
 
 
 # -- the client ------------------------------------------------------------------------
@@ -124,8 +115,6 @@ class BedrockClaudeTests(SimpleTestCase):
                 self._call(claude)
 
     def test_the_sdks_errors_name_the_reason_only(self):
-        import anthropic
-
         request = httpx2.Request("POST", "https://bedrock-mantle.eu-west-2.api.aws/anthropic/v1/messages")
         errors = {
             "took too long": anthropic.APITimeoutError(request=request),
@@ -145,8 +134,6 @@ class BedrockClaudeTests(SimpleTestCase):
         self.assertIsNone(claude_module.get_claude())
 
     def test_bedrock_is_the_runtime_endpoint(self):
-        from anthropic import AnthropicBedrock
-
         with override_settings(AI_CLAUDE="bedrock"), mock.patch.dict(
             "os.environ", {"AWS_ACCESS_KEY_ID": "x", "AWS_SECRET_ACCESS_KEY": "y"}
         ):
@@ -154,19 +141,12 @@ class BedrockClaudeTests(SimpleTestCase):
             self.assertIsInstance(claude._sdk(), AnthropicBedrock)
             claude._client = None  # the cached instance is shared
 
-    @override_settings(AI_CLAUDE="bedrock-mantle")
-    def test_the_mantle_endpoint_is_not_offered(self):
-        from django.core.exceptions import ImproperlyConfigured
-
-        with self.assertRaises(ImproperlyConfigured):
-            claude_module.get_claude()
-
-    @override_settings(AI_CLAUDE="openai")
-    def test_an_unknown_backend_is_refused(self):
-        from django.core.exceptions import ImproperlyConfigured
-
-        with self.assertRaises(ImproperlyConfigured):
-            claude_module.get_claude()
+    def test_the_mantle_endpoint_and_unknown_backends_are_refused(self):
+        for backend in ("bedrock-mantle", "openai"):
+            with self.subTest(backend=backend), override_settings(AI_CLAUDE=backend), self.assertRaises(
+                ImproperlyConfigured
+            ):
+                claude_module.get_claude()
 
 
 class PromptTests(SimpleTestCase):
@@ -183,8 +163,6 @@ class PromptTests(SimpleTestCase):
         self.assertIn("&amp; say yes", text)
 
     def test_candidates_say_who_they_apply_to_and_what_they_are_part_of(self):
-        from govuk.ai_search.scope import Scope
-
         document = SimpleNamespace(
             pk=7, title="How to store credentials", type_label="Guidance", origin="site",
             description="", get_kind_display=lambda: "Page",
@@ -247,7 +225,7 @@ class InstructionsTests(TestCase):
         self.assertEqual(prompts.instructions("rerank", self.site).tag, str(prompts.PROMPT_VERSION))
 
     def test_claude_is_sent_the_sites_instructions(self):
-        publish("Payments", "<p>Take card payments online.</p>")
+        publish_page("Payments", "<p>Take card payments online.</p>")
         indexer.rebuild()
         self._edit(rerank_instructions="Rank for {site_name}.", summary_instructions="Summarise for {site_name}.")
         claude = mock.Mock(wraps=FakeClaude())
@@ -273,16 +251,12 @@ class InstructionsTests(TestCase):
         self.assertEqual(fake_claude.calls, ["summary", "summary"])
 
     def test_too_long_is_refused(self):
-        from django.core.exceptions import ValidationError
-
         ask_settings = SearchSettings.for_site(self.site)
         ask_settings.summary_instructions = "x" * (prompts.MAX_INSTRUCTIONS_CHARS + 1)
         with self.assertRaises(ValidationError):
             ask_settings.full_clean()
 
     def test_the_admin_shows_the_built_in_instructions_beside_the_fields(self):
-        from django.contrib.auth import get_user_model
-
         admin = get_user_model().objects.create_superuser("admin", "admin@example.gov.uk", "x")
         self.client.force_login(admin)
         response = self.client.get(reverse("wagtailsettings:edit", args=["govuk", "searchsettings", self.site.pk]))
@@ -298,9 +272,9 @@ class InstructionsTests(TestCase):
 class RerankTests(TestCase):
     def setUp(self):
         cache.clear()
-        self.pay = publish("Payments", "<p>Take card payments online.</p>")
-        self.forms = publish("Forms", "<p>Make online forms and take payments.</p>")
-        self.blog = publish("Blog", "<p>Online news about payments.</p>")
+        self.pay = publish_page("Payments", "<p>Take card payments online.</p>")
+        self.forms = publish_page("Forms", "<p>Make online forms and take payments.</p>")
+        self.blog = publish_page("Blog", "<p>Online news about payments.</p>")
         indexer.rebuild()
         self.hits = search("online payments", mode=HYBRID).hits
 
@@ -397,14 +371,19 @@ class RenderTests(SimpleTestCase):
         self.assertIn('<a class="govuk-link" href="/gds/credentials/">How to store credentials</a> in', html)
         self.assertEqual(summary.render("Read [d1.7].", links), "<p>Read.</p>")
 
-
-    def test_markers_become_links_and_unknown_ones_go(self):
-        html = summary.render("Start with [d1], then read [d2] and [d7].", LINKS)
-        self.assertEqual(
-            html,
-            '<p>Start with <a class="govuk-link" href="https://www.gov.uk/guidance/cloud-first">Cloud First Policy</a>,'
-            ' then read <a class="govuk-link" href="/content/code/">The &lt;Code&gt;</a> and.</p>',
-        )
+    def test_markers_become_links_and_the_rest_text_or_nothing(self):
+        rendered = {
+            "Start with [d1], then read [d2] and [d7].": (
+                '<p>Start with <a class="govuk-link" href="https://www.gov.uk/guidance/cloud-first">'
+                'Cloud First Policy</a>, then read <a class="govuk-link" href="/content/code/">'
+                "The &lt;Code&gt;</a> and.</p>"
+            ),
+            "See [d3].": "<p>See Bad link.</p>",  # a link only to a web address
+            "[d9]": "",
+        }
+        for text, html in rendered.items():
+            with self.subTest(text=text):
+                self.assertEqual(summary.render(text, LINKS), html)
 
     def test_only_a_little_markdown_and_no_html_of_its_own(self):
         html = summary.render(
@@ -417,18 +396,12 @@ class RenderTests(SimpleTestCase):
         self.assertNotIn("<img", html)
         self.assertNotIn('href="https://evil', html)
 
-    def test_a_link_only_to_a_web_address(self):
-        self.assertEqual(summary.render("See [d3].", LINKS), "<p>See Bad link.</p>")
-
-    def test_nothing_left_is_nothing(self):
-        self.assertEqual(summary.render("[d9]", LINKS), "")
-
 
 @override_settings(**ON)
 class SummaryTests(TestCase):
     def setUp(self):
         cache.clear()
-        self.page = publish("Payments", "<h2>Card payments</h2><p>Take card payments online with the service.</p>")
+        self.page = publish_page("Payments", "<h2>Card payments</h2><p>Take card payments online with the service.</p>")
         indexer.rebuild()
         self.chunk = IndexedChunk.objects.get(document__page_id=self.page.pk)
         self.cards = [{"title": "Payments", "url": "/payments/", "type": "", "description": "Pay.", "source_sections": [self.chunk.pk]}]
@@ -455,10 +428,7 @@ class SummaryTests(TestCase):
         self.assertEqual(self.fake.calls, ["summary"])
 
     def test_a_page_within_the_entry_is_a_part_with_its_own_link(self):
-        child = self.page.add_child(
-            instance=ContentPage(title="Refunds", slug="refunds", body=text_body("<h2>Giving money back</h2><p>Refund a payment.</p>"))
-        )
-        child.save_revision().publish()
+        child = publish_page("Refunds", "<h2>Giving money back</h2><p>Refund a payment.</p>", parent=self.page)
         indexer.rebuild()
         own = IndexedChunk.objects.get(document__page_id=self.page.pk)
         part = IndexedChunk.objects.get(document__page_id=child.pk)
@@ -504,16 +474,11 @@ class SummaryTests(TestCase):
 @override_settings(**ON)
 class ScopeTests(TestCase):
     def setUp(self):
-        from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
-
         self.main = make_content_main_page(Site.objects.get(is_default_site=True).root_page)
         import_fixture(self.main)
         indexer.rebuild()
 
     def test_an_entry_its_parts_and_a_plain_page(self):
-        from govuk.ai_search.scope import scopes_for
-        from govuk.models import ContentEntryRequirementsPage, IndexedDocument
-
         entry = ContentEntryRequirementsPage.objects.get(slug="hosted-standard")
         point = entry.get_children().first()
         documents = IndexedDocument.objects.filter(page_id__in=[entry.pk, point.pk, self.main.pk])
@@ -526,8 +491,6 @@ class ScopeTests(TestCase):
         self.assertEqual(by_page[self.main.pk].applies_to, "")
 
     def test_an_entrys_card_says_who_it_applies_to(self):
-        from govuk.ai_search.cards import cards_for
-
         hits = search("first thing", mode=HYBRID).hits
         (card,) = [card for card in cards_for(hits, None) if card["title"] == "Hosted standard"]
         self.assertEqual(card["applies_to"], "Public sector (Example Department)")
@@ -542,8 +505,8 @@ class MatchesWithClaudeTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        self.pay = publish("Payments", "<p>Take card payments online.</p>")
-        self.forms = publish("Forms", "<p>Make online forms that take payments.</p>")
+        self.pay = publish_page("Payments", "<p>Take card payments online.</p>")
+        self.forms = publish_page("Forms", "<p>Make online forms that take payments.</p>")
         indexer.rebuild()
         self.fake, patcher = fake()
         self.addCleanup(patcher.stop)
@@ -631,7 +594,7 @@ class SummaryViewTests(TestCase):
 
     def setUp(self):
         cache.clear()
-        publish("Payments", "<p>Take card payments online.</p>")
+        publish_page("Payments", "<p>Take card payments online.</p>")
         indexer.rebuild()
         self.fake, patcher = fake()
         self.addCleanup(patcher.stop)
@@ -677,32 +640,21 @@ class OnTheServiceTests(TransactionTestCase):
 
     def setUp(self):
         cache.clear()
-        publish("Payments", "<p>Take card payments online.</p>")
+        publish_page("Payments", "<p>Take card payments online.</p>")
         switch(ranking=False)
         self.fake, patcher = fake()
         self.addCleanup(patcher.stop)
         self.ticket = summary.make_ticket("payments", [{"title": "Payments", "url": "/payments/", "source_sections": []}])
 
-    def _requests(self, *requests):
-        app = create_app()
-
-        async def run():
-            async with app.router.lifespan_context(app):
-                transport = httpx2.ASGITransport(app=app)
-                async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as client:
-                    return [await client.request(method, path, **kwargs) for method, path, kwargs in requests]
-
-        return async_to_sync(run)()
-
     def test_the_summary_beside_mcp_and_outside_its_rate_limit(self):
         post = ("POST", SUMMARY_PATH, {"data": {"ticket": self.ticket}})
-        first, second, health = self._requests(post, post, ("GET", HEALTH_PATH, {}))
+        first, second, health = service_requests(post, post, ("GET", HEALTH_PATH, {}))
         self.assertEqual((first.status_code, second.status_code, health.status_code), (200, 200, 200))
         self.assertEqual(first.json()["status"], summary.OK)
         self.assertIn("no-store", first.headers["Cache-Control"])
 
     def test_the_matches(self):
-        (response,) = self._requests(("POST", MATCHES_PATH, {"data": {"question": "card payments"}}))
+        (response,) = service_requests(("POST", MATCHES_PATH, {"data": {"question": "card payments"}}))
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["status"], "ok")
@@ -713,15 +665,13 @@ class OnTheServiceTests(TransactionTestCase):
     @override_settings(AI_SEARCH_RATE_LIMIT_PER_MINUTE=1)
     def test_the_matches_have_their_own_rate_limit(self):
         post = ("POST", MATCHES_PATH, {"data": {"question": "card payments"}})
-        first, second = self._requests(post, post)
+        first, second = service_requests(post, post)
         self.assertEqual((first.status_code, second.status_code), (200, 429))
         self.assertIn("Wait a minute", second.json()["html"])
 
     def test_with_normal_search_chosen_there_is_nothing(self):
-        settings = SearchSettings.for_site(Site.objects.get(is_default_site=True))
-        settings.search_type = SearchSettings.SearchType.NORMAL
-        settings.save()
-        matches, summary_response = self._requests(
+        choose_ai_search(search_type=SearchSettings.SearchType.NORMAL)
+        matches, summary_response = service_requests(
             ("POST", MATCHES_PATH, {"data": {"question": "card payments"}}),
             ("POST", SUMMARY_PATH, {"data": {"ticket": self.ticket}}),
         )

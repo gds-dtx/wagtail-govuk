@@ -1,11 +1,11 @@
 import time
 
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase
 
 from govuk.utils import LARGEST_ROW_ID, normalised_text, row_id_from_text
 
 
-class NormalisedTextTests(TestCase):
+class NormalisedTextTests(SimpleTestCase):
     """The plain text a search summary is built from."""
 
     def test_one_block_is_separated_from_the_next(self):
@@ -153,19 +153,13 @@ class RowIdFromTextTests(SimpleTestCase):
         self.assertEqual(row_id_from_text("٣"), 3)
         self.assertEqual(row_id_from_text("੫"), 5)
 
-    def test_a_digit_int_cannot_read_names_no_row(self):
-        for value in ("²", "³", "₂", "½"):
-            with self.subTest(value=value):
-                self.assertIsNone(row_id_from_text(value))
-
-    def test_more_digits_than_int_reads_names_no_row(self):
-        self.assertIsNone(row_id_from_text("1" * 4301))
-
-    def test_a_number_larger_than_a_row_id_names_no_row(self):
+    def test_anything_that_is_not_a_row_id_names_no_row(self):
         self.assertEqual(row_id_from_text(str(LARGEST_ROW_ID)), LARGEST_ROW_ID)
-        self.assertIsNone(row_id_from_text(str(LARGEST_ROW_ID + 1)))
-
-    def test_anything_that_is_no_number_names_no_row(self):
-        for value in ("", "  ", None, "abc", "1.5", "-1", "+1", "1_0", "12abc"):
-            with self.subTest(value=value):
+        for value in (
+            "", "  ", None, "abc", "1.5", "-1", "+1", "1_0", "12abc",
+            "²", "³", "₂", "½",  # digits int() cannot read
+            "1" * 4301,  # more digits than int() reads
+            str(LARGEST_ROW_ID + 1),
+        ):
+            with self.subTest(value=value if value is None or len(value) < 20 else "very long"):
                 self.assertIsNone(row_id_from_text(value))

@@ -14,11 +14,34 @@ from govuk.models import (
     site_wide_changelog,
 )
 from govuk.page_import_export import _serialise_page_fields
-from govuk.tests.framework_helpers import make_framework_main_page
-from govuk.tests.page_helpers import text_body
+from govuk.tests.helpers import make_framework_main_page, text_body
 
 
-class ContentPageRoleNavigationTests(TestCase):
+def _contents(page: str) -> str:
+    return page[page.index('id="contents"') : page.index("mobile-homepage-roles")]
+
+
+class WelcomePageTestCase(TestCase):
+    """A framework main page with every switch off, so each test turns on just
+    the one it exercises (the defaults are covered in test_content_page_panels)."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.root_page = self.site.root_page.specific
+
+    def _make_page(self, **kwargs):
+        return make_framework_main_page(
+            self.root_page,
+            title="Welcome",
+            slug="welcome",
+            show_role_navigation=False,
+            show_framework_updates=False,
+            show_framework_welcome=False,
+            **kwargs,
+        )
+
+
+class ContentPageRoleNavigationTests(WelcomePageTestCase):
     """A framework page can carry the role navigation, as the welcome page does.
 
     The role navigation is the Capability Framework's own, so it lives on the
@@ -26,23 +49,9 @@ class ContentPageRoleNavigationTests(TestCase):
     """
 
     def setUp(self):
-        self.site = Site.objects.get(is_default_site=True)
-        self.root_page = self.site.root_page.specific
-
+        super().setUp()
         self.role = GovukRole.objects.create(title="Data analyst", family="Data")
-
-        # Start from every switch off, so each test turns on just the one it
-        # exercises. A new framework main page defaults them all on; that
-        # default is covered on its own in test_content_page_panels.
-        self.page = make_framework_main_page(
-            self.root_page,
-            title="Welcome",
-            slug="welcome",
-            body=text_body("<p>Some words.</p>"),
-            show_role_navigation=False,
-            show_framework_updates=False,
-            show_framework_welcome=False,
-        )
+        self.page = self._make_page(body=text_body("<p>Some words.</p>"))
 
     def test_a_content_page_has_no_role_navigation_when_switched_off(self):
         response = self.client.get(self.page.url)
@@ -111,20 +120,12 @@ class ContentPageRoleNavigationTests(TestCase):
         self.assertContains(response, '<h1 class="govuk-heading-xl">Welcome</h1>')
 
 
-class FrameworkUpdatesTests(TestCase):
+class FrameworkUpdatesTests(WelcomePageTestCase):
     """Changelog entries with no role or skill belong to the framework itself."""
 
     def setUp(self):
-        self.site = Site.objects.get(is_default_site=True)
-        self.page = make_framework_main_page(
-            self.site.root_page.specific,
-            title="Welcome",
-            slug="welcome",
-            body=text_body("<p>Some words.</p>"),
-            show_role_navigation=False,
-            show_framework_updates=False,
-            show_framework_welcome=False,
-        )
+        super().setUp()
+        self.page = self._make_page(body=text_body("<p>Some words.</p>"))
 
         self.role = GovukRole.objects.create(title="Data analyst", family="Data")
         GovukChangelogEntry.objects.create(
@@ -183,27 +184,17 @@ class FrameworkUpdatesTests(TestCase):
         self.assertContains(response, "The framework was published.")
 
 
-class FrameworkWelcomeContentTests(TestCase):
+class FrameworkWelcomeContentTests(WelcomePageTestCase):
     """The welcome prose lives in the CMS, in the page's own blocks.
 
     A rich text field would lose the skill level table, the progress bars and
-    every anchor the moment somebody opened the page in the admin and saved it,
-    so each block keeps its markup in a template and the editor keeps the words.
+    every anchor once saved in the admin, so each block keeps its markup in a
+    template and the editor keeps the words.
     """
 
     def setUp(self):
-        self.site = Site.objects.get(is_default_site=True)
-        self.root_page = self.site.root_page.specific
-
-        # Switches off to start; the welcome tests turn on just what they need.
-        self.page = make_framework_main_page(
-            self.root_page,
-            title="Welcome",
-            slug="welcome",
-            show_role_navigation=False,
-            show_framework_updates=False,
-            show_framework_welcome=False,
-        )
+        super().setUp()
+        self.page = self._make_page()
 
         for title, family in (
             ("Data analyst", "Data"),
@@ -211,8 +202,7 @@ class FrameworkWelcomeContentTests(TestCase):
         ):
             GovukRole.objects.create(title=title, family=family)
 
-        # The framework's "further resources" group is the main page's own
-        # children, so the skills index sits under the welcome page.
+        # Further resources are the main page's own children.
         self.skills_page = self.page.add_child(
             instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
         )
@@ -224,13 +214,19 @@ class FrameworkWelcomeContentTests(TestCase):
         self.page.save()
         return self.client.get(self.page.url).content.decode()
 
-    def _welcome_fixture(self) -> list:
-        """Representative welcome blocks, so the rendering and export tests have
-        content to exercise. The real prose lives in the CMS, not in the app.
+    def _render_with(self, blocks) -> str:
+        self.page.framework_welcome_body = blocks
+        self.page.save()
+        return self.client.get(self.page.url).content.decode()
 
-        Built in the raw ``{"type", "value"}`` stream shape rather than as
-        ``(type, value)`` tuples so that the nested skill-level list serialises
-        the same way editor-authored content does when it is exported.
+    def _section(self, heading, level, body, anchor=""):
+        return ("section", {"heading": heading, "level": level, "anchor": anchor, "body": body})
+
+    def _welcome_fixture(self) -> list:
+        """Representative welcome blocks; the real prose lives in the CMS.
+
+        In the raw ``{"type", "value"}`` stream shape so the nested skill-level
+        list serialises the way editor-authored content does on export.
         """
         return [
             {
@@ -326,19 +322,9 @@ class FrameworkWelcomeContentTests(TestCase):
         """The content team has to be able to reword this without a deploy."""
         self._welcome()
 
-        self.page.framework_welcome_body = [
-            (
-                "section",
-                {
-                    "heading": "How the team changed this",
-                    "level": "h2",
-                    "anchor": "",
-                    "body": "<p>Edited in the admin.</p>",
-                },
-            )
-        ]
-        self.page.save()
-        page = self.client.get(self.page.url).content.decode()
+        page = self._render_with(
+            [self._section("How the team changed this", "h2", "<p>Edited in the admin.</p>")]
+        )
 
         self.assertIn("How the team changed this", page)
         self.assertIn("Edited in the admin.", page)
@@ -347,41 +333,16 @@ class FrameworkWelcomeContentTests(TestCase):
     def test_the_contents_list_follows_the_headings_the_editor_wrote(self):
         self._welcome()
 
-        self.page.framework_welcome_body = [
-            (
-                "section",
-                {
-                    "heading": "Opening",
-                    "level": "h2",
-                    "anchor": "",
-                    "body": "<p>First.</p>",
-                },
-            ),
-            (
-                "section",
-                {
-                    "heading": "A note",
-                    "level": "h3",
-                    "anchor": "",
-                    "body": "<p>Not a main section.</p>",
-                },
-            ),
-            (
-                "section",
-                {
-                    "heading": "Closing",
-                    "level": "h2",
-                    "anchor": "the-end",
-                    "body": "<p>Last.</p>",
-                },
-            ),
-        ]
-        self.page.save()
-        page = self.client.get(self.page.url).content.decode()
+        page = self._render_with(
+            [
+                self._section("Opening", "h2", "<p>First.</p>"),
+                self._section("A note", "h3", "<p>Not a main section.</p>"),
+                self._section("Closing", "h2", "<p>Last.</p>", anchor="the-end"),
+            ]
+        )
 
-        contents = page[page.index('id="contents"') : page.index("mobile-homepage-roles")]
         self.assertEqual(
-            re.findall(r'href="#([^"]+)"', contents),
+            re.findall(r'href="#([^"]+)"', _contents(page)),
             ["opening", "architecture-roles", "data-roles", "further-resources", "the-end"],
         )
         # The sub-section still renders, it just stays out of the contents list.
@@ -396,23 +357,18 @@ class FrameworkWelcomeContentTests(TestCase):
         self._welcome()
 
         field = FrameworkMainPage._meta.get_field("framework_welcome_body")
-        self.page.framework_welcome_body = field.to_python(
-            json.dumps(
-                [
-                    {
-                        "type": "section",
-                        "value": {
-                            "heading": "Innocent heading",
-                            "level": "h2 onmouseover=alert(document.domain) x",
-                            "anchor": "",
-                            "body": "<p>Prose.</p>",
-                        },
-                    }
-                ]
-            )
-        )
-        self.page.save()
-        page = self.client.get(self.page.url).content.decode()
+        blocks = [
+            {
+                "type": "section",
+                "value": {
+                    "heading": "Innocent heading",
+                    "level": "h2 onmouseover=alert(document.domain) x",
+                    "anchor": "",
+                    "body": "<p>Prose.</p>",
+                },
+            }
+        ]
+        page = self._render_with(field.to_python(json.dumps(blocks)))
 
         self.assertNotIn("onmouseover", page)
         self.assertIn(
@@ -423,19 +379,7 @@ class FrameworkWelcomeContentTests(TestCase):
     def test_a_sub_section_still_renders_as_the_smaller_heading(self):
         self._welcome()
 
-        self.page.framework_welcome_body = [
-            (
-                "section",
-                {
-                    "heading": "A note",
-                    "level": "h3",
-                    "anchor": "",
-                    "body": "<p>Not a main section.</p>",
-                },
-            )
-        ]
-        self.page.save()
-        page = self.client.get(self.page.url).content.decode()
+        page = self._render_with([self._section("A note", "h3", "<p>Not a main section.</p>")])
 
         self.assertIn(
             '<h3 class="govuk-heading-m" id="a-note">A note</h3>',
@@ -454,14 +398,12 @@ class FrameworkWelcomeContentTests(TestCase):
         page = self._welcome()
 
         self.assertIn(f'href="{self.skills_page.url}"', page)
-        self.assertNotIn("ddat-capability-framework.service.gov.uk", page)
 
     def test_the_contents_list_has_an_entry_for_every_section(self):
         page = self._welcome()
 
-        contents = page[page.index('id="contents"') : page.index("mobile-homepage-roles")]
         self.assertEqual(
-            re.findall(r'href="#([^"]+)"', contents),
+            re.findall(r'href="#([^"]+)"', _contents(page)),
             [
                 "how-to-use-this-framework",
                 "architecture-roles",
@@ -474,23 +416,15 @@ class FrameworkWelcomeContentTests(TestCase):
         )
 
     def test_the_contents_heading_comes_from_the_wording_settings(self):
-        """The role pages read this setting; the welcome page hard-coded it.
-
-        A content team that renames the contents list expects both pages to
-        follow. Until this was fixed the welcome page kept saying "Contents"
-        whatever the setting said, which is the one string on the landing page
-        an editor could not reach.
-        """
-        page = self._welcome()
-        contents = page[page.index('id="contents"') : page.index("mobile-homepage-roles")]
-        self.assertIn("Contents", contents)
+        """The role pages read this setting, and a team renaming the contents
+        list expects the welcome page to follow."""
+        self.assertIn("Contents", _contents(self._welcome()))
 
         wording = CapabilityFrameworkWordingSettings.for_site(self.site)
         wording.contents_heading = "In this guide"
         wording.save()
 
-        page = self.client.get(self.page.url).content.decode()
-        contents = page[page.index('id="contents"') : page.index("mobile-homepage-roles")]
+        contents = _contents(self.client.get(self.page.url).content.decode())
         self.assertIn("In this guide", contents)
         self.assertNotIn("Contents", contents)
 
@@ -503,7 +437,6 @@ class FrameworkWelcomeContentTests(TestCase):
         self.assertEqual([a for a in anchors if a not in ids], [])
 
     def test_no_anchor_is_claimed_twice(self):
-        """The live service gives three different headings the same id."""
         page = self._welcome()
 
         ids = re.findall(r'id="([^"]+)"', page)

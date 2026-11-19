@@ -13,16 +13,25 @@ from govuk.models import (
     GovukTag,
     TagListingsPage,
 )
+from govuk.tests.helpers import feature_flags
 
 
-def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
-    return {
-        "SKILLS": skills_enabled,
-        "FEEDBACK": False,
-    }
+def _tagged_external(source, url, title, *tags, hidden=False, private=False):
+    item = ExternalContentItem.objects.create(
+        source=source, url=url, title=title, hidden=hidden, private=private
+    )
+    for tag in tags:
+        ExternalContentItemTag.objects.create(content_object=item, tag=tag)
+    return item
 
 
-@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+def _request_as(username, path):
+    request = RequestFactory().get(path)
+    request.user = get_user_model().objects.create_user(username=username, password="password")
+    return request
+
+
+@override_settings(FEATURE_FLAGS=feature_flags(skills=True))
 class TagListingsPageQuerysetTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
@@ -102,37 +111,43 @@ class TagListingsPageQuerysetTests(TestCase):
             url="https://example.gov.uk/source-two.xml",
         )
 
-        self.external_alpha = ExternalContentItem.objects.create(
-            source=self.source_one,
-            url="https://example.gov.uk/alpha",
-            title="Alpha external",
-            hidden=False,
+        self.external_alpha = _tagged_external(
+            self.source_one, "https://example.gov.uk/alpha", "Alpha external", self.alpha_tag
         )
-        ExternalContentItemTag.objects.create(
-            content_object=self.external_alpha,
-            tag=self.alpha_tag,
+        self.external_beta = _tagged_external(
+            self.source_two, "https://example.gov.uk/beta", "Beta external", self.beta_tag
         )
-
-        self.external_beta = ExternalContentItem.objects.create(
-            source=self.source_two,
-            url="https://example.gov.uk/beta",
-            title="Beta external",
-            hidden=False,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=self.external_beta,
-            tag=self.beta_tag,
+        self.external_gamma = _tagged_external(
+            self.source_one, "https://example.gov.uk/gamma", "Gamma external", self.gamma_tag
         )
 
-        self.external_gamma = ExternalContentItem.objects.create(
-            source=self.source_one,
-            url="https://example.gov.uk/gamma",
-            title="Gamma external",
-            hidden=False,
+    def _private_alpha_externals(self):
+        """A private alpha item, and a hidden one that is never listed."""
+        return (
+            _tagged_external(
+                self.source_one,
+                "https://example.gov.uk/private-alpha-external",
+                "Private alpha external",
+                self.alpha_tag,
+                private=True,
+            ),
+            _tagged_external(
+                self.source_one,
+                "https://example.gov.uk/hidden-private-alpha-external",
+                "Hidden private alpha external",
+                self.alpha_tag,
+                hidden=True,
+                private=True,
+            ),
         )
-        ExternalContentItemTag.objects.create(
-            content_object=self.external_gamma,
-            tag=self.gamma_tag,
+
+    def _alpha_gamma_external(self):
+        return _tagged_external(
+            self.source_one,
+            "https://example.gov.uk/alpha-gamma",
+            "Alpha gamma external",
+            self.alpha_tag,
+            self.gamma_tag,
         )
 
     def test_get_listing_queryset_combines_external_and_tagged_pages(self):
@@ -326,28 +341,7 @@ class TagListingsPageQuerysetTests(TestCase):
     def test_get_listing_queryset_excludes_private_external_items_for_anonymous_users(
         self,
     ):
-        private_external = ExternalContentItem.objects.create(
-            source=self.source_one,
-            url="https://example.gov.uk/private-alpha-external",
-            title="Private alpha external",
-            hidden=False,
-            private=True,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=private_external,
-            tag=self.alpha_tag,
-        )
-        hidden_private_external = ExternalContentItem.objects.create(
-            source=self.source_one,
-            url="https://example.gov.uk/hidden-private-alpha-external",
-            title="Hidden private alpha external",
-            hidden=True,
-            private=True,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=hidden_private_external,
-            tag=self.alpha_tag,
-        )
+        private_external, hidden_private_external = self._private_alpha_externals()
 
         items = self.listings_page.get_listing_queryset(selected_tag_id=self.alpha_tag.id)
         urls = {item["url"] for item in items}
@@ -376,35 +370,9 @@ class TagListingsPageQuerysetTests(TestCase):
     def test_get_listing_queryset_includes_private_external_items_for_authenticated_users(
         self,
     ):
-        private_external = ExternalContentItem.objects.create(
-            source=self.source_one,
-            url="https://example.gov.uk/private-alpha-external",
-            title="Private alpha external",
-            hidden=False,
-            private=True,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=private_external,
-            tag=self.alpha_tag,
-        )
-        hidden_private_external = ExternalContentItem.objects.create(
-            source=self.source_one,
-            url="https://example.gov.uk/hidden-private-alpha-external",
-            title="Hidden private alpha external",
-            hidden=True,
-            private=True,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=hidden_private_external,
-            tag=self.alpha_tag,
-        )
+        private_external, hidden_private_external = self._private_alpha_externals()
 
-        user = get_user_model().objects.create_user(
-            username="tag-listing-external-private-user",
-            password="password",
-        )
-        request = RequestFactory().get(self.listings_page.url)
-        request.user = user
+        request = _request_as("tag-listing-external-private-user", self.listings_page.url)
 
         items = self.listings_page.get_listing_queryset(
             selected_tag_id=self.alpha_tag.id,
@@ -423,12 +391,7 @@ class TagListingsPageQuerysetTests(TestCase):
     def test_get_listing_queryset_marks_private_internal_pages_for_authenticated_users(
         self,
     ):
-        user = get_user_model().objects.create_user(
-            username="tag-listing-page-private-user",
-            password="password",
-        )
-        request = RequestFactory().get(self.listings_page.url)
-        request.user = user
+        request = _request_as("tag-listing-page-private-user", self.listings_page.url)
 
         items = self.listings_page.get_listing_queryset(
             selected_tag_id=self.alpha_tag.id,
@@ -444,16 +407,12 @@ class TagListingsPageQuerysetTests(TestCase):
         self.listings_page.enable_tag_display = True
         self.listings_page.save_revision().publish()
 
-        private_external = ExternalContentItem.objects.create(
-            source=self.source_one,
-            url="https://example.gov.uk/private-alpha-external",
-            title="Private alpha external",
-            hidden=False,
+        _tagged_external(
+            self.source_one,
+            "https://example.gov.uk/private-alpha-external",
+            "Private alpha external",
+            self.alpha_tag,
             private=True,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=private_external,
-            tag=self.alpha_tag,
         )
 
         user = get_user_model().objects.create_user(
@@ -473,20 +432,7 @@ class TagListingsPageQuerysetTests(TestCase):
         )
 
     def test_available_filter_tags_include_tags_present_on_in_scope_items(self):
-        alpha_gamma_external = ExternalContentItem.objects.create(
-            source=self.source_one,
-            url="https://example.gov.uk/alpha-gamma",
-            title="Alpha gamma external",
-            hidden=False,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=alpha_gamma_external,
-            tag=self.alpha_tag,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=alpha_gamma_external,
-            tag=self.gamma_tag,
-        )
+        self._alpha_gamma_external()
 
         available_tags = self.listings_page._available_filter_tags(
             tag_ids=self.listings_page._configured_tag_ids(),
@@ -498,20 +444,7 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertIn(self.gamma_tag.slug, available_slugs)
 
     def test_get_listing_queryset_supports_filtering_by_non_configured_scoped_tag(self):
-        alpha_gamma_external = ExternalContentItem.objects.create(
-            source=self.source_one,
-            url="https://example.gov.uk/alpha-gamma",
-            title="Alpha gamma external",
-            hidden=False,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=alpha_gamma_external,
-            tag=self.alpha_tag,
-        )
-        ExternalContentItemTag.objects.create(
-            content_object=alpha_gamma_external,
-            tag=self.gamma_tag,
-        )
+        alpha_gamma_external = self._alpha_gamma_external()
 
         items = self.listings_page.get_listing_queryset(selected_tag_id=self.gamma_tag.id)
         urls = {item["url"] for item in items}
@@ -521,8 +454,7 @@ class TagListingsPageQuerysetTests(TestCase):
         self.assertNotIn(self.gamma_page.url, urls)
 
 
-
-@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+@override_settings(FEATURE_FLAGS=feature_flags(skills=False))
 class TagListingsWithoutTheFrameworkTests(TestCase):
     """A tag listing is a platform page type; the framework's pages are not.
 

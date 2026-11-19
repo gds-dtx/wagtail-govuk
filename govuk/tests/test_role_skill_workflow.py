@@ -13,17 +13,10 @@ from wagtail.models import Site
 
 from govuk.models import FrameworkSkillsPage, GovukRole, GovukSkill
 from govuk.search_backend import search_backend
-from govuk.tests.framework_helpers import make_framework_main_page, role_url
+from govuk.tests.helpers import feature_flags, make_framework_main_page, role_url
 
 
-def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
-    return {
-        "SKILLS": skills_enabled,
-        "FEEDBACK": False,
-    }
-
-
-@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+@override_settings(FEATURE_FLAGS=feature_flags(skills=True))
 class RoleSkillWorkflowTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)

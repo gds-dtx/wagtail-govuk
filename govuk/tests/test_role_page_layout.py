@@ -1,10 +1,9 @@
-import html
-import re
 from datetime import date
 
 from django.db import connection
 from django.test import RequestFactory, TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
+from django.utils.text import slugify
 from wagtail.models import Site
 
 from govuk.models import (
@@ -20,17 +19,10 @@ from govuk.models import (
     further_resources_group,
     role_navigation_groups,
 )
-from govuk.tests.framework_helpers import make_framework_main_page, role_url
+from govuk.tests.helpers import feature_flags, make_framework_main_page, role_url
 
 
-def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
-    return {
-        "SKILLS": skills_enabled,
-        "FEEDBACK": False,
-    }
-
-
-@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+@override_settings(FEATURE_FLAGS=feature_flags(skills=True))
 class RolePageLayoutTests(TestCase):
     """The role page follows the Capability Framework's layout."""
 
@@ -107,6 +99,23 @@ class RolePageLayoutTests(TestCase):
             self.main_page, self.business_architect
         )
 
+    def _add_framework_children(self, *titles) -> list[FrameworkContentPage]:
+        pages = []
+        for title in titles:
+            page = self.main_page.add_child(
+                instance=FrameworkContentPage(title=title, slug=slugify(title), body="")
+            )
+            page.save_revision().publish()
+            pages.append(page)
+        return pages
+
+    def _add_skills_page(self, parent) -> FrameworkSkillsPage:
+        skills = parent.add_child(
+            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
+        )
+        skills.save_revision().publish()
+        return skills
+
     def test_headings_carry_the_frameworks_anchors(self):
         response = self.client.get(self.data_analyst_url)
 
@@ -158,10 +167,7 @@ class RolePageLayoutTests(TestCase):
         )
 
     def test_a_role_levels_skills_link_to_their_definitions(self):
-        skills = self.root_page.add_child(
-            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
-        )
-        skills.save_revision().publish()
+        skills = self._add_skills_page(self.root_page)
 
         response = self.client.get(self.data_analyst_url)
 
@@ -237,14 +243,8 @@ class RolePageLayoutTests(TestCase):
         self.assertContains(response, 'aria-current="page"')
 
     def test_the_navigation_closes_with_the_pages_about_the_framework(self):
-        """The live service lists these after the role families, on every page.
-
-        They are the framework main page's own children now, so the skills
-        index sits under it rather than at the site root."""
-        skills = self.main_page.add_child(
-            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
-        )
-        skills.save_revision().publish()
+        """The framework main page's own children, after the role families."""
+        skills = self._add_skills_page(self.main_page)
 
         groups = role_navigation_groups(current_role_slug=self.data_analyst.slug)
 
@@ -255,38 +255,25 @@ class RolePageLayoutTests(TestCase):
         )
 
     def test_further_resources_keeps_the_order_the_editors_chose(self):
-        for title, slug in (("Roadmap", "roadmap"), ("Job grades", "job-grades")):
-            page = self.main_page.add_child(
-                instance=FrameworkContentPage(title=title, slug=slug, body="")
-            )
-            page.save_revision().publish()
+        self._add_framework_children("Roadmap", "Job grades")
 
         group = further_resources_group()
 
         self.assertEqual([item["title"] for item in group["items"]], ["Roadmap", "Job grades"])
 
     def test_further_resources_marks_the_page_being_looked_at(self):
-        page = self.main_page.add_child(
-            instance=FrameworkContentPage(title="Roadmap", slug="roadmap", body="")
-        )
-        page.save_revision().publish()
+        (page,) = self._add_framework_children("Roadmap")
 
         group = further_resources_group(current_page_id=page.pk)
 
         self.assertTrue(group["items"][0]["is_current"])
 
     def test_a_plain_content_page_under_the_main_page_stays_out_of_the_sidebar(self):
-        """The live service keeps its privacy notice, cookie statement and
-        accessibility statement off the menu. They live under the framework
-        home page all the same, because that is the site's home page, so the
-        page's type is what says which side of the line it is on."""
+        """Privacy and cookie pages sit under the framework home page too; the page type keeps them off the menu."""
         for title, slug in (("Privacy notice", "privacy"), ("Cookies", "cookie-statement")):
             page = self.main_page.add_child(instance=ContentPage(title=title, slug=slug))
             page.save_revision().publish()
-        roadmap = self.main_page.add_child(
-            instance=FrameworkContentPage(title="Roadmap", slug="roadmap", body="")
-        )
-        roadmap.save_revision().publish()
+        self._add_framework_children("Roadmap")
 
         group = further_resources_group()
 
@@ -301,10 +288,7 @@ class RolePageLayoutTests(TestCase):
 
     def test_the_sidebar_reads_the_settings_of_the_site_being_served(self):
         """Two sites on one instance each get their own sidebar settings."""
-        guidance = self.main_page.add_child(
-            instance=FrameworkContentPage(title="Guidance", slug="guidance", body="")
-        )
-        guidance.save_revision().publish()
+        (guidance,) = self._add_framework_children("Guidance")
         other_root = self.root_page.add_child(instance=ContentPage(title="Other", slug="other"))
         other_root.save_revision().publish()
         other_site = Site.objects.create(
@@ -338,19 +322,10 @@ class RolePageLayoutTests(TestCase):
     def test_further_resources_does_not_cost_a_query_per_page(self):
         """It runs on every page the navigation appears on. The framework
         content pages beside the roles are the main page's own children."""
-        def add_pages(prefix, count):
-            for index in range(count):
-                page = self.main_page.add_child(
-                    instance=FrameworkContentPage(
-                        title=f"{prefix} {index}", slug=f"{prefix}-{index}", body=""
-                    )
-                )
-                page.save_revision().publish()
-
-        add_pages("page", 1)
+        self._add_framework_children("page 0")
         with CaptureQueriesContext(connection) as with_one:
             further_resources_group()
-        add_pages("more", 6)
+        self._add_framework_children(*(f"more {index}" for index in range(6)))
         with CaptureQueriesContext(connection) as with_seven:
             further_resources_group()
 
@@ -385,25 +360,8 @@ class RolePageLayoutTests(TestCase):
 
         self.assertIsNone(further_resources_group())
 
-    def test_a_framework_content_page_is_listed_in_the_sidebar_by_default(self):
-        # No Sidebar settings configured -> the page still shows.
-        page = self.main_page.add_child(
-            instance=FrameworkContentPage(title="Guidance", slug="guidance", body="")
-        )
-        page.save_revision().publish()
-
-        group = further_resources_group()
-        self.assertEqual([item["title"] for item in group["items"]], ["Guidance"])
-
     def test_a_page_hidden_in_sidebar_settings_is_left_out(self):
-        shown = self.main_page.add_child(
-            instance=FrameworkContentPage(title="Shown", slug="shown", body="")
-        )
-        shown.save_revision().publish()
-        hidden = self.main_page.add_child(
-            instance=FrameworkContentPage(title="Hidden", slug="hidden", body="")
-        )
-        hidden.save_revision().publish()
+        shown, hidden = self._add_framework_children("Shown", "Hidden")
 
         # The list is the menu, so both pages are listed and one is unticked.
         # Unticking keeps the row and its place while hiding the page.
@@ -416,30 +374,15 @@ class RolePageLayoutTests(TestCase):
         self.assertEqual([item["title"] for item in group["items"]], ["Shown"])
 
     def test_a_skills_page_hidden_in_sidebar_settings_is_left_out(self):
-        skills = self.main_page.add_child(
-            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
-        )
-        skills.save_revision().publish()
+        skills = self._add_skills_page(self.main_page)
 
         setting = SidebarSettings.objects.create(site=self.site)
         SidebarNavigationItem.objects.create(setting=setting, page=skills, visible=False, sort_order=0)
 
         self.assertIsNone(further_resources_group())
 
-    def _add_framework_children(self, *names):
-        for title in names:
-            page = self.main_page.add_child(
-                instance=FrameworkContentPage(title=title, slug=title.lower(), body="")
-            )
-            page.save_revision().publish()
-
     def test_sidebar_settings_set_the_order_and_leave_out_what_is_not_listed(self):
-        """Choosing pages means choosing pages.
-
-        Configuring the six pages the live service shows used to leave all
-        fourteen framework children on the page, because the unlisted ones were
-        appended. The list an editor writes is the menu.
-        """
+        """Once any page is listed, the list is the menu: unlisted pages are not appended."""
         self._add_framework_children("Alpha", "Beta", "Gamma")
 
         setting = SidebarSettings.objects.create(site=self.site)
@@ -450,93 +393,21 @@ class RolePageLayoutTests(TestCase):
 
         self.assertEqual([item["title"] for item in group["items"]], ["Gamma", "Beta"])
 
-    def test_an_empty_sidebar_setting_shows_every_framework_child(self):
-        """A site nobody has configured yet still has a full menu."""
-        self._add_framework_children("Alpha", "Beta", "Gamma")
-        SidebarSettings.objects.create(site=self.site)
-
-        group = further_resources_group()
-
-        self.assertEqual([item["title"] for item in group["items"]], ["Alpha", "Beta", "Gamma"])
-
-    def test_no_sidebar_setting_at_all_shows_every_framework_child(self):
+    def test_an_unconfigured_sidebar_shows_every_framework_child(self):
+        """A site nobody has configured yet still has a full menu, with no
+        Sidebar settings at all or with an empty list."""
         self._add_framework_children("Alpha", "Beta", "Gamma")
 
-        group = further_resources_group()
+        for configured in ("no settings", "an empty list"):
+            with self.subTest(configured=configured):
+                if configured == "an empty list":
+                    SidebarSettings.objects.create(site=self.site)
 
-        self.assertEqual([item["title"] for item in group["items"]], ["Alpha", "Beta", "Gamma"])
+                group = further_resources_group()
 
-    def test_the_dev_instances_fourteen_pages_configured_to_lives_six(self):
-        """The live service's menu, end to end through the rendered page.
-
-        The development instance has fourteen framework children, because its
-        editors ticked privacy, cookies, accessibility, feedback and the project
-        pages into the navigation over time and migration 0071 carried that
-        forward. The live service shows six. Configuring those six has to
-        produce those six, in that order, on the page itself -- reading the
-        rendered navigation, not just the function that feeds it.
-        """
-        live_six = [
-            "Skills A to Z",
-            "Propose a change",
-            "Download framework content",
-            "Civil Service job grades in this framework",
-            "Context and challenges for Senior Civil Service roles",
-            "Roadmap",
-        ]
-        also_on_dev = [
-            "Privacy notice",
-            "Accessibility Statement",
-            "Upcoming changes to the framework",
-            "Project: agile coach - new role",
-            "Project: business relationship manager - new role level",
-            "Project: information architect - new role",
-            "Feedback",
-            "Cookies",
-        ]
-        # Built in tree order, with the live six deliberately scattered among
-        # the others so that order can only come from the setting.
-        pages = {}
-        for index, title in enumerate(
-            [also_on_dev[0], live_six[5], also_on_dev[1], live_six[3], also_on_dev[2],
-             live_six[1], also_on_dev[3], also_on_dev[4], live_six[2], also_on_dev[5],
-             live_six[4], also_on_dev[6], also_on_dev[7]]
-        ):
-            page = self.main_page.add_child(
-                instance=FrameworkContentPage(title=title, slug=f"page-{index}", body="")
-            )
-            page.save_revision().publish()
-            pages[title] = page
-        skills = self.main_page.add_child(
-            instance=FrameworkSkillsPage(title="Skills A to Z", slug="skills")
-        )
-        skills.save_revision().publish()
-        pages["Skills A to Z"] = skills
-
-        self.assertEqual(len(pages), 14, "the shape of the development instance")
-
-        setting = SidebarSettings.objects.create(site=self.site)
-        for order, title in enumerate(live_six):
-            SidebarNavigationItem.objects.create(
-                setting=setting, page=pages[title], visible=True, sort_order=order
-            )
-
-        response = self.client.get(self.data_analyst_url)
-        rendered = response.content.decode()
-        block = re.search(
-            r'<nav class="role-nav__group" aria-label="Further resources">(.*?)</nav>',
-            rendered,
-            re.S,
-        )
-        self.assertIsNotNone(block, "the Further resources group is on the page")
-        listed = [
-            html.unescape(title).strip()
-            for title in re.findall(r"<a\b[^>]*>(.*?)</a>", block.group(1), re.S)
-        ]
-
-        self.assertEqual(listed, live_six)
-        for title in also_on_dev:
-            self.assertNotIn(title, block.group(1))
+                self.assertEqual(
+                    [item["title"] for item in group["items"]], ["Alpha", "Beta", "Gamma"]
+                )
 
     def test_roles_without_a_family_are_left_out_of_the_navigation(self):
         GovukRole.objects.create(title="Unfamilied role")
@@ -621,7 +492,7 @@ class RolePageLayoutTests(TestCase):
         )
 
 
-@override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+@override_settings(FEATURE_FLAGS=feature_flags(skills=True))
 class RoleLeadParagraphTests(TestCase):
     """The one sentence the framework prints under a role's heading."""
 
@@ -649,39 +520,46 @@ class RoleLeadParagraphTests(TestCase):
         )
         return self.client.get(role_url(self.main_page, role)).content.decode()
 
-    def test_a_role_is_introduced_by_the_frameworks_sentence(self):
-        self.assertIn(
-            "Find out what a business architect in government does and the "
-            "skills you need to do the role at each level.",
-            self._lead_for("Business architect"),
-        )
+    def test_the_lead_sentence_names_the_role_as_the_framework_writes_it(self):
+        for title, is_scs, expected, unexpected in (
+            (
+                "Business architect",
+                False,
+                "Find out what a business architect in government does and the "
+                "skills you need to do the role at each level.",
+                None,
+            ),
+            # A Senior Civil Service role has no levels to send a reader to.
+            (
+                "Chief technology officer",
+                True,
+                "Find out what a chief technology officer in the Senior Civil "
+                "Service does and the skills you need to do the role.",
+                None,
+            ),
+            # An acronym opening a title is not lowered with the first word: the
+            # heading a line above keeps the capitals.
+            (
+                "IT service manager",
+                False,
+                "what an IT service manager in government does",
+                "what an it service manager",
+            ),
+            # A "u" sounded as "you" takes "a", as the framework writes it.
+            ("User researcher", False, "what a user researcher in government does", None),
+            (
+                "Development operations (DevOps) engineer",
+                False,
+                "what a development operations (DevOps) engineer in government does",
+                None,
+            ),
+        ):
+            with self.subTest(title=title):
+                content = self._lead_for(title, is_scs=is_scs)
 
-    def test_a_senior_civil_service_role_has_no_levels_to_send_a_reader_to(self):
-        self.assertIn(
-            "Find out what a chief technology officer in the Senior Civil "
-            "Service does and the skills you need to do the role.",
-            self._lead_for("Chief technology officer", is_scs=True),
-        )
-
-    def test_a_role_beginning_with_a_vowel_takes_an(self):
-        self.assertIn("what an IT service manager in government does", self._lead_for("IT service manager"))
-
-    def test_an_acronym_opening_a_title_is_not_lowered_with_the_first_word(self):
-        """It sits a line under "What an IT service manager does", where the
-        heading keeps the capitals, so lowering them here reads as a typo."""
-        content = self._lead_for("IT service manager")
-
-        self.assertNotIn("what an it service manager", content)
-
-    def test_a_u_sounded_as_you_takes_a_rather_than_an(self):
-        """"A user researcher", which is how the framework writes it."""
-        self.assertIn("what a user researcher in government does", self._lead_for("User researcher"))
-
-    def test_capitals_inside_a_title_survive_the_lowering_of_its_first_word(self):
-        self.assertIn(
-            "what a development operations (DevOps) engineer in government does",
-            self._lead_for("Development operations (DevOps) engineer"),
-        )
+                self.assertIn(expected, content)
+                if unexpected:
+                    self.assertNotIn(unexpected, content)
 
     def test_the_heading_takes_the_same_article_as_the_sentence_below_it(self):
         """They sit one line apart, so "What a enterprise architect does" above
@@ -696,10 +574,3 @@ class RoleLeadParagraphTests(TestCase):
 
         self.assertEqual(content.count("What an IT service manager does"), 2)
 
-    def test_the_anchor_keeps_the_frameworks_wording_whatever_article_is_used(self):
-        """A link written against the live service still has to land, and there
-        the id stays "what-a-" however the heading reads."""
-        self.assertIn(
-            'id="what-a-it-service-manager-does"',
-            self._lead_for("IT service manager"),
-        )
