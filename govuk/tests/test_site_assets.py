@@ -102,8 +102,7 @@ class VendoredSourceMapsTests(SimpleTestCase):
 
     The image build's ``collectstatic`` runs whitenoise's manifest storage,
     which refuses to build when a named map is missing; the tests run under the
-    plain storage, which does not look. accessible-autocomplete broke the build
-    that way on 10 September 2026.
+    plain storage, which does not look.
     """
 
     def test_every_named_source_map_is_present(self):

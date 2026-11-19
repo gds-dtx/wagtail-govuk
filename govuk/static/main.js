@@ -105,8 +105,8 @@ function setListClasses() {
   // Headings. Same reason as paragraphs: the bundle styles govuk-heading-*
   // rather than h2/h3/h4, so a heading an editor typed into rich text drops to
   // the browser's own bold-and-slightly-larger and stops standing off the 19px
-  // body beside it. The sizes are the ones the live service carries in its
-  // hand-written markup: h2 is govuk-heading-l, h3 is govuk-heading-m.
+  // body beside it. They match the templates' own headings: h2 is
+  // govuk-heading-l, h3 is govuk-heading-m.
   const headingSize = {
     H2: "govuk-heading-l",
     H3: "govuk-heading-m",
@@ -458,8 +458,7 @@ function setPageFeedback() {
 
 function setSiteSearchAutocomplete() {
   // The header search box suggests roles, skills and pages as the reader
-  // types, the way the live service's box does, using GOV.UK's accessible
-  // autocomplete. Without JavaScript, or if the library did not
+  // types, using GOV.UK's accessible autocomplete. Without JavaScript, or if the library did not
   // load, the box is the plain form it started as and Enter goes to the
   // results page. With it, Enter takes the highlighted suggestion; when
   // there are no suggestions the list is not shown, so Enter still submits

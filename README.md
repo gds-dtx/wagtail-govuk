@@ -133,7 +133,6 @@ Turned on by `FEATURE_SKILLS`.
   ```bash
   python manage.py import_capability_framework <dir>   # seed from roles.csv and skills.csv
   python manage.py export_capability_framework <dir>   # write the three published CSVs
-  python manage.py import_role_grades [--save FILE | --json FILE] [--dry-run]
   ```
 
 

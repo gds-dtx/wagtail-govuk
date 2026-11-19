@@ -12,10 +12,8 @@ a CSV link is shown rather than markup they have to hand-build and keep right.
 
 Size is the awkward part. These CSVs have no stored size, because they are
 generated at the moment of asking (``govuk.views.framework_csv_view``), and
-that is exactly what keeps them in sync with the published content -- the
-live service's copies are rebuilt on a schedule and were 16 days stale when
-this was written. So the size is measured by generating the file and counting
-the bytes, and cached, because generating the roles CSV costs tens of
+that is exactly what keeps them in sync with the published content. So the
+size is measured by generating the file and counting the bytes, and cached, because generating the roles CSV costs tens of
 milliseconds and the download page should not pay that for all three files on
 every view. The cache is per process (see CACHES in govuk.settings.base), so
 the first view each worker serves after a deploy pays it once.

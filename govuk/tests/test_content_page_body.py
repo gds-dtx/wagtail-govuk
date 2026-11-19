@@ -736,7 +736,6 @@ class ContentPageTableRenderingTests(_PageTestCase):
         self.assertIn('aria-label="Table"', self._render(_table([["a", "b"]])))
 
     def test_a_first_column_of_headers_is_marked_up_as_one(self):
-        """Ant asked for the challenge tables reformatted as vertical tables."""
         html = self._render(
             _table([["Level 1", "Works alone"], ["Level 2", "Leads"]], header_col=True)
         )
