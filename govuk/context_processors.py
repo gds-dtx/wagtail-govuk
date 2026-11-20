@@ -124,5 +124,6 @@ def navigation_and_breadcrumbs(request):
         "ai_search": search_area(
             search_settings,
             is_home=bool(current_page and current_page.pk == site_root.pk),
+            user=getattr(request, "user", None),
         ),
     }

@@ -172,12 +172,57 @@
     color: #ffffff;
 }
 
-.app-ai-search-box__privacy {
-    margin-top: 10px;
-    margin-bottom: 0;
+/* No margin: the 44px tap area already spaces the box 12px below the search bar. */
+.app-ai-search-box__choice {
+    margin-top: 0;
 }
 
-.app-ai-search-box--inverse .app-ai-search-box__privacy {
+/* A 20px box with govuk-body-s text, smaller than the Design System's small checkbox. */
+.app-ai-search-box__choice .govuk-checkboxes__input {
+    margin-left: -14px;
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__label {
+    font-size: 1rem;
+    line-height: 1.25;
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__label:before {
+    top: 12px;
+    width: 20px;
+    height: 20px;
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__label:after {
+    top: 18px;
+    left: 5px;
+    width: 10px;
+    height: 5px;
+    border-width: 0 0 3px 3px;
+}
+
+/* GOV.UK's 10px hover ring is sized for its 24px box. */
+.app-ai-search-box__choice .govuk-checkboxes__item:hover .govuk-checkboxes__input:not(:disabled) + .govuk-checkboxes__label:before {
+    box-shadow: 0 0 0 4px var(--govuk-hover-colour, #cecece);
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__item:hover .govuk-checkboxes__input:focus + .govuk-checkboxes__label:before {
+    box-shadow: 0 0 0 3px var(--govuk-focus-colour, #fd0), 0 0 0 7px var(--govuk-hover-colour, #cecece);
+}
+
+/* As GOV.UK: no hover ring on touch screens, where hover sticks after a tap. */
+@media (hover: none), (pointer: coarse) {
+    .app-ai-search-box__choice .govuk-checkboxes__item:hover .govuk-checkboxes__input:not(:disabled) + .govuk-checkboxes__label:before {
+        box-shadow: none;
+    }
+
+    .app-ai-search-box__choice .govuk-checkboxes__item:hover .govuk-checkboxes__input:focus + .govuk-checkboxes__label:before {
+        box-shadow: 0 0 0 3px var(--govuk-focus-colour, #fd0);
+    }
+}
+
+/* The box and tick are drawn in the label's colour. */
+.app-ai-search-box--inverse .app-ai-search-box__choice .govuk-checkboxes__label {
     color: #ffffff;
 }
 

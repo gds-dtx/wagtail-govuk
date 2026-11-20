@@ -348,6 +348,10 @@ def _search_panels() -> list:
             heading="AI search: Claude",
         ),
         MultiFieldPanel(
+            [FieldPanel("ai_search_requires_sign_in")],
+            heading="AI search: sign-in",
+        ),
+        MultiFieldPanel(
             [
                 _built_in_instructions("rerank", "re-ranking"),
                 FieldPanel("rerank_instructions", widget=forms.Textarea(attrs={"rows": 20})),
@@ -436,6 +440,14 @@ class SearchSettings(BaseSiteSetting):
         default=False,
         verbose_name="Show an AI summary",
         help_text="Claude writes a short summary of the matches, marked as written by AI.",
+    )
+    ai_search_requires_sign_in = models.BooleanField(
+        default=True,
+        verbose_name="Require sign-in for AI search",
+        help_text=(
+            "Signed-out readers get normal search results. Turned off, anyone "
+            "who can load the search page can use Claude."
+        ),
     )
     rerank_instructions = _instructions_field("Re-ranking")
     summary_instructions = _instructions_field("Summary")

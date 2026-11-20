@@ -137,7 +137,7 @@
                                    href="{% url 'account_logout' %}">Sign out</a>
                             {% else %}
                                 <a class="govuk-service-navigation__link"
-                                   href="{% url 'account_login' %}">Sign in</a>
+                                   href="{% sign_in_url %}">Sign in</a>
                             {% endif %}
                         </div>
                     {% endif %}
@@ -193,7 +193,7 @@
                                     {% elif customise_settings.sign_in_location == "navigation" %}
                                         <li class="govuk-service-navigation__item app-service-navigation__item--featured">
                                             <a class="govuk-service-navigation__link"
-                                               href="{% url 'account_login' %}">Sign in</a>
+                                               href="{% sign_in_url %}">Sign in</a>
                                         </li>
                                     {% endif %}
                                 </ul>

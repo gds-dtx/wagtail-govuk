@@ -1,7 +1,8 @@
+import re
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import PropertyMock, patch
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import jwt
 from cryptography.hazmat.primitives.asymmetric import rsa
@@ -10,6 +11,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.core.exceptions import ImproperlyConfigured
 from django.http import HttpResponse
+from django.template import Context, Template
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import resolve, reverse
 from rest_framework.exceptions import AuthenticationFailed
@@ -20,12 +22,17 @@ from govuk.adapters import AccountAdapter
 from govuk.api import WagtailDocuments, WagtailImages, WagtailPages
 from govuk.authentication import InternalAccessJWTAuthentication, TokenUser
 from govuk.middleware import AuthenticatedUserRedirectMiddleware
-from govuk.models import AuthenticatedRedirectRule, AuthenticatedRedirectSettings
+from govuk.models import (
+    AuthenticatedRedirectRule,
+    AuthenticatedRedirectSettings,
+    CustomiseSettings,
+)
 from govuk.oidc import (
     ADMIN_OIDC_NEXT_URL_KEY,
     SessionOIDCCallbackAdapter,
     build_oidc_login_url,
 )
+from govuk.tests.helpers import publish_page
 from govuk.views import oidc_login
 
 _PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -195,6 +202,34 @@ class AuthenticatedUserRedirectMiddlewareTests(TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.content, b"ok")
+
+
+class SignInLinkTests(TestCase):
+    """The site's Sign in link brings the reader back to the page they were on."""
+
+    def test_the_link_returns_to_the_page_wherever_it_sits(self):
+        page = publish_page("Guidance", "<p>Words.</p>")
+        customise = CustomiseSettings.for_site(Site.objects.get(is_default_site=True))
+        here = f"{page.url}?tag=one"
+        for location in ("header", "navigation"):
+            with self.subTest(location=location):
+                customise.sign_in_location = location
+                customise.save()
+                html = self.client.get(here).content.decode()
+                hrefs = re.findall(r'href="([^"]*)">Sign in</a>', html)
+                self.assertEqual(hrefs, [f"{reverse('account_login')}?{urlencode({'next': here})}"])
+
+                response = self.client.get(hrefs[0])
+                self.assertEqual(response["Location"], build_oidc_login_url(here))
+                self.assertEqual(self.client.session[ADMIN_OIDC_NEXT_URL_KEY], here)
+
+    def test_from_sign_ins_own_pages_it_does_not_send_the_reader_round(self):
+        template = Template("{% load govuk_filters %}{% sign_in_url %}")
+        for path in (reverse("account_login"), "/accounts/oidc/sso/login/callback/"):
+            with self.subTest(path=path):
+                request = RequestFactory().get(path)
+                self.assertEqual(template.render(Context({"request": request})), reverse("account_login"))
+        self.assertEqual(template.render(Context({})), reverse("account_login"))
 
 
 class OIDCLoginRedirectViewTests(TestCase):

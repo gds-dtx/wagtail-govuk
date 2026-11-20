@@ -1,7 +1,9 @@
 """Claude in AI search. Nothing calls Bedrock: the SDK is stubbed, or ``FakeClaude`` is patched in."""
 
+import html as html_module
 import re
 from contextlib import contextmanager
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest import mock
 
@@ -13,11 +15,14 @@ from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.test import SimpleTestCase, TestCase, TransactionTestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 from wagtail.models import Site
 
 from govuk.ai_search import (
     MATCHES_PATH,
     SUMMARY_PATH,
+    access,
+    claims,
     claude as claude_module,
     prompts,
     rerank as reranking,
@@ -36,6 +41,7 @@ from govuk.ai_search.scope import Scope, scopes_for
 from govuk.content_index import indexer
 from govuk.content_index.search import HYBRID, search
 from govuk.models import (
+    AISearchClaim,
     AISearchUsage,
     ContentEntryRequirementsPage,
     IndexedChunk,
@@ -45,7 +51,7 @@ from govuk.models import (
 from govuk.service import HEALTH_PATH
 from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
 from govuk.tests.helpers import publish_page
-from govuk.tests.test_ai_search import ON, choose_ai_search, fake
+from govuk.tests.test_ai_search import ON, access_for, choose_ai_search, fake, reader
 from govuk.tests.test_mcp_server import service_requests
 
 
@@ -78,7 +84,7 @@ class BedrockClaudeTests(SimpleTestCase):
     def _claude(self, create):
         sdk = mock.Mock()
         sdk.with_options.return_value.messages.create.side_effect = create
-        claude = BedrockClaude("eu.anthropic.claude-opus-5-5", "eu-west-2")
+        claude = BedrockClaude("eu.anthropic.claude-haiku-5-5", "eu-west-2")
         claude._client = sdk
         return claude, sdk
 
@@ -88,15 +94,15 @@ class BedrockClaudeTests(SimpleTestCase):
             schema={"type": "object"}, max_tokens=4000, timeout=6,
         )
 
-    def test_a_structured_call_at_low_effort(self):
+    def test_a_structured_call_at_medium_effort(self):
         claude, sdk = self._claude(lambda **kwargs: response('{"in_scope": true}'))
         reply = self._call(claude)
         self.assertEqual(reply.data, {"in_scope": True})
         self.assertEqual((reply.usage.input_tokens, reply.usage.output_tokens, reply.usage.cache_read_tokens), (100, 20, 5))
         sdk.with_options.assert_called_once_with(timeout=6)
         sent = sdk.with_options.return_value.messages.create.call_args.kwargs
-        self.assertEqual(sent["model"], "eu.anthropic.claude-opus-5-5")
-        self.assertEqual(sent["output_config"], {"effort": "low", "format": {"type": "json_schema", "schema": {"type": "object"}}})
+        self.assertEqual(sent["model"], "eu.anthropic.claude-haiku-5-5")
+        self.assertEqual(sent["output_config"], {"effort": "medium", "format": {"type": "json_schema", "schema": {"type": "object"}}})
         self.assertEqual(sent["system"][0]["cache_control"], {"type": "ephemeral"})
         for gone in ("thinking", "temperature", "tool_choice"):
             self.assertNotIn(gone, sent)
@@ -242,12 +248,14 @@ class InstructionsTests(TestCase):
     def test_new_instructions_are_not_hidden_behind_a_cached_summary(self):
         fake_claude, patcher = fake()
         self.addCleanup(patcher.stop)
-        ticket = summary.make_ticket("card payments", [{"title": "Payments", "url": "/payments/", "source_sections": []}])
-        summary.summarise(ticket, self.site)
-        summary.summarise(ticket, self.site)
+        def ticket():  # each is good once
+            return summary.make_ticket("card payments", [{"title": "Payments", "url": "/payments/", "source_sections": []}])
+
+        summary.summarise(ticket(), self.site)
+        summary.summarise(ticket(), self.site)
         self.assertEqual(fake_claude.calls, ["summary"])
         self._edit(summary_instructions="Something else.")
-        summary.summarise(ticket, self.site)
+        summary.summarise(ticket(), self.site)
         self.assertEqual(fake_claude.calls, ["summary", "summary"])
 
     def test_too_long_is_refused(self):
@@ -510,9 +518,11 @@ class MatchesWithClaudeTests(TestCase):
         indexer.rebuild()
         self.fake, patcher = fake()
         self.addCleanup(patcher.stop)
+        self.user = reader(self.client)
 
     def _matches(self, question="online payments") -> dict:
-        return self.client.post(reverse("ai_search_matches"), {"question": question}).json()
+        data = {"question": question, "access": access_for(question, self.user)}
+        return self.client.post(reverse("ai_search_matches"), data).json()
 
     def _page(self, question="online payments", **extra) -> str:
         return self.client.post(reverse("search"), {"question": question, **extra}).content.decode()
@@ -522,9 +532,15 @@ class MatchesWithClaudeTests(TestCase):
 
     def test_both_off_in_the_admin_uses_no_model(self):
         switch(ranking=False, summary_on=False)
-        body = self._matches()
+        html = self._page(js="1", ai="1")
+        self.assertIn('class="app-catalogue-card', html)  # searched on the page instead
+        self.assertNotIn("data-access", html)
+        response = self.client.post(
+            reverse("ai_search_matches"),
+            {"question": "online payments", "access": access_for("online payments", self.user)},
+        )
+        self.assertEqual(response.status_code, 403)
         self.assertEqual(self.fake.calls, [])
-        self.assertEqual(body["ticket"], "")
 
     def test_cards_in_claudes_order(self):
         switch(summary_on=False)
@@ -533,7 +549,7 @@ class MatchesWithClaudeTests(TestCase):
         }
         reranked = self._titles(self._matches()["html"])
         self.assertEqual(self.fake.calls, ["rerank"])
-        switch(ranking=False, summary_on=False)
+        switch(ranking=False)  # search's own order; the summary is not fetched here
         searched = self._titles(self._matches()["html"])
         self.assertEqual(reranked, list(reversed(searched)))
 
@@ -570,13 +586,13 @@ class MatchesWithClaudeTests(TestCase):
 
     def test_with_javascript_the_summary_box_waits_for_the_matches(self):
         switch(ranking=False)
-        html = self._page(js="1")
+        html = self._page(js="1", ai="1")
         self.assertEqual(self.fake.calls, [])
         self.assertRegex(html, rf'data-ai-search-summary\s+data-url="{SUMMARY_PATH}"\s+data-ticket=""')
         self.assertIn("Generated by AI using the pages below.", html)
         self.assertIn('<span class="app-ai-search-thinking__orb" aria-hidden="true">', html)
         self.assertEqual(html.count('class="app-ai-search-thinking__circle '), 2)
-        self.assertIn(f'data-ai-search-matches data-url="{MATCHES_PATH}"', html)
+        self.assertRegex(html, rf'data-ai-search-matches\s+data-url="{MATCHES_PATH}"')
         self.assertNotIn("app-catalogue-card", html)
         body = self._matches()
         self.assertTrue(body["ticket"])
@@ -586,6 +602,140 @@ class MatchesWithClaudeTests(TestCase):
     def test_no_summary_without_cards(self):
         switch(ranking=False)
         self.assertEqual(self._matches("zzzz qqqq")["ticket"], "")
+
+
+@override_settings(**ON, AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE=0)
+class OnceAndPerAccountTests(TestCase):
+    """Each token and ticket is good once, and each account has its own limits."""
+
+    def setUp(self):
+        cache.clear()
+        publish_page("Payments", "<p>Take card payments online.</p>")
+        publish_page("Forms", "<p>Make online forms that take payments.</p>")
+        indexer.rebuild()
+        self.fake, patcher = fake()
+        self.addCleanup(patcher.stop)
+        switch()
+        self.user = reader()
+        claims._next_prune = 0.0
+
+    def _matches(self, question="online payments", user=None, token=None):
+        data = {"question": question, "access": token or access_for(question, user or self.user)}
+        return self.client.post(reverse("ai_search_matches"), data)
+
+    def test_a_token_is_good_once(self):
+        token = access_for("online payments", self.user)
+        first, second = self._matches(token=token), self._matches(token=token)
+        self.assertEqual((first.status_code, second.status_code), (200, 403))
+        self.assertEqual(self.fake.calls, ["rerank"])
+
+    def test_a_summary_ticket_is_good_once(self):
+        ticket = self._matches().json()["ticket"]
+        first = self.client.post(reverse("ai_search_summary"), {"ticket": ticket})
+        second = self.client.post(reverse("ai_search_summary"), {"ticket": ticket})
+        self.assertEqual((first.status_code, second.status_code), (200, 400))
+        self.assertEqual(self.fake.calls, ["rerank", "summary"])
+
+    def test_the_token_lasts_a_minute(self):
+        self.assertEqual(access.ACCESS_MAX_AGE, 60)
+
+    @override_settings(AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE=2)
+    def test_past_its_limit_a_minute_an_account_is_searched_without_claude(self):
+        bodies = [self._matches(f"online payments {n}").json() for n in range(2)]
+        with self.assertLogs("govuk.ai_search", level="WARNING") as logs:
+            third = self._matches("online payments 3")
+        self.assertEqual(third.status_code, 200)
+        self.assertIn('class="app-catalogue-card', third.json()["html"])
+        self.assertEqual(third.json()["ticket"], "")
+        self.assertTrue(all(body["ticket"] for body in bodies))
+        self.assertEqual(self.fake.calls, ["rerank", "rerank"])
+        self.assertEqual(logs.records[0].limit, claims.MINUTE)
+        other = reader(username="other")
+        self.assertTrue(self._matches("online payments 4", user=other).json()["ticket"])  # counted apart
+
+    @override_settings(AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE=0, AI_SEARCH_ACCOUNT_DAILY_LIMIT=1)
+    def test_past_its_daily_limit_an_account_waits_for_tomorrow(self):
+        yesterday = timezone.now() - timedelta(days=1)
+        AISearchClaim.objects.create(
+            kind=claims.MATCHES, token_id="old", account=claims.account_for(self.user.pk), created_at=yesterday
+        )
+        self.assertTrue(self._matches("online payments 1").json()["ticket"])
+        with self.assertLogs("govuk.ai_search", level="WARNING") as logs:
+            self.assertEqual(self._matches("online payments 2").json()["ticket"], "")
+        self.assertEqual(logs.records[0].limit, claims.DAY)
+
+    def test_the_table_never_names_the_reader_or_the_question(self):
+        self._matches("my private question about payments")
+        row = AISearchClaim.objects.get(kind=claims.MATCHES)
+        self.assertEqual(row.account, claims.account_for(self.user.pk))
+        self.assertNotEqual(row.account, str(self.user.pk))
+        self.assertNotIn(self.user.username, repr(vars(row)))
+        self.assertNotIn("private", repr(vars(row)))
+
+    def test_old_rows_go_after_two_days(self):
+        stale = timezone.now() - claims.KEEP - timedelta(minutes=1)
+        AISearchClaim.objects.create(kind=claims.MATCHES, token_id="stale", created_at=stale)
+        self._matches()
+        self.assertFalse(AISearchClaim.objects.filter(token_id="stale").exists())
+
+    def _page(self, question="online payments") -> str:
+        self.client.force_login(self.user)
+        return self.client.post(reverse("search"), {"question": question, "js": "1", "ai": "1"}).content.decode()
+
+    @staticmethod
+    def _warning(html: str) -> str:
+        found = re.search(r'data-ai-search-limit aria-live="polite">(.*?)</div>\s*</div>', html, re.S)
+        return html_module.unescape(" ".join(found.group(1).split())) if found else ""
+
+    def test_a_question_within_the_limits_has_no_warning(self):
+        html = self._page()
+        self.assertEqual(self._warning(html), "")
+        self.assertIn("data-access=", html)
+
+    def test_a_limit_known_when_the_page_is_served_is_said_at_the_top(self):
+        cases = (
+            (
+                dict(AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE=1),
+                "Rate limit exceeded. These results are not AI-assisted. Try again in a few minutes.",
+            ),
+            (
+                dict(AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE=0, AI_SEARCH_ACCOUNT_DAILY_LIMIT=1),
+                "Rate limit exceeded. These results are not AI-assisted. Try again tomorrow.",
+            ),
+            (
+                dict(AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE=0, AI_DAILY_TOKEN_BUDGET=0),
+                "AI-assisted search is not available at the moment. These results are not AI-assisted.",
+            ),
+        )
+        for index, (limits, message) in enumerate(cases):
+            with self.subTest(message), override_settings(**limits):
+                if index < 2:
+                    self._matches(f"used {index}")  # one Claude-backed question already asked
+                calls = list(self.fake.calls)
+                html = self._page(f"online payments {index}")
+                warning = self._warning(html)
+                self.assertIn("govuk-warning-text", warning)
+                self.assertIn(message, warning)
+                self.assertNotIn("data-access=", html)  # searched by Django instead
+                self.assertIn('class="app-catalogue-card', html)
+                self.assertEqual(self.fake.calls, calls)
+
+    @override_settings(AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE=1)
+    def test_a_limit_reached_after_the_page_comes_with_the_matches(self):
+        token = access_for("online payments", self.user)
+        self._matches("asked in another tab")
+        body = self._matches(token=token).json()
+        self.assertIn("Rate limit exceeded. These results are not AI-assisted. Try again in a few minutes.", body["warning"])
+        self.assertIn('class="app-catalogue-card', body["html"])
+        self.assertEqual(self._matches("online payments 2", user=reader(username="other")).json()["warning"], "")
+
+    def test_the_same_question_and_matches_are_re_ranked_once(self):
+        first = self._matches().json()["html"]
+        again = self._matches().json()["html"]  # a new token, the same question
+        self.assertEqual(first, again)
+        self.assertEqual(self.fake.calls, ["rerank"])
+        self._matches("a different question about payments")
+        self.assertEqual(self.fake.calls, ["rerank", "rerank"])
 
 
 @override_settings(**ON, AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE=0)
@@ -645,16 +795,21 @@ class OnTheServiceTests(TransactionTestCase):
         self.fake, patcher = fake()
         self.addCleanup(patcher.stop)
         self.ticket = summary.make_ticket("payments", [{"title": "Payments", "url": "/payments/", "source_sections": []}])
+        self.matches = {"question": "card payments", "access": access_for("card payments", reader())}
 
     def test_the_summary_beside_mcp_and_outside_its_rate_limit(self):
-        post = ("POST", SUMMARY_PATH, {"data": {"ticket": self.ticket}})
-        first, second, health = service_requests(post, post, ("GET", HEALTH_PATH, {}))
+        other = summary.make_ticket("payments", [{"title": "Payments", "url": "/payments/", "source_sections": []}])
+        first, second, health = service_requests(
+            ("POST", SUMMARY_PATH, {"data": {"ticket": self.ticket}}),
+            ("POST", SUMMARY_PATH, {"data": {"ticket": other}}),
+            ("GET", HEALTH_PATH, {}),
+        )
         self.assertEqual((first.status_code, second.status_code, health.status_code), (200, 200, 200))
         self.assertEqual(first.json()["status"], summary.OK)
         self.assertIn("no-store", first.headers["Cache-Control"])
 
     def test_the_matches(self):
-        (response,) = service_requests(("POST", MATCHES_PATH, {"data": {"question": "card payments"}}))
+        (response,) = service_requests(("POST", MATCHES_PATH, {"data": self.matches}))
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["status"], "ok")
@@ -664,15 +819,21 @@ class OnTheServiceTests(TransactionTestCase):
 
     @override_settings(AI_SEARCH_RATE_LIMIT_PER_MINUTE=1)
     def test_the_matches_have_their_own_rate_limit(self):
-        post = ("POST", MATCHES_PATH, {"data": {"question": "card payments"}})
+        post = ("POST", MATCHES_PATH, {"data": self.matches})
         first, second = service_requests(post, post)
         self.assertEqual((first.status_code, second.status_code), (200, 429))
-        self.assertIn("Wait a minute", second.json()["html"])
+        self.assertIn("Rate limit exceeded. Try again in a few minutes.", second.json()["warning"])
 
     def test_with_normal_search_chosen_there_is_nothing(self):
         choose_ai_search(search_type=SearchSettings.SearchType.NORMAL)
         matches, summary_response = service_requests(
-            ("POST", MATCHES_PATH, {"data": {"question": "card payments"}}),
+            ("POST", MATCHES_PATH, {"data": self.matches}),
             ("POST", SUMMARY_PATH, {"data": {"ticket": self.ticket}}),
         )
         self.assertEqual((matches.status_code, summary_response.status_code), (404, 404))
+
+    def test_the_matches_answer_nothing_without_a_token_from_the_search_page(self):
+        (response,) = service_requests(("POST", MATCHES_PATH, {"data": {"question": "card payments"}}))
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json(), {"status": "forbidden"})
+        self.assertEqual(self.fake.calls, [])

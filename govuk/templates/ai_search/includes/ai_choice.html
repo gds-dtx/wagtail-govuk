@@ -1,0 +1,21 @@
+{% comment %}
+    "Use AI search" for this question. Shown by ai-search.js: without JavaScript
+    Claude is never used. Disabled while the reader has to sign in first.
+{% endcomment %}
+<div class="govuk-checkboxes govuk-checkboxes--small app-ai-search-box__choice"
+     data-module="govuk-checkboxes"
+     data-ai-search-choice
+     hidden>
+    <div class="govuk-checkboxes__item">
+        <input class="govuk-checkboxes__input"
+               id="{{ choice.id }}"
+               name="ai"
+               type="checkbox"
+               value="1"{% if choice.checked %}
+               checked{% endif %}{% if not choice.enabled %}
+               disabled{% endif %}>
+        <label class="govuk-label govuk-checkboxes__label" for="{{ choice.id }}">
+            {% if choice.enabled %}Use AI search. Do not include personal or sensitive information.{% else %}Sign in to use AI search{% endif %}
+        </label>
+    </div>
+</div>

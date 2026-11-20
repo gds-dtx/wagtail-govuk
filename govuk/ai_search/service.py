@@ -27,9 +27,9 @@ from .views import (
 HEADERS = {"Cache-Control": "no-store, private", "X-Robots-Tag": "noindex"}
 
 
-def _in_thread(body, value) -> tuple[int, dict]:
+def _in_thread(body, *values) -> tuple[int, dict]:
     try:
-        return body(value, default_site())
+        return body(*values, default_site())
     finally:
         release_connections()
 
@@ -37,7 +37,9 @@ def _in_thread(body, value) -> tuple[int, dict]:
 async def matches_endpoint(request):
     form = await request.form()
     # Own thread: the work touches the database (not allowed in async code) and is slow.
-    status, body = await sync_to_async(_in_thread, thread_sensitive=False)(matches_body, form.get("question"))
+    status, body = await sync_to_async(_in_thread, thread_sensitive=False)(
+        matches_body, form.get("question"), form.get("access")
+    )
     return JSONResponse(body, status_code=status, headers=HEADERS)
 
 

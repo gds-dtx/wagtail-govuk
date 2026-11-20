@@ -14,7 +14,7 @@ string references (``"govuk.GovukRole"``) so nothing here depends on import
 order across submodules.
 """
 
-from .ai_search import AISearchUsage
+from .ai_search import AISearchClaim, AISearchUsage
 from .blocks import (
     ContentBodyBlock,
     GovukTableBlock,
@@ -179,6 +179,7 @@ __all__ = [
     "ContentPageTag",
     "ContentRequirementPage",
     "ContentStepPage",
+    "AISearchClaim",
     "AISearchUsage",
     "CustomiseSettings",
     "ContentEmbedding",

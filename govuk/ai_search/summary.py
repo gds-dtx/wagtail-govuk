@@ -9,6 +9,7 @@ nor the summary is logged.
 import hashlib
 import logging
 import re
+import secrets
 import time
 from dataclasses import dataclass
 from html import escape
@@ -21,7 +22,7 @@ from markdown_it import MarkdownIt
 
 from govuk.models import IndexedChunk
 
-from . import prompts, usage
+from . import claims, prompts, usage
 from .claude import ClaudeError, ClaudeRefused, get_claude
 
 logger = logging.getLogger(__name__)
@@ -46,9 +47,11 @@ class Summary:
 
 
 def make_ticket(question: str, cards: list[dict]) -> str:
+    """Each ticket has its own id, so it is good once."""
     return signing.dumps(
         {
             "v": prompts.PROMPT_VERSION,
+            "j": secrets.token_urlsafe(16),
             "q": question,
             "c": [
                 {
@@ -74,7 +77,7 @@ def read_ticket(ticket: str) -> dict:
         raise TicketError("The ticket has expired.") from exc
     except signing.BadSignature as exc:
         raise TicketError("The ticket is not one this site made.") from exc
-    if not isinstance(data, dict) or not data.get("q") or not isinstance(data.get("c"), list):
+    if not isinstance(data, dict) or not data.get("q") or not data.get("j") or not isinstance(data.get("c"), list):
         raise TicketError("The ticket is not one this site made.")
     return data
 
@@ -187,8 +190,10 @@ def _cache_key(data: dict, model: str, instructions: str) -> str:
 
 
 def summarise(ticket: str, site=None) -> Summary:
-    """Raises ``TicketError`` for a bad ticket."""
+    """Raises ``TicketError`` for a bad or used ticket."""
     data = read_ticket(ticket)
+    if not claims.claim(claims.SUMMARY, data["j"]):
+        raise TicketError("The ticket has been used.")
     claude = get_claude()
     if claude is None or not data["c"]:
         return Summary(UNAVAILABLE)

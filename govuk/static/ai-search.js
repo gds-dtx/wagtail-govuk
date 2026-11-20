@@ -84,6 +84,9 @@ function setAiSearchToggle() {
 function setAiSearchForms() {
   // "js" makes /search/ answer at once, leaving the matches to setAiSearchMatches.
   // Registered after setAiSearchBoxes, so an empty submit it stopped is left alone.
+  document.querySelectorAll("[data-ai-search-choice]").forEach((choice) => {
+    choice.hidden = false;
+  });
   document.querySelectorAll("form[data-ai-search-form]").forEach((form) => {
     form.addEventListener("submit", (event) => {
       if (event.defaultPrevented || form.querySelector('input[name="js"]')) {
@@ -151,6 +154,7 @@ function setAiSearchMatches() {
   }
   const announce = document.querySelector("[data-ai-search-matches-status]");
   const region = document.querySelector("[data-ai-search-summary]");
+  const limit = document.querySelector("[data-ai-search-limit]");
   const show = (html) => {
     // The server rendered this from its own template.
     container.innerHTML = html;
@@ -160,11 +164,18 @@ function setAiSearchMatches() {
       announce.textContent = heading ? heading.textContent : "";
     }
   };
-  aiSearchPost(container.dataset.url, { question: container.dataset.question || "" })
+  aiSearchPost(container.dataset.url, {
+    question: container.dataset.question || "",
+    access: container.dataset.access || "",
+  })
     .then((response) => response.json().catch(() => null))
     .then((result) => {
       if (!result || !result.html) {
         throw new Error("No matches");
+      }
+      if (result.warning && limit) {
+        // The server built this from its own fixed wording.
+        limit.innerHTML = result.warning;
       }
       show(result.html);
       if (!region) {

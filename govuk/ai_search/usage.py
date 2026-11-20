@@ -14,6 +14,9 @@ from govuk.models import AISearchUsage
 
 logger = logging.getLogger(__name__)
 
+# What stops Claude when the day's budget is used.
+BUDGET = "budget"
+
 _warned_days: set = set()
 
 

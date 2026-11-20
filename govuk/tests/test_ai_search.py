@@ -1,14 +1,23 @@
 """AI search: /search/, the matches endpoint, and the button and search area."""
 
+import re
 from unittest import mock
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import Site
 
-from govuk.ai_search import MATCHES_PATH, claude as claude_module
+from govuk.ai_search import (
+    MATCHES_PATH,
+    access as access_module,
+    claude as claude_module,
+)
+from govuk.ai_search.access import make_access, read_access
 from govuk.ai_search.claude import FakeClaude
+from govuk.ai_search.views import clean_question
 from govuk.content_index import indexer
 from govuk.content_index.search import SEMANTIC_OK
 from govuk.models import SearchSettings
@@ -37,6 +46,18 @@ def fake(responder=None, **kwargs):
     patcher = mock.patch.object(claude_module, "_fake", fake_claude)
     patcher.start()
     return fake_claude, patcher
+
+
+def reader(client=None, username="reader"):
+    """A signed-in SSO reader: an account with no permissions."""
+    user = get_user_model().objects.create_user(username=username, password="unused")
+    if client is not None:
+        client.force_login(user)
+    return user
+
+
+def access_for(question: str, user=None) -> str:
+    return make_access(user or AnonymousUser(), clean_question(question))
 
 
 def _area(html: str) -> str:
@@ -73,7 +94,7 @@ class SearchPageTests(WithFakeModel):
         self.assertIn('<h1 class="govuk-label-wrapper">', area)
         self.assertIn('placeholder="Search"', area)
         self.assertIn('action="/search/"', area)
-        self.assertIn("Do not include personal or sensitive information.", area)
+        self.assertNotIn("Do not include personal or sensitive information.", area)  # it is on the checkbox
         self.assertNotIn("app-catalogue-card", html)
         self.assertNotIn("data-ai-search-matches", html)
         self.assertNotIn("app-site-search", html)  # the magnifier button instead
@@ -104,12 +125,17 @@ class SearchPageTests(WithFakeModel):
         self.assertContains(response, "Nothing close to your question")
         self.assertNotContains(response, 'class="app-catalogue-card')
 
+    @override_settings(AI_CLAUDE="fake")
     def test_with_javascript_it_comes_back_before_searching(self):
+        search = choose_ai_search(use_ai_ranking=True)
+        reader(self.client)
         with mock.patch("govuk.ai_search.views.find_matches") as find_matches:
-            response = self.client.post(self.url, {"question": "payments <now>", "js": "1"})
+            response = self.client.post(self.url, {"question": "payments <now>", "js": "1", "ai": "1"})
         find_matches.assert_not_called()
-        self.assertContains(response, f'data-ai-search-matches data-url="{MATCHES_PATH}"')
+        self.assertRegex(response.content.decode(), rf'data-ai-search-matches\s+data-url="{MATCHES_PATH}"')
         self.assertContains(response, 'data-question="payments &lt;now&gt;"')
+        token = re.search(r'data-access="([^"]+)"', response.content.decode()).group(1)
+        self.assertEqual(read_access(token, "payments <now>", search)["signed_in"], True)
         self.assertContains(response, "Thinking…")  # no summary, so in the matches' place
         self.assertNotContains(response, "data-ai-search-summary")
         self.assertNotContains(response, 'class="app-catalogue-card')
@@ -142,7 +168,7 @@ class SearchPageTests(WithFakeModel):
         statuses = [self.client.post(self.url, {"question": "payments"}).status_code for _ in range(3)]
         self.assertEqual(statuses, [200, 200, 429])
         response = self.client.post(self.url, {"question": "payments"})
-        self.assertContains(response, "Wait a minute", status_code=429)
+        self.assertContains(response, "Rate limit exceeded. Try again in a few minutes", status_code=429)
         self.assertTrue(1 <= int(response["Retry-After"]) <= 60)
 
     @override_settings(AI_SEARCH_RATE_LIMIT_PER_MINUTE=1, CLIENT_IP_HEADER="true-client-ip")
@@ -165,8 +191,114 @@ class SearchPageTests(WithFakeModel):
         self.assertEqual(self.client.post(self.url, {"question": "payments"}).status_code, 405)
 
 
+@override_settings(**ON)
+class SignInTests(TestCase):
+    """Claude only for signed-in readers who tick "Use AI search", unless sign-in is not required."""
+
+    QUESTION = "card payments"
+
+    def setUp(self):
+        cache.clear()
+        publish_page("Payments", "<p>Take card payments online.</p>")
+        indexer.rebuild()
+        self.fake, patcher = fake()
+        self.addCleanup(patcher.stop)
+        self.search = choose_ai_search(use_ai_ranking=True, show_ai_summary=True)
+        self.url = reverse("search")
+
+    def _ask(self, **fields) -> str:
+        data = {"question": self.QUESTION, "js": "1", "ai": "1", **fields}
+        return self.client.post(self.url, {k: v for k, v in data.items() if v is not None}).content.decode()
+
+    @staticmethod
+    def _choice(html: str) -> str:
+        return re.search(r'<input class="govuk-checkboxes__input"[^>]*>', html).group(0)
+
+    @staticmethod
+    def _token(html: str) -> str | None:
+        found = re.search(r'data-access="([^"]+)"', html)
+        return found.group(1) if found else None
+
+    def test_signed_out_the_results_are_search_alone(self):
+        with self.assertLogs("govuk.ai_search", level="INFO") as logs:
+            html = self._ask()
+        self.assertIn('class="app-catalogue-card', html)
+        self.assertNotIn("govuk-notification-banner", html)
+        self.assertNotIn("data-ai-search-matches", html)
+        self.assertIsNone(self._token(html))
+        self.assertNotIn("data-ai-search-summary", html)
+        self.assertNotIn("Turn on JavaScript", html)
+        self.assertEqual(self.fake.calls, [])
+        self.assertFalse(logs.records[0].signed_in)
+
+    @staticmethod
+    def _choice_label(html: str) -> str:
+        label = re.search(r'for="app-ai-search-question-ai">(.*?)</label>', html, re.S).group(1)
+        return " ".join(label.split())
+
+    def test_signed_out_the_box_is_unticked_and_disabled(self):
+        html = self.client.get(self.url).content.decode()
+        choice = self._choice(html)
+        self.assertIn("disabled", choice)
+        self.assertNotIn("checked", choice)
+        self.assertEqual(self._choice_label(html), "Sign in to use AI search")
+        self.assertNotIn("Do not include personal or sensitive information.", html)
+        self.assertRegex(html, r"data-ai-search-choice\s+hidden")  # until ai-search.js shows it
+
+    def test_signed_in_the_box_starts_ticked(self):
+        reader(self.client)
+        html = self.client.get(self.url).content.decode()
+        choice = self._choice(html)
+        self.assertIn("checked", choice)
+        self.assertNotIn("disabled", choice)
+        self.assertEqual(
+            self._choice_label(html), "Use AI search. Do not include personal or sensitive information."
+        )
+
+    def test_signed_in_and_ticked_the_page_hands_over_with_a_token(self):
+        reader(self.client)
+        html = self._ask()
+        self.assertIn("data-ai-search-matches", html)
+        self.assertEqual(read_access(self._token(html), self.QUESTION, self.search)["signed_in"], True)
+        self.assertIn("data-ai-search-summary", html)
+        self.assertEqual(self.fake.calls, [])  # Claude only on the service
+
+    def test_unticked_it_is_a_normal_search_even_signed_in(self):
+        reader(self.client)
+        html = self._ask(ai=None)
+        self.assertIn('class="app-catalogue-card', html)
+        self.assertIsNone(self._token(html))
+        self.assertNotIn("data-ai-search-summary", html)
+        self.assertNotIn("Turn on JavaScript", html)
+        self.assertNotIn("checked", self._choice(html))  # the choice is kept
+        self.assertEqual(self.fake.calls, [])
+
+    def test_without_the_requirement_anyone_may_use_it(self):
+        self.search.ai_search_requires_sign_in = False
+        self.search.save()
+        html = self._ask()
+        self.assertEqual(read_access(self._token(html), self.QUESTION, self.search)["signed_in"], False)
+        self.assertNotIn("disabled", self._choice(html))
+
+    def test_with_nothing_for_claude_to_do_there_is_no_box(self):
+        for label, change in (
+            ("both switches off", lambda: choose_ai_search(use_ai_ranking=False, show_ai_summary=False)),
+            ("no model", lambda: self.enterContext(override_settings(AI_CLAUDE=""))),
+        ):
+            with self.subTest(label):
+                change()
+                html = self.client.get(self.url).content.decode()
+                self.assertNotIn("data-ai-search-choice", html)
+
+    def test_every_pages_search_area_offers_the_choice(self):
+        reader(self.client)
+        html = self.client.get("/").content.decode()
+        self.assertIn('name="ai"', _area(html))
+
+
 @override_settings(
     FEATURE_FLAGS=FLAGS,
+    AI_CLAUDE="fake",
     CONTENT_INDEX_EMBEDDINGS="fake",
     CONTENT_INDEX_MIN_SIMILARITY=0.3,
     AI_SEARCH_RATE_LIMIT_PER_MINUTE=0,
@@ -176,11 +308,15 @@ class MatchesTests(WithFakeModel):
 
     def setUp(self):
         super().setUp()
-        choose_ai_search()
+        self.fake, patcher = fake()
+        self.addCleanup(patcher.stop)
+        self.search = choose_ai_search(show_ai_summary=True)
+        self.user = reader()
         self.url = reverse("ai_search_matches")
 
-    def _post(self, question, **headers):
-        return self.client.post(self.url, {"question": question}, **headers)
+    def _post(self, question, access=None, **headers):
+        token = access_for(question, self.user) if access is None else access
+        return self.client.post(self.url, {"question": question, "access": token}, **headers)
 
     def test_its_path_is_the_services(self):
         self.assertEqual(self.url, MATCHES_PATH)
@@ -194,7 +330,7 @@ class MatchesTests(WithFakeModel):
         self.assertIn('class="app-catalogue-card', body["html"])
         self.assertIn(self.pay.url, body["html"])
         self.assertIn(">Close matches<", body["html"])
-        self.assertEqual(body["ticket"], "")  # no model, so no summary
+        self.assertTrue(body["ticket"])
         self.assertIn("no-store", response["Cache-Control"])
         self.assertEqual(response["X-Robots-Tag"], "noindex")
 
@@ -213,7 +349,42 @@ class MatchesTests(WithFakeModel):
         self.assertEqual(self.client.get(self.url).status_code, 405)
 
     def test_it_needs_no_csrf_token(self):
-        self.assertEqual(Client(enforce_csrf_checks=True).post(self.url, {"question": "payments"}).status_code, 200)
+        data = {"question": "payments", "access": access_for("payments", self.user)}
+        self.assertEqual(Client(enforce_csrf_checks=True).post(self.url, data).status_code, 200)
+
+    def test_only_a_token_from_the_search_page_lets_claude_run(self):
+        question = "How do I take money from the public?"
+        signed_out = access_for(question)
+        inactive = reader(username="left")
+        inactive_token = access_for(question, inactive)
+        inactive.is_active = False
+        inactive.save()
+        good = access_for(question, self.user)
+        cases = {
+            "no token": "",
+            "made for another question": access_for("something else", self.user),
+            "tampered with": good[:-2] + ("AA" if not good.endswith("AA") else "BB"),
+            "signed out while sign-in is required": signed_out,
+            "for an account no longer active": inactive_token,
+        }
+        for label, token in cases.items():
+            with self.subTest(label):
+                response = self._post(question, access=token)
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.json(), {"status": "forbidden"})
+        with mock.patch.object(access_module, "ACCESS_MAX_AGE", -1), self.subTest("expired"):
+            self.assertEqual(self._post(question, access=good).status_code, 403)
+        self.assertEqual(self.fake.calls, [])
+
+    def test_a_signed_out_token_does_while_sign_in_is_not_required(self):
+        self.search.ai_search_requires_sign_in = False
+        self.search.save()
+        response = self._post("payments", access=access_for("payments"))
+        self.assertEqual(response.status_code, 200)
+
+    def test_nothing_without_claude_set_up(self):
+        with override_settings(AI_CLAUDE=""):
+            self.assertEqual(self._post("payments").status_code, 403)
 
     def test_not_while_normal_search_is_chosen(self):
         choose_ai_search(search_type=SearchSettings.SearchType.NORMAL)
@@ -225,7 +396,8 @@ class MatchesTests(WithFakeModel):
         response = self._post("payments")
         self.assertEqual(response.status_code, 429)
         self.assertEqual(response.json()["status"], "error")
-        self.assertIn("Wait a minute", response.json()["html"])
+        self.assertIn("Rate limit exceeded. Try again in a few minutes.", response.json()["warning"])
+        self.assertIn("govuk-warning-text", response.json()["warning"])
         self.assertTrue(1 <= int(response["Retry-After"]) <= 60)
 
     def test_the_question_is_never_logged(self):
@@ -291,8 +463,7 @@ class ButtonAndAreaTests(WithFakeModel):
             band,
         )
         self.assertIn('placeholder="For example, cloud"', band)
-        self.assertIn('class="govuk-body-s app-ai-search-box__privacy"', band)
-        self.assertIn('aria-describedby="app-ai-search-question-privacy"', band)
+        self.assertNotIn("aria-describedby", band.split('name="question"', 1)[1].split(">", 1)[0])
         header = self._header(html)
         self.assertNotIn("app-ai-search-toggle", header)  # open here, so no button
         self.assertNotIn("app-site-search", header)
@@ -396,7 +567,7 @@ class ButtonAndAreaTests(WithFakeModel):
         )
         self.assertIn(EMPTY, band)
         self.assertIn('aria-invalid="true"', band)
-        self.assertIn('aria-describedby="app-ai-search-question-error app-ai-search-question-privacy"', band)
+        self.assertIn('aria-describedby="app-ai-search-question-error"', band)
         self.assertNotIn("govuk-input--error", band)  # no red border on the band
         below = self._below(html)
         self.assertIn(f'<a href="#app-ai-search-question">{EMPTY}</a>', below)

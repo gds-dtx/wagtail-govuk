@@ -1,7 +1,7 @@
 """Structured Claude calls for AI search (``settings.AI_CLAUDE``: bedrock, fake or unset).
 
-Low effort because thinking cannot be turned off on Opus 5.5; no retries
-because a reader is waiting. Never log or raise with the question or answer.
+Medium effort, Claude Haiku 5.5's own default, set so it stays put; no
+retries because a reader is waiting. Never log or raise with the question or answer.
 """
 
 import json
@@ -14,7 +14,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 logger = logging.getLogger(__name__)
 
-EFFORT = "low"
+EFFORT = "medium"
 
 
 class ClaudeError(Exception):

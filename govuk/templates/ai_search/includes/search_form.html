@@ -27,8 +27,8 @@
                enterkeyhint="search"{% if area.question %}
                value="{{ area.question }}"{% endif %}{% if area.hint %}
                placeholder="{{ area.hint }}"{% endif %}{% if area.error %}
-               aria-invalid="true"{% endif %}
-               aria-describedby="{% if area.error %}{{ area.field_id }}-error {% endif %}{{ area.field_id }}-privacy">
+               aria-invalid="true"
+               aria-describedby="{{ area.field_id }}-error"{% endif %}>
         <button type="submit" class="app-ai-search-box__button">
             <span class="govuk-visually-hidden">{{ area.button_text }}</span>
             <svg class="app-ai-search-box__icon"
@@ -49,5 +49,7 @@
             <span class="govuk-visually-hidden">Error:</span> {{ area.error }}
         </p>
     {% endif %}
-    {% include "ai_search/includes/privacy_hint.html" with privacy_id=area.field_id|add:"-privacy" %}
+    {% if area.ai_choice %}
+        {% include "ai_search/includes/ai_choice.html" with choice=area.ai_choice %}
+    {% endif %}
 </form>

@@ -1,4 +1,7 @@
+from urllib.parse import urlencode
+
 from django import template
+from django.urls import reverse
 from django.utils.safestring import mark_safe
 from wagtail.rich_text import expand_db_html
 
@@ -127,6 +130,18 @@ def page_body(value):
     than asking an editor to write the markup.
     """
     return mark_safe(rewrite_csv_download_links(expand_db_html(str(value or ""))))
+
+
+@register.simple_tag(takes_context=True)
+def sign_in_url(context):
+    """The sign-in link, returning the reader to the page they are on."""
+    login = reverse("account_login")
+    request = context.get("request")
+    path = request.get_full_path() if request is not None else ""
+    # Not from sign-in's own pages, which would send the reader round again.
+    if not path or path.startswith((login, "/accounts/")):
+        return login
+    return f"{login}?{urlencode({'next': path})}"
 
 
 @register.simple_tag(takes_context=True)
