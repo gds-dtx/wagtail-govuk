@@ -1258,7 +1258,8 @@ main > :nth-last-child(1 of .section-cards-container) {
     background-color: transparent;
     color: #505a5f;
 }
-.app-site-search__status {
+.app-site-search__status,
+.app-site-search__visually-hidden {
     position: absolute !important;
     width: 1px !important;
     height: 1px !important;

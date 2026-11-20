@@ -469,11 +469,11 @@ class SearchSuggestTests(TestCase):
 
         self.assertContains(response, 'data-suggest-url="/search/suggest/"')
         self.assertContains(response, 'data-min-length="2"')
-        self.assertContains(response, "accessible-autocomplete-3.0.1.min.js")
+        self.assertContains(response, "accessible-autocomplete-3.0.2.min.js")
 
     def test_the_library_is_served_from_this_site(self):
         """The content security policy allows scripts from here only."""
-        self.assertIsNotNone(finders.find("accessible-autocomplete-3.0.1.min.js"))
+        self.assertIsNotNone(finders.find("accessible-autocomplete-3.0.2.min.js"))
 
 
 @override_settings(FEATURE_FLAGS=feature_flags(skills=False))
