@@ -1,3 +1,4 @@
+{% load govuk_filters %}
 {% comment %}
     "Use AI search" for this question. Shown by ai-search.js: without JavaScript
     Claude is never used. Disabled while the reader has to sign in first.
@@ -15,7 +16,7 @@
                checked{% endif %}{% if not choice.enabled %}
                disabled{% endif %}>
         <label class="govuk-label govuk-checkboxes__label" for="{{ choice.id }}">
-            {% if choice.enabled %}Use AI search. Do not include personal or sensitive information.{% else %}Sign in to use AI search{% endif %}
+            {% if choice.enabled %}Use AI search. Do not include personal or sensitive information.{% else %}<a class="govuk-link{% if inverse %} govuk-link--inverse{% endif %}" href="{% sign_in_url %}">Sign in</a> to use AI search{% endif %}
         </label>
     </div>
 </div>

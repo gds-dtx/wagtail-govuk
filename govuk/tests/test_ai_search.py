@@ -234,7 +234,7 @@ class SignInTests(TestCase):
     @staticmethod
     def _choice_label(html: str) -> str:
         label = re.search(r'for="app-ai-search-question-ai">(.*?)</label>', html, re.S).group(1)
-        return " ".join(label.split())
+        return " ".join(re.sub(r"<[^>]+>", "", label).split())
 
     def test_signed_out_the_box_is_unticked_and_disabled(self):
         html = self.client.get(self.url).content.decode()
@@ -242,6 +242,9 @@ class SignInTests(TestCase):
         self.assertIn("disabled", choice)
         self.assertNotIn("checked", choice)
         self.assertEqual(self._choice_label(html), "Sign in to use AI search")
+        self.assertIn(
+            f'<a class="govuk-link" href="{reverse("account_login")}?next=%2Fsearch%2F">Sign in</a> to use AI search', html
+        )
         self.assertNotIn("Do not include personal or sensitive information.", html)
         self.assertRegex(html, r"data-ai-search-choice\s+hidden")  # until ai-search.js shows it
 

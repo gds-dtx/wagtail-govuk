@@ -201,6 +201,15 @@
     border-width: 0 0 3px 3px;
 }
 
+/* Only the box fades when disabled: the label holds a working sign-in link. */
+.app-ai-search-box__choice .govuk-checkboxes__input:disabled + .govuk-checkboxes__label {
+    opacity: 1;
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__input:disabled + .govuk-checkboxes__label:before {
+    opacity: 0.5;
+}
+
 /* GOV.UK's 10px hover ring is sized for its 24px box. */
 .app-ai-search-box__choice .govuk-checkboxes__item:hover .govuk-checkboxes__input:not(:disabled) + .govuk-checkboxes__label:before {
     box-shadow: 0 0 0 4px var(--govuk-hover-colour, #cecece);
