@@ -19,4 +19,6 @@
             {% if choice.enabled %}Use AI search. Do not include personal or sensitive information.{% else %}<a class="govuk-link{% if inverse %} govuk-link--inverse{% endif %}" href="{% sign_in_url %}">Sign in</a> to use AI search{% endif %}
         </label>
     </div>
+    {# Saying the box was there to choose, so the choice is remembered. #}
+    {% if choice.enabled %}<input type="hidden" name="ai_offered" value="1">{% endif %}
 </div>

@@ -20,7 +20,7 @@ from govuk.ai_search.claude import FakeClaude
 from govuk.ai_search.views import clean_question
 from govuk.content_index import indexer
 from govuk.content_index.search import SEMANTIC_OK
-from govuk.models import SearchSettings
+from govuk.models import AISearchPreference, SearchSettings
 from govuk.models.pages import HeroStyle
 from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
 from govuk.tests.helpers import publish_page
@@ -292,6 +292,41 @@ class SignInTests(TestCase):
                 change()
                 html = self.client.get(self.url).content.decode()
                 self.assertNotIn("data-ai-search-choice", html)
+
+    def test_the_choice_is_remembered_with_the_account(self):
+        user = reader(self.client)
+        self._ask(ai=None, ai_offered="1")
+        self.assertFalse(AISearchPreference.objects.get(user=user).use_ai)
+        self.assertNotIn("checked", self._choice(self.client.get(self.url).content.decode()))
+        self.assertNotIn("checked", self._choice(_area(self.client.get("/").content.decode())))
+        elsewhere = Client()  # another browser, the same account
+        elsewhere.force_login(user)
+        self.assertNotIn("checked", self._choice(elsewhere.get(self.url).content.decode()))
+
+        self._ask(ai_offered="1")
+        self.assertTrue(AISearchPreference.objects.get(user=user).use_ai)
+        self.assertIn("checked", self._choice(self.client.get(self.url).content.decode()))
+
+    def test_nothing_is_stored_until_the_choice_differs_from_ticked(self):
+        reader(self.client)
+        self._ask(ai_offered="1")
+        self.assertFalse(AISearchPreference.objects.exists())
+
+    def test_only_a_form_that_offered_the_box_can_change_it(self):
+        reader(self.client)
+        self._ask(ai=None)  # for example a form drawn while signed out, with the box disabled
+        self.assertFalse(AISearchPreference.objects.exists())
+        self.assertIn("checked", self._choice(self.client.get(self.url).content.decode()))
+
+    def test_signed_out_nothing_is_stored(self):
+        self._ask(ai=None, ai_offered="1")
+        self.assertFalse(AISearchPreference.objects.exists())
+
+    def test_the_choice_goes_with_the_account(self):
+        user = reader(self.client)
+        self._ask(ai=None, ai_offered="1")
+        user.delete()
+        self.assertFalse(AISearchPreference.objects.exists())
 
     def test_every_pages_search_area_offers_the_choice(self):
         reader(self.client)

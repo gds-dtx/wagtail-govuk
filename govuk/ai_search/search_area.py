@@ -2,6 +2,7 @@
 
 from govuk.models.settings import DEFAULT_AI_SEARCH_LEAD_TEXT
 
+from . import preference
 from .access import claude_offered, may_use_claude
 
 FIELD_ID = "app-ai-search-question"
@@ -26,7 +27,7 @@ def search_area(
 
     ``in_main``: no combined hero, so the area tops the content with its lead
     text as the page heading. ``use_ai``: the reader's choice for the question
-    just asked; otherwise the box starts ticked when they may use it.
+    just asked; otherwise their remembered choice.
     """
     if search_settings is None or not search_settings.ai_search_on:
         return None
@@ -58,5 +59,5 @@ def ai_choice(search_settings, user, use_ai: bool | None) -> dict | None:
     return {
         "id": f"{FIELD_ID}-ai",
         "enabled": allowed,
-        "checked": allowed and (True if use_ai is None else use_ai),
+        "checked": allowed and (preference.remembered(user) if use_ai is None else use_ai),
     }

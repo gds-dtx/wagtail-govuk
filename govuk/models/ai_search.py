@@ -1,6 +1,7 @@
 """Daily Claude usage for AI search, shared across tasks so
 ``AI_DAILY_TOKEN_BUDGET`` holds. Stores no questions or answers."""
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -52,3 +53,14 @@ class AISearchClaim(models.Model):
 
     def __str__(self) -> str:
         return f"{self.kind} {self.created_at:%Y-%m-%d %H:%M}"
+
+
+class AISearchPreference(models.Model):
+    """A signed-in reader's "Use AI search" choice, kept with the account. No row means ticked."""
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="ai_search_preference")
+    use_ai = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"AI search {'on' if self.use_ai else 'off'}"

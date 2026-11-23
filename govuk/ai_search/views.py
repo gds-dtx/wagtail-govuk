@@ -24,7 +24,15 @@ from govuk.content_index.search import HYBRID, SearchError, is_close, search
 from govuk.features import catalogue_enabled
 from govuk.models import ContentMainPage, SearchSettings
 
-from . import MATCHES_PATH, SUMMARY_PATH, claims, rerank as reranking, summary, usage
+from . import (
+    MATCHES_PATH,
+    SUMMARY_PATH,
+    claims,
+    preference,
+    rerank as reranking,
+    summary,
+    usage,
+)
 from .access import make_access, may_use_claude, read_access
 from .cards import MAX_CARDS, cards_for
 from .claude import get_claude
@@ -235,6 +243,9 @@ def search_page(request, search_settings):
     # The checkbox is only shown with JavaScript; unticked or disabled, it sends nothing.
     use_ai = request.POST.get("ai") == "1" if js else None
     claude_allowed = may_use_claude(search_settings, request.user)
+    # Only from a form that showed the box enabled, so an old signed-out form cannot untick it.
+    if js and claude_allowed and request.POST.get("ai_offered") == "1":
+        preference.remember(request.user, use_ai)
     limit = None
     if posted and not error:
         context["asked"] = True
