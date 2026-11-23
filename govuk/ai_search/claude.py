@@ -6,6 +6,7 @@ retries because a reader is waiting. Never log or raise with the question or ans
 
 import json
 import logging
+import math
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -52,6 +53,11 @@ class Usage:
         return self.input_tokens + self.output_tokens + self.cache_read_tokens + self.cache_write_tokens
 
 
+def estimate(system: str, prompt: str, max_tokens: int) -> Usage:
+    """A pessimistic guess at a call's cost: about 3 characters a token in, and all of ``max_tokens`` out."""
+    return Usage(input_tokens=math.ceil((len(system) + len(prompt)) / 3), output_tokens=max_tokens)
+
+
 @dataclass
 class Reply:
     data: dict
@@ -78,6 +84,8 @@ class BedrockClaude:
     ) -> Reply:
         import anthropic
 
+        # Bedrock can bill a call that times out or drops, so those are charged the estimate.
+        spent = estimate(system, prompt, max_tokens)
         try:
             response = self._sdk().with_options(timeout=timeout).messages.create(
                 model=self.model,
@@ -88,7 +96,7 @@ class BedrockClaude:
                 output_config={"effort": EFFORT, "format": {"type": "json_schema", "schema": schema}},
             )
         except anthropic.APITimeoutError as exc:
-            raise ClaudeError("Claude took too long.") from exc
+            raise ClaudeError("Claude took too long.", usage=spent) from exc
         except anthropic.RateLimitError as exc:
             raise ClaudeError("Claude is busy (429).") from exc
         except anthropic.APIStatusError as exc:
@@ -97,9 +105,12 @@ class BedrockClaude:
                 logger.warning(
                     "Bedrock answered %s for model %s: %s", exc.status_code, self.model, str(exc.message)[:300]
                 )
-            raise ClaudeError(f"Claude refused the request ({exc.status_code}).") from exc
+            # A 4xx was turned away before any work; a 5xx may have done some.
+            raise ClaudeError(
+                f"Claude refused the request ({exc.status_code}).", usage=spent if exc.status_code >= 500 else None
+            ) from exc
         except anthropic.APIConnectionError as exc:
-            raise ClaudeError("Claude could not be reached.") from exc
+            raise ClaudeError("Claude could not be reached.", usage=spent) from exc
         except anthropic.AnthropicError as exc:
             # Credentials and configuration, mostly.
             raise ClaudeError(f"Claude could not be called ({type(exc).__name__}).") from exc

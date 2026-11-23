@@ -6,7 +6,6 @@ Checked before each call, so in-flight calls can take a day slightly over.
 import logging
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.utils import timezone
 
@@ -42,11 +41,7 @@ def over_budget() -> bool:
 def record(usage, *, outcome: str = "ok") -> None:
     """``outcome`` is "ok", "refused" or "failed"."""
     day = _today()
-    try:
-        with transaction.atomic():
-            AISearchUsage.objects.get_or_create(day=day)
-    except IntegrityError:  # another task made the row first
-        pass
+    AISearchUsage.ensure(day)
     changes = {"calls": F("calls") + 1}
     if usage is not None:
         changes.update(

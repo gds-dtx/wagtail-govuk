@@ -11,7 +11,7 @@ from html import escape
 
 from django.conf import settings
 
-PROMPT_VERSION = 1
+PROMPT_VERSION = 2
 
 SITE_NAME = "{site_name}"
 
@@ -100,7 +100,7 @@ MAX_INSTRUCTIONS_CHARS = 10_000
 @dataclass(frozen=True)
 class Instructions:
     text: str
-    tag: str  # for logs and cache keys: "1", or "1-edited-1a2b3c4d"
+    tag: str  # for logs and cache keys: "2", or "2-edited-1a2b3c4d"
 
 
 def site_name(site=None) -> str:
@@ -191,12 +191,23 @@ SUMMARY_SCHEMA = {
 
 # A page's parts' sections are counted first, keeping the most specific text.
 RERANK_SNIPPET_CHARS = 400
+# A description is a summary; past this it only adds tokens to every candidate.
+RERANK_DESCRIPTION_CHARS = 300
 SUMMARY_SECTIONS_PER_PAGE = 4
 SUMMARY_SECTION_CHARS = 1500
 
 
 def _text(value) -> str:
     return escape(str(value or "").strip(), quote=False)
+
+
+def _clip(value, limit: int) -> str:
+    """Cut at a word boundary, marked with an ellipsis."""
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    return (cut.rsplit(" ", 1)[0] if " " in cut else cut).rstrip(" ,.;:") + "…"
 
 
 def _attr(value) -> str:
@@ -222,11 +233,11 @@ def rerank_prompt(question: str, candidates: list[tuple[str, object]], scopes: d
             lines.append(f"Applies to: {_text(scope.applies_to)}")
         lines.append(f"Published: {where}")
         if document.description:
-            lines.append(f"Description: {_text(document.description)}")
+            lines.append(f"Description: {_text(_clip(document.description, RERANK_DESCRIPTION_CHARS))}")
         if hit.section and hit.section.heading_path:
             lines.append(f"Best matching section: {_text(hit.section.heading_path)}")
         if hit.snippet:
-            lines.append(f"Text: {_text(hit.snippet[:RERANK_SNIPPET_CHARS])}")
+            lines.append(f"Text: {_text(_clip(hit.snippet, RERANK_SNIPPET_CHARS))}")
         lines.append("</candidate>")
         parts.append("\n".join(lines))
     parts.append("</candidates>")

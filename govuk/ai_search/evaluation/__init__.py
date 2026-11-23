@@ -131,8 +131,10 @@ def evaluate(
     candidates: int = 20,
     floor: float = 0.2,
     site=None,
+    check_budget: bool = True,
 ) -> list[QuestionResult]:
-    """``rerank_with`` re-ranks as AI search does; each call costs money and uses the day's budget."""
+    """``rerank_with`` re-ranks as AI search does; each call costs money and uses the day's budget,
+    and once it is used the rest are not re-ranked unless ``check_budget`` is off."""
     from govuk.ai_search.rerank import OK, rerank
 
     results = []
@@ -153,7 +155,7 @@ def evaluate(
             continue
         shown = None
         if rerank_with is not None and outcome.hits:
-            reranked = rerank(question.question, outcome.hits, rerank_with, site=site)
+            reranked = rerank(question.question, outcome.hits, rerank_with, site=site, check_budget=check_budget)
             result.rerank, result.tokens = reranked.status, reranked.tokens
             if reranked.status == OK:
                 shown = reranked.hits

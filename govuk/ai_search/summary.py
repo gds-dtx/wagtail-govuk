@@ -189,8 +189,8 @@ def _cache_key(data: dict, model: str, instructions: str) -> str:
     return f"govuk-ask-summary:{digest}"
 
 
-def summarise(ticket: str, site=None) -> Summary:
-    """Raises ``TicketError`` for a bad or used ticket."""
+def summarise(ticket: str, site=None, *, check_budget: bool = True) -> Summary:
+    """Raises ``TicketError`` for a bad or used ticket. ``check_budget`` off only for evaluation runs."""
     data = read_ticket(ticket)
     if not claims.claim(claims.SUMMARY, data["j"]):
         raise TicketError("The ticket has been used.")
@@ -202,7 +202,7 @@ def summarise(ticket: str, site=None) -> Summary:
     cached = cache.get(key)
     if cached is not None:
         return Summary(*cached)
-    if usage.over_budget():
+    if check_budget and usage.over_budget():
         return Summary(UNAVAILABLE)
     pages = _pages(data["c"])
     started = time.monotonic()

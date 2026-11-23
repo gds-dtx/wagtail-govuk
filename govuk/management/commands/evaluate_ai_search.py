@@ -40,6 +40,11 @@ class Command(BaseCommand):
         )
         parser.add_argument("--out", default="ai-search-answers.html", help="The page to write.")
         parser.add_argument("--only", choices=ev.CATEGORIES, help="Only questions of this category.")
+        parser.add_argument(
+            "--ignore-budget",
+            action="store_true",
+            help="Call Claude past the day's budget. Only on a test instance: the budget is the live site's too.",
+        )
 
     def handle(self, *args, **options):
         if not content_index_enabled():
@@ -55,6 +60,7 @@ class Command(BaseCommand):
             questions = [question for question in questions if question.category == options["only"]]
         # Use the default site's Settings > Search instructions, as the summary endpoint does.
         self.site = Site.objects.filter(is_default_site=True).first()
+        self.check_budget = not options["ignore_budget"]
 
         rows, totals = [], Counter()
         for question in questions:
@@ -73,6 +79,11 @@ class Command(BaseCommand):
             if totals[name, True] + totals[name, False]
         )
         self.stdout.write(f"{summary_line}. Written to {options['out']}.")
+        stopped = sum(1 for row in rows if row["ranking"] == reranking.OVER_BUDGET)
+        if stopped:
+            self.stdout.write(
+                f"{stopped} not re-ranked or summarised: the day's Claude budget is used (--ignore-budget to run anyway)."
+            )
 
     def _run(self, question, claude) -> dict:
         row = {"question": question, "cards": [], "summary": "", "ranking": "", "error": ""}
@@ -90,7 +101,9 @@ class Command(BaseCommand):
             return row
         hits = None
         if outcome.hits:
-            reranked = reranking.rerank(question.question, outcome.hits, claude, site=self.site)
+            reranked = reranking.rerank(
+                question.question, outcome.hits, claude, site=self.site, check_budget=self.check_budget
+            )
             row["ranking"] = reranked.status
             if reranked.status == reranking.OK:
                 hits = reranked.hits
@@ -100,7 +113,9 @@ class Command(BaseCommand):
         cards = cards_for(hits, None, limit=MAX_CARDS)
         row["cards"] = cards
         if cards:
-            result = summary.summarise(summary.make_ticket(question.question, cards), self.site)
+            result = summary.summarise(
+                summary.make_ticket(question.question, cards), self.site, check_budget=self.check_budget
+            )
             row["summary"] = result.html if result.status == summary.OK else f"({result.status})"
         for card in cards:
             card["expected"] = _expected_card(card, question)

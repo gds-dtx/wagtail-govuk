@@ -48,6 +48,14 @@ def fake(responder=None, **kwargs):
     return fake_claude, patcher
 
 
+class SameSiteClient(Client):
+    """Sends ``Sec-Fetch-Site: same-origin``, as a browser on this site does."""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("headers", {"Sec-Fetch-Site": "same-origin"})
+        super().__init__(*args, **kwargs)
+
+
 def reader(client=None, username="reader"):
     """A signed-in SSO reader: an account with no permissions."""
     user = get_user_model().objects.create_user(username=username, password="unused")
@@ -344,6 +352,8 @@ class SignInTests(TestCase):
 class MatchesTests(WithFakeModel):
     """The matches endpoint, served by Django in development (AI_SEARCH_IN_DJANGO)."""
 
+    client_class = SameSiteClient
+
     def setUp(self):
         super().setUp()
         self.fake, patcher = fake()
@@ -388,7 +398,15 @@ class MatchesTests(WithFakeModel):
 
     def test_it_needs_no_csrf_token(self):
         data = {"question": "payments", "access": access_for("payments", self.user)}
-        self.assertEqual(Client(enforce_csrf_checks=True).post(self.url, data).status_code, 200)
+        self.assertEqual(SameSiteClient(enforce_csrf_checks=True).post(self.url, data).status_code, 200)
+
+    def test_a_request_not_from_this_site_is_refused(self):
+        data = {"question": "payments", "access": access_for("payments", self.user)}
+        for label, headers in (("no headers", {}), ("another site", {"Sec-Fetch-Site": "cross-site"})):
+            with self.subTest(label):
+                response = Client(headers=headers).post(self.url, data)
+                self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.fake.calls, [])
 
     def test_only_a_token_from_the_search_page_lets_claude_run(self):
         question = "How do I take money from the public?"

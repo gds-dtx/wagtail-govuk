@@ -41,6 +41,7 @@ from govuk.content_index.search import (
 )
 from govuk.mcp import tools
 from govuk.models import (
+    AISearchUsage,
     ContentEmbedding,
     ContentEntryExternalPage,
     ContentEntryPolicyPage,
@@ -265,7 +266,7 @@ class EmbeddedTextTests(SimpleTestCase):
         self.assertEqual(document_text("Page", "", ""), "Page")
 
 
-class BedrockEmbedderTests(SimpleTestCase):
+class BedrockEmbedderTests(TestCase):
     def _embedder(self, client):
         embedder = BedrockEmbedder(embeddings.TITAN_V2, 256, "eu-west-2")
         embedder._clients = {False: client, True: client}
@@ -281,6 +282,18 @@ class BedrockEmbedderTests(SimpleTestCase):
         sent = json.loads(client.invoke_model.call_args_list[0].kwargs["body"])
         self.assertEqual((sent["dimensions"], sent["normalize"]), (256, True))
         self.assertEqual(client.invoke_model.call_args.kwargs["modelId"], embeddings.TITAN_V2)
+
+    def test_titans_calls_and_tokens_are_counted_by_day(self):
+        client = mock.Mock()
+        client.invoke_model.side_effect = lambda **kwargs: {
+            "body": io.BytesIO(json.dumps({"embedding": [0.0], "inputTextTokenCount": 7}).encode())
+        }
+        embedder = self._embedder(client)
+        embedder.embed(["one", "two", "three"])
+        embedder.embed(["a question"], query=True)
+        row = AISearchUsage.objects.get()
+        self.assertEqual((row.embedding_calls, row.embedding_tokens), (4, 28))
+        self.assertEqual(row.total_tokens, 0)  # not Claude's, so not in the budget
 
     def test_a_refusal_is_an_embedding_error_without_the_text(self):
         client = mock.Mock()

@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 MAX_CHOSEN = 6
 MAX_TOKENS = 4000
 
-OK, REFUSED, FAILED = "ok", "refused", "failed"
+OK, REFUSED, FAILED, OVER_BUDGET = "ok", "refused", "failed", "over_budget"
 
 
 @dataclass
@@ -30,7 +30,8 @@ class Reranked:
     tokens: int = 0
 
 
-def rerank(question: str, hits: list, claude, *, site=None) -> Reranked:
+def rerank(question: str, hits: list, claude, *, site=None, check_budget: bool = True) -> Reranked:
+    """``check_budget`` off only for evaluation runs on a test instance."""
     instructions = prompts.instructions("rerank", site)
     candidates = [(f"d{number}", hit) for number, hit in enumerate(hits[: settings.AI_SEARCH_RERANK_CANDIDATES], start=1)]
     by_key = dict(candidates)
@@ -43,6 +44,8 @@ def rerank(question: str, hits: list, claude, *, site=None) -> Reranked:
     data, tokens = cache.get(key), 0
     cached = data is not None
     if not cached:
+        if check_budget and usage.over_budget():
+            return Reranked(OVER_BUDGET)
         try:
             reply = claude.complete(
                 purpose="rerank",

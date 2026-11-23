@@ -2,12 +2,12 @@
 ``AI_DAILY_TOKEN_BUDGET`` holds. Stores no questions or answers."""
 
 from django.conf import settings
-from django.db import models
+from django.db import IntegrityError, models, transaction
 from django.utils import timezone
 
 
 class AISearchUsage(models.Model):
-    """One UTC day's Claude usage."""
+    """One UTC day's Claude usage, and Titan's for embeddings (not counted in the budget)."""
 
     day = models.DateField(unique=True)
     calls = models.PositiveIntegerField(default=0)
@@ -17,6 +17,8 @@ class AISearchUsage(models.Model):
     cache_write_tokens = models.PositiveBigIntegerField(default=0)
     refusals = models.PositiveIntegerField(default=0)
     failures = models.PositiveIntegerField(default=0)
+    embedding_calls = models.PositiveIntegerField(default=0)
+    embedding_tokens = models.PositiveBigIntegerField(default=0)
 
     class Meta:
         verbose_name = "AI search usage"
@@ -25,6 +27,15 @@ class AISearchUsage(models.Model):
 
     def __str__(self) -> str:
         return f"{self.day}: {self.total_tokens:,} tokens"
+
+    @classmethod
+    def ensure(cls, day) -> None:
+        """Makes the day's row if there is none, whichever task gets there first."""
+        try:
+            with transaction.atomic():
+                cls.objects.get_or_create(day=day)
+        except IntegrityError:
+            pass
 
     @property
     def total_tokens(self) -> int:

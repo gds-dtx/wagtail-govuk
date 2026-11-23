@@ -28,6 +28,7 @@ from . import (
     MATCHES_PATH,
     SUMMARY_PATH,
     claims,
+    guard,
     preference,
     rerank as reranking,
     summary,
@@ -205,6 +206,13 @@ MATCHES_RATE_LIMITED = {
     "warning": _warning_text(f"{RATE_LIMITED}."),
 }
 SUMMARY_RATE_LIMITED = {"status": summary.UNAVAILABLE}
+MATCHES_BUSY = {
+    "status": "error",
+    "html": '<p class="govuk-body">Your question was not searched.</p>',
+    "count": 0,
+    "ticket": "",
+    "warning": _warning_text("AI-assisted search is busy. Try again in a few minutes."),
+}
 
 
 def _no_store(response):
@@ -304,9 +312,23 @@ def search_page(request, search_settings):
 # Development only (AI_SEARCH_IN_DJANGO): the service's paths served by Django.
 
 
+def _refused(request, limit: int):
+    """The service's checks, so development behaves as deployed."""
+    if not guard.from_this_site(request.headers):
+        return _no_store(JsonResponse(guard.FORBIDDEN, status=403))
+    try:
+        guard.check_length(request.headers, limit)
+    except guard.TooLarge:
+        return _no_store(JsonResponse(guard.TOO_LARGE, status=413))
+    return None
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def matches_view(request):
+    refused = _refused(request, guard.MATCHES_MAX_BYTES)
+    if refused:
+        return refused
     retry_after = _over_limit(request, MATCHES_NAMESPACE, settings.AI_SEARCH_RATE_LIMIT_PER_MINUTE)
     if retry_after is not None:
         response = JsonResponse(MATCHES_RATE_LIMITED, status=429)
@@ -321,6 +343,9 @@ def matches_view(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def summary_view(request):
+    refused = _refused(request, guard.SUMMARY_MAX_BYTES)
+    if refused:
+        return refused
     retry_after = _over_limit(request, SUMMARY_NAMESPACE, settings.AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE)
     if retry_after is not None:
         response = JsonResponse(SUMMARY_RATE_LIMITED, status=429)

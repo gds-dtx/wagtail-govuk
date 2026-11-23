@@ -6,6 +6,7 @@ closed or busy container.
 """
 
 import logging
+import time
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager, AsyncExitStack, asynccontextmanager
 from dataclasses import dataclass, field
@@ -62,9 +63,7 @@ def contributions() -> list[Contribution]:
     return found
 
 
-def _maintenance_on() -> bool:
-    if settings.MAINTENANCE_MODE:
-        return True
+def _planned_maintenance() -> bool:
     try:
         site = Site.objects.filter(is_default_site=True).first()
         return bool(site and MaintenanceModeSettings.for_site(site).enabled)
@@ -72,13 +71,35 @@ def _maintenance_on() -> bool:
         release_connections()
 
 
+def _database_healthy() -> bool:
+    try:
+        return _check_database_health()
+    finally:
+        release_connections()
+
+
 class MaintenanceMiddleware:
+    """The admin's switch is read at most every ``SERVICE_MAINTENANCE_CACHE_SECONDS``, not per request;
+    the ``MAINTENANCE_MODE`` override applies at once."""
+
     def __init__(self, app):
         self.app = app
+        self._checked_until = 0.0
+        self._planned = False
+
+    async def _closed(self) -> bool:
+        if settings.MAINTENANCE_MODE:
+            return True
+        now = time.monotonic()
+        if now >= self._checked_until:
+            # One request refreshes it; the rest keep the value held meanwhile, so few reach the shared thread.
+            self._checked_until = now + settings.SERVICE_MAINTENANCE_CACHE_SECONDS
+            self._planned = await sync_to_async(_planned_maintenance)()
+        return self._planned
 
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http" and scope["path"] != HEALTH_PATH:
-            if await sync_to_async(_maintenance_on)():
+            if await self._closed():
                 response = JSONResponse(
                     {"error": "This service is closed for maintenance. Try again later."},
                     status_code=503,
@@ -128,7 +149,7 @@ class RateLimitMiddleware:
 
 
 async def health(request: Request) -> JSONResponse:
-    database_ok = await sync_to_async(_check_database_health)()
+    database_ok = await sync_to_async(_database_healthy)()
     return JSONResponse(
         {"health": {"database": "ok" if database_ok else "error"}},
         status_code=200 if database_ok else 503,

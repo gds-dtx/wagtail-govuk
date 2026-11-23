@@ -49,6 +49,11 @@ class Command(BaseCommand):
             help="Re-rank each question's matches with Claude, as AI search does (hybrid only). Costs money.",
         )
         parser.add_argument("--json", help="Also write every result to this file.")
+        parser.add_argument(
+            "--ignore-budget",
+            action="store_true",
+            help="Re-rank past the day's Claude budget. Only on a test instance: the budget is the live site's too.",
+        )
 
     def handle(self, *args, **options):
         if not content_index_enabled():
@@ -86,6 +91,7 @@ class Command(BaseCommand):
                 candidates=settings.AI_SEARCH_RERANK_CANDIDATES,
                 floor=settings.AI_SEARCH_RERANK_FLOOR,
                 site=Site.objects.filter(is_default_site=True).first(),
+                check_budget=not options["ignore_budget"],
             )
             label = f"{mode}, re-ranked by {claude.model}" if claude else mode
             self._print_mode(label, results, options, threshold)
@@ -132,10 +138,13 @@ class Command(BaseCommand):
         reranked = [result for result in results if result.rerank]
         if reranked:
             statuses = ", ".join(
-                f"{sum(1 for r in reranked if r.rerank == status)} {status}" for status in ("ok", "refused", "failed")
+                f"{sum(1 for r in reranked if r.rerank == status)} {status}"
+                for status in ("ok", "refused", "failed", "over_budget")
             )
             tokens = sum(result.tokens for result in reranked)
             write(f"  Re-ranking: {statuses}; {tokens:,} tokens ({tokens // max(1, len(reranked)):,} a question)")
+            if any(result.rerank == "over_budget" for result in reranked):
+                write("  The day's Claude budget is used, so the rest were not re-ranked (--ignore-budget to run anyway).")
         if options["show_misses"]:
             self._print_misses(results)
 

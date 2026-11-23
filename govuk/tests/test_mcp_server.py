@@ -16,7 +16,7 @@ from govuk.content_index import indexer
 from govuk.mcp import MCP_PATH, tools
 from govuk.mcp.server import create_server
 from govuk.models import ContentEntryExternalPage, MaintenanceModeSettings
-from govuk.service import HEALTH_PATH
+from govuk.service import HEALTH_PATH, app as service_app
 from govuk.service.app import create_app
 from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
 from govuk.tests.helpers import publish_page
@@ -195,6 +195,28 @@ class AppTests(TestCase):
         settings.save()
         (response,) = service_requests(("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS}))
         self.assertEqual(response.status_code, 503)
+
+    def test_the_admins_switch_is_read_once_in_a_while_not_per_request(self):
+        request = ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS})
+        with mock.patch.object(service_app, "_planned_maintenance", wraps=service_app._planned_maintenance) as read:
+            responses = service_requests(request, request, request)
+        self.assertEqual(read.call_count, 1)
+        self.assertNotIn(503, [response.status_code for response in responses])
+
+    def test_a_change_to_the_switch_is_seen_once_the_held_value_expires(self):
+        middleware = service_app.MaintenanceMiddleware(app=None)
+        closed = async_to_sync(middleware._closed)
+        self.assertFalse(closed())
+        settings = MaintenanceModeSettings.for_site(Site.objects.get(is_default_site=True))
+        settings.enabled = True
+        settings.save()
+        self.assertFalse(closed())  # held for SERVICE_MAINTENANCE_CACHE_SECONDS
+        middleware._checked_until = 0.0
+        self.assertTrue(closed())
+        with override_settings(MAINTENANCE_MODE=True):
+            settings.enabled = False
+            settings.save()
+            self.assertTrue(closed())  # the emergency override needs no wait
 
     @override_settings(MCP_RATE_LIMIT_PER_MINUTE=2)
     def test_a_client_over_the_limit_is_told_to_wait(self):

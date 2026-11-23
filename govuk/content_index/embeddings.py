@@ -16,6 +16,9 @@ from functools import lru_cache
 from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
+from django.db import DatabaseError
+from django.db.models import F
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +102,8 @@ class BedrockEmbedder:
             self._clients[query] = boto3.client("bedrock-runtime", region_name=self.region, config=config)
         return self._clients[query]
 
-    def _embed_one(self, client, text: str) -> list[float]:
+    def _embed_one(self, client, text: str) -> tuple[list[float], int]:
+        """The vector, and the tokens Titan counted for it."""
         from botocore.exceptions import BotoCoreError, ClientError
 
         body = {"inputText": text[:MAX_EMBED_CHARS], "dimensions": self.dimensions, "normalize": True}
@@ -110,7 +114,8 @@ class BedrockEmbedder:
                 contentType="application/json",
                 accept="application/json",
             )
-            return json.loads(response["body"].read())["embedding"]
+            payload = json.loads(response["body"].read())
+            return payload["embedding"], int(payload.get("inputTextTokenCount") or 0)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "ClientError")
             raise EmbeddingError(f"Bedrock refused the request ({code}).") from exc
@@ -120,10 +125,27 @@ class BedrockEmbedder:
     def embed(self, texts: list[str], *, query: bool = False) -> list[list[float]]:
         client = self._client(query)
         if len(texts) == 1:
-            return [self._embed_one(client, texts[0])]
-        # Titan takes one text a request.
-        with ThreadPoolExecutor(max_workers=WORKERS) as pool:
-            return list(pool.map(lambda text: self._embed_one(client, text), texts))
+            results = [self._embed_one(client, texts[0])]
+        else:
+            # Titan takes one text a request.
+            with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+                results = list(pool.map(lambda text: self._embed_one(client, text), texts))
+        record_usage(len(results), sum(tokens for _, tokens in results))
+        return [vector for vector, _ in results]
+
+
+def record_usage(calls: int, tokens: int) -> None:
+    """Titan's use, beside Claude's on the day's ``AISearchUsage`` row. Never stops an embedding."""
+    from govuk.models import AISearchUsage
+
+    day = timezone.now().date()
+    try:
+        AISearchUsage.ensure(day)
+        AISearchUsage.objects.filter(day=day).update(
+            embedding_calls=F("embedding_calls") + calls, embedding_tokens=F("embedding_tokens") + tokens
+        )
+    except DatabaseError:
+        logger.warning("Titan's use could not be recorded")
 
 
 class FakeEmbedder:

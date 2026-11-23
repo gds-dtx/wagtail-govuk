@@ -600,6 +600,11 @@ AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_SEARCH_SUMMARY_RATE_
 # (0 = off); past either, the account's questions are searched without Claude.
 AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE", "4"))
 AI_SEARCH_ACCOUNT_DAILY_LIMIT = int(os.getenv("AI_SEARCH_ACCOUNT_DAILY_LIMIT", "100"))
+# Threads for AI search's Claude calls on the ASGI service; past this many at
+# once a question is refused at once (503) rather than queued.
+AI_SEARCH_WORKERS = int(os.getenv("AI_SEARCH_WORKERS", "8"))
+# Seconds the ASGI service keeps the admin's maintenance switch before reading it again.
+SERVICE_MAINTENANCE_CACHE_SECONDS = float(os.getenv("SERVICE_MAINTENANCE_CACHE_SECONDS", "5"))
 # Development only: Django serves AI search's service paths too. Deployed,
 # Claude is only called from the ASGI service.
 AI_SEARCH_IN_DJANGO = _bool_env("AI_SEARCH_IN_DJANGO")
