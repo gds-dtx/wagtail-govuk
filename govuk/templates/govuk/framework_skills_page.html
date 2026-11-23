@@ -9,11 +9,11 @@
     <div class="govuk-width-container govuk-!-margin-bottom-6">
         <div class="govuk-grid-row">
             {% if role_navigation %}
-                <div class="govuk-grid-column-one-quarter">
+                <div class="govuk-grid-column-one-quarter-from-desktop">
                     {% include "includes/role_navigation.html" %}
                 </div>
             {% endif %}
-            <div class="{% if role_navigation %}govuk-grid-column-three-quarters{% else %}govuk-grid-column-full{% endif %}">
+            <div class="{% if role_navigation %}govuk-grid-column-three-quarters-from-desktop{% else %}govuk-grid-column-full{% endif %}">
                 {% if role_navigation %}
                     <h1 class="govuk-heading-xl">{{ self.hero_title|default:self.title }}</h1>
                     {% if self.hero_intro %}

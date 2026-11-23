@@ -1,4 +1,6 @@
+import re
 from datetime import date
+from pathlib import Path
 
 from django.db import connection
 from django.test import RequestFactory, TestCase, override_settings
@@ -20,6 +22,8 @@ from govuk.models import (
     role_navigation_groups,
 )
 from govuk.tests.helpers import feature_flags, make_framework_main_page, role_url
+
+MAIN_CSS = Path(__file__).resolve().parents[1] / "static" / "main.css"
 
 
 @override_settings(FEATURE_FLAGS=feature_flags(skills=True))
@@ -241,6 +245,53 @@ class RolePageLayoutTests(TestCase):
         self.assertContains(response, 'aria-label="Data roles"')
         self.assertContains(response, "role-nav__item--active")
         self.assertContains(response, 'aria-current="page"')
+
+    def test_below_desktop_width_the_navigation_is_a_menu(self):
+        """The audit found the sidebar vanished at 200% zoom and on phones."""
+        html = self.client.get(self.data_analyst_url).content.decode()
+
+        sidebar = re.search(r'<div class="role-nav">(.*?)</div>\s*<details', html, re.S)
+        menu = re.search(
+            r'<details class="govuk-details app-role-nav-menu">.*?'
+            r'<div class="govuk-details__text">(.*?)</div>\s*</details>',
+            html,
+            re.S,
+        )
+        self.assertIsNotNone(sidebar)
+        self.assertIsNotNone(menu)
+        self.assertNotIn("<details open", html)
+
+        def links(fragment):
+            return re.findall(r'<a href="([^"]+)"\s*(aria-current="page")?', fragment)
+
+        self.assertEqual(links(menu.group(1)), links(sidebar.group(1)))
+        self.assertIn((self.data_analyst_url, 'aria-current="page"'), links(menu.group(1)))
+
+    def test_the_sidebar_and_the_menu_swap_at_desktop_width(self):
+        """Exactly one shows at any width, so nothing is announced twice."""
+        css = re.sub(r"/\*.*?\*/", "", MAIN_CSS.read_text(), flags=re.S)
+        desktop = "\n".join(
+            re.findall(r"@media \(min-width: 48\.0625em\)\s*\{((?:[^{}]*\{[^{}]*\})*)", css)
+        )
+
+        def rules(source, selector):
+            return "\n".join(
+                body
+                for head, body in re.findall(r"([^{}]*)\{([^{}]*)\}", source)
+                if selector in [part.strip() for part in head.split(",")]
+            )
+
+        self.assertIn("display: none", rules(css, ".role-nav"))
+        self.assertIn("display: block", rules(desktop, ".role-nav"))
+        self.assertIn("display: none", rules(desktop, ".app-role-nav-menu"))
+        self.assertEqual(rules(css, ".app-role-nav-menu"), rules(desktop, ".app-role-nav-menu"))
+        self.assertIn("display: none", rules(desktop, ".app-breadcrumbs--mobile-only"))
+        below_desktop = "\n".join(
+            re.findall(r"@media \(max-width: 48\.0525em\)\s*\{((?:[^{}]*\{[^{}]*\})*)", css)
+        )
+        self.assertIn(
+            "position: static", rules(below_desktop, "#back-to-top.back-to-top--visible")
+        )
 
     def test_the_navigation_closes_with_the_pages_about_the_framework(self):
         """The framework main page's own children, after the role families."""
