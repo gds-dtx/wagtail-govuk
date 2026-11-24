@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup
 from django.core.paginator import Paginator
+from django.http import JsonResponse
 from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 
@@ -129,6 +130,30 @@ def _filter_form(entry_filter) -> dict:
     }
 
 
+def wants_counts(request) -> bool:
+    return request.GET.get("counts") == "1"
+
+
+def counts_response(entries, request) -> JsonResponse:
+    """The result count and each filter's option counts for the form as it stands.
+
+    Fetched by ``catalogue.js`` as the reader changes the form, before they apply it.
+    """
+    vocab = vocabularies()
+    visible, entry_filter = filter_entries(
+        entry_views(entries, request), request.GET, vocab, keep_empty=True
+    )
+    return JsonResponse(
+        {
+            "count": len(visible),
+            "fields": {
+                name: [{key: o[key] for key in ("value", "label", "count")} for o in options]
+                for name, options in entry_filter.options.items()
+            },
+        }
+    )
+
+
 def _base_url(page, request) -> str:
     url = page.get_url(request) or "/"
     return url if url.endswith("/") else f"{url}/"
@@ -149,10 +174,8 @@ def _common(main_page, request) -> dict:
 
 
 def group_context(group_page, request) -> dict:
-    from wagtail.models import Page
-
     vocab = vocabularies()
-    views = entry_views(live_entries(Page.objects.child_of(group_page)), request)
+    views = entry_views(group_page.entries(), request)
     visible, entry_filter = filter_entries(views, request.GET, vocab)
 
     sections, results = [], []

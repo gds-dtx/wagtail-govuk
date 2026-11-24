@@ -181,6 +181,8 @@ class ContentMainPage(
         # Shadows a child page with the slug ``all``.
         if not catalogue_enabled():
             raise Http404
+        if presentation.wants_counts(request):
+            return presentation.counts_response(self.entries(), request)
         # "all" carries its heading in the content, not the main page's hero.
         self.hero_style = HeroStyle.NONE
         context = presentation.all_context(self, request)
@@ -211,6 +213,14 @@ class ContentGroupPage(CatalogueFlagMixin, Page):
 
     class Meta:
         verbose_name = "content group page"
+
+    def serve(self, request, *args, **kwargs):
+        if catalogue_enabled() and presentation.wants_counts(request):
+            return presentation.counts_response(self.entries(), request)
+        return super().serve(request, *args, **kwargs)
+
+    def entries(self):
+        return presentation.live_entries(Page.objects.child_of(self))
 
     def get_context(self, request, *args, **kwargs):
         context = super().get_context(request, *args, **kwargs)

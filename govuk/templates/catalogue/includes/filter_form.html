@@ -6,7 +6,7 @@
         <span class="govuk-details__summary-text">Search and filter</span>
     </summary>
     <div class="govuk-details__text app-catalogue-filter-toggle__panel">
-        <form method="get" class="app-catalogue-filters" role="search" aria-label="Search and filter">
+        <form method="get" class="app-catalogue-filters" role="search" aria-label="Search and filter" data-catalogue-filters>
             <div class="govuk-form-group app-catalogue-filters__search">
                 <label class="govuk-label govuk-label--s" for="catalogue-q">Search</label>
                 <input class="govuk-input" id="catalogue-q" name="q" type="search" value="{{ filter_form.query }}">
@@ -31,6 +31,8 @@
                 {% if filter_form.active %}
                     <a href="?" class="govuk-link govuk-link--no-visited-state">Clear search and filters</a>
                 {% endif %}
+                {# Filled by catalogue.js while the form differs from what is applied. #}
+                <p class="govuk-body govuk-!-margin-bottom-0 app-catalogue-filters__pending" role="status" data-catalogue-filters-status></p>
             </div>
         </form>
     </div>
