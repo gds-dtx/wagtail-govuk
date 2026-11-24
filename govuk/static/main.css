@@ -564,6 +564,10 @@ main > :nth-last-child(1 of .section-cards-container) {
 
 .role-nav {
     display: none;
+}
+
+.role-nav,
+.app-role-nav-menu .govuk-details__text {
     font-family: "GDS Transport", arial, sans-serif;
     font-weight: normal;
     font-size: 1rem;
@@ -785,7 +789,9 @@ main > :nth-last-child(1 of .section-cards-container) {
     bottom: 20px;
 }
 
-@media (max-width: 40.0525em) {
+/* In the flow wherever the framework sidebar is not, else it floats over
+   the content. */
+@media (max-width: 48.0525em) {
     #back-to-top.back-to-top--visible {
         position: static;
         margin: 10px 15px 20px;
@@ -799,7 +805,8 @@ main > :nth-last-child(1 of .section-cards-container) {
     margin-right: 0.3em;
 }
 
-@media (min-width: 40.0625em) {
+/* Framework breadcrumbs stand in for the sidebar, so they go when it shows. */
+@media (min-width: 48.0625em) {
     .app-breadcrumbs--mobile-only {
         display: none;
     }
@@ -822,7 +829,9 @@ main > :nth-last-child(1 of .section-cards-container) {
     }
 }
 
-@media (min-width: 40.0625em) {
+/* Desktop, not tablet: a quarter column narrower than this (as at 200% zoom
+   on a 1440px screen) squeezes the role names, so the menu serves instead. */
+@media (min-width: 48.0625em) {
     .role-nav {
         display: block;
         float: left;
@@ -830,10 +839,13 @@ main > :nth-last-child(1 of .section-cards-container) {
         box-sizing: border-box;
     }
 
+    .app-role-nav-menu,
     .mobile-homepage {
         display: none;
     }
+}
 
+@media (min-width: 40.0625em) {
     .role-level-header {
         font-size: 1.7rem;
     }
@@ -1258,7 +1270,8 @@ main > :nth-last-child(1 of .section-cards-container) {
     background-color: transparent;
     color: #505a5f;
 }
-.app-site-search__status {
+.app-site-search__status,
+.app-site-search__visually-hidden {
     position: absolute !important;
     width: 1px !important;
     height: 1px !important;

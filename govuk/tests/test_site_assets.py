@@ -117,6 +117,6 @@ class VendoredSourceMapsTests(SimpleTestCase):
 
     def test_the_autocomplete_library_names_its_own_versioned_map(self):
         """Upstream names an unversioned map; ours carries the version, so the comment must too."""
-        library = (STATIC_ROOT / "accessible-autocomplete-3.0.1.min.js").read_text()
-        self.assertIn("sourceMappingURL=accessible-autocomplete-3.0.1.min.js.map", library)
-        self.assertIsNotNone(finders.find("accessible-autocomplete-3.0.1.min.js.map"))
+        library = (STATIC_ROOT / "accessible-autocomplete-3.0.2.min.js").read_text()
+        self.assertIn("sourceMappingURL=accessible-autocomplete-3.0.2.min.js.map", library)
+        self.assertIsNotNone(finders.find("accessible-autocomplete-3.0.2.min.js.map"))

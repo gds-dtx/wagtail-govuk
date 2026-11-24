@@ -1,25 +1,17 @@
+{% comment %}
+    Drawn twice: as the sidebar from desktop width, and below that as a
+    closed Details menu, so the links survive 200% zoom and small screens.
+    CSS shows exactly one; display: none keeps the other out of the
+    accessibility tree, so nothing is announced twice.
+{% endcomment %}
 <div class="role-nav">
-    {% if framework_home %}
-        <nav class="role-nav__group" aria-label="{{ framework_home.title }}">
-            <ul class="role-nav__list">
-                <li class="role-nav__item{% if framework_home.is_current %} role-nav__item--active{% endif %}">
-                    <a href="{{ framework_home.url }}"
-                       {% if framework_home.is_current %}aria-current="page"{% endif %}>{{ framework_home.title }}</a>
-                </li>
-            </ul>
-        </nav>
-    {% endif %}
-    {% for group in role_navigation %}
-        <nav class="role-nav__group" aria-label="{{ group.title }}">
-            <p class="role-nav__title">{{ group.title }}</p>
-            <ul class="role-nav__list">
-                {% for item in group.items %}
-                    <li class="role-nav__item{% if item.is_current %} role-nav__item--active{% endif %}">
-                        <a href="{{ item.url }}"
-                           {% if item.is_current %}aria-current="page"{% endif %}>{{ item.title }}</a>
-                    </li>
-                {% endfor %}
-            </ul>
-        </nav>
-    {% endfor %}
+    {% include "includes/role_navigation_groups.html" %}
 </div>
+<details class="govuk-details app-role-nav-menu">
+    <summary class="govuk-details__summary">
+        <span class="govuk-details__summary-text">Browse roles and resources</span>
+    </summary>
+    <div class="govuk-details__text">
+        {% include "includes/role_navigation_groups.html" %}
+    </div>
+</details>

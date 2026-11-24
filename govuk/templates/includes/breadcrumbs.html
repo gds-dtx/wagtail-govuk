@@ -1,8 +1,8 @@
 {% comment %}
     The breadcrumb trail. Expects `breadcrumbs` (from the context processor).
     Pass `inverse=True` for the dark-background variant (combined hero pages),
-    and `breadcrumbs_mobile_only=True` to hide it at tablet and up (framework
-    pages set this in their context).
+    and `breadcrumbs_mobile_only=True` to hide it from desktop width, where
+    the framework sidebar shows (framework pages set this in their context).
 {% endcomment %}
 <nav class="govuk-breadcrumbs{% if inverse %} govuk-breadcrumbs--inverse{% endif %}{% if breadcrumbs_mobile_only %} app-breadcrumbs--mobile-only{% endif %}"
      aria-label="Breadcrumb">
