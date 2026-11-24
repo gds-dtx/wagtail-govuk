@@ -1,8 +1,8 @@
 """Capability Framework content utilities, grouped in one package.
 
 The framework is one service among several this image serves; its CSV
-conversions, published-download writers and live-service link helpers live here
-rather than loose at the app root.
+conversions and published-download writers live here rather than loose at the
+app root.
 
 ``conversions`` is the framework's main API (CSV text <-> Wagtail rich text), so
 its public names are re-exported here: ``from govuk.capability_framework import

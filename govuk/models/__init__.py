@@ -8,17 +8,42 @@ history -- keeps working unchanged.
 The submodules, roughly in dependency order: ``constants`` and ``panels`` and
 ``signing`` and ``blocks`` are the shared foundation; ``tags``, ``settings``,
 ``content_discovery``, ``pages`` and ``feedback`` are the platform domains; and
-the ``framework`` subpackage holds the Capability Framework. Relations use
+the ``framework`` subpackage holds the Capability Framework, and ``catalogue``
+the content catalogue's page types and vocabularies. Relations use
 string references (``"govuk.GovukRole"``) so nothing here depends on import
 order across submodules.
 """
 
+from .ai_search import AISearchClaim, AISearchPreference, AISearchUsage
 from .blocks import (
     ContentBodyBlock,
     GovukTableBlock,
     InsetTextBlock,
     LinkBlock,
     LinkStructValue,
+)
+from .catalogue import (
+    CatalogueLayout,
+    CatalogueProfession,
+    CatalogueScope,
+    CatalogueType,
+    ContentEntryExternalPage,
+    ContentEntryGenericPage,
+    ContentEntryGuidePage,
+    ContentEntryPolicyPage,
+    ContentEntryRequirementsPage,
+    ContentEntryStepsPage,
+    ContentEntryToolPage,
+    ContentGroupPage,
+    ContentGuidePage,
+    ContentMainPage,
+    ContentRequirementPage,
+    ContentStepPage,
+    catalogue_enabled,
+    catalogue_page_models,
+    catalogue_type_labels,
+    entry_page_models,
+    without_catalogue_pages,
 )
 from .constants import (
     DEFAULT_JWT_LIFETIME,
@@ -49,6 +74,12 @@ from .content_discovery import (
     ContentDiscoverySettings,
     ContentDiscoverySource,
     ExternalContentItem,
+)
+from .content_index import (
+    ContentEmbedding,
+    HarvestedSource,
+    IndexedChunk,
+    IndexedDocument,
 )
 from .feedback import Feedback, PageUsefulnessVote
 from .framework import (
@@ -98,9 +129,11 @@ from .settings import (
     FooterSettings,
     MaintenanceModeSettings,
     PhaseBannerSettings,
+    SearchSettings,
 )
 from .signing import JWTGenerationError, SecretTextarea
 from .tags import (
+    ContentMainPageTag,
     ContentPageTag,
     ExternalContentItemTag,
     FrameworkContentPageTag,
@@ -128,8 +161,33 @@ __all__ = [
     "ContentDiscoverySettings",
     "ContentDiscoverySource",
     "ContentPage",
+    "CatalogueLayout",
+    "CatalogueProfession",
+    "CatalogueScope",
+    "CatalogueType",
+    "ContentEntryExternalPage",
+    "ContentEntryGuidePage",
+    "ContentEntryPolicyPage",
+    "ContentEntryRequirementsPage",
+    "ContentEntryStepsPage",
+    "ContentEntryGenericPage",
+    "ContentEntryToolPage",
+    "ContentGroupPage",
+    "ContentGuidePage",
+    "ContentMainPage",
+    "ContentMainPageTag",
     "ContentPageTag",
+    "ContentRequirementPage",
+    "ContentStepPage",
+    "AISearchClaim",
+    "AISearchPreference",
+    "AISearchUsage",
     "CustomiseSettings",
+    "ContentEmbedding",
+    "HarvestedSource",
+    "IndexedChunk",
+    "IndexedDocument",
+    "SearchSettings",
     "DEFAULT_JWT_LIFETIME",
     "EdDSAKeyPair",
     "EdDSAKeySettings",
@@ -191,7 +249,11 @@ __all__ = [
     "TagListingsPageTag",
     "base_content_panels",
     "base_settings_panels",
+    "catalogue_enabled",
+    "catalogue_page_models",
     "content_settings_panels",
+    "catalogue_type_labels",
+    "entry_page_models",
     "framework_breadcrumbs",
     "framework_content_panels",
     "framework_content_settings_panels",
@@ -205,4 +267,5 @@ __all__ = [
     "role_route_url",
     "site_wide_changelog",
     "without_framework_pages",
+    "without_catalogue_pages",
 ]

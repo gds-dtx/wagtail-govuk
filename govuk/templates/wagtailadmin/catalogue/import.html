@@ -1,0 +1,52 @@
+{% extends "wagtailadmin/generic/base.html" %}
+{% load i18n %}
+{% block main_content %}
+    {% if result %}
+        <section class="w-mb-10" aria-labelledby="catalogue-import-result">
+            <h2 class="w-h3 w-mb-2" id="catalogue-import-result">{% trans "Imported" %}</h2>
+            <p class="w-mb-4">{{ result.summary }}</p>
+            {% if result.warnings %}
+                <h3 class="w-h5 w-mb-2">{% trans "Warnings" %}</h3>
+                <ul class="w-mb-4">
+                    {% for warning in result.warnings %}<li>{{ warning }}</li>{% endfor %}
+                </ul>
+            {% endif %}
+            <a class="button" href="{{ explore_url }}">{% trans "See the pages" %}</a>
+        </section>
+    {% endif %}
+    {% if error %}
+        <div class="help-block help-critical w-mb-6" role="alert">
+            <p>{% trans "Nothing was imported." %} {{ error }}</p>
+        </div>
+    {% endif %}
+    <section aria-labelledby="catalogue-import-form">
+        <h2 class="w-h3 w-mb-2" id="catalogue-import-form">{% trans "Import" %}</h2>
+        <p class="help w-mb-4">
+            {% trans "Its vocabularies become the catalogue's types, scopes and professions, and topic tags; each group becomes a group page beneath this page, and each entry a page in its group. Importing again finds the pages the last import made, and leaves them as they are unless you choose to rewrite them." %}
+        </p>
+        <form method="post" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+            {% if form.non_field_errors %}
+                <div class="help-block help-critical w-mb-4" role="alert">{{ form.non_field_errors }}</div>
+            {% endif %}
+            {% for field in form %}
+                <div class="w-field__wrapper w-mb-6">
+                    {% if field.field.widget.input_type == "checkbox" %}
+                        <label class="w-flex w-items-start w-gap-2" for="{{ field.id_for_label }}">
+                            {{ field }} <span>{{ field.label }}</span>
+                        </label>
+                    {% else %}
+                        <label class="w-field__label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+                        {{ field }}
+                    {% endif %}
+                    {% if field.help_text %}<p class="help">{{ field.help_text }}</p>{% endif %}
+                    {% for error in field.errors %}<p class="error-message">{{ error }}</p>{% endfor %}
+                </div>
+            {% endfor %}
+            <div class="w-flex w-gap-3">
+                <button class="button" type="submit">{% trans "Import" %}</button>
+                <a class="button button-secondary" href="{{ edit_url }}">{% trans "Back to the page" %}</a>
+            </div>
+        </form>
+    </section>
+{% endblock %}

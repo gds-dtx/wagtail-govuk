@@ -1,0 +1,299 @@
+"""The MCP server: its tools, the protocol, and the HTTP app's own rules."""
+
+from unittest import mock
+
+import httpx2
+from asgiref.sync import async_to_sync
+from django.core.cache import cache
+from django.core.exceptions import ImproperlyConfigured
+from django.core.management import CommandError, call_command
+from django.test import TestCase, TransactionTestCase, override_settings
+from mcp import Client
+from mcp.server.mcpserver.exceptions import ToolError
+from wagtail.models import Site
+
+from govuk.content_index import indexer
+from govuk.mcp import MCP_PATH, tools
+from govuk.mcp.server import create_server
+from govuk.models import ContentEntryExternalPage, MaintenanceModeSettings
+from govuk.service import HEALTH_PATH, app as service_app
+from govuk.service.app import create_app
+from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
+from govuk.tests.helpers import publish_page
+
+FLAGS = {"SKILLS": False, "FEEDBACK": False, "CATALOGUE": True, "AI": True}
+LIST_TOOLS = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
+MCP_HEADERS = {"Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2025-11-25"}
+
+
+def service_requests(*requests, app=None) -> list:
+    """Send ``(method, path, kwargs)`` requests to the service app, with its lifespan running."""
+    app = app or create_app()
+
+    async def run():
+        async with app.router.lifespan_context(app):
+            transport = httpx2.ASGITransport(app=app)
+            async with httpx2.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                return [await client.request(method, path, **kwargs) for method, path, kwargs in requests]
+
+    return async_to_sync(run)()
+
+
+@override_settings(FEATURE_FLAGS=FLAGS)
+class ToolTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        self.main = make_content_main_page(self.site.root_page)
+        import_fixture(self.main)
+        self.page = publish_page("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
+        indexer.rebuild()
+
+    def test_search_returns_results_with_their_sections(self):
+        results = tools.search(query="assistive technology").results
+        self.assertEqual([result.title for result in results], ["Accessibility"])
+        result = results[0]
+        self.assertEqual(result.url, self.site.root_url + "/accessibility/")
+        self.assertEqual((result.kind, result.origin, result.type), ("page", "site", ""))
+        self.assertEqual(result.section.heading, "Testing")
+        self.assertIsNotNone(result.last_updated)
+
+    def test_search_filters_by_type(self):
+        results = tools.search(query="description", type="policy").results
+        self.assertTrue(results)
+        self.assertEqual({result.type for result in results}, {"Policy"})
+
+    def test_a_query_that_cannot_be_run_is_refused(self):
+        with self.assertRaises(ToolError):
+            tools.search(query="   ")
+
+    def test_get_document_reads_a_page(self):
+        document = tools.get_document(url=self.site.root_url + "/accessibility/")
+        self.assertEqual(document.title, "Accessibility")
+        self.assertIn("## Testing", document.markdown)
+        self.assertEqual([section.heading for section in document.sections], ["Testing"])
+        self.assertFalse(document.truncated)
+        self.assertIsNone(document.notice)
+        self.assertNotIn("page_type", document.metadata)
+
+    def test_an_external_entry_says_its_content_is_elsewhere(self):
+        entry = ContentEntryExternalPage.objects.get(slug="external-policy")
+        document = tools.get_document(url=entry.get_url_parts()[2])
+        self.assertEqual(document.origin, "external")
+        self.assertEqual(document.source_url, "https://www.gov.uk/guidance/external-policy")
+        self.assertEqual(document.notice, tools.EXTERNAL_NOTICE + " Its page could not be read: Not fetched yet.")
+        self.assertEqual(document.metadata["owner_organisation"], "Example Department")
+
+    def test_a_section_address_names_the_section(self):
+        document = tools.get_document(url="/content/standards-and-policies/hosted-policy/#policy-statement")
+        self.assertEqual(document.requested_section, "1. Policy statement")
+
+    def test_a_very_long_page_is_cut_short(self):
+        with mock.patch.object(tools, "MAX_MARKDOWN_CHARS", 10):
+            document = tools.get_document(url="/accessibility/")
+        self.assertTrue(document.truncated)
+        self.assertEqual(len(document.markdown), 10)
+
+    def test_an_unknown_address_is_refused(self):
+        with self.assertRaises(ToolError):
+            tools.get_document(url="/no/such/page/")
+
+    def test_calls_are_logged_without_what_was_asked(self):
+        with self.assertLogs("govuk.mcp.tools", level="INFO") as logs:
+            tools.search(query="assistive technology")
+            with self.assertRaises(ToolError):
+                tools.get_document(url="/a-private-question/")
+        records = [(record.tool, record.outcome, record.results) for record in logs.records]
+        self.assertEqual(records, [("search", "ok", 1), ("get_document", "refused", None)])
+        output = "\n".join(logs.output) + "".join(str(vars(record)) for record in logs.records)
+        self.assertNotIn("assistive", output)
+        self.assertNotIn("a-private-question", output)
+
+
+@override_settings(FEATURE_FLAGS=FLAGS)
+class ProtocolTests(TransactionTestCase):
+    """A transaction test: the SDK runs tools on a worker thread whose connection cannot see a test transaction."""
+
+    serialized_rollback = True
+
+    def setUp(self):
+        publish_page("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
+        indexer.rebuild()
+
+    def _session(self, use):
+        server = create_server()  # reads the site's name, which async code may not
+
+        async def run():
+            async with Client(server) as client:
+                return await use(client)
+
+        return async_to_sync(run)()
+
+    def test_the_tools_are_listed_as_read_only(self):
+        listed = self._session(lambda client: client.list_tools()).tools
+        self.assertEqual([tool.name for tool in listed], ["search", "get_document"])
+        for tool in listed:
+            self.assertTrue(tool.annotations.read_only_hint)
+            self.assertFalse(tool.annotations.open_world_hint)
+            self.assertIsNotNone(tool.output_schema)
+        search = listed[0]
+        self.assertEqual(search.input_schema["required"], ["query"])
+        self.assertEqual(search.input_schema["properties"]["limit"]["maximum"], 25)
+
+    def test_search_then_read(self):
+        async def use(client):
+            found = await client.call_tool("search", {"query": "assistive technology"})
+            url = found.structured_content["results"][0]["url"]
+            return found, await client.call_tool("get_document", {"url": url})
+
+        found, document = self._session(use)
+        self.assertFalse(found.is_error)
+        self.assertFalse(document.is_error)
+        self.assertEqual(document.structured_content["title"], "Accessibility")
+
+    def test_a_bad_argument_is_an_error_result(self):
+        result = self._session(lambda client: client.call_tool("search", {"query": "x", "limit": 99}))
+        self.assertTrue(result.is_error)
+
+
+@override_settings(FEATURE_FLAGS=FLAGS, MCP_RATE_LIMIT_PER_MINUTE=0)
+class AppTests(TestCase):
+    """The HTTP app's own rules, over an ASGI transport with its lifespan running."""
+
+    def setUp(self):
+        cache.clear()
+
+    def test_the_health_check(self):
+        (response,) = service_requests(("GET", HEALTH_PATH, {}))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"health": {"database": "ok"}})
+
+    def test_only_the_sites_own_hosts_are_answered(self):
+        (response,) = service_requests(
+            ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": {**MCP_HEADERS, "Host": "evil.example"}})
+        )
+        self.assertEqual(response.status_code, 421)
+
+    def test_a_browser_on_another_site_is_refused(self):
+        (response,) = service_requests(
+            ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": {**MCP_HEADERS, "Origin": "https://evil.example"}})
+        )
+        self.assertEqual(response.status_code, 403)
+
+    @override_settings(MAINTENANCE_MODE=True, MAINTENANCE_RETRY_AFTER=120)
+    def test_closed_for_maintenance_but_still_healthy(self):
+        closed, health = service_requests(
+            ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS}),
+            ("GET", HEALTH_PATH, {}),
+        )
+        self.assertEqual(closed.status_code, 503)
+        self.assertEqual(closed.headers["Retry-After"], "120")
+        self.assertEqual(health.status_code, 200)
+
+    def test_planned_maintenance_closes_it_too(self):
+        settings = MaintenanceModeSettings.for_site(Site.objects.get(is_default_site=True))
+        settings.enabled = True
+        settings.save()
+        (response,) = service_requests(("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS}))
+        self.assertEqual(response.status_code, 503)
+
+    def test_the_admins_switch_is_read_once_in_a_while_not_per_request(self):
+        request = ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS})
+        with mock.patch.object(service_app, "_planned_maintenance", wraps=service_app._planned_maintenance) as read:
+            responses = service_requests(request, request, request)
+        self.assertEqual(read.call_count, 1)
+        self.assertNotIn(503, [response.status_code for response in responses])
+
+    def test_a_change_to_the_switch_is_seen_once_the_held_value_expires(self):
+        middleware = service_app.MaintenanceMiddleware(app=None)
+        closed = async_to_sync(middleware._closed)
+        self.assertFalse(closed())
+        settings = MaintenanceModeSettings.for_site(Site.objects.get(is_default_site=True))
+        settings.enabled = True
+        settings.save()
+        self.assertFalse(closed())  # held for SERVICE_MAINTENANCE_CACHE_SECONDS
+        middleware._checked_until = 0.0
+        self.assertTrue(closed())
+        with override_settings(MAINTENANCE_MODE=True):
+            settings.enabled = False
+            settings.save()
+            self.assertTrue(closed())  # the emergency override needs no wait
+
+    @override_settings(MCP_RATE_LIMIT_PER_MINUTE=2)
+    def test_a_client_over_the_limit_is_told_to_wait(self):
+        # Requests the host check refuses still count: the limit comes first.
+        request = ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": {**MCP_HEADERS, "Host": "evil.example"}})
+        responses = service_requests(request, request, request, ("GET", HEALTH_PATH, {}))
+        self.assertEqual([response.status_code for response in responses], [421, 421, 429, 200])
+        self.assertTrue(1 <= int(responses[2].headers["Retry-After"]) <= 60)
+
+    @staticmethod
+    def _from(address: str | None):
+        headers = {**MCP_HEADERS, "Host": "evil.example"}
+        if address:
+            headers["True-Client-IP"] = address
+        return ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": headers})
+
+    @override_settings(MCP_RATE_LIMIT_PER_MINUTE=1, CLIENT_IP_HEADER="true-client-ip")
+    def test_behind_cloudfront_each_viewer_is_counted_apart(self):
+        # One connection (CloudFront's) carrying three viewers' requests.
+        responses = service_requests(
+            self._from("203.0.113.1"), self._from("203.0.113.2"), self._from("203.0.113.1, 10.0.0.9")
+        )
+        self.assertEqual([response.status_code for response in responses], [421, 421, 429])
+
+    @override_settings(MCP_RATE_LIMIT_PER_MINUTE=1, CLIENT_IP_HEADER="true-client-ip")
+    def test_a_request_without_the_header_is_counted_by_its_connection(self):
+        responses = service_requests(self._from(None), self._from(None))
+        self.assertEqual([response.status_code for response in responses], [421, 429])
+
+    @override_settings(MCP_RATE_LIMIT_PER_MINUTE=1)
+    def test_the_header_is_ignored_unless_it_is_configured(self):
+        # Otherwise a client could reset its own count by writing the header.
+        responses = service_requests(self._from("203.0.113.1"), self._from("203.0.113.2"))
+        self.assertEqual([response.status_code for response in responses], [421, 429])
+
+    @override_settings(FEATURE_FLAGS={**FLAGS, "AI": False})
+    def test_it_will_not_start_with_the_flag_off(self):
+        with self.assertRaisesMessage(ImproperlyConfigured, "FEATURE_AI"):
+            create_app()
+
+    @override_settings(SERVICE_CONTRIBUTIONS=["govuk.mcp.service.contribution", "govuk.tests.test_mcp_server._another"])
+    def test_each_feature_adds_its_own_routes_beside_the_mcp_servers(self):
+        mcp, other = service_requests(
+            ("POST", MCP_PATH, {"json": LIST_TOOLS, "headers": MCP_HEADERS}),
+            ("GET", "/another/", {}),
+        )
+        self.assertEqual(mcp.status_code, 200)
+        self.assertEqual(other.json(), {"another": True})
+
+
+@override_settings(FEATURE_FLAGS=FLAGS, SERVICE_FORWARDED_ALLOW_IPS="10.0.0.0/16")
+class CommandTests(TestCase):
+    def test_it_runs_uvicorn_with_the_sites_logging(self):
+        with mock.patch("uvicorn.run") as run:
+            call_command("run_service", "--host", "0.0.0.0", "--port", "9000")
+        run.assert_called_once()
+        args, kwargs = run.call_args
+        self.assertEqual(args, ("govuk.service.asgi:app",))
+        self.assertEqual((kwargs["host"], kwargs["port"]), ("0.0.0.0", 9000))
+        self.assertIsNone(kwargs["log_config"])
+        self.assertTrue(kwargs["proxy_headers"])
+        self.assertEqual(kwargs["forwarded_allow_ips"], "10.0.0.0/16")
+
+    @override_settings(FEATURE_FLAGS={**FLAGS, "AI": False})
+    def test_it_refuses_with_the_flag_off(self):
+        with self.assertRaisesMessage(CommandError, "FEATURE_AI"):
+            call_command("run_service")
+
+
+def _another():
+    """A second feature's contribution, for the test above."""
+    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+
+    from govuk.service.app import Contribution
+
+    async def endpoint(request):
+        return JSONResponse({"another": True})
+
+    return Contribution(name="another", routes=[Route("/another/", endpoint)])

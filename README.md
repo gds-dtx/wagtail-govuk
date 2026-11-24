@@ -66,7 +66,19 @@ Optional:
 - `OIDC_JWKS_URL`: JWKS URL for API bearer token verification. Defaults to `https://sso.service.security.gov.uk/.well-known/jwks.json`.
 - `OIDC_ISSUER`: Expected JWT issuer for API bearer token verification. Defaults to `https://sso.service.security.gov.uk`.
 - `OIDC_TOKEN_AUDIENCE` / `OIDC_TOKEN_AUDIENCES`: Expected JWT audience, or a comma-separated list of them, for API bearer token verification. Defaults to `OIDC_CLIENT_ID`.
-- `FEATURE_SKILLS`, `FEATURE_FEEDBACK`: Feature flags, all off by default. See [Feature flags](#feature-flags).
+- `FEATURE_SKILLS`, `FEATURE_FEEDBACK`, `FEATURE_CATALOGUE`, `FEATURE_AI`: Feature flags, all off by default. See [Feature flags](#feature-flags).
+- `CATALOGUE_GITHUB_TOKEN`: GitHub token for importing the content catalogue from a repo, to lift the unauthenticated rate limit. Read-only public access is enough. Unset by default.
+- `CONTENT_INDEX_EMBEDDINGS`: `bedrock` (Titan Text Embeddings V2, matches by meaning) or `fake` (tests and local runs). Unset, search matches words only. `CONTENT_INDEX_EMBEDDING_REGION` (defaults to `AWS_REGION`, then `eu-west-2`) and `CONTENT_INDEX_EMBEDDING_DIMENSIONS` (`256`, `512` or `1024`, the default) configure it.
+- `CONTENT_INDEX_MIN_SIMILARITY`: Minimum similarity (0 to 1, defaults to `0.35`) for a match found by meaning alone. Tune it with `manage.py evaluate_content_search`.
+- `MCP_RATE_LIMIT_PER_MINUTE`: MCP requests per client address per minute (defaults to `60`; `0` turns it off).
+- `CLIENT_IP_HEADER`: Header holding the client's address for per-client rate limits, set by a proxy that overwrites it (`true-client-ip` behind CloudFront). Unset, the connection's address is used.
+- `SERVICE_FORWARDED_ALLOW_IPS`: Proxies whose `X-Forwarded-For` the ASGI service trusts (defaults to `127.0.0.1`). Behind CloudFront use `CLIENT_IP_HEADER` instead.
+- `AI_SEARCH_RATE_LIMIT_PER_MINUTE`, `AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE`: AI search questions (defaults to `20`) and summaries (defaults to `10`) per client address per minute; `0` turns a limit off.
+- `AI_CLAUDE`: `bedrock` (Claude on Bedrock re-ranks and summarises AI search results, each switched on in **Settings > Search**) or `fake` (tests and local runs). Claude only runs for a question asked on the search page with "Use AI search" ticked, by a signed-in reader unless **Require sign-in for AI search** is off: the ASGI service refuses any request without the one-minute, single-use token the page issues for it. Unset, no model is used. `AI_CLAUDE_MODEL` (defaults to `eu.anthropic.claude-haiku-5-5`) and `AI_CLAUDE_REGION` (defaults to `CONTENT_INDEX_EMBEDDING_REGION`) configure it.
+- `AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE`, `AI_SEARCH_ACCOUNT_DAILY_LIMIT`: Claude-backed questions per signed-in account per minute (defaults to `4`) and per UTC day (defaults to `100`); past either, that account's questions are searched without Claude. `0` turns a limit off.
+- `AI_SEARCH_WORKERS`: Threads for AI search's Claude calls on the ASGI service (defaults to `8`). With all of them busy, a question is refused at once (503) rather than queued.
+- `SERVICE_MAINTENANCE_CACHE_SECONDS`: How long the ASGI service keeps the admin's maintenance switch before reading it again (defaults to `5`). `MAINTENANCE_MODE` applies at once.
+- `AI_DAILY_TOKEN_BUDGET`: Daily Claude token budget for AI search (defaults to `10000000`). Past it, AI search runs without Claude until midnight UTC.
 - `SCHEDULED_PUBLISHING`: Defaults to `false`, which hides the go-live and expiry fields in the admin. Turn it on only once something runs `manage.py publish_scheduled` on a timer.
 - `MAINTENANCE_MODE`: Emergency close of the whole site behind the 503 page, for everyone including editors. `MAINTENANCE_RESUME_TEXT` sets the "back at" wording and `MAINTENANCE_RETRY_AFTER` the `Retry-After` header in seconds (defaults to `3600`). Planned maintenance is the **Maintenance mode** site setting instead.
 - `MEDIA_S3_BUCKET`: Store uploaded images and documents in this S3 bucket instead of on the local filesystem. `MEDIA_S3_REGION`, `MEDIA_S3_LOCATION` (key prefix, defaults to `media`), `MEDIA_S3_CUSTOM_DOMAIN` and `MEDIA_S3_QUERYSTRING_AUTH` configure it further. Credentials come from the task role.
@@ -85,6 +97,8 @@ Read once at startup from the environment into `settings.FEATURE_FLAGS`
 | --- | --- | --- |
 | `SKILLS` | `FEATURE_SKILLS` | The Capability Framework: roles, skills, changelog, its page types, wording and sidebar settings, and the CSV downloads |
 | `FEEDBACK` | `FEATURE_FEEDBACK` | The built-in feedback form at `/feedback`, and its snippet listing. When on, it shadows any CMS page at `/feedback` |
+| `CATALOGUE` | `FEATURE_CATALOGUE` | The content catalogue: its page types, vocabulary snippets, and import and export |
+| `AI` | `FEATURE_AI` | The content index of public pages, roles and skills (`manage.py rebuild_content_index`), the MCP server at `/mcp` on the ASGI service (`manage.py run_service`), and AI search, chosen in **Settings > Search** |
 A flag gates structure only. With it off, the feature's page
 types cannot be created, return 404 if the page import puts one in the tree,
 and are left out of search, the pages API, the service navigation and tag
@@ -122,7 +136,6 @@ Turned on by `FEATURE_SKILLS`.
   ```bash
   python manage.py import_capability_framework <dir>   # seed from roles.csv and skills.csv
   python manage.py export_capability_framework <dir>   # write the three published CSVs
-  python manage.py import_role_grades [--save FILE | --json FILE] [--dry-run]
   ```
 
 

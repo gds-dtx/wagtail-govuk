@@ -9,6 +9,7 @@ from django.http import (
     Http404,
     HttpResponse,
     HttpResponseBadRequest,
+    HttpResponseNotAllowed,
     HttpResponseRedirect,
     HttpResponseServerError,
     JsonResponse,
@@ -17,6 +18,7 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 from wagtail.models import Site
 
@@ -27,6 +29,7 @@ from govuk.models import (
     EdDSAKeySettings,
     Feedback,
     PageUsefulnessVote,
+    SearchSettings,
 )
 from govuk.oidc import (
     ADMIN_OIDC_NEXT_URL_KEY,
@@ -64,6 +67,13 @@ def _customise_settings_for_request(request) -> CustomiseSettings:
     if site is None:
         raise Http404
     return CustomiseSettings.for_site(site)
+
+
+def _search_settings_for_request(request) -> SearchSettings:
+    site = Site.find_for_request(request)
+    if site is None:
+        raise Http404
+    return SearchSettings.for_site(site)
 
 
 def _eddsa_key_settings_for_request(request) -> EdDSAKeySettings:
@@ -138,13 +148,23 @@ def _pagination_query(query: str, tag: str, source: str) -> str:
     )
 
 
-@require_http_methods(["GET", "HEAD"])
+# CSRF-exempt: AI search's POST changes nothing, and a token in every page
+# would stop CloudFront caching them.
+@csrf_exempt
+@require_http_methods(["GET", "HEAD", "POST"])
 def search_view(request):
-    # When free-text results are turned off in Customise, the header box keeps
+    search_settings = _search_settings_for_request(request)
+    if search_settings.ai_search_on:
+        from govuk.ai_search.views import search_page
+
+        return search_page(request, search_settings)
+    if request.method == "POST":
+        return HttpResponseNotAllowed(["GET", "HEAD"])
+    # When free-text results are turned off in Settings > Search, the box keeps
     # its jump-to-a-role/skill/page suggestions (search_suggest_view) but the
     # results page itself is not served, so a submitted or bookmarked
     # /search/?query= URL 404s rather than showing a listing.
-    if not _customise_settings_for_request(request).enable_search_results_page:
+    if not search_settings.enable_search_results_page:
         raise Http404
     query = (request.GET.get("query") or "").strip()
     page_number = request.GET.get("page", 1)
@@ -187,10 +207,6 @@ def search_view(request):
 
 SUGGESTION_MIN_LENGTH = 2
 SUGGESTION_LIMIT = 10
-# How far down the ranked results to look before regrouping by kind. Roles are
-# few and rank high; a generous pool keeps a role from being cut off behind a
-# run of skills that happened to score above it.
-SUGGESTION_POOL = 50
 
 
 @require_http_methods(["GET", "HEAD"])
@@ -198,11 +214,13 @@ def search_suggest_view(request):
     """Suggestions for the header search box as the reader types.
 
     A JSON list of ``{"text", "link", "type"}``, roles first, then skills, then
-    supporting pages, at most ten -- the shape the live service's autocomplete
-    consumed, so the box can behave as it does there. Each entry
-    is the same result the results page would show for the same query, from
-    the same backend and the same ranking, only regrouped by kind: a role
-    links to its page, a skill to its section of the A to Z, a page to itself.
+    supporting pages, then catalogue entries, at most ten -- the shape the live
+    service's autocomplete consumed, so the box can behave as it does there.
+    Each entry is the same result the results page would show for the same
+    query, from the same backend and the same ranking, only regrouped by kind:
+    a role links to its page, a skill to its section of the A to Z, a page to
+    itself. Catalogue entries carry their own type and come last so they do not
+    crowd out the site's own pages.
     External content is left out: suggestions are roles, skills and the site's
     own pages.
 
@@ -222,17 +240,24 @@ def search_suggest_view(request):
                 "site": site,
                 "live": True,
                 "public": not request.user.is_authenticated,
-                "page_size": SUGGESTION_POOL,
             },
             page=1,
         )
-        grouped: dict[str, list[dict[str, str]]] = {"Role": [], "Skill": [], "Page": []}
-        for item in results.object_list:
+        grouped: dict[str, list[dict[str, str]]] = {
+            "Role": [], "Skill": [], "Page": [], "Catalogue": [],
+        }
+        # Every match, not one page: a weaker site page must still beat the catalogue.
+        for item in results.paginator.object_list:
             if item.is_external or not item.url:
                 continue
-            kind = item.result_type if item.result_type in ("Role", "Skill") else "Page"
-            grouped[kind].append({"text": item.title, "link": item.url, "type": kind})
-        suggestions = (grouped["Role"] + grouped["Skill"] + grouped["Page"])[:SUGGESTION_LIMIT]
+            if item.is_catalogue:
+                group, kind = "Catalogue", item.result_type or "Page"
+            elif item.result_type in ("Role", "Skill"):
+                group = kind = item.result_type
+            else:
+                group = kind = "Page"
+            grouped[group].append({"text": item.title, "link": item.url, "type": kind})
+        suggestions = [item for group in grouped.values() for item in group][:SUGGESTION_LIMIT]
         response = JsonResponse(suggestions, safe=False)
     # What a signed-in editor sees can differ from what the public sees, and
     # content changes as editors work, so nothing on the path keeps a copy.
@@ -245,9 +270,7 @@ def framework_csv_view(request, name):
     """One of the framework's published CSVs, built from the content asked for.
 
     Generated at request time rather than kept as a file, so the download is
-    the published content by construction -- the live service's copies were
-    regenerated on a schedule and drifted, and its links now answer
-    AccessDenied. The label and columns match the published downloads.
+    the published content by construction and cannot drift from it.
     """
     if not settings.FEATURE_FLAGS.get("SKILLS"):
         raise Http404

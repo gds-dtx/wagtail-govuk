@@ -1,4 +1,5 @@
 from datetime import timedelta
+from html import escape
 from uuid import uuid4
 
 import jwt
@@ -7,17 +8,24 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
 )
+from django import forms
 from django.core.exceptions import ValidationError
-from django.core.validators import MaxValueValidator, MinValueValidator
+from django.core.validators import (
+    MaxLengthValidator,
+    MaxValueValidator,
+    MinValueValidator,
+)
 from django.db import models, transaction
 from django.db.models import Q
 from django.utils import timezone
 from modelcluster.fields import ParentalKey
 from modelcluster.models import ClusterableModel
-from wagtail.admin.panels import FieldPanel, InlinePanel, MultiFieldPanel
+from wagtail.admin.panels import FieldPanel, HelpPanel, InlinePanel, MultiFieldPanel
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
 from wagtail.fields import RichTextField, StreamField
 from wagtail.models import Orderable
+
+from govuk.features import ai_enabled
 
 from .blocks import LinkBlock
 from .constants import (
@@ -41,7 +49,7 @@ from .signing import (
 )
 
 
-@register_setting(icon="warning", order=3)
+@register_setting(icon="warning", order=4)
 class PhaseBannerSettings(BaseSiteSetting):
     enabled = models.BooleanField(
         default=False,
@@ -87,7 +95,7 @@ class PhaseBannerSettings(BaseSiteSetting):
         verbose_name = "Phase banner"
 
 
-@register_setting(icon="link", order=2)
+@register_setting(icon="link", order=3)
 class FooterSettings(BaseSiteSetting):
     footer_links = StreamField(
         [
@@ -149,40 +157,6 @@ class CustomiseSettings(BaseSiteSetting):
             "Where the sign in and sign out links appear. Choose Hidden for "
             "sites where visitors never sign in -- the sign in link is hidden, "
             "but a signed-in user can still sign out."
-        ),
-    )
-    search_location = models.CharField(
-        max_length=20,
-        choices=[
-            ("header", "Header bar"),
-            ("navigation", "Service navigation"),
-            ("hidden", "Hidden"),
-        ],
-        default="header",
-        help_text="Where the search box appears.",
-    )
-    show_site_name_in_search_box = models.BooleanField(
-        default=False,
-        help_text="Include the site name in the header search label and placeholder.",
-    )
-    search_placeholder = models.CharField(
-        max_length=100,
-        blank=True,
-        default="",
-        help_text=(
-            "Wording shown in the header search box, for example "
-            "Search for roles or skills. Defaults to Search."
-        ),
-    )
-    enable_search_results_page = models.BooleanField(
-        default=True,
-        verbose_name="Allow free-text search results",
-        help_text=(
-            "Let visitors search for any phrase and see a results page. Turn "
-            "this off to keep only the suggestions that jump straight to a "
-            "live page or snippet as the reader types -- pressing Enter or the "
-            "search button on its own then does nothing, and the results page "
-            "is not served."
         ),
     )
     content_max_width = models.PositiveIntegerField(
@@ -253,15 +227,6 @@ class CustomiseSettings(BaseSiteSetting):
         FieldPanel("sign_in_location"),
         MultiFieldPanel(
             [
-                FieldPanel("search_location"),
-                FieldPanel("enable_search_results_page"),
-                FieldPanel("show_site_name_in_search_box"),
-                FieldPanel("search_placeholder"),
-            ],
-            heading="Search box",
-        ),
-        MultiFieldPanel(
-            [
                 FieldPanel("show_page_feedback_prompt"),
                 # No heading overrides: the fields' own labels ("Feedback
                 # follow-up sentence" and so on) are what the revision-compare
@@ -317,7 +282,190 @@ class CustomiseSettings(BaseSiteSetting):
         return bool(self.render_custom_css())
 
 
-@register_setting(icon="error", order=4)
+def _built_in_instructions(kind: str, label: str) -> HelpPanel:
+    """AI search's built-in instructions, shown above the field that replaces them."""
+    from govuk.ai_search import prompts
+
+    return HelpPanel(
+        heading=f"Built-in {label} instructions",
+        content=(
+            "<p>Used while the field below is blank. "
+            "<code>{site_name}</code> is replaced with the site's name.</p>"
+            f'<pre style="white-space: pre-wrap">{escape(prompts.DEFAULTS[kind])}</pre>'
+        ),
+    )
+
+
+def _instructions_field(label: str) -> models.TextField:
+    from govuk.ai_search.prompts import MAX_INSTRUCTIONS_CHARS
+
+    return models.TextField(
+        blank=True,
+        verbose_name=f"{label} instructions",
+        validators=[MaxLengthValidator(MAX_INSTRUCTIONS_CHARS)],
+        help_text=(
+            "Blank uses the built-in instructions. Write {site_name} for the "
+            "site's name. Claude is always told to ignore instructions in the "
+            "question or the pages."
+        ),
+    )
+
+
+DEFAULT_AI_SEARCH_LEAD_TEXT = "What would you like to find out about?"
+
+
+def _search_panels() -> list:
+    """Normal search's fields, plus AI search's when the AI features are on."""
+    normal = [
+        FieldPanel("search_location"),
+        FieldPanel("search_placeholder"),
+        FieldPanel("enable_search_results_page"),
+    ]
+    if not ai_enabled():
+        return normal
+    return [
+        FieldPanel("search_type"),
+        *normal,
+        MultiFieldPanel(
+            [
+                FieldPanel("ai_search_on_home_page"),
+                FieldPanel("ai_search_lead_text"),
+            ],
+            heading="AI search",
+        ),
+        MultiFieldPanel(
+            [
+                HelpPanel(
+                    content=(
+                        "<p>Both need Claude set up (AI_CLAUDE) and JavaScript "
+                        "in the reader's browser. If Claude is unavailable, the "
+                        "page shows the matches without it.</p>"
+                    )
+                ),
+                FieldPanel("use_ai_ranking"),
+                FieldPanel("show_ai_summary"),
+            ],
+            heading="AI search: Claude",
+        ),
+        MultiFieldPanel(
+            [FieldPanel("ai_search_requires_sign_in")],
+            heading="AI search: sign-in",
+        ),
+        MultiFieldPanel(
+            [
+                _built_in_instructions("rerank", "re-ranking"),
+                FieldPanel("rerank_instructions", widget=forms.Textarea(attrs={"rows": 20})),
+            ],
+            heading="Re-ranking instructions",
+            classname="collapsed",
+        ),
+        MultiFieldPanel(
+            [
+                _built_in_instructions("summary", "summary"),
+                FieldPanel("summary_instructions", widget=forms.Textarea(attrs={"rows": 20})),
+            ],
+            heading="Summary instructions",
+            classname="collapsed",
+        ),
+    ]
+
+
+
+
+@register_setting(icon="search", order=2)
+class SearchSettings(BaseSiteSetting):
+    """Settings > Search: normal search, or AI search with ``FEATURE_AI``.
+
+    Without the flag AI search's fields are not in the form, so a save keeps them.
+    """
+
+    class SearchType(models.TextChoices):
+        NORMAL = "normal", "Normal search"
+        AI = "ai", "AI search"
+
+    search_type = models.CharField(
+        max_length=20,
+        choices=SearchType.choices,
+        default=SearchType.NORMAL,
+        help_text="AI search replaces the search box with a button that opens a box to ask a question in.",
+    )
+    search_location = models.CharField(
+        max_length=20,
+        choices=[
+            ("header", "Header bar"),
+            ("navigation", "Service navigation"),
+            ("hidden", "Hidden"),
+        ],
+        default="header",
+        help_text="Where the search box, or AI search's button, appears.",
+    )
+    search_placeholder = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+        help_text=(
+            "Placeholder in the search box, for example Search for roles or "
+            "skills. Defaults to Search."
+        ),
+    )
+    enable_search_results_page = models.BooleanField(
+        default=True,
+        verbose_name="Allow free-text search results (Normal search only)",
+        help_text=(
+            "Let visitors search for any phrase and see a results page. Turn "
+            "this off to keep only the suggestions that jump straight to a "
+            "live page or snippet as the reader types -- pressing Enter or the "
+            "search button on its own then does nothing, and the results page "
+            "is not served."
+        ),
+    )
+    ai_search_on_home_page = models.BooleanField(
+        default=False,
+        verbose_name="Always show AI search on the home page (AI search only)",
+        help_text="The search box is always open on the home page, instead of the button.",
+    )
+    ai_search_lead_text = models.CharField(
+        max_length=120,
+        blank=True,
+        default=DEFAULT_AI_SEARCH_LEAD_TEXT,
+        verbose_name="AI search lead text",
+        help_text="Shown above AI search's box and used as its label. Blank for the default.",
+    )
+    use_ai_ranking = models.BooleanField(
+        default=False,
+        verbose_name="Re-rank matches with AI",
+        help_text="Claude picks and orders the matches that answer the question.",
+    )
+    show_ai_summary = models.BooleanField(
+        default=False,
+        verbose_name="Show an AI summary",
+        help_text="Claude writes a short summary of the matches, marked as written by AI.",
+    )
+    ai_search_requires_sign_in = models.BooleanField(
+        default=True,
+        verbose_name="Require sign-in for AI search",
+        help_text=(
+            "Signed-out readers get normal search results. Turned off, anyone "
+            "who can load the search page can use Claude."
+        ),
+    )
+    rerank_instructions = _instructions_field("Re-ranking")
+    summary_instructions = _instructions_field("Summary")
+
+    panels = _search_panels()
+
+    class Meta:
+        verbose_name = "Search"
+        verbose_name_plural = "Search"
+
+    @property
+    def ai_search_on(self) -> bool:
+        """Chosen, and the AI features on."""
+        return self.search_type == self.SearchType.AI and ai_enabled()
+
+
+
+@register_setting(icon="error", order=5)
 class ErrorPagesSettings(BaseSiteSetting):
     not_found_heading = models.CharField(
         max_length=255,
@@ -447,7 +595,7 @@ class ErrorPagesSettings(BaseSiteSetting):
         verbose_name_plural = "Error pages"
 
 
-@register_setting(icon="cog", order=5)
+@register_setting(icon="cog", order=6)
 class MaintenanceModeSettings(BaseSiteSetting):
     """The admin switch that closes the service behind the 503 page.
 

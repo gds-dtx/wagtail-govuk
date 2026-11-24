@@ -33,6 +33,17 @@ dependencies = [
   # Cleans a Raw HTML block to an allowlist of tags and attributes, on top of
   # the content security policy (see govuk/models/raw_html.py).
   "nh3==0.3.7",
+  # Content catalogue import: Markdown to page blocks (output cleaned by nh3).
+  "markdown-it-py==4.2.0",
+  # Content index embeddings in PostgreSQL's vector type. No numpy needed from 0.5.
+  "pgvector==0.5.1",
+  # MCP server and the ASGI service it runs in. Pinned exactly: SDK 2.x is new
+  # and parts are marked provisional.
+  "mcp==2.3.0",
+  "uvicorn==0.54.0",
+  # AI search: Claude on Bedrock; [bedrock] brings boto3 for SigV4 signing.
+  "anthropic[bedrock]==2.3.0",
+  "PyYAML==6.0.3",
 ]
 
 [dependency-groups]
@@ -49,9 +60,8 @@ extend-exclude = ["govuk/migrations"]
 
 [tool.ruff.lint]
 # Pyflakes is the rule set that earns its place here: it is what finds an
-# import or a variable nothing reads, and an unused import survived nine
-# review passes on this branch because nothing was looking. E4/E7/E9 are
-# the errors rather than the style opinions, and I keeps imports ordered.
+# import or a variable nothing reads. E4/E7/E9 are the errors rather than the
+# style opinions, and I keeps imports ordered.
 #
 # Deliberately not enabled: RUF012 wants ClassVar on every mutable class
 # attribute, which is 217 warnings about `panels = [...]` on Wagtail models

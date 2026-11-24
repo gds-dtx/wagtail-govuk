@@ -4,11 +4,15 @@ from django.conf import settings
 from django.http import Http404
 from wagtail.models import Page, Site
 
+from govuk.ai_search.search_area import search_area
+from govuk.features import ai_enabled, catalogue_enabled
 from govuk.models import (
     CustomiseSettings,
     ErrorPagesSettings,
     FooterSettings,
     PhaseBannerSettings,
+    SearchSettings,
+    without_catalogue_pages,
     without_framework_pages,
 )
 
@@ -30,6 +34,8 @@ def navigation_and_breadcrumbs(request):
 
     template_context = {
         "framework_enabled": framework_enabled,
+        "catalogue_enabled": catalogue_enabled(),
+        "ai_enabled": ai_enabled(),
         "app_debug": settings.DEBUG,
         "app_version": getattr(settings, "VERSION", ""),
         "additional_css": additional_css,
@@ -49,6 +55,8 @@ def navigation_and_breadcrumbs(request):
             "footer_settings": None,
             "customise_settings": None,
             "error_pages_settings": None,
+            "search_settings": None,
+            "ai_search": None,
         }
 
     site_root = site.root_page.specific
@@ -60,7 +68,9 @@ def navigation_and_breadcrumbs(request):
 
     service_navigation_items = []
     menu_pages = (
-        without_framework_pages(site_root.get_children().live().in_menu())
+        without_catalogue_pages(
+            without_framework_pages(site_root.get_children().live().in_menu())
+        )
         .specific()
         .order_by("path")
     )
@@ -98,6 +108,7 @@ def navigation_and_breadcrumbs(request):
     show_breadcrumbs = getattr(current_page_specific, "show_breadcrumbs", True)
 
     customise_settings = CustomiseSettings.for_site(site)
+    search_settings = SearchSettings.for_site(site)
 
     return {
         **template_context,
@@ -108,4 +119,11 @@ def navigation_and_breadcrumbs(request):
         "footer_settings": FooterSettings.for_site(site),
         "customise_settings": customise_settings,
         "error_pages_settings": ErrorPagesSettings.for_site(site),
+        "search_settings": search_settings,
+        # None with normal search; /search/ passes its own.
+        "ai_search": search_area(
+            search_settings,
+            is_home=bool(current_page and current_page.pk == site_root.pk),
+            user=getattr(request, "user", None),
+        ),
     }

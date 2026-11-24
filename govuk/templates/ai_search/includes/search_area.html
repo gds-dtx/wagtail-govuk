@@ -1,0 +1,13 @@
+{% comment %}AI search's area; hidden until ai-search.js opens it, open on /search/.{% endcomment %}
+<div id="{{ area.panel_id }}"
+     class="app-ai-search-area{% if inverse %} app-ai-search-area--inverse{% endif %}{% if area.in_main %} app-ai-search-area--page{% endif %}"
+     data-ai-search-area{% if not area.open %}
+     hidden{% endif %}>
+    {% if inverse %}
+        {% include "ai_search/includes/search_form.html" with inverse=True as_heading=False %}
+    {% else %}
+        <div class="govuk-width-container">
+            {% include "ai_search/includes/search_form.html" with inverse=False as_heading=area.in_main %}
+        </div>
+    {% endif %}
+</div>

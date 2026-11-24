@@ -1,6 +1,7 @@
 {% load wagtailcore_tags %}
 {% wagtail_site as current_site %}
 {% load static %}
+{% load govuk_filters %}
 <!DOCTYPE html>
 <html lang="en" class="govuk-template app-html-class">
     <head>
@@ -24,6 +25,8 @@
         <meta name="theme-color" content="#0b0c0c">
         <link rel="stylesheet" href="{% static 'govuk-frontend-6.0.0.min.css' %}" />
         <link rel="stylesheet" href="{% static 'main.css' %}" />
+        {% if catalogue_enabled or ai_enabled %}<link rel="stylesheet" href="{% static 'catalogue.css' %}" />{% endif %}
+        {% if ai_enabled %}<link rel="stylesheet" href="{% static 'ai-search.css' %}" />{% endif %}
         {% if additional_css %}
             {% for css_path in additional_css %}<link rel="stylesheet" href="{{ css_path }}" />{% endfor %}
         {% endif %}
@@ -52,6 +55,8 @@
         {% block extra_head %}{% endblock %}
     </head>
     <body class="govuk-template__body app-body-class"{% if framework_enabled %} data-rich-text-type-scale{% endif %}>
+        {# The page's own hero, or "hero_page" where a view borrows a page's (AI search's /search/). #}
+        {% hero_source as hero %}
         <script nonce="{{ csp_nonce }}">
     document.body.className += ' js-enabled' + ('noModule' in HTMLScriptElement.prototype ? ' govuk-frontend-supported' : '');
         </script>
@@ -118,8 +123,12 @@
                             {% endif %}
                         </a>
                     </div>
-                    {% if customise_settings.search_location == "header" %}
-                        {% include "includes/site_search.html" %}
+                    {% if search_settings.search_location == "header" %}
+                        {% if ai_search %}
+                            {% if ai_search.toggle %}{% include "ai_search/includes/toggle.html" with area=ai_search %}{% endif %}
+                        {% else %}
+                            {% include "includes/site_search.html" %}
+                        {% endif %}
                     {% endif %}
                     {% if customise_settings.sign_in_location == "header" %}
                         <div class="app-header__sign-in">
@@ -128,14 +137,14 @@
                                    href="{% url 'account_logout' %}">Sign out</a>
                             {% else %}
                                 <a class="govuk-service-navigation__link"
-                                   href="{% url 'account_login' %}">Sign in</a>
+                                   href="{% sign_in_url %}">Sign in</a>
                             {% endif %}
                         </div>
                     {% endif %}
                 </div>
             </div>
             <section aria-label="Menu"
-                     class="govuk-service-navigation {% if self.hero_is_combined %}govuk-service-navigation--inverse{% endif %}"
+                     class="govuk-service-navigation {% if hero.hero_is_combined %}govuk-service-navigation--inverse{% endif %}"
                      data-module="govuk-service-navigation">
                 <div class="govuk-width-container">
                     <div class="govuk-service-navigation__container">
@@ -184,7 +193,7 @@
                                     {% elif customise_settings.sign_in_location == "navigation" %}
                                         <li class="govuk-service-navigation__item app-service-navigation__item--featured">
                                             <a class="govuk-service-navigation__link"
-                                               href="{% url 'account_login' %}">Sign in</a>
+                                               href="{% sign_in_url %}">Sign in</a>
                                         </li>
                                     {% endif %}
                                 </ul>
@@ -195,13 +204,21 @@
                             navigation bar whenever it is placed there, even on a
                             site whose menu would otherwise be empty.
                         {% endcomment %}
-                        {% if customise_settings.search_location == "navigation" %}
-                            {% include "includes/site_search.html" %}
+                        {% if search_settings.search_location == "navigation" %}
+                            {% if ai_search %}
+                                {% if ai_search.toggle %}{% include "ai_search/includes/toggle.html" with area=ai_search %}{% endif %}
+                            {% else %}
+                                {% include "includes/site_search.html" %}
+                            {% endif %}
                         {% endif %}
                     </div>
                 </div>
             </section>
-            {% if not self.hero_is_combined and phase_banner_settings and phase_banner_settings.enabled %}
+            {# With a combined hero the AI search area is at the foot of the band instead. #}
+            {% if ai_search.panel and not ai_search.in_main and not hero.hero_is_combined %}
+                {% include "ai_search/includes/search_area.html" with area=ai_search inverse=False %}
+            {% endif %}
+            {% if not hero.hero_is_combined and phase_banner_settings and phase_banner_settings.enabled %}
                 {% include "includes/phase_banner.html" with phase_banner_settings=phase_banner_settings %}
             {% endif %}
         </header>
@@ -210,46 +227,49 @@
             than inside the header, which is where the Design System puts it and
             which keeps it out of the banner landmark.
         {% endcomment %}
-        {% if breadcrumbs and show_breadcrumbs and not self.hero_is_combined %}
+        {% if breadcrumbs and show_breadcrumbs and not hero.hero_is_combined %}
             <div class="govuk-width-container">
                 {% include "includes/breadcrumbs.html" %}
             </div>
         {% endif %}
-        <main class="govuk-main-wrapper{% if self.hero_is_combined and not role_navigation %} govuk-!-padding-0{% elif self.hero_is_styled and not role_navigation %} govuk-!-padding-top-0{% endif %}"
+        <main class="govuk-main-wrapper{% if hero.hero_is_combined and not role_navigation %} govuk-!-padding-0{% elif hero.hero_is_styled and not role_navigation %} govuk-!-padding-top-0{% endif %}"
               id="main-content"
               role="main">
             {% block page_hero %}
-                {% if self.hero_is_large_text %}
+                {% if hero.hero_is_large_text %}
                     {% include "includes/hero_large_text.html" %}
-                {% elif self.hero_style == 'hidden' %}
-                    {% if self.hero_title or self.title %}
-                        <h1 class="govuk-visually-hidden">{{ self.hero_title|default:self.title }}</h1>
+                {% elif hero.hero_style == 'hidden' %}
+                    {% if hero.hero_title or hero.title %}
+                        <h1 class="govuk-visually-hidden">{{ hero.hero_title|default:hero.title }}</h1>
                     {% endif %}
-                {% elif self.hero_title or self.title or self.search_description or self.hero_intro %}
-                    {% if self.hero_is_combined and breadcrumbs and show_breadcrumbs %}
+                {% elif hero.hero_title or hero.title or hero.search_description or hero.hero_intro %}
+                    {% if hero.hero_is_combined and breadcrumbs and show_breadcrumbs %}
                         <div class="masthead-breadcrumbs">
                             <div class="hero">
                                 {% include "includes/breadcrumbs.html" with inverse=True %}
                             </div>
                         </div>
                     {% endif %}
-                    <div class="{% if self.hero_uses_masthead %}masthead {% if self.hero_is_combined %}masthead--combined{% endif %}{% endif %}">
+                    <div class="{% if hero.hero_uses_masthead %}masthead {% if hero.hero_is_combined %}masthead--combined{% endif %}{% endif %}">
                         <div class="hero">
                             <div class="hero__content">
-                                {% if self.hero_title or self.title %}
-                                    <h1 class="hero__title">{{ self.hero_title | default:self.title }}</h1>
+                                {% if hero.hero_title or hero.title %}
+                                    <h1 class="hero__title">{{ hero.hero_title | default:hero.title }}</h1>
                                 {% endif %}
-                                {% if self.hero_intro %}
-                                    <div class="hero__description rich-text-content govuk-body-l">{{ self.hero_intro|richtext }}</div>
-                                {% elif self.search_description %}
-                                    <p class="hero__description rich-text-content govuk-body-l">{{ self.search_description }}</p>
+                                {% if hero.hero_intro %}
+                                    <div class="hero__description rich-text-content govuk-body-l">{{ hero.hero_intro|richtext }}</div>
+                                {% elif hero.search_description %}
+                                    <p class="hero__description rich-text-content govuk-body-l">{{ hero.search_description }}</p>
+                                {% endif %}
+                                {% if ai_search.panel and hero.hero_is_combined %}
+                                    {% include "ai_search/includes/search_area.html" with area=ai_search inverse=True %}
                                 {% endif %}
                             </div>
                         </div>
                     </div>
                 {% endif %}
             {% endblock %}
-            {% if self.hero_is_combined and phase_banner_settings and phase_banner_settings.enabled %}
+            {% if hero.hero_is_combined and phase_banner_settings and phase_banner_settings.enabled %}
                 {% include "includes/phase_banner.html" with phase_banner_settings=phase_banner_settings %}
             {% endif %}
             {% if messages %}
@@ -392,6 +412,7 @@
         </script>
         <script src="{% static 'accessible-autocomplete-3.0.1.min.js' %}"></script>
         <script type="module" src="{% static 'main.js' %}"></script>
+        {% if ai_enabled %}<script type="module" src="{% static 'ai-search.js' %}"></script>{% endif %}
         {% block extra_body %}{% endblock %}
     </body>
 </html>

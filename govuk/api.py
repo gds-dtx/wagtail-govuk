@@ -21,6 +21,7 @@ from govuk.models import (
     ContentDiscoverySource,
     ExternalContentItem,
     GovukTag,
+    without_catalogue_pages,
     without_framework_pages,
 )
 from govuk.utils import normalised_text, row_id_from_text
@@ -191,8 +192,10 @@ class WagtailPages(AuthenticatedAPIViewSetMixin, PagesAPIViewSet):
         # AllowAny above, so this listing is public. Framework pages that
         # reached a non-framework site through the import 404 when fetched;
         # naming them here would publish a list of titles that all 404.
-        return without_framework_pages(
-            super().get_queryset().prefetch_related("view_restrictions__groups")
+        return without_catalogue_pages(
+            without_framework_pages(
+                super().get_queryset().prefetch_related("view_restrictions__groups")
+            )
         )
 
 

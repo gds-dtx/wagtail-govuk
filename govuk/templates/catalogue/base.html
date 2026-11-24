@@ -1,0 +1,11 @@
+{% extends "wagtailcore/page.html" %}
+{% comment %}
+    The heading is "page_heading", not the hero: on "all", "self" is the main page.
+{% endcomment %}
+{% block title %}{{ page_heading|default:self.title }}{% endblock %}
+{% block page_hero %}{% block catalogue_masthead %}{% endblock %}{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-margin-bottom-6 app-catalogue">
+        {% block catalogue_content %}{% endblock %}
+    </div>
+{% endblock %}

@@ -21,6 +21,7 @@ from govuk.models import (
     GovukChangelogEntry,
     GovukRole,
     GovukSkill,
+    SearchSettings,
 )
 
 SITE_NAME = "Government Digital and Data Profession Capability Framework"
@@ -71,10 +72,7 @@ class Command(BaseCommand):
 
         The import adds and updates and never deletes, which is what makes it
         safe to re-run. It also means a rename in the source arrives as an
-        addition: importing the exports published on 28 August 2026 over the
-        migrated content left 54 roles beside the source's 53, because
-        'Data ethicist' had become 'Data and artificial intelligence
-        ethicist' and both then had a live page.
+        addition, and the old role stays live beside the new one.
 
         Nothing is deleted here -- unpublishing a role page is a content
         decision, and a delete that cascades through the page tree is the one
@@ -392,14 +390,15 @@ class Command(BaseCommand):
         customise = CustomiseSettings.for_site(site)
         customise.header_logo = "govuk"
         customise.service_name_location = "navigation"
-        customise.search_location = "navigation"
+        customise.sign_in_location = "hidden"
+        # Role and skill pages are long; the setting is off by default for other sites.
+        customise.show_back_to_top = True
+        customise.save()
+        search = SearchSettings.for_site(site)
+        search.search_location = "navigation"
         # The framework's search box jumps straight to a role, skill or page as
         # the reader types; it does not offer a free-text results page, so Enter
         # on its own does nothing and /search/ is not served.
-        customise.enable_search_results_page = False
-        customise.sign_in_location = "hidden"
-        # The live service offers a "Back to top" link on its long role and
-        # skill pages; the setting is off by default for other sites.
-        customise.show_back_to_top = True
-        customise.save()
+        search.enable_search_results_page = False
+        search.save()
         self.stdout.write("Site settings: configured for the framework")

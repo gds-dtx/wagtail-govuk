@@ -1,0 +1,18 @@
+{% comment %}Drawn in /search/ without JavaScript; otherwise returned by the service's matches endpoint.{% endcomment %}
+{% if matches_error %}
+    <h3 class="govuk-heading-m">Sorry, there is a problem</h3>
+    <p class="govuk-body">{{ matches_error }}</p>
+{% elif cards %}
+    <h3 class="govuk-heading-m">Close matches</h3>
+    <p class="govuk-body">The most relevant content to what you asked. Check each one to be sure it applies to what you are doing.</p>
+    <ul class="app-catalogue-cards">
+        {% for card in cards %}{% include "catalogue/includes/card.html" with heading_level=3 show_type=True %}{% endfor %}
+    </ul>
+{% else %}
+    <h3 class="govuk-heading-m">Nothing close to your question</h3>
+    <p class="govuk-body">We could not find anything on this site close to what you asked. You could:</p>
+    <ul class="govuk-list govuk-list--bullet">
+        <li>use other words, or say what you are trying to do</li>
+        {% if browse_url %}<li><a class="govuk-link" href="{{ browse_url }}">browse everything in the catalogue</a></li>{% endif %}
+    </ul>
+{% endif %}

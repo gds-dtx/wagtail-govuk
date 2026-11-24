@@ -422,10 +422,8 @@ def pages_import_view(request):
         ),
     )
     if result.notes:
-        # Things the import did beyond adding and updating what was in the
-        # file: replacing a placeholder home page, seeding the live service's
-        # redirects. Both change the site in ways the counts above do not
-        # show, and both were previously recorded and then never shown.
+        # What the import did beyond adding and updating what was in the file,
+        # such as replacing a placeholder home page: the counts don't show it.
         messages.info(request, " ".join(result.notes))
     if result.errors:
         messages.warning(

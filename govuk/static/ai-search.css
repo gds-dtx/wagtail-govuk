@@ -1,0 +1,373 @@
+/* AI search (FEATURE_AI); base.html loads it with catalogue.css for the cards. */
+
+.app-ai-search-summary {
+    margin-bottom: 30px;
+    padding: 15px 20px 5px;
+    border-left: 5px solid #1d70b8;
+    background-color: #f3f2f1;
+}
+
+.app-ai-search-summary__label {
+    color: #505a5f;
+}
+
+/* The orb is isolated so its circles multiply only with each other, not the grey box. */
+.app-ai-search-thinking {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* "display: flex" would otherwise override the hidden attribute. */
+.app-ai-search-thinking[hidden] {
+    display: none;
+}
+
+.app-ai-search-thinking__orb {
+    --app-ai-search-thinking-first-colour: #ba4aff;
+    --app-ai-search-thinking-second-colour: #11e0f1;
+    position: relative;
+    flex: 0 0 auto;
+    width: 51px;
+    height: 32px;
+    isolation: isolate;
+}
+
+.app-ai-search-thinking__circle {
+    position: absolute;
+    top: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    mix-blend-mode: multiply;
+    /* Its own layer, so it scales without a repaint each frame. */
+    will-change: transform;
+    backface-visibility: hidden;
+    transform: translateZ(0) scale(1);
+    animation: app-ai-search-thinking-breathe 2s ease-in-out infinite;
+}
+
+.app-ai-search-thinking__circle--first {
+    left: 0;
+    background-color: var(--app-ai-search-thinking-first-colour);
+}
+
+.app-ai-search-thinking__circle--second {
+    left: 19px;
+    background-color: var(--app-ai-search-thinking-second-colour);
+    animation-delay: -1s;
+}
+
+@keyframes app-ai-search-thinking-breathe {
+    0%,
+    100% {
+        transform: translateZ(0) scale(1);
+    }
+    50% {
+        transform: translateZ(0) scale(0.55);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-ai-search-thinking__circle {
+        animation: none;
+        transform: translateZ(0) scale(0.8);
+    }
+}
+
+/* Variables so Settings > Customise > Extra CSS can restyle the box. */
+.app-ai-search-box {
+    --app-ai-search-box-height: 44px;
+    --app-ai-search-box-button-colour: var(--govuk-brand-colour, #1d70b8);
+    --app-ai-search-box-button-text-colour: #ffffff;
+    margin-bottom: 30px;
+}
+
+.app-ai-search-box__bar {
+    display: flex;
+    align-items: stretch;
+}
+
+.app-ai-search-box__input {
+    flex: 1 1 auto;
+    height: var(--app-ai-search-box-height);
+    margin: 0;
+    padding: 0 15px;
+}
+
+.app-ai-search-box__button {
+    flex: 0 0 var(--app-ai-search-box-height);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--app-ai-search-box-height);
+    height: var(--app-ai-search-box-height);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background-color: var(--app-ai-search-box-button-colour);
+    color: var(--app-ai-search-box-button-text-colour);
+    cursor: pointer;
+}
+
+.app-ai-search-box__button:hover {
+    filter: brightness(0.85);
+}
+
+/* Raise the focused one so its neighbour never covers its outline. */
+.app-ai-search-box__input:focus,
+.app-ai-search-box__button:focus {
+    position: relative;
+    z-index: 1;
+    outline: 3px solid #ffdd00;
+    outline-offset: 0;
+}
+
+.app-ai-search-box__button:focus {
+    box-shadow: inset 0 0 0 4px #0b0c0c;
+    filter: none;
+}
+
+.app-ai-search-box__icon {
+    display: block;
+    width: 27px;
+    height: 27px;
+}
+
+@media (min-width: 40.0625em) {
+    .app-ai-search-box {
+        --app-ai-search-box-height: 50px;
+    }
+}
+
+/* On a combined hero's brand-colour band, as GOV.UK's home page. To be redesigned. */
+.app-ai-search-box--inverse {
+    --app-ai-search-box-button-colour: #d2e2f1;
+    --app-ai-search-box-button-text-colour: var(--govuk-brand-colour, #1d70b8);
+    margin-top: 20px;
+    margin-bottom: 0px;
+}
+
+.app-ai-search-box--inverse .app-ai-search-box__input {
+    border: 0;
+}
+
+/* No border to thicken, so the whole 4px black line is the inner shadow. */
+.app-ai-search-box--inverse .app-ai-search-box__input:focus {
+    box-shadow: inset 0 0 0 4px #0b0c0c;
+}
+
+.app-ai-search-box--inverse .app-ai-search-box__button:hover {
+    background-color: #f4f8fb;
+    filter: none;
+}
+
+.app-ai-search-box__error {
+    margin-top: 10px;
+    margin-bottom: 0;
+}
+
+.app-ai-search-box--inverse .app-ai-search-box__error {
+    color: #ffffff;
+}
+
+/* No margin: the 44px tap area already spaces the box 12px below the search bar. */
+.app-ai-search-box__choice {
+    margin-top: 0;
+}
+
+/* A 20px box with govuk-body-s text, smaller than the Design System's small checkbox. */
+.app-ai-search-box__choice .govuk-checkboxes__input {
+    margin-left: -14px;
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__label {
+    font-size: 1rem;
+    line-height: 1.25;
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__label:before {
+    top: 12px;
+    width: 20px;
+    height: 20px;
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__label:after {
+    top: 18px;
+    left: 5px;
+    width: 10px;
+    height: 5px;
+    border-width: 0 0 3px 3px;
+}
+
+/* Only the box fades when disabled: the label holds a working sign-in link. */
+.app-ai-search-box__choice .govuk-checkboxes__input:disabled + .govuk-checkboxes__label {
+    opacity: 1;
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__input:disabled + .govuk-checkboxes__label:before {
+    opacity: 0.5;
+}
+
+/* GOV.UK's 10px hover ring is sized for its 24px box. */
+.app-ai-search-box__choice .govuk-checkboxes__item:hover .govuk-checkboxes__input:not(:disabled) + .govuk-checkboxes__label:before {
+    box-shadow: 0 0 0 4px var(--govuk-hover-colour, #cecece);
+}
+
+.app-ai-search-box__choice .govuk-checkboxes__item:hover .govuk-checkboxes__input:focus + .govuk-checkboxes__label:before {
+    box-shadow: 0 0 0 3px var(--govuk-focus-colour, #fd0), 0 0 0 7px var(--govuk-hover-colour, #cecece);
+}
+
+/* As GOV.UK: no hover ring on touch screens, where hover sticks after a tap. */
+@media (hover: none), (pointer: coarse) {
+    .app-ai-search-box__choice .govuk-checkboxes__item:hover .govuk-checkboxes__input:not(:disabled) + .govuk-checkboxes__label:before {
+        box-shadow: none;
+    }
+
+    .app-ai-search-box__choice .govuk-checkboxes__item:hover .govuk-checkboxes__input:focus + .govuk-checkboxes__label:before {
+        box-shadow: 0 0 0 3px var(--govuk-focus-colour, #fd0);
+    }
+}
+
+/* The box and tick are drawn in the label's colour. */
+.app-ai-search-box--inverse .app-ai-search-box__choice .govuk-checkboxes__label {
+    color: #ffffff;
+}
+
+.app-ai-search-box__lead {
+    margin-bottom: 15px;
+}
+
+.app-ai-search-box--inverse .app-ai-search-box__lead {
+    color: #ffffff;
+}
+
+.app-ai-search-area {
+    --app-ai-search-area-background: #f3f2f1;
+    padding: 25px 0 30px;
+    border-bottom: 1px solid #b1b4b6;
+    background-color: var(--app-ai-search-area-background);
+}
+
+.app-ai-search-area[hidden] {
+    display: none;
+}
+
+.app-ai-search-area .app-ai-search-box {
+    margin-bottom: 0;
+}
+
+.app-ai-search-area--inverse,
+.app-ai-search-area--page {
+    padding: 0;
+    border: 0;
+    background-color: transparent;
+}
+
+.app-ai-search-area--page {
+    padding-bottom: 10px;
+}
+
+@media (min-width: 40.0625em) {
+    .app-ai-search-area .govuk-width-container > .app-ai-search-box {
+        width: 66.6%;
+    }
+}
+
+.app-ai-search-toggle-group {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    color: #ffffff;
+}
+
+.govuk-header__container:has(.app-ai-search-toggle-group) {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.app-ai-search-toggle-group + .app-header__sign-in {
+    margin-left: 0;
+}
+
+.govuk-service-navigation .app-ai-search-toggle-group {
+    color: var(--govuk-link-colour, #1d70b8);
+}
+
+/* The navigation bar aligns its items to the top. */
+@media (min-width: 40.0625em) {
+    .govuk-service-navigation .app-ai-search-toggle-group {
+        align-self: center;
+    }
+}
+
+.govuk-service-navigation--inverse .app-ai-search-toggle-group {
+    color: #ffffff;
+}
+
+.app-ai-search-toggle,
+.app-ai-search-toggle:link,
+.app-ai-search-toggle:visited {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+}
+
+.app-ai-search-toggle[hidden] {
+    display: none;
+}
+
+.app-ai-search-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    box-shadow: inset 0 -3px currentColor;
+}
+
+.govuk-service-navigation:not(.govuk-service-navigation--inverse) .app-ai-search-toggle:hover {
+    background-color: rgba(29, 112, 184, 0.1);
+}
+
+/* Open: colours swapped, as GOV.UK's search toggle. Focus, below, still wins. */
+.app-ai-search-toggle[aria-expanded="true"],
+.app-ai-search-toggle[aria-expanded="true"]:hover {
+    background-color: #ffffff;
+    color: var(--govuk-brand-colour, #1d70b8);
+}
+
+.govuk-service-navigation:not(.govuk-service-navigation--inverse) .app-ai-search-toggle[aria-expanded="true"],
+.govuk-service-navigation:not(.govuk-service-navigation--inverse) .app-ai-search-toggle[aria-expanded="true"]:hover {
+    background-color: var(--govuk-link-colour, #1d70b8);
+    color: #ffffff;
+}
+
+.app-ai-search-toggle:focus,
+.app-ai-search-toggle[aria-expanded="true"]:focus,
+.govuk-service-navigation .app-ai-search-toggle[aria-expanded="true"]:focus {
+    outline: 3px solid transparent;
+    background-color: #ffdd00;
+    box-shadow: inset 0 -4px #0b0c0c;
+    color: #0b0c0c;
+}
+
+.app-ai-search-toggle__open,
+.app-ai-search-toggle__close {
+    display: block;
+}
+
+.app-ai-search-toggle__close,
+.app-ai-search-toggle[aria-expanded="true"] .app-ai-search-toggle__open {
+    display: none;
+}
+
+.app-ai-search-toggle[aria-expanded="true"] .app-ai-search-toggle__close {
+    display: block;
+}

@@ -13,13 +13,7 @@ from govuk.models import (
     FrameworkSkillsPage,
     GovukTag,
 )
-
-
-def _feature_flags(*, skills_enabled: bool) -> dict[str, bool]:
-    return {
-        "SKILLS": skills_enabled,
-        "FEEDBACK": False,
-    }
+from govuk.tests.helpers import feature_flags
 
 
 class ApiMetaAssertionsMixin:
@@ -243,26 +237,26 @@ class PagesApiWithoutTheFrameworkTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return {item["meta"]["slug"] for item in response.json()["items"]}
 
-    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=True))
+    @override_settings(FEATURE_FLAGS=feature_flags(skills=True))
     def test_the_framework_site_still_lists_its_framework_pages(self):
         self.assertIn("skills-az", self._listed_slugs())
         self.assertEqual(
             self.client.get(f"/api/pages/{self.framework_page.id}/").status_code, 200
         )
 
-    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    @override_settings(FEATURE_FLAGS=feature_flags(skills=False))
     def test_a_framework_page_is_not_published_by_the_listing(self):
         slugs = self._listed_slugs()
 
         self.assertNotIn("skills-az", slugs)
         self.assertIn("ordinary-page", slugs)
 
-    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    @override_settings(FEATURE_FLAGS=feature_flags(skills=False))
     def test_asking_for_the_type_by_name_returns_nothing_rather_than_the_pages(self):
         """The type filter is the obvious way to go looking for them."""
         self.assertEqual(self._listed_slugs({"type": "govuk.FrameworkSkillsPage"}), set())
 
-    @override_settings(FEATURE_FLAGS=_feature_flags(skills_enabled=False))
+    @override_settings(FEATURE_FLAGS=feature_flags(skills=False))
     def test_the_detail_route_does_not_serve_one_either(self):
         """``get_queryset`` backs the detail view too, so this is one guard."""
         self.assertEqual(
@@ -357,45 +351,25 @@ class ExternalContentApiTests(ApiMetaAssertionsMixin, TestCase):
         combined_urls = {item["url"] for item in combined_response.json()["items"]}
         self.assertEqual(combined_urls, {self.item_beta_source_one.url})
 
-    def test_a_filter_int_cannot_read_matches_nothing_rather_than_raising(self):
-        """"²" is a digit to str.isdigit and not a number to int.
+    def test_a_filter_that_names_no_row_matches_nothing_rather_than_raising(self):
+        cases = [
+            # A digit to str.isdigit and not a number to int: "?tag=²" answered
+            # 500 where "?tag=nonsense" already answered an empty list.
+            ("a digit int cannot read", "²"),
+            # Python refuses a run of more than 4,300 digits, on PostgreSQL as
+            # much as on SQLite, since int objects before either engine is asked.
+            ("more digits than int reads", "1" * 4301),
+            # SQLite raises rather than matching nothing past the largest id.
+            ("larger than a row id", str(2**63)),
+        ]
+        for name, value in cases:
+            for url in ("/api/externalcontent/items/", "/api/externalcontent/sources/"):
+                for parameter in ("tag", "source"):
+                    with self.subTest(name, url=url, parameter=parameter):
+                        response = self.client.get(url, {parameter: value})
 
-        The filters parsed the one and tested with the other, so "?tag=²"
-        answered 500 where "?tag=nonsense" already answered an empty list.
-        """
-        for url in ("/api/externalcontent/items/", "/api/externalcontent/sources/"):
-            for parameter in ("tag", "source"):
-                with self.subTest(url=url, parameter=parameter):
-                    response = self.client.get(url, {parameter: "²"})
-
-                    self.assertEqual(response.status_code, 200)
-                    self.assertEqual(response.json()["items"], [])
-
-    def test_a_filter_of_more_digits_than_int_reads_matches_nothing(self):
-        """Reading the digits is not enough on its own to reach ``int``.
-
-        Python refuses a run of more than 4,300 digits, so a filter of 4,301
-        of them is decimal all the way down and was still a 500 -- on
-        PostgreSQL as much as on SQLite, since ``int`` objects before either
-        engine is asked anything.
-        """
-        for url in ("/api/externalcontent/items/", "/api/externalcontent/sources/"):
-            for parameter in ("tag", "source"):
-                with self.subTest(url=url, parameter=parameter):
-                    response = self.client.get(url, {parameter: "1" * 4301})
-
-                    self.assertEqual(response.status_code, 200)
-                    self.assertEqual(response.json()["items"], [])
-
-    def test_a_filter_larger_than_a_row_id_matches_nothing(self):
-        """SQLite raises rather than matching nothing past the largest id."""
-        for url in ("/api/externalcontent/items/", "/api/externalcontent/sources/"):
-            for parameter in ("tag", "source"):
-                with self.subTest(url=url, parameter=parameter):
-                    response = self.client.get(url, {parameter: str(2**63)})
-
-                    self.assertEqual(response.status_code, 200)
-                    self.assertEqual(response.json()["items"], [])
+                        self.assertEqual(response.status_code, 200)
+                        self.assertEqual(response.json()["items"], [])
 
     def test_a_nul_in_a_filter_is_dropped_rather_than_sent_to_the_database(self):
         """PostgreSQL refuses a string literal carrying a NUL outright.

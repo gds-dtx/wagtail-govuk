@@ -1,0 +1,26 @@
+{% comment %}A link to /search/ until ai-search.js swaps in the button, if the page has a search area.{% endcomment %}
+<div class="app-ai-search-toggle-group">
+    <a class="app-ai-search-toggle js-ai-search-link" href="{% url 'search' %}">
+        <span class="govuk-visually-hidden">{{ area.button_text }}</span>
+        {% include "ai_search/includes/search_icon.html" %}
+    </a>
+    <button type="button"
+            class="app-ai-search-toggle js-ai-search-toggle"
+            aria-controls="{{ area.panel_id }}"
+            aria-expanded="false"
+            hidden>
+        <span class="govuk-visually-hidden">{{ area.button_text }}</span>
+        {% include "ai_search/includes/search_icon.html" %}
+        <svg class="app-ai-search-toggle__close"
+             width="20"
+             height="20"
+             viewBox="0 0 20 20"
+             fill="none"
+             xmlns="http://www.w3.org/2000/svg"
+             aria-hidden="true"
+             focusable="false">
+            <line x1="2" y1="2" x2="18" y2="18" stroke="currentColor" stroke-width="3"></line>
+            <line x1="18" y1="2" x2="2" y2="18" stroke="currentColor" stroke-width="3"></line>
+        </svg>
+    </button>
+</div>

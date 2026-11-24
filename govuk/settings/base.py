@@ -493,6 +493,23 @@ LOGGING = {
             "level": LOG_LEVEL,
             "propagate": False,
         },
+        # The ASGI service (manage.py run_service) runs under uvicorn.
+        "uvicorn.error": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        "uvicorn.access": {
+            "handlers": ["console"],
+            "level": LOG_LEVEL,
+            "propagate": False,
+        },
+        # Never below INFO: the MCP SDK's debug logs hold what people asked.
+        "mcp": {
+            "handlers": ["console"],
+            "level": "INFO" if LOG_LEVEL == "DEBUG" else LOG_LEVEL,
+            "propagate": False,
+        },
         "django.server": {
             "handlers": ["console"],
             "level": LOG_LEVEL,
@@ -515,7 +532,15 @@ LOGGING = {
 FEATURE_FLAGS = {
     "SKILLS": _bool_env("FEATURE_SKILLS"),
     "FEEDBACK": _bool_env("FEATURE_FEEDBACK"),
+    "CATALOGUE": _bool_env("FEATURE_CATALOGUE"),
+    # Content index, MCP server and AI search. Off, publishing writes nothing
+    # to the index.
+    "AI": _bool_env("FEATURE_AI"),
 }
+
+# Optional; lifts GitHub's unauthenticated limit (60 requests an hour) for
+# catalogue imports. Needs only public read access.
+CATALOGUE_GITHUB_TOKEN = os.environ.get("CATALOGUE_GITHUB_TOKEN", "").strip()
 
 # Wagtail's go-live and expiry dates only fire if something runs the
 # publish_scheduled management command on a schedule. Nothing does: there is no
@@ -535,6 +560,72 @@ SCHEDULED_PUBLISHING = _bool_env("SCHEDULED_PUBLISHING", default=False)
 # pattern's own form: "9am on Monday 19 November 2018".
 MAINTENANCE_MODE = _bool_env("MAINTENANCE_MODE", default=False)
 MAINTENANCE_RESUME_TEXT = os.getenv("MAINTENANCE_RESUME_TEXT", "")
+
+# Content index embeddings: "bedrock" (Titan V2, with the task's role), "fake"
+# (tests and local runs) or unset (words only). Filled by embed_content_index;
+# publishing never calls it.
+CONTENT_INDEX_EMBEDDINGS = os.getenv("CONTENT_INDEX_EMBEDDINGS", "").strip().lower()
+CONTENT_INDEX_EMBEDDING_MODEL = os.getenv(
+    "CONTENT_INDEX_EMBEDDING_MODEL", "amazon.titan-embed-text-v2:0"
+).strip()
+CONTENT_INDEX_EMBEDDING_DIMENSIONS = int(os.getenv("CONTENT_INDEX_EMBEDDING_DIMENSIONS", "1024"))
+CONTENT_INDEX_EMBEDDING_REGION = (
+    os.getenv("CONTENT_INDEX_EMBEDDING_REGION") or os.getenv("AWS_REGION") or "eu-west-2"
+).strip()
+# Minimum cosine similarity (0 to 1) for a meaning-only match in hybrid search.
+# Tune with manage.py evaluate_content_search.
+CONTENT_INDEX_MIN_SIMILARITY = float(os.getenv("CONTENT_INDEX_MIN_SIMILARITY", "0.35"))
+
+# Features of the ASGI service (govuk/service/): each returns its routes, or None.
+SERVICE_CONTRIBUTIONS = [
+    "govuk.mcp.service.contribution",
+    "govuk.ai_search.service.contribution",
+]
+# Header holding the client address for per-client rate limits; unset, the
+# connection's address. Only safe if a proxy overwrites it: deployed, CloudFront
+# sets true-client-ip and is the only route to the load balancer.
+CLIENT_IP_HEADER = os.getenv("CLIENT_IP_HEADER", "").strip().lower()
+# uvicorn's --forwarded-allow-ips. Behind CloudFront this cannot yield the
+# client's address (the load balancer appends CloudFront's), hence CLIENT_IP_HEADER.
+SERVICE_FORWARDED_ALLOW_IPS = os.getenv("SERVICE_FORWARDED_ALLOW_IPS", "127.0.0.1")
+
+# MCP requests per client per minute (0 = off). Per process unless CACHE_URL is
+# shared, so the WAF's limit is the one to rely on.
+MCP_RATE_LIMIT_PER_MINUTE = int(os.getenv("MCP_RATE_LIMIT_PER_MINUTE", "60"))
+
+# AI search questions and summaries per client per minute (0 = off).
+AI_SEARCH_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_SEARCH_RATE_LIMIT_PER_MINUTE", "20"))
+AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE", "10"))
+# Claude-backed questions per signed-in account, per minute and per UTC day
+# (0 = off); past either, the account's questions are searched without Claude.
+AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_SEARCH_ACCOUNT_RATE_LIMIT_PER_MINUTE", "4"))
+AI_SEARCH_ACCOUNT_DAILY_LIMIT = int(os.getenv("AI_SEARCH_ACCOUNT_DAILY_LIMIT", "100"))
+# Threads for AI search's Claude calls on the ASGI service; past this many at
+# once a question is refused at once (503) rather than queued.
+AI_SEARCH_WORKERS = int(os.getenv("AI_SEARCH_WORKERS", "8"))
+# Seconds the ASGI service keeps the admin's maintenance switch before reading it again.
+SERVICE_MAINTENANCE_CACHE_SECONDS = float(os.getenv("SERVICE_MAINTENANCE_CACHE_SECONDS", "5"))
+# Development only: Django serves AI search's service paths too. Deployed,
+# Claude is only called from the ASGI service.
+AI_SEARCH_IN_DJANGO = _bool_env("AI_SEARCH_IN_DJANGO")
+
+# Claude for AI search: "bedrock" (EU inference profile by default, so requests
+# stay in EU regions), "fake" (tests and local runs) or unset (no model).
+AI_CLAUDE = os.getenv("AI_CLAUDE", "").strip().lower()
+AI_CLAUDE_MODEL = os.getenv("AI_CLAUDE_MODEL", "eu.anthropic.claude-haiku-5-5").strip()
+AI_CLAUDE_REGION = (os.getenv("AI_CLAUDE_REGION") or CONTENT_INDEX_EMBEDDING_REGION).strip()
+# Matches sent to Claude to re-rank, and a similarity floor for meaning-only
+# matches (lower than CONTENT_INDEX_MIN_SIMILARITY, as Claude judges closeness).
+AI_SEARCH_RERANK_CANDIDATES = int(os.getenv("AI_SEARCH_RERANK_CANDIDATES", "20"))
+AI_SEARCH_RERANK_FLOOR = float(os.getenv("AI_SEARCH_RERANK_FLOOR", "0.2"))
+# Seconds to wait for each call before doing without it.
+AI_SEARCH_RERANK_TIMEOUT_SECONDS = float(os.getenv("AI_SEARCH_RERANK_TIMEOUT_SECONDS", "6"))
+AI_SEARCH_SUMMARY_TIMEOUT_SECONDS = float(os.getenv("AI_SEARCH_SUMMARY_TIMEOUT_SECONDS", "30"))
+# How long a re-ranking or a summary is kept for the same question and matches.
+AI_SEARCH_RERANK_CACHE_SECONDS = int(os.getenv("AI_SEARCH_RERANK_CACHE_SECONDS", str(24 * 60 * 60)))
+AI_SEARCH_SUMMARY_CACHE_SECONDS = int(os.getenv("AI_SEARCH_SUMMARY_CACHE_SECONDS", str(24 * 60 * 60)))
+# Daily Claude token budget (in and out); past it, no Claude until midnight UTC.
+AI_DAILY_TOKEN_BUDGET = int(os.getenv("AI_DAILY_TOKEN_BUDGET", "10000000"))
 # Seconds, sent as the 503's Retry-After header. The resume text above is
 # prose for a reader ("9am on Monday 19 November 2018") and nothing can parse
 # it into a date, so the header takes its own number.
@@ -700,7 +791,8 @@ WAGTAILSEARCH_BACKENDS = {
 SECURE_CSP = {
     "default-src": [CSP.SELF],
     "script-src": [CSP.SELF, CSP.NONCE],
-    "style-src": [CSP.SELF],
+    # Nonce for a banner block's custom colour; style attributes stay blocked.
+    "style-src": [CSP.SELF, CSP.NONCE],
     "img-src": [CSP.SELF, "data:", "blob:"],
     "font-src": [CSP.SELF],
     "connect-src": [CSP.SELF],
@@ -717,8 +809,13 @@ SECURE_CSP_ADMIN["script-src"] = [
     *SECURE_CSP_ADMIN.get("script-src", []),
     CSP.UNSAFE_INLINE,
 ]
+# Drop the nonce: a browser that sees one ignores 'unsafe-inline'.
 SECURE_CSP_ADMIN["style-src"] = [
-    *SECURE_CSP_ADMIN.get("style-src", []),
+    *(
+        source
+        for source in SECURE_CSP_ADMIN.get("style-src", [])
+        if source != CSP.NONCE
+    ),
     CSP.UNSAFE_INLINE,
 ]
 SECURE_CSP_ADMIN["connect-src"] = [

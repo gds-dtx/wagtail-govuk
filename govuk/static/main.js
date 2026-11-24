@@ -9,6 +9,7 @@ document.addEventListener("DOMContentLoaded", function () {
   setBackToTop();
   setChangelogToggle();
   openLinkedAccordionSection();
+  openLinkedDetails();
   setPageFeedback();
   setSiteSearchAutocomplete();
   setSkipLink();
@@ -32,8 +33,8 @@ function setSkipLink() {
 function setHyperlinkClasses() {
   const richTextContents = document.querySelectorAll(".rich-text-content");
   // A brand-coloured body banner is the masthead's colour too, so its links
-  // need the same inverse treatment.
-  const masthead = document.querySelectorAll(".masthead, .body-banner--brand");
+  // need the same inverse treatment, as do a dark custom-coloured banner's.
+  const masthead = document.querySelectorAll(".masthead, .body-banner--inverse");
   [richTextContents, masthead].forEach((content) => {
     content.forEach((element) => {
       const links = element.querySelectorAll("a");
@@ -43,7 +44,7 @@ function setHyperlinkClasses() {
         }
         if (
           element.classList.contains("masthead--combined") ||
-          element.classList.contains("body-banner--brand")
+          element.classList.contains("body-banner--inverse")
         ) {
           link.classList.add("govuk-link--inverse");
         }
@@ -104,8 +105,8 @@ function setListClasses() {
   // Headings. Same reason as paragraphs: the bundle styles govuk-heading-*
   // rather than h2/h3/h4, so a heading an editor typed into rich text drops to
   // the browser's own bold-and-slightly-larger and stops standing off the 19px
-  // body beside it. The sizes are the ones the live service carries in its
-  // hand-written markup: h2 is govuk-heading-l, h3 is govuk-heading-m.
+  // body beside it. They match the templates' own headings: h2 is
+  // govuk-heading-l, h3 is govuk-heading-m.
   const headingSize = {
     H2: "govuk-heading-l",
     H3: "govuk-heading-m",
@@ -288,6 +289,31 @@ function openLinkedAccordionSection() {
   window.addEventListener("hashchange", openFromHash);
 }
 
+function openLinkedDetails() {
+  // A data attribute, not an id, so the page does not jump down to the details.
+  function openFromHash() {
+    const hash = window.location.hash;
+    if (hash.length < 2) {
+      return;
+    }
+
+    let name = "";
+    try {
+      name = decodeURIComponent(hash.slice(1));
+    } catch (error) {
+      return;
+    }
+    document.querySelectorAll("details[data-open-on-hash]").forEach((details) => {
+      if (details.dataset.openOnHash === name) {
+        details.open = true;
+      }
+    });
+  }
+
+  openFromHash();
+  window.addEventListener("hashchange", openFromHash);
+}
+
 function setAutoHeadingNavigation() {
   const headingLayouts = document.querySelectorAll(
     "[data-auto-heading-layout]",
@@ -432,8 +458,7 @@ function setPageFeedback() {
 
 function setSiteSearchAutocomplete() {
   // The header search box suggests roles, skills and pages as the reader
-  // types, the way the live service's box does, using GOV.UK's accessible
-  // autocomplete. Without JavaScript, or if the library did not
+  // types, using GOV.UK's accessible autocomplete. Without JavaScript, or if the library did not
   // load, the box is the plain form it started as and Enter goes to the
   // results page. With it, Enter takes the highlighted suggestion; when
   // there are no suggestions the list is not shown, so Enter still submits
@@ -533,10 +558,9 @@ function setSiteSearchAutocomplete() {
         if (!item) {
           return "";
         }
-        // The kind is shown for a role or a skill; a page is just its name,
-        // and so is the query offered back.
+        // A page, and the query offered back, show no kind.
         const type =
-          item.type === "Role" || item.type === "Skill"
+          item.type && item.type !== "Page"
             ? '<span class="app-site-search__option-type">' +
               escapeHtml(item.type) +
               "</span>"

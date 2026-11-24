@@ -103,26 +103,15 @@ def further_resources_group(
 ) -> dict | None:
     """The pages about the framework itself, for the side navigation.
 
-    The live service closes its navigation with these: the skills index and the
-    handful of pages that are about the framework rather than one role. They are
-    the framework main page's framework children -- its framework content pages
-    and the skills index. Its plain content pages are not about the framework
-    and stay out: the live service keeps its privacy notice, cookie statement
-    and accessibility statement off the menu, and an editor chooses which a
-    page is by choosing its type.
+    The framework main page's framework children (its framework content pages
+    and the skills index) close the navigation. Its plain content pages, such
+    as privacy and cookie pages, stay out: an editor chooses which a page is by
+    choosing its type.
 
     Sidebar settings then decides the menu. Listing any page at all makes the
     list the menu: the pages listed and ticked are shown, in the order given,
     and a framework child left off it is left out. An empty list means the
-    editor has not chosen, so every framework child is shown in tree order,
-    which is what a newly built site gets.
-
-    It used to append the unlisted children to the configured ones instead, so
-    that a new page could never silently vanish. That made the setting unable
-    to express live's menu at all: picking
-    the six pages live shows still left the other eight on the page, and the
-    only way to get live's menu was to list all fourteen and untick eight.
-    Choosing pages has to mean choosing pages.
+    editor has not chosen, so every framework child is shown in tree order.
     """
     from .pages import FrameworkContentPage, FrameworkSkillsPage
 

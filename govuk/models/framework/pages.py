@@ -168,7 +168,7 @@ class FrameworkFieldsMixin(models.Model):
 
         Built from the main section headings, so an editor adding a section to
         the page adds it here too. The role groups sit directly under the
-        opening section, where the live service puts them.
+        opening section.
         """
         sections = [
             {"title": block.value["heading"], "anchor": block.value.anchor_id()}
@@ -338,8 +338,7 @@ class RoleRenderingMixin:
     def _section_anchors(
         *, is_scs: bool, has_levels: bool, display_role_name: str
     ) -> dict[str, str]:
-        """The framework's own ids, so a link written against the live service
-        still lands on the section it named.
+        """Each section's id, stable so a link to a section keeps landing on it.
 
         The overview keeps "what-a-" whatever article the heading takes:
         "what-a-it-service-manager-does" under "What an IT service manager
@@ -356,9 +355,7 @@ class RoleRenderingMixin:
         two contents links onto the same heading. Where a senior role does have
         levels its skills take the ordinary "skills" instead.
 
-        Each route renders one role, so these are the framework's bare ids with
-        no per-role suffix -- the ids a link written against the live service
-        expects.
+        Each route renders one role, so the ids need no per-role suffix.
         """
         return {
             "overview": f"what-a-{slugify(display_role_name)}-does",
@@ -600,13 +597,13 @@ class FrameworkMainPage(
     subpage_types = [
         # A framework content page sits beside the roles in the side menu; a
         # plain content page under here does not. That is how an editor
-        # chooses which of the two a page is: the live service lists five
-        # pages beside the roles and keeps its privacy notice, cookie
-        # statement and accessibility statement out of the menu.
+        # chooses which of the two a page is, so privacy and cookie pages can
+        # sit here and stay out of the menu.
         "govuk.FrameworkContentPage",
         "govuk.ContentPage",
         "govuk.TagListingsPage",
         "govuk.FrameworkSkillsPage",
+        "govuk.ContentMainPage",
     ]
     # The framework page types render the same page as the old framework
     # content page did; only the role route swaps in the role template.
@@ -654,11 +651,8 @@ class FrameworkMainPage(
         and 404 it as a missing role. (A child page whose slug is ``role`` is
         the one page this does shadow.)
 
-        ``role``, singular, because that is the live service's URL: it
-        publishes every role at ``/role/<slug>``. With the framework main page
-        as the site's home page a role is served at its live address and every
-        bookmark, search result and link in the migrated content reaches it
-        directly, with no redirect to seed and none to go missing.
+        With the framework main page as the site's home page, a role is served
+        at ``/role/<slug>``.
 
         Without the framework flag the route 404s, as the old role pages did:
         a route cannot be guarded by ``can_exist_under``, and an import can
@@ -738,8 +732,8 @@ class FrameworkContentPage(FrameworkFieldsMixin, BaseContentPage):
 
 class FrameworkSkillsPage(Page):
     # One skills index per site, like the framework main page. The skill search
-    # results, the role pages and the live-service redirects all resolve "the"
-    # skills page, so a second one would make which page they point at arbitrary.
+    # results and the role pages resolve "the" skills page, so a second one
+    # would make which page they point at arbitrary.
     max_count = 1
     parent_page_types = [
         "govuk.ContentPage",
