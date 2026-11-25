@@ -338,6 +338,10 @@
     width: 100%;
     min-width: 0;
 }
+/* Same line as Apply, so the count reads as what Apply would give. */
+.app-catalogue-filters__pending {
+    align-self: center;
+}
 .app-catalogue-filters .govuk-button-group {
     margin-bottom: 0;
     padding-bottom: 20px;

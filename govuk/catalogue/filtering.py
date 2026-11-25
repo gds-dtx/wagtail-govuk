@@ -28,10 +28,20 @@ def _values(entry, name: str) -> list[str]:
     return list(value) if isinstance(value, list) else [value]
 
 
-def filter_entries(entries, params, vocabularies: dict) -> tuple[list, EntryFilter]:
-    """``(visible entries, filter state)``. With a query, best matches first."""
+def filter_entries(
+    entries, params, vocabularies: dict, *, keep_empty: bool = False
+) -> tuple[list, EntryFilter]:
+    """``(visible entries, filter state)``. With a query, best matches first.
+
+    ``keep_empty`` keeps zero-count values, for the live counts to bring back.
+    """
     entries = list(entries)
     query = " ".join((params.get("q") or "").split())[:200]
+    if query:
+        # Before counting, so the counts are of what the search would show.
+        scored = [(score(entry, query, vocabularies), entry) for entry in entries]
+        ranked = sorted((pair for pair in scored if pair[0] > 0), key=lambda pair: -pair[0])
+        entries = [entry for _, entry in ranked]
     selected = {
         name: [value for value in params.getlist(name) if value][:20] for name in FILTER_FIELDS
     }
@@ -61,18 +71,10 @@ def filter_entries(entries, params, vocabularies: dict) -> tuple[list, EntryFilt
             }
             for value in labels
             # Keep a chosen value even at zero, so the form still shows it applied.
-            if value in counts or value in selected[name]
+            if keep_empty or value in counts or value in selected[name]
         ]
 
     visible = [entry for entry in entries if passes(entry)]
-    if query:
-        scored = [(score(entry, query, vocabularies), entry) for entry in visible]
-        visible = [
-            entry
-            for _, entry in sorted(
-                (pair for pair in scored if pair[0] > 0), key=lambda pair: -pair[0]
-            )
-        ]
     return visible, EntryFilter(query=query, selected=selected, options=options)
 
 

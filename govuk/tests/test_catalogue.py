@@ -115,6 +115,36 @@ class MainPageTests(CatalogueTestCase):
             response, '<option value="architecture" selected>Architecture (1)</option>', html=False
         )
 
+    def test_the_counts_are_of_what_the_search_would_show(self):
+        response = self.get("all/", q="another")
+        options = response.context["filter_form"]["fields"]
+        profession = next(field for field in options if field["name"] == "profession")
+        self.assertEqual(
+            [(o["value"], o["count"]) for o in profession["options"]], [("architecture", 1)]
+        )
+
+    def test_counts_for_the_form_as_it_stands_come_as_json(self):
+        cases = [
+            ("all/", {}, 7, ("type", "policy", 2)),
+            ("all/", {"profession": "architecture"}, 1, ("type", "policy", 0)),
+            ("all/", {"q": "another"}, 1, ("profession", "engineering", 0)),
+            ("standards-and-policies/", {"type": "standard"}, 2, ("type", "policy", 2)),
+        ]
+        for path, params, count, (name, value, option_count) in cases:
+            with self.subTest(path=path, params=params):
+                response = self.get(path, counts="1", **params)
+                self.assertEqual(response["Content-Type"], "application/json")
+                data = response.json()
+                self.assertEqual(data["count"], count)
+                option = next(o for o in data["fields"][name] if o["value"] == value)
+                self.assertEqual(option["count"], option_count)
+
+    def test_the_form_has_somewhere_to_say_what_apply_would_give(self):
+        response = self.get("all/")
+        self.assertContains(response, "data-catalogue-filters>")
+        self.assertContains(response, 'role="status" data-catalogue-filters-status')
+        self.assertContains(response, "catalogue.js")
+
 
 @override_settings(FEATURE_FLAGS=catalogue_flags())
 class GroupPageTests(CatalogueTestCase):
@@ -297,6 +327,9 @@ class FlagOffTests(CatalogueTestCase):
         ):
             with self.subTest(path=path):
                 self.assertEqual(self.get(path).status_code, 404)
+        for path in ("all/", "guidance/"):
+            with self.subTest(path=path, counts=True):
+                self.assertEqual(self.get(path, counts="1").status_code, 404)
 
     def test_no_catalogue_page_can_be_created(self):
         group = ContentGroupPage.objects.first()
