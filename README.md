@@ -71,6 +71,7 @@ Optional:
 - `CONTENT_INDEX_EMBEDDINGS`: `bedrock` (Titan Text Embeddings V2, matches by meaning) or `fake` (tests and local runs). Unset, search matches words only. `CONTENT_INDEX_EMBEDDING_REGION` (defaults to `AWS_REGION`, then `eu-west-2`) and `CONTENT_INDEX_EMBEDDING_DIMENSIONS` (`256`, `512` or `1024`, the default) configure it.
 - `CONTENT_INDEX_MIN_SIMILARITY`: Minimum similarity (0 to 1, defaults to `0.35`) for a match found by meaning alone. Tune it with `manage.py evaluate_content_search`.
 - `MCP_RATE_LIMIT_PER_MINUTE`: MCP requests per client address per minute (defaults to `60`; `0` turns it off).
+- `MCP_BASE_URL`: Where MCP clients reach the MCP server, if not the site's own address (`WAGTAILADMIN_BASE_URL`).
 - `CLIENT_IP_HEADER`: Header holding the client's address for per-client rate limits, set by a proxy that overwrites it (`true-client-ip` behind CloudFront). Unset, the connection's address is used.
 - `SERVICE_FORWARDED_ALLOW_IPS`: Proxies whose `X-Forwarded-For` the ASGI service trusts (defaults to `127.0.0.1`). Behind CloudFront use `CLIENT_IP_HEADER` instead.
 - `AI_SEARCH_RATE_LIMIT_PER_MINUTE`, `AI_SEARCH_SUMMARY_RATE_LIMIT_PER_MINUTE`: AI search questions (defaults to `20`) and summaries (defaults to `10`) per client address per minute; `0` turns a limit off.

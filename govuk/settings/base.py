@@ -592,6 +592,9 @@ SERVICE_FORWARDED_ALLOW_IPS = os.getenv("SERVICE_FORWARDED_ALLOW_IPS", "127.0.0.
 # MCP requests per client per minute (0 = off). Per process unless CACHE_URL is
 # shared, so the WAF's limit is the one to rely on.
 MCP_RATE_LIMIT_PER_MINUTE = int(os.getenv("MCP_RATE_LIMIT_PER_MINUTE", "60"))
+# Where MCP clients reach the MCP server, if not the site's own address: in
+# development the service runs apart, on http://localhost:8001.
+MCP_BASE_URL = os.getenv("MCP_BASE_URL", "").strip().rstrip("/")
 
 # AI search questions and summaries per client per minute (0 = off).
 AI_SEARCH_RATE_LIMIT_PER_MINUTE = int(os.getenv("AI_SEARCH_RATE_LIMIT_PER_MINUTE", "20"))

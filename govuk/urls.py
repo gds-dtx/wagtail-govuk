@@ -16,6 +16,7 @@ from govuk.api import (
     api_root_view,
     api_router,
 )
+from govuk.mcp import views as mcp_views
 from govuk.view_robots import robots_txt_view
 from govuk.view_securitytxt import security_txt_view
 from govuk.views import (
@@ -82,8 +83,16 @@ urlpatterns = [
     path("gen/custom.css", custom_css_view, name="govuk_custom_css"),
     path(".well-known/jwks.json", jwks_view, name="govuk_jwks"),
     path(".well-known/security.txt", security_txt_view, name="govuk_security_txt"),
+    path(".well-known/oauth-protected-resource/mcp", mcp_views.protected_resource_view, name="govuk_mcp_resource"),
+    path(
+        ".well-known/oauth-authorization-server/mcp/oauth",
+        mcp_views.authorization_server_view,
+        name="govuk_mcp_authorization_server",
+    ),
     path("assets/<path:path>", assets_alias_view, name="assets_alias"),
     path("accounts/profile/", profile_view, name="account_profile"),
+    path("accounts/mcp/authorise/<str:request_id>/", mcp_views.authorise_view, name="govuk_mcp_authorise"),
+    path("accounts/mcp/apps/", mcp_views.connected_apps_view, name="govuk_mcp_apps"),
     path("accounts/logout/", account_logout_redirect, name="account_logout"),
     path("accounts/", include("allauth.urls")),
     path("search/", search_view, name="search"),

@@ -1,3 +1,5 @@
+import os
+
 from .base import *
 
 # Development settings - these are used, as a default, for local development
@@ -26,6 +28,9 @@ DATABASES = {
 }
 
 WAGTAILADMIN_BASE_URL = "http://localhost:8000"
+# run_service listens apart from runserver, so MCP clients are sent there: its
+# discovery documents and OAuth endpoints, not the site's, must answer them.
+MCP_BASE_URL = os.getenv("MCP_BASE_URL", "http://localhost:8001").strip().rstrip("/")
 
 FEATURE_FLAGS = {
     "SKILLS": True,

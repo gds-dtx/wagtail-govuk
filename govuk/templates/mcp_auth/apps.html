@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Connected apps{% endblock %}
+{% block page_feedback %}{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-padding-bottom-6">
+        <div class="govuk-grid-row">
+            <div class="govuk-grid-column-two-thirds">
+                <h1 class="govuk-heading-l">Connected apps</h1>
+                {% if consents %}
+                    <p class="govuk-body">These apps can search and read this site's pages as you. Removing one signs it out straight away.</p>
+                    <dl class="govuk-summary-list">
+                        {% for consent in consents %}
+                            <div class="govuk-summary-list__row">
+                                <dt class="govuk-summary-list__key">{{ consent.client.name|default:"An app" }}</dt>
+                                <dd class="govuk-summary-list__value">Allowed {{ consent.created_at|date:"j F Y" }}</dd>
+                                <dd class="govuk-summary-list__actions">
+                                    <form method="post">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="client" value="{{ consent.client.pk }}">
+                                        <button type="submit" class="govuk-button govuk-button--warning govuk-!-margin-bottom-0" data-module="govuk-button">
+                                            Remove<span class="govuk-visually-hidden"> {{ consent.client.name|default:"this app" }}</span>
+                                        </button>
+                                    </form>
+                                </dd>
+                            </div>
+                        {% endfor %}
+                    </dl>
+                {% else %}
+                    <p class="govuk-body">No apps are connected to this site's MCP server.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endblock %}

@@ -55,5 +55,14 @@
                 </dd>
             </div -->
         </dl>
+        {% if mcp_apps is not None %}
+            <h2 class="govuk-heading-m">Connected apps</h2>
+            {% if mcp_apps %}
+                <p class="govuk-body">{{ mcp_apps }} app{{ mcp_apps|pluralize }} can search and read this site as you through its MCP server.</p>
+                <p class="govuk-body"><a class="govuk-link" href="{% url 'govuk_mcp_apps' %}">Manage connected apps</a></p>
+            {% else %}
+                <p class="govuk-body">No apps are connected to this site's MCP server.</p>
+            {% endif %}
+        {% endif %}
     </div>
 {% endblock %}

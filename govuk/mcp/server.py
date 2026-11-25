@@ -39,7 +39,7 @@ def _site():
         return None  # fall back to settings; the tools report a database outage
 
 
-def create_server() -> MCPServer:
+def create_server(*, auth=None, token_verifier=None) -> MCPServer:
     site = _site()
     site_name = (site.site_name if site else "") or settings.WAGTAIL_SITE_NAME
     server = MCPServer(
@@ -48,6 +48,8 @@ def create_server() -> MCPServer:
         instructions=INSTRUCTIONS.format(site_name=site_name),
         website_url=site.root_url if site else None,
         version=os.environ.get("VERSION", ""),
+        auth=auth,
+        token_verifier=token_verifier,
     )
     server.add_tool(tools.search, name="search", title="Search the site", annotations=READ_ONLY)
     server.add_tool(tools.get_document, name="get_document", title="Read a page", annotations=READ_ONLY)

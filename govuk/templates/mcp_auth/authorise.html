@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Connect {{ client_name }}{% endblock %}
+{% block page_feedback %}{% endblock %}
+{% block content %}
+    <div class="govuk-width-container govuk-!-padding-bottom-6">
+        <div class="govuk-grid-row">
+            <div class="govuk-grid-column-two-thirds">
+                <h1 class="govuk-heading-l">Allow {{ client_name }} to search this site as you?</h1>
+                <p class="govuk-body">{{ client_name }} will be able to search and read this site's pages through its MCP server for the next hour, and again each time you connect it.</p>
+                <p class="govuk-body">It will send you back to <strong>{{ redirect_host }}</strong>. Only allow it if you started connecting this app.</p>
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="govuk-button-group">
+                        <button type="submit" class="govuk-button" name="decision" value="allow" data-module="govuk-button">Allow</button>
+                        <button type="submit" class="govuk-button govuk-button--secondary" name="decision" value="deny" data-module="govuk-button">Do not allow</button>
+                    </div>
+                </form>
+                <p class="govuk-body"><a class="govuk-link" href="{% url 'govuk_mcp_apps' %}">Your connected apps</a></p>
+            </div>
+        </div>
+    </div>
+{% endblock %}

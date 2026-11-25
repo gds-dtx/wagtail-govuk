@@ -46,3 +46,34 @@ def make_framework_main_page(
 def role_url(main_page: FrameworkMainPage, role: GovukRole | str) -> str:
     slug = role if isinstance(role, str) else role.slug
     return main_page.url + main_page.reverse_subpage("serve_role", args=[slug])
+
+
+def mcp_token(user=None, *, client_id: str = "test-client", lifetime=None) -> str:
+    """A working MCP access token for ``user`` (a new reader by default), as the OAuth flow would issue."""
+    import secrets
+    from datetime import timedelta
+
+    from django.contrib.auth import get_user_model
+    from django.utils import timezone
+
+    from govuk.mcp.auth import SCOPE, digest, resource_url
+    from govuk.models import MCPAccessToken, MCPClient
+
+    user = user or get_user_model().objects.create_user(username=f"mcp-{secrets.token_hex(4)}", password="unused")
+    client, _ = MCPClient.objects.get_or_create(
+        client_id=client_id,
+        defaults={
+            "name": "Test app",
+            "information": {"client_id": client_id, "redirect_uris": ["http://127.0.0.1:33418/callback"]},
+        },
+    )
+    token = secrets.token_urlsafe(32)
+    MCPAccessToken.objects.create(
+        token_hash=digest(token),
+        client=client,
+        user=user,
+        scopes=[SCOPE],
+        resource=resource_url(),
+        expires_at=timezone.now() + (lifetime or timedelta(hours=1)),
+    )
+    return token

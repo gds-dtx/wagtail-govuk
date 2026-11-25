@@ -109,6 +109,13 @@ from .framework import (
     site_wide_changelog,
     without_framework_pages,
 )
+from .mcp_auth import (
+    MCPAccessToken,
+    MCPAuthorisationCode,
+    MCPAuthorisationRequest,
+    MCPClient,
+    MCPConsent,
+)
 from .pages import BaseContentPage, ContentPage, TagListingsPage
 from .panels import (
     base_content_panels,
@@ -182,6 +189,11 @@ __all__ = [
     "AISearchClaim",
     "AISearchPreference",
     "AISearchUsage",
+    "MCPAccessToken",
+    "MCPAuthorisationCode",
+    "MCPAuthorisationRequest",
+    "MCPClient",
+    "MCPConsent",
     "CustomiseSettings",
     "ContentEmbedding",
     "HarvestedSource",

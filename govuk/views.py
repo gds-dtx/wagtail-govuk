@@ -23,11 +23,13 @@ from django.views.decorators.http import require_http_methods, require_POST
 from wagtail.models import Site
 
 from govuk.capability_framework import csv_downloads
+from govuk.features import ai_enabled
 from govuk.forms import FeedbackForm
 from govuk.models import (
     CustomiseSettings,
     EdDSAKeySettings,
     Feedback,
+    MCPConsent,
     PageUsefulnessVote,
     SearchSettings,
 )
@@ -54,7 +56,11 @@ def profile_view(request):
     return render(
         request,
         "accounts/profile.html",
-        {"auth_id_token": request.session.get(OIDC_ID_TOKEN_SESSION_KEY)},
+        {
+            "auth_id_token": request.session.get(OIDC_ID_TOKEN_SESSION_KEY),
+            # None hides the section: there is no MCP server without the AI features.
+            "mcp_apps": MCPConsent.objects.filter(user=request.user).count() if ai_enabled() else None,
+        },
     )
 
 

@@ -52,6 +52,8 @@ class Contribution:
     routes: list[BaseRoute] = field(default_factory=list)
     lifespan: Callable[[], AbstractAsyncContextManager] | None = None
     rate_limits: list[RateLimit] = field(default_factory=list)
+    # Starlette ``Middleware``, applied inside maintenance and the rate limit.
+    middleware: list = field(default_factory=list)
 
 
 def contributions() -> list[Contribution]:
@@ -173,7 +175,10 @@ def create_app() -> Starlette:
     for contribution in found:
         routes += contribution.routes
     app = Starlette(routes=routes, lifespan=lifespan)
-    # The last added runs first: the rate limit, then maintenance.
+    # The last added runs first: the rate limit, then maintenance, then the contributions' own.
+    for contribution in found:
+        for middleware in reversed(contribution.middleware):
+            app.add_middleware(middleware.cls, *middleware.args, **middleware.kwargs)
     app.add_middleware(MaintenanceMiddleware)
     app.add_middleware(
         RateLimitMiddleware,
