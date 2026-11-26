@@ -1,10 +1,7 @@
-{% comment %}
-    Posted, not a GET, so the question stays out of the address bar, history and access logs.
-    "area" comes from govuk/ai_search/search_area.py.
-{% endcomment %}
+{% comment %}"area" comes from govuk/ai_search/search_area.py.{% endcomment %}
 <form class="app-ai-search-box{% if inverse %} app-ai-search-box--inverse{% endif %}{% if area.error %} app-ai-search-box--error{% endif %}"
       action="{% url 'search' %}"
-      method="post"
+      method="get"
       novalidate
       data-ai-search-box
       data-ai-search-form

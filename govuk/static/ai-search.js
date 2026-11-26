@@ -82,21 +82,26 @@ function setAiSearchToggle() {
 }
 
 function setAiSearchForms() {
-  // "js" makes /search/ answer at once, leaving the matches to setAiSearchMatches.
+  // "ai" is the box's choice, sent only while it is enabled; with it ticked /search/
+  // answers at once, leaving the matches to setAiSearchMatches.
   // Registered after setAiSearchBoxes, so an empty submit it stopped is left alone.
   document.querySelectorAll("[data-ai-search-choice]").forEach((choice) => {
     choice.hidden = false;
   });
   document.querySelectorAll("form[data-ai-search-form]").forEach((form) => {
     form.addEventListener("submit", (event) => {
-      if (event.defaultPrevented || form.querySelector('input[name="js"]')) {
+      const box = form.querySelector('[data-ai-search-choice] input[type="checkbox"]');
+      if (event.defaultPrevented || !box || box.disabled) {
         return;
       }
-      const flag = document.createElement("input");
-      flag.type = "hidden";
-      flag.name = "js";
-      flag.value = "1";
-      form.append(flag);
+      let choice = form.querySelector('input[type="hidden"][name="ai"]');
+      if (!choice) {
+        choice = document.createElement("input");
+        choice.type = "hidden";
+        choice.name = "ai";
+        form.append(choice);
+      }
+      choice.value = box.checked ? "1" : "0";
     });
   });
 }

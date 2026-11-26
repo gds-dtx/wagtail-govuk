@@ -116,7 +116,7 @@ class SearchPageTests(WithFakeModel):
 
     def test_without_javascript_the_matches_are_searched_without_claude(self):
         with mock.patch("govuk.ai_search.views.get_claude") as get_claude:
-            response = self.client.post(self.url, {"question": "How do I take money from the public?"})
+            response = self.client.get(self.url, {"question": "How do I take money from the public?"})
         get_claude.assert_not_called()
         self.assertContains(response, "<title>Query results")
         self.assertContains(response, '<h3 class="govuk-heading-m">Close matches</h3>')
@@ -129,7 +129,7 @@ class SearchPageTests(WithFakeModel):
         self.assertIn("no-store", response["Cache-Control"])
 
     def test_nothing_close(self):
-        response = self.client.post(self.url, {"question": "Write me a poem about cats"})
+        response = self.client.get(self.url, {"question": "Write me a poem about cats"})
         self.assertContains(response, "Nothing close to your question")
         self.assertNotContains(response, 'class="app-catalogue-card')
 
@@ -138,7 +138,7 @@ class SearchPageTests(WithFakeModel):
         search = choose_ai_search(use_ai_ranking=True)
         reader(self.client)
         with mock.patch("govuk.ai_search.views.find_matches") as find_matches:
-            response = self.client.post(self.url, {"question": "payments <now>", "js": "1", "ai": "1"})
+            response = self.client.get(self.url, {"question": "payments <now>", "ai": "1"})
         find_matches.assert_not_called()
         self.assertRegex(response.content.decode(), rf'data-ai-search-matches\s+data-url="{MATCHES_PATH}"')
         self.assertContains(response, 'data-question="payments &lt;now&gt;"')
@@ -147,24 +147,40 @@ class SearchPageTests(WithFakeModel):
         self.assertContains(response, "Thinking…")  # no summary, so in the matches' place
         self.assertNotContains(response, "data-ai-search-summary")
         self.assertNotContains(response, 'class="app-catalogue-card')
+        self.assertContains(response, 'href="/search/?question=payments+%3Cnow%3E">See the matches without it</a>')
+
+    def test_the_results_have_an_address_to_come_back_to(self):
+        response = self.client.get("/search/?question=How+do+I+take+money+from+the+public%3F")
+        self.assertContains(response, self.pay.url)
+        self.assertContains(response, 'value="How do I take money from the public?"')
 
     def test_an_empty_or_long_question_is_an_error(self):
         for question, message in (("   ", EMPTY), ("word " * 70, "300 characters or fewer")):
-            for js in ("", "1"):
-                with self.subTest(question=question[:5], js=js):
-                    response = self.client.post(self.url, {"question": question, "js": js})
+            for choice in ({}, {"ai": "1"}):
+                with self.subTest(question=question[:5], choice=choice):
+                    response = self.client.get(self.url, {"question": question, **choice})
                     self.assertContains(response, message)
                     self.assertContains(response, "govuk-error-summary")
                     self.assertContains(response, "<title>Error:")
                     self.assertNotContains(response, "data-ai-search-matches")
 
-    def test_it_needs_no_csrf_token(self):
-        response = Client(enforce_csrf_checks=True).post(self.url, {"question": "payments"})
-        self.assertEqual(response.status_code, 200)
+    def test_a_form_still_posted_from_a_cached_page_is_sent_to_the_get(self):
+        for posted, query in (
+            ({"js": "1", "ai": "1", "ai_offered": "1"}, "&ai=1"),
+            ({"js": "1", "ai_offered": "1"}, "&ai=0"),  # unticked
+            ({"js": "1", "ai": "1"}, ""),  # the box was disabled
+            ({"ai": "1", "ai_offered": "1"}, ""),  # no JavaScript
+        ):
+            with self.subTest(posted):
+                data = {"question": "pay <now>", "other": "x", **posted}
+                response = Client(enforce_csrf_checks=True).post(self.url, data)
+                self.assertEqual(response.status_code, 303)
+                self.assertEqual(response["Location"], f"/search/?question=pay+%3Cnow%3E{query}")
+                self.assertIn("no-store", response["Cache-Control"])
 
     def test_the_question_is_never_logged(self):
         with self.assertLogs("govuk.ai_search", level="INFO") as logs:
-            self.client.post(self.url, {"question": "take money from my private client"})
+            self.client.get(self.url, {"question": "take money from my private client"})
         (record,) = logs.records
         self.assertEqual(record.semantic, SEMANTIC_OK)
         self.assertGreaterEqual(record.results, 1)
@@ -173,17 +189,17 @@ class SearchPageTests(WithFakeModel):
 
     @override_settings(AI_SEARCH_RATE_LIMIT_PER_MINUTE=2)
     def test_a_client_asking_too_often_is_told_to_wait(self):
-        statuses = [self.client.post(self.url, {"question": "payments"}).status_code for _ in range(3)]
+        statuses = [self.client.get(self.url, {"question": "payments"}).status_code for _ in range(3)]
         self.assertEqual(statuses, [200, 200, 429])
-        response = self.client.post(self.url, {"question": "payments"})
+        response = self.client.get(self.url, {"question": "payments"})
         self.assertContains(response, "Rate limit exceeded. Try again in a few minutes", status_code=429)
         self.assertTrue(1 <= int(response["Retry-After"]) <= 60)
 
     @override_settings(AI_SEARCH_RATE_LIMIT_PER_MINUTE=1, CLIENT_IP_HEADER="true-client-ip")
     def test_behind_cloudfront_each_viewer_is_counted_apart(self):
-        first = self.client.post(self.url, {"question": "payments"}, HTTP_TRUE_CLIENT_IP="203.0.113.1")
-        second = self.client.post(self.url, {"question": "payments"}, HTTP_TRUE_CLIENT_IP="203.0.113.2")
-        third = self.client.post(self.url, {"question": "payments"}, HTTP_TRUE_CLIENT_IP="203.0.113.1")
+        first = self.client.get(self.url, {"question": "payments"}, HTTP_TRUE_CLIENT_IP="203.0.113.1")
+        second = self.client.get(self.url, {"question": "payments"}, HTTP_TRUE_CLIENT_IP="203.0.113.2")
+        third = self.client.get(self.url, {"question": "payments"}, HTTP_TRUE_CLIENT_IP="203.0.113.1")
         self.assertEqual([r.status_code for r in (first, second, third)], [200, 200, 429])
 
     def test_normal_search_answers_no_post(self):
@@ -204,6 +220,7 @@ class SignInTests(TestCase):
     """Claude only for signed-in readers who tick "Use AI search", unless sign-in is not required."""
 
     QUESTION = "card payments"
+    client_class = SameSiteClient
 
     def setUp(self):
         cache.clear()
@@ -215,8 +232,8 @@ class SignInTests(TestCase):
         self.url = reverse("search")
 
     def _ask(self, **fields) -> str:
-        data = {"question": self.QUESTION, "js": "1", "ai": "1", **fields}
-        return self.client.post(self.url, {k: v for k, v in data.items() if v is not None}).content.decode()
+        data = {"question": self.QUESTION, "ai": "1", **fields}
+        return self.client.get(self.url, {k: v for k, v in data.items() if v is not None}).content.decode()
 
     @staticmethod
     def _choice(html: str) -> str:
@@ -276,7 +293,7 @@ class SignInTests(TestCase):
 
     def test_unticked_it_is_a_normal_search_even_signed_in(self):
         reader(self.client)
-        html = self._ask(ai=None)
+        html = self._ask(ai="0")
         self.assertIn('class="app-catalogue-card', html)
         self.assertIsNone(self._token(html))
         self.assertNotIn("data-ai-search-summary", html)
@@ -303,7 +320,7 @@ class SignInTests(TestCase):
 
     def test_the_choice_is_remembered_with_the_account(self):
         user = reader(self.client)
-        self._ask(ai=None, ai_offered="1")
+        self._ask(ai="0")
         self.assertFalse(AISearchPreference.objects.get(user=user).use_ai)
         self.assertNotIn("checked", self._choice(self.client.get(self.url).content.decode()))
         self.assertNotIn("checked", self._choice(_area(self.client.get("/").content.decode())))
@@ -311,14 +328,32 @@ class SignInTests(TestCase):
         elsewhere.force_login(user)
         self.assertNotIn("checked", self._choice(elsewhere.get(self.url).content.decode()))
 
-        self._ask(ai_offered="1")
+        self._ask()
         self.assertTrue(AISearchPreference.objects.get(user=user).use_ai)
         self.assertIn("checked", self._choice(self.client.get(self.url).content.decode()))
 
     def test_nothing_is_stored_until_the_choice_differs_from_ticked(self):
         reader(self.client)
-        self._ask(ai_offered="1")
+        self._ask()
         self.assertFalse(AISearchPreference.objects.exists())
+
+    def test_a_link_from_elsewhere_can_turn_ai_search_off_but_not_on(self):
+        user = reader(self.client)
+        self._ask(ai="0")  # unticked on this site
+        ticked = {"question": self.QUESTION, "ai": "1"}
+        for fetch_site in ("cross-site", "none", None):  # a link, a bookmark, an older browser
+            with self.subTest(fetch_site):
+                visitor = Client(headers={"Sec-Fetch-Site": fetch_site} if fetch_site else {})
+                visitor.force_login(user)
+                self.assertIsNone(self._token(visitor.get(self.url, ticked).content.decode()))
+                self.assertFalse(AISearchPreference.objects.get(user=user).use_ai)  # not changed by it
+        self._ask()  # ticked again on this site
+        visitor = Client(headers={"Sec-Fetch-Site": "cross-site"})
+        visitor.force_login(user)
+        self.assertIsNotNone(self._token(visitor.get(self.url, ticked).content.decode()))
+        unticked = {"question": self.QUESTION, "ai": "0"}
+        self.assertIsNone(self._token(visitor.get(self.url, unticked).content.decode()))
+        self.assertTrue(AISearchPreference.objects.get(user=user).use_ai)
 
     def test_only_a_form_that_offered_the_box_can_change_it(self):
         reader(self.client)
@@ -327,19 +362,19 @@ class SignInTests(TestCase):
         self.assertIn("checked", self._choice(self.client.get(self.url).content.decode()))
 
     def test_signed_out_nothing_is_stored(self):
-        self._ask(ai=None, ai_offered="1")
+        self._ask(ai="0")
         self.assertFalse(AISearchPreference.objects.exists())
 
     def test_the_choice_goes_with_the_account(self):
         user = reader(self.client)
-        self._ask(ai=None, ai_offered="1")
+        self._ask(ai="0")
         user.delete()
         self.assertFalse(AISearchPreference.objects.exists())
 
     def test_every_pages_search_area_offers_the_choice(self):
         reader(self.client)
         html = self.client.get("/").content.decode()
-        self.assertIn('name="ai"', _area(html))
+        self.assertIn("data-ai-search-choice", _area(html))
 
 
 @override_settings(
@@ -605,7 +640,7 @@ class ButtonAndAreaTests(WithFakeModel):
         self.assertNotIn("app-catalogue-card", html)
 
     def test_the_matches_under_the_home_pages_band(self):
-        html = self.client.post(self.url, {"question": "How do I take money from the public?"}).content.decode()
+        html = self.client.get(self.url, {"question": "How do I take money from the public?"}).content.decode()
         band = self._band(html)
         self.assertIn('<h1 class="hero__title">Technology in government</h1>', html)
         self.assertIn("Find what you need to build services.", band)
@@ -616,7 +651,7 @@ class ButtonAndAreaTests(WithFakeModel):
         self.assertNotIn("Edit this page", html)
 
     def test_an_empty_question_is_an_error_under_the_box(self):
-        html = self.client.post(self.url, {"question": "  "}).content.decode()
+        html = self.client.get(self.url, {"question": "  "}).content.decode()
         band = self._band(html)
         self.assertIn(
             '<p id="app-ai-search-question-error" class="govuk-error-message app-ai-search-box__error">', band
@@ -630,7 +665,7 @@ class ButtonAndAreaTests(WithFakeModel):
         self.assertNotIn("app-catalogue-card", below)
 
     def test_a_long_question_is_kept_in_the_box(self):
-        band = self._band(self.client.post(self.url, {"question": "word " * 70}).content.decode())
+        band = self._band(self.client.get(self.url, {"question": "word " * 70}).content.decode())
         self.assertIn("300 characters or fewer", band)
         self.assertIn('value="word word', band)
 
@@ -645,7 +680,7 @@ class CatalogueCardTests(TestCase):
         choose_ai_search()
 
     def _ask(self, question):
-        return self.client.post(reverse("search"), {"question": question}).content.decode()
+        return self.client.get(reverse("search"), {"question": question}).content.decode()
 
     def test_a_part_of_an_entry_is_shown_on_its_entrys_card(self):
         html = self._ask("Do the first thing")

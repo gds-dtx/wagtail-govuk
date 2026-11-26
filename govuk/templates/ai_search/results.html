@@ -51,6 +51,11 @@
                      data-question="{{ area.question }}"
                      data-access="{{ access }}"
                      aria-busy="true">
+                    <noscript>
+                        <p class="govuk-body">
+                            AI search needs JavaScript. <a class="govuk-link" href="{{ without_js_url }}">See the matches without it</a>.
+                        </p>
+                    </noscript>
                     {% if not summary_on %}{% include "ai_search/includes/thinking.html" %}{% endif %}
                 </div>
                 <p class="govuk-visually-hidden" aria-live="polite" data-ai-search-matches-status></p>

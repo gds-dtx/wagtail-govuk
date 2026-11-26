@@ -1,18 +1,20 @@
 """/search/ with AI search, and the matches and summary endpoints.
 
 Without JavaScript, matches are ranked by search alone: Claude is never called
-from gunicorn. The question is POSTed to keep it out of URLs, history and
-access logs; never log it.
+from gunicorn. /search/ is a GET, so its results can be returned to,
+reloaded and shared; the app's own logs still never record the question.
 """
 
 import logging
 import re
 import time
+from urllib.parse import urlencode
 
 from django.conf import settings
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from django.template.loader import render_to_string
+from django.urls import reverse
 from django.utils.cache import add_never_cache_headers
 from django.utils.html import format_html
 from django.views.decorators.csrf import csrf_exempt
@@ -240,30 +242,56 @@ def _home_hero(site):
     return home if getattr(home, "hero_is_combined", False) else None
 
 
+def _search_url(**fields) -> str:
+    return f"{reverse('search')}?{urlencode(fields)}"
+
+
+def _posted_fields(posted) -> dict:
+    """The GET's fields for the form as it was posted: ``js=1``, ``ai_offered=1`` and the box."""
+    fields = {"question": posted["question"]} if "question" in posted else {}
+    if posted.get("js") == "1" and posted.get("ai_offered") == "1":
+        fields["ai"] = "1" if posted.get("ai") == "1" else "0"
+    return fields
+
+
 def search_page(request, search_settings):
+    if request.method == "POST":
+        # From a page cached while the form was still posted.
+        return _no_store(HttpResponseRedirect(_search_url(**_posted_fields(request.POST)), status=303))
     site = search_settings.site
     context = {"asked": False}
     status, retry_after = 200, None
-    posted = request.method == "POST"
-    question = clean_question(request.POST.get("question")) if posted else ""
-    error = question_error(question) if posted else ""
-    js = posted and request.POST.get("js") == "1"
-    # The checkbox is only shown with JavaScript; unticked or disabled, it sends nothing.
-    use_ai = request.POST.get("ai") == "1" if js else None
+    data = request.GET
+    asked = "question" in data
+    question = clean_question(data.get("question")) if asked else ""
+    error = question_error(question) if asked else ""
+    # ai-search.js sends "ai" only while the box is enabled, so it also says JavaScript ran
+    # and, unlike a form drawn while signed out, that the reader could choose.
+    chose = asked and data.get("ai") in ("0", "1")
+    # A link from elsewhere carries its sender's choice, so it may turn AI search off but
+    # not on. Browsers send no Origin on a GET, so one without Sec-Fetch-Site gets the same.
+    own_form = guard.from_this_site(request.headers)
+    ticked = data.get("ai") == "1"
+    use_ai = (ticked if own_form else ticked and preference.remembered(request.user)) if chose else None
     claude_allowed = may_use_claude(search_settings, request.user)
-    # Only from a form that showed the box enabled, so an old signed-out form cannot untick it.
-    if js and claude_allowed and request.POST.get("ai_offered") == "1":
+    if chose and own_form and claude_allowed:
         preference.remember(request.user, use_ai)
     limit = None
-    if posted and not error:
+    if asked and not error:
         context["asked"] = True
-        wants_claude = js and use_ai and claude_allowed
+        wants_claude = use_ai and claude_allowed
         if wants_claude:
             signed_in = request.user.is_authenticated
             limit = claude_limit(claims.account_for(request.user.pk) if signed_in else "")
             context["limit_warning"] = limit_warning(limit)
         if wants_claude and not limit:
-            context.update(deferred=True, matches_url=MATCHES_PATH, access=make_access(request.user, question))
+            context.update(
+                deferred=True,
+                matches_url=MATCHES_PATH,
+                access=make_access(request.user, question),
+                # For a link with "ai" opened without JavaScript.
+                without_js_url=_search_url(question=question),
+            )
         else:
             retry_after = _over_limit(request, MATCHES_NAMESPACE, settings.AI_SEARCH_RATE_LIMIT_PER_MINUTE)
             if retry_after is not None:
@@ -299,7 +327,7 @@ def search_page(request, search_settings):
         hero_page=hero_page,
         summary_url=SUMMARY_PATH,
         summary_on=summary_ready and bool(context.get("deferred")),
-        summary_needs_js=summary_ready and claude_allowed and not js,
+        summary_needs_js=summary_ready and claude_allowed and not chose,
     )
     # base.html reads the search area from "ai_search".
     context["ai_search"] = context["area"]

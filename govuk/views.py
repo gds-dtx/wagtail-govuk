@@ -154,8 +154,8 @@ def _pagination_query(query: str, tag: str, source: str) -> str:
     )
 
 
-# CSRF-exempt: AI search's POST changes nothing, and a token in every page
-# would stop CloudFront caching them.
+# CSRF-exempt: AI search only redirects a POST to its GET, and a token in every
+# page would stop CloudFront caching them.
 @csrf_exempt
 @require_http_methods(["GET", "HEAD", "POST"])
 def search_view(request):
