@@ -5,7 +5,15 @@ from __future__ import annotations
 from django.utils.text import slugify
 from wagtail.models import Site
 
-from govuk.models import ContentPage, FrameworkMainPage, GovukRole
+from govuk.models import ContentPage, FrameworkMainPage, GovukRole, SearchSettings
+
+
+def find_all_pages(site=None) -> SearchSettings:
+    """Settings > Search's "All pages", for tests of search on ordinary pages, roles and skills."""
+    search = SearchSettings.for_site(site or Site.objects.get(is_default_site=True))
+    search.search_scope = SearchSettings.SearchScope.ALL
+    search.save()
+    return search
 
 
 def feature_flags(*, skills: bool = False, feedback: bool = False) -> dict[str, bool]:

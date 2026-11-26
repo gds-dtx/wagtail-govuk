@@ -15,10 +15,10 @@ READ_ONLY = ToolAnnotations(
 )
 
 INSTRUCTIONS = """\
-This server searches and reads what {site_name} publishes: its pages, its \
-content catalogue of standards, policies, guidance, methods and tools, and the \
-Capability Framework's roles and skills, where the site has them. Everything \
-here is public.
+This server searches and reads what {site_name} publishes: its content \
+catalogue of standards, policies, guidance, methods and tools and, on sites \
+that include them, its other pages and the Capability Framework's roles and \
+skills. Everything here is public.
 
 Use search to find pages, then get_document to read one in full before \
 relying on it. Cite pages by the url they come back with.

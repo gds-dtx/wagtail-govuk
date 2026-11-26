@@ -55,7 +55,7 @@ from govuk.models import (
 )
 from govuk.service import HEALTH_PATH
 from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
-from govuk.tests.helpers import publish_page
+from govuk.tests.helpers import find_all_pages, publish_page
 from govuk.tests.test_ai_search import (
     ON,
     SameSiteClient,
@@ -343,6 +343,7 @@ class InstructionsTests(TestCase):
 class RerankTests(TestCase):
     def setUp(self):
         cache.clear()
+        find_all_pages()
         self.pay = publish_page("Payments", "<p>Take card payments online.</p>")
         self.forms = publish_page("Forms", "<p>Make online forms and take payments.</p>")
         self.blog = publish_page("Blog", "<p>Online news about payments.</p>")

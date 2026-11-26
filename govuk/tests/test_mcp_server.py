@@ -19,7 +19,7 @@ from govuk.models import ContentEntryExternalPage, MaintenanceModeSettings
 from govuk.service import HEALTH_PATH, app as service_app
 from govuk.service.app import create_app
 from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
-from govuk.tests.helpers import mcp_token, publish_page
+from govuk.tests.helpers import find_all_pages, mcp_token, publish_page
 
 FLAGS = {"SKILLS": False, "FEEDBACK": False, "CATALOGUE": True, "AI": True}
 LIST_TOOLS = {"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}}
@@ -43,6 +43,7 @@ def service_requests(*requests, app=None) -> list:
 class ToolTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
+        find_all_pages(self.site)
         self.main = make_content_main_page(self.site.root_page)
         import_fixture(self.main)
         self.page = publish_page("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
@@ -116,6 +117,7 @@ class ProtocolTests(TransactionTestCase):
     serialized_rollback = True
 
     def setUp(self):
+        find_all_pages()
         publish_page("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
         indexer.rebuild()
 

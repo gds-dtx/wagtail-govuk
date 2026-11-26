@@ -10,7 +10,7 @@ from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
 from django.core.management import CommandError, call_command
 from django.test import SimpleTestCase, TestCase, override_settings
-from wagtail.models import Site
+from wagtail.models import Page, Site
 
 from govuk.content_index import embeddings, indexer
 from govuk.content_index.embeddings import (
@@ -50,10 +50,16 @@ from govuk.models import (
     GovukSkill,
     IndexedChunk,
     IndexedDocument,
+    SearchSettings,
     TagListingsPage,
 )
 from govuk.tests.catalogue_helpers import import_fixture, make_content_main_page
-from govuk.tests.helpers import make_framework_main_page, publish_page, text_body
+from govuk.tests.helpers import (
+    find_all_pages,
+    make_framework_main_page,
+    publish_page,
+    text_body,
+)
 
 FLAGS = {"SKILLS": True, "FEEDBACK": False, "CATALOGUE": True, "AI": True}
 CONCEPTS = {"money": "pay", "payments": "pay", "payment": "pay", "card": "pay", "public": "people", "people": "people"}
@@ -68,6 +74,7 @@ class WithFakeModel(TestCase):
         patcher = mock.patch.object(embeddings, "_fake", self.fake)
         patcher.start()
         self.addCleanup(patcher.stop)
+        find_all_pages()
         self.pay = publish_page("GOV.UK Pay", "<h2>Taking payments</h2><p>Take card payments online.</p>")
         self.testing = publish_page("Accessibility", "<h2>Testing</h2><p>Test with assistive technology users.</p>")
         indexer.rebuild()
@@ -78,6 +85,7 @@ class WithFakeModel(TestCase):
 class SearchTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
+        find_all_pages(self.site)
         home = self.site.root_page
         self.accessibility = home.add_child(
             instance=ContentPage(
@@ -206,6 +214,7 @@ class CloseTests(SimpleTestCase):
 class FindDocumentTests(TestCase):
     def setUp(self):
         self.site = Site.objects.get(is_default_site=True)
+        find_all_pages(self.site)
         self.main = make_content_main_page(self.site.root_page)
         import_fixture(self.main)
         self.framework = make_framework_main_page(self.site.root_page)
@@ -247,10 +256,64 @@ class FindDocumentTests(TestCase):
         document, _ = find_document("https://www.gov.uk/guidance/external-policy/")
         self.assertEqual(document.page_id, external.pk)
 
+    def test_nothing_search_would_not_list(self):
+        self.assertIsNotNone(find_document(self.skills_page.get_url_parts()[2]))
+        search_settings = SearchSettings.for_site(self.site)
+        search_settings.search_scope = SearchSettings.SearchScope.CATALOGUE
+        search_settings.save()
+        self.assertIsNone(find_document(self.skills_page.get_url_parts()[2]))
+        self.assertIsNotNone(find_document(self.policy_path))
+
     def test_nothing_is_found_elsewhere(self):
         self.assertIsNone(find_document("https://elsewhere.example" + self.policy_path))
         self.assertIsNone(find_document("/no/such/page/"))
         self.assertIsNone(find_document(""))
+
+
+@override_settings(FEATURE_FLAGS=FLAGS)
+class SearchScopeTests(TestCase):
+    """Settings > Search's "What AI search finds", for the site's search and the MCP server alike."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+        import_fixture(make_content_main_page(self.site.root_page))
+        self.page = publish_page("Hosted notes", "<p>Notes about hosting.</p>")
+        framework = make_framework_main_page(self.site.root_page)
+        framework.add_child(instance=FrameworkSkillsPage(title="Skills", slug="skills")).save_revision().publish()
+        GovukSkill.objects.create(title="Hosted skill", body="<p>Hosting.</p>")
+        other_root = Page.get_first_root_node().add_child(instance=ContentPage(title="Other", slug="other"))
+        self.other = Site.objects.create(hostname="other.example", port=80, root_page=other_root)
+        self.other_page = publish_page("Hosted elsewhere", "<p>Hosting.</p>", parent=other_root)
+        indexer.rebuild()
+
+    def _titles(self, query="hosted"):
+        return {hit.document.title for hit in search(query, limit=25).hits}
+
+    def test_by_default_only_catalogue_entries_and_their_pages(self):
+        titles = self._titles()
+        self.assertTrue({"Hosted standard", "Hosted policy", "Hosted method"} <= titles)
+        self.assertFalse({"Hosted notes", "Hosted skill", "Hosted elsewhere"} & titles)
+        self.assertIn("The first point", self._titles("first point"))  # a page within an entry
+        self.assertNotIn("Hosted notes", {result.title for result in tools.search(query="hosted", limit=25).results})
+        self.assertIsNone(find_document(self.page.get_url_parts()[2]))
+
+    def test_all_pages_adds_the_rest(self):
+        find_all_pages(self.site)
+        titles = self._titles()
+        self.assertTrue({"Hosted standard", "Hosted notes", "Hosted skill"} <= titles)
+        self.assertNotIn("Hosted elsewhere", titles)  # its own site is still catalogue entries only
+        self.assertEqual(find_document(self.page.get_url_parts()[2])[0].page_id, self.page.pk)
+
+    def test_each_site_has_its_own_setting(self):
+        find_all_pages(self.other)
+        titles = self._titles()
+        self.assertIn("Hosted elsewhere", titles)
+        self.assertNotIn("Hosted notes", titles)
+
+    @override_settings(FEATURE_FLAGS={**FLAGS, "CATALOGUE": False})
+    def test_without_the_catalogue_every_page_is_found(self):
+        indexer.rebuild()
+        self.assertTrue({"Hosted notes", "Hosted skill", "Hosted elsewhere"} <= self._titles())
 
 
 class EmbeddedTextTests(SimpleTestCase):

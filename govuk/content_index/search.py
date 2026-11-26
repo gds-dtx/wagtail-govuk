@@ -9,15 +9,24 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
+from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from django.db import connections
 from django.db.models import OuterRef, Q, Subquery
 from wagtail.models import Site
 
-from govuk.models import ContentEmbedding, IndexedChunk, IndexedDocument
+from govuk.features import catalogue_enabled
+from govuk.models import (
+    ContentEmbedding,
+    IndexedChunk,
+    IndexedDocument,
+    SearchSettings,
+    entry_page_models,
+)
 from govuk.search_backend import SEARCH_CONFIG, SEARCH_WEIGHTS, UNMATCHED_RANK
 
 from . import embeddings
+from .extract import SUB_PAGE_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +136,16 @@ def _content_terms(query: str) -> list[str]:
     return kept
 
 
+def in_search_scope(documents):
+    """What each document's site lets search find (Settings > Search): with "Catalogue
+    entries only", its catalogue entries and their pages and nothing else."""
+    if not catalogue_enabled():
+        return documents
+    whole_sites = SearchSettings.objects.filter(search_scope=SearchSettings.SearchScope.ALL).values("site_id")
+    catalogue_types = ContentType.objects.get_for_models(*entry_page_models(), *SUB_PAGE_MODELS).values()
+    return documents.filter(Q(site__in=whole_sites) | Q(page__content_type__in=catalogue_types))
+
+
 def search_documents(query, **kwargs) -> list[SearchHit]:
     return search(query, **kwargs).hits
 
@@ -147,7 +166,7 @@ def search(
         raise ValueError(f"mode must be one of {MODES}")
     query = clean_query(query, max_length)
     limit = max(1, min(int(limit), MAX_LIMIT))
-    documents = IndexedDocument.objects.all()
+    documents = in_search_scope(IndexedDocument.objects.all())
     if origin:
         documents = documents.filter(origin=origin)
     if kind:
@@ -495,7 +514,8 @@ def find_document(url) -> tuple[IndexedDocument, str] | None:
     if not raw:
         return None
     parts = urlsplit(raw)
-    documents = IndexedDocument.objects.select_related("site")
+    # Nothing search would not list.
+    documents = in_search_scope(IndexedDocument.objects.select_related("site"))
     if parts.netloc:
         host = (parts.hostname or "").lower()
         sites = [site for site in Site.objects.all() if site.hostname.lower() == host]

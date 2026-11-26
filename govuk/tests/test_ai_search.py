@@ -34,6 +34,8 @@ EMPTY = "Please enter a question or search query"
 def choose_ai_search(**fields) -> SearchSettings:
     search = SearchSettings.for_site(Site.objects.get(is_default_site=True))
     search.search_type = SearchSettings.SearchType.AI
+    # Most tests search ordinary pages.
+    search.search_scope = SearchSettings.SearchScope.ALL
     for name, value in fields.items():
         setattr(search, name, value)
     search.save()

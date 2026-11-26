@@ -25,7 +25,7 @@ from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
 from wagtail.fields import RichTextField, StreamField
 from wagtail.models import Orderable
 
-from govuk.features import ai_enabled
+from govuk.features import ai_enabled, catalogue_enabled
 
 from .blocks import LinkBlock
 from .constants import (
@@ -330,6 +330,8 @@ def _search_panels() -> list:
             [
                 FieldPanel("ai_search_on_home_page"),
                 FieldPanel("ai_search_lead_text"),
+                # Without the catalogue every page is found, as there are no entries to limit it to.
+                *([FieldPanel("search_scope")] if catalogue_enabled() else []),
             ],
             heading="AI search",
         ),
@@ -382,6 +384,22 @@ class SearchSettings(BaseSiteSetting):
     class SearchType(models.TextChoices):
         NORMAL = "normal", "Normal search"
         AI = "ai", "AI search"
+
+    class SearchScope(models.TextChoices):
+        CATALOGUE = "catalogue", "Catalogue entries only"
+        ALL = "all", "All pages"
+
+    search_scope = models.CharField(
+        max_length=20,
+        choices=SearchScope.choices,
+        default=SearchScope.CATALOGUE,
+        verbose_name="What AI search finds",
+        help_text=(
+            "Catalogue entries only restricts results to just those in the content catalogue. "
+            "All pages adds all the site's other pages, roles and skills. "
+            "The MCP server finds the same. Normal search is not affected."
+        ),
+    )
 
     search_type = models.CharField(
         max_length=20,

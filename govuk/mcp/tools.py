@@ -146,9 +146,9 @@ def search(
     ] = None,
     limit: Annotated[int, Field(ge=1, le=MAX_LIMIT, description="How many results to return.")] = 10,
 ) -> SearchResults:
-    """Search the site's published content: its pages, its content catalogue of
-    standards, policies, guidance, methods and tools, and the Capability
-    Framework's roles and skills.
+    """Search the site's published content: its content catalogue of standards,
+    policies, guidance, methods and tools and, on sites that include them, its
+    other pages and the Capability Framework's roles and skills.
 
     Matches by meaning as well as by words, so a question in plain words
     works as well as keywords. Returns the best matches, one per page, each
