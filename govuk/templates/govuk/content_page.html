@@ -4,6 +4,9 @@
     With the role navigation alongside, the heading sits beside it in the
     content column rather than in the site hero above, matching the role pages.
 {% endcomment %}
+{% comment %}
+    The bottom margins end the page, so are left off a content main page that lists all content below them.
+{% endcomment %}
 {% block page_hero %}{% if not role_navigation %}{{ block.super }}{% endif %}{% endblock %}
 {% block content %}
     {% content_body_layout self as body_layout %}
@@ -25,7 +28,7 @@
             {% if segment.full_width %}
                 {% for item in segment.items %}{% include "includes/body_block.html" with full_width=True %}{% endfor %}
             {% else %}
-                <div class="govuk-width-container body-segment{% if forloop.last and not framework_changelog.entries %} govuk-!-margin-bottom-6{% endif %}">
+                <div class="govuk-width-container body-segment{% if forloop.last and not framework_changelog.entries and not self.lists_all_here %} govuk-!-margin-bottom-6{% endif %}">
                     <div class="govuk-body rich-text-content">
                         {% for item in segment.items %}{% include "includes/body_block.html" %}{% endfor %}
                     </div>
@@ -40,7 +43,7 @@
             </div>
         {% endif %}
     {% else %}
-        <div class="govuk-width-container govuk-!-margin-bottom-6">
+        <div class="govuk-width-container{% if not self.lists_all_here %} govuk-!-margin-bottom-6{% endif %}">
             {% if self.body or self.author or self.show_last_updated_date or self.show_page_content_metadata or role_navigation or framework_changelog.entries or self.show_framework_welcome %}
                 <div class="govuk-!-margin-bottom-3">
                     <div class="govuk-grid-row{% if heading_navigation %} free-text-with-headings-layout{% endif %}"

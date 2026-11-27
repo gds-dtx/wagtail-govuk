@@ -70,4 +70,9 @@ class Migration(migrations.Migration):
             name='primary',
             field=models.BooleanField(default=False, help_text='Listed first in its section, with a starred corner on its card.', verbose_name='Primary'),
         ),
+        migrations.AddField(
+            model_name='contentmainpage',
+            name='all_content_location',
+            field=models.CharField(choices=[('all_page', 'On a page of its own: .../this-page/all/'), ('this_page', 'At the bottom of this page')], default='all_page', help_text='Every entry, with its filters.', max_length=10, verbose_name='Where all content is listed'),
+        ),
     ]

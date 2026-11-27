@@ -174,7 +174,7 @@ class ContentMainPage(
         choices=AllContentLocation.choices,
         default=AllContentLocation.ALL_PAGE,
         verbose_name="Where all content is listed",
-        help_text="Every entry, with the search and filters.",
+        help_text="Every entry, with its filters.",
     )
 
     template = "catalogue/main_page.html"
@@ -212,7 +212,7 @@ class ContentMainPage(
         if not catalogue_enabled():
             raise Http404
         if self.lists_all_here:
-            # Temporary: the setting can be changed back. Keeps the search and filters.
+            # Temporary: the setting can be changed back. Keeps the filters.
             query = request.GET.urlencode()
             return HttpResponseRedirect(
                 (self.get_url(request) or "/") + (f"?{query}" if query else "") + f"#{presentation.ALL_CONTENT_ID}"

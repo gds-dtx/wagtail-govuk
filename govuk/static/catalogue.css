@@ -377,7 +377,7 @@
     width: 100%;
     min-width: 0;
 }
-/* Same line as Apply, so the count reads as what Apply would give. */
+/* Same line as Apply filters, so the count reads as what it would give. */
 .app-catalogue-filters__pending {
     align-self: center;
 }

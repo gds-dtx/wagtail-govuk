@@ -89,7 +89,7 @@ function setCatalogueFilterCounts(form) {
     }
     if (status) {
       const results = `${data.count} result${data.count === 1 ? "" : "s"}`;
-      status.textContent = pending ? `${results}. Select Apply to show them.` : "";
+      status.textContent = pending ? `${results}. Select Apply filters to show them.` : "";
     }
   }
 

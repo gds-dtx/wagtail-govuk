@@ -124,7 +124,7 @@ class MainPageTests(CatalogueTestCase):
                 response, f'<select class="govuk-select" id="catalogue-{name}" name="{name}">', html=False
             )
         self.assertNotContains(response, 'id="catalogue-scope"')
-        self.assertContains(response, '<label class="govuk-label govuk-label--s" for="catalogue-q">Keyword search</label>')
+        self.assertContains(response, '<label class="govuk-label govuk-label--s" for="catalogue-q">Filter by keyword</label>')
         self.assertContains(response, '<label class="govuk-label govuk-label--s" for="catalogue-type">Content type</label>')
         self.assertContains(
             response, '<option value="architecture" selected>Architecture (1)</option>', html=False
@@ -188,6 +188,22 @@ class AllContentOnMainPageTests(CatalogueTestCase):
         self.assertIn('<form method="get" action="#all-content" class="app-catalogue-filters"', html)
         self.assertIn("catalogue.js", html)
         self.assertEqual(self.get(tag="security").context["result_count"], 2)
+
+    def test_the_content_above_keeps_no_end_of_page_margin(self):
+        self.page.body = [
+            {"type": "text", "value": "<h2>What are you looking for?</h2>"},
+            # A banner makes the page a run of full-width segments.
+            {"type": "banner", "value": {"heading": "Join", "text": "<p>Meet people.</p>", "style": "brand"}},
+            {"type": "text", "value": "<p>Everything we hold.</p>"},
+        ]
+        self.page.save()
+        for location, margin in (("this_page", False), ("all_page", True)):
+            with self.subTest(location):
+                self.page.all_content_location = location
+                self.page.save()
+                html = self.get().content.decode()
+                last_segment = html[html.rindex('<div class="govuk-width-container body-segment') :].split(">", 1)[0]
+                self.assertEqual("govuk-!-margin-bottom-6" in last_segment, margin)
 
     def test_pages_and_apply_come_back_to_the_listing(self):
         with mock.patch("govuk.catalogue.presentation.ALL_PAGE_SIZE", 1):

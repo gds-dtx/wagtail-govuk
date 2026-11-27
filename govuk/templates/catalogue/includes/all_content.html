@@ -6,7 +6,7 @@
         {% for card in result_cards %}{% include "catalogue/includes/card.html" with heading_level=2 %}{% endfor %}
     </ul>
 {% elif filter_form.active %}
-    <p class="govuk-body">Nothing matches. <a class="govuk-link" href="?{{ listing_fragment }}">Clear the search and filters</a>.</p>
+    <p class="govuk-body">Nothing matches. <a class="govuk-link" href="?{{ listing_fragment }}">Clear the filters</a>.</p>
 {% endif %}
 {% if page_obj.has_other_pages %}
     <nav class="govuk-pagination" aria-label="Results pages">
