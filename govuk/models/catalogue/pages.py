@@ -6,7 +6,7 @@ the pages within an entry.
 
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.forms import CheckboxSelectMultiple, Select
+from django.forms import CheckboxSelectMultiple, RadioSelect, Select
 from django.http import Http404, HttpResponseRedirect
 from django.urls import reverse
 from modelcluster.contrib.taggit import ClusterTaggableManager
@@ -165,10 +165,23 @@ class ContentMainPage(
     ]
     subpage_types = ["govuk.ContentGroupPage", "govuk.ContentPage", "govuk.TagListingsPage"]
 
-    template = "govuk/content_page.html"
+    class AllContentLocation(models.TextChoices):
+        ALL_PAGE = "all_page", "On a page of its own: .../this-page/all/"
+        THIS_PAGE = "this_page", "At the bottom of this page"
+
+    all_content_location = models.CharField(
+        max_length=10,
+        choices=AllContentLocation.choices,
+        default=AllContentLocation.ALL_PAGE,
+        verbose_name="Where all content is listed",
+        help_text="Every entry, with the search and filters.",
+    )
+
+    template = "catalogue/main_page.html"
     tags = ClusterTaggableManager(through="govuk.ContentMainPageTag", blank=True)
 
     content_panels = base_content_panels() + [
+        FieldPanel("all_content_location", widget=RadioSelect),
         CatalogueToolsPanel(heading="Catalogue import and export"),
     ]
     settings_panels = content_settings_panels()
@@ -176,17 +189,46 @@ class ContentMainPage(
     class Meta:
         verbose_name = "content main page"
 
+    @property
+    def lists_all_here(self) -> bool:
+        return catalogue_enabled() and self.all_content_location == self.AllContentLocation.THIS_PAGE
+
+    def all_content_url(self, request=None) -> str:
+        url = self.get_url(request) or ""
+        if not url:
+            return ""
+        return f"{url}#{presentation.ALL_CONTENT_ID}" if self.lists_all_here else f"{url.rstrip('/')}/all/"
+
+    @path("")
+    def index_route(self, request, *args, **kwargs):
+        # catalogue.js asks the page it is on for the counts.
+        if self.lists_all_here and presentation.wants_counts(request):
+            return presentation.counts_response(self.entries(), request)
+        return super().index_route(request, *args, **kwargs)
+
     @path("all/")
     def serve_all(self, request):
         # Shadows a child page with the slug ``all``.
         if not catalogue_enabled():
             raise Http404
+        if self.lists_all_here:
+            # Temporary: the setting can be changed back. Keeps the search and filters.
+            query = request.GET.urlencode()
+            return HttpResponseRedirect(
+                (self.get_url(request) or "/") + (f"?{query}" if query else "") + f"#{presentation.ALL_CONTENT_ID}"
+            )
         if presentation.wants_counts(request):
             return presentation.counts_response(self.entries(), request)
         # "all" carries its heading in the content, not the main page's hero.
         self.hero_style = HeroStyle.NONE
         context = presentation.all_context(self, request)
         return self.render(request, template="catalogue/all_page.html", context_overrides=context)
+
+    def get_context(self, request, *args, **kwargs):
+        context = super().get_context(request, *args, **kwargs)
+        if self.lists_all_here:
+            context.update(presentation.all_listing_context(self, request))
+        return context
 
     def entries(self):
         return presentation.live_entries(Page.objects.descendant_of(self))

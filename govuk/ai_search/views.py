@@ -99,8 +99,7 @@ def _browse_url(request=None) -> str:
     if not catalogue_enabled():
         return ""
     main = ContentMainPage.objects.live().public().order_by("path").first()
-    url = main.get_url(request) if main else None
-    return f"{url}all/" if url else ""
+    return main.all_content_url(request) if main else ""
 
 
 def find_matches(question: str, search_settings, *, use_claude: bool, signed_in: bool, request=None) -> dict:

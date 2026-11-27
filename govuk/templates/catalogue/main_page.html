@@ -1,0 +1,19 @@
+{% extends "govuk/content_page.html" %}
+{% load static %}
+{% comment %}The content page, then every entry when the main page lists all content itself.{% endcomment %}
+{% block content %}
+    {{ block.super }}
+    {% if self.lists_all_here %}
+        {% comment %}
+            No heading of its own: an editor wanting one adds it in the blocks above.
+            Cards are h2 so none skips a level below the page's h1.
+        {% endcomment %}
+        <div class="govuk-width-container govuk-!-margin-bottom-6 app-catalogue" id="{{ listing_id }}">
+            {% include "catalogue/includes/all_content.html" %}
+        </div>
+    {% endif %}
+{% endblock %}
+{% block extra_body %}
+    {{ block.super }}
+    {% if self.lists_all_here %}<script type="module" src="{% static 'catalogue.js' %}"></script>{% endif %}
+{% endblock %}

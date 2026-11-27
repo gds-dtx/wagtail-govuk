@@ -20,6 +20,8 @@ from .filtering import filter_entries
 from .render import _GithubAnchors
 
 ALL_PAGE_SIZE = 24
+# The listing's heading on a main page that lists all content itself.
+ALL_CONTENT_ID = "all-content"
 _IMG_SRC = re.compile(r'<img[^>]*\ssrc="([^"]+)"')
 
 
@@ -209,7 +211,7 @@ def _common(main_page, request) -> dict:
             {"slug": group.slug, "label": group.title, "url": group.get_url(request)}
             for group in groups
         ],
-        "catalogue_all_url": f"{_base_url(main_page, request)}all/",
+        "catalogue_all_url": main_page.all_content_url(request),
         "catalogue_home_url": _base_url(main_page, request),
     }
 
@@ -248,7 +250,8 @@ def group_context(group_page, request) -> dict:
     }
 
 
-def all_context(main_page, request) -> dict:
+def all_listing_context(main_page, request) -> dict:
+    """Every entry, searched, filtered and paged: on the "all" page, or at the foot of the main page."""
     vocab = vocabularies()
     views = entry_views(main_page.entries(), request)
     visible, entry_filter = filter_entries(views, request.GET, vocab)
@@ -260,12 +263,21 @@ def all_context(main_page, request) -> dict:
     query.pop("page", None)
     return {
         **_common(main_page, request),
-        "page_heading": "All content",
         "result_cards": [card(view, vocab) for view in page_obj.object_list],
         "result_count": paginator.count,
         "page_obj": page_obj,
         "pagination_query": query.urlencode(),
         "filter_form": _filter_form(entry_filter),
+        # Brings the reader back to the listing, not the top of the page, after Apply or a page link.
+        "listing_fragment": f"#{ALL_CONTENT_ID}" if main_page.lists_all_here else "",
+        "listing_id": ALL_CONTENT_ID,
+    }
+
+
+def all_context(main_page, request) -> dict:
+    return {
+        **all_listing_context(main_page, request),
+        "page_heading": "All content",
         "breadcrumbs": _route_breadcrumbs(main_page, request, "All content"),
         "show_breadcrumbs": True,
     }

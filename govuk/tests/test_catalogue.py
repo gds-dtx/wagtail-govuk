@@ -3,6 +3,7 @@
 import re
 from datetime import datetime, timezone
 from io import StringIO
+from unittest import mock
 
 from django.apps import apps
 from django.contrib.auth import get_user_model
@@ -13,6 +14,7 @@ from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import Page, Site
 
+from govuk.ai_search.views import _browse_url
 from govuk.catalogue.colours import (
     colour_class,
     contrast,
@@ -157,6 +159,54 @@ class MainPageTests(CatalogueTestCase):
         self.assertContains(response, "data-catalogue-filters>")
         self.assertContains(response, 'role="status" data-catalogue-filters-status')
         self.assertContains(response, "catalogue.js")
+
+
+@override_settings(FEATURE_FLAGS=catalogue_flags())
+class AllContentOnMainPageTests(CatalogueTestCase):
+    """The main page set to list every entry itself, rather than on "all"."""
+
+    def setUp(self):
+        super().setUp()
+        self.page.all_content_location = ContentMainPage.AllContentLocation.THIS_PAGE
+        self.page.save()
+
+    def test_by_default_the_main_page_lists_nothing_and_all_does(self):
+        self.page.all_content_location = ContentMainPage.AllContentLocation.ALL_PAGE
+        self.page.save()
+        self.assertNotIn("result_cards", self.get().context)
+        self.assertEqual(self.get("all/").context["result_count"], 7)
+
+    def test_the_main_page_lists_every_entry_below_its_own_content(self):
+        response = self.get()
+        self.assertTemplateUsed(response, "govuk/content_page.html")
+        self.assertEqual(response.context["result_count"], 7)
+        html = response.content.decode()
+        self.assertIn('<div class="govuk-width-container govuk-!-margin-bottom-6 app-catalogue" id="all-content">', html)
+        # No heading of its own, so the cards are the level below the page's h1.
+        self.assertNotIn(">All content</h2>", html)
+        self.assertIn('<h2 class="govuk-heading-s app-catalogue-card__title">', html)
+        self.assertIn('<form method="get" action="#all-content" class="app-catalogue-filters"', html)
+        self.assertIn("catalogue.js", html)
+        self.assertEqual(self.get(tag="security").context["result_count"], 2)
+
+    def test_pages_and_apply_come_back_to_the_listing(self):
+        with mock.patch("govuk.catalogue.presentation.ALL_PAGE_SIZE", 1):
+            html = self.get(tag="security").content.decode()
+        self.assertIn('href="?tag=security&amp;page=2#all-content"', html)
+
+    def test_it_answers_the_counts_itself(self):
+        response = self.get(counts="1", profession="architecture")
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertEqual(response.json()["count"], 1)
+
+    def test_all_comes_to_the_main_page_with_its_search_and_filters(self):
+        response = self.get("all/", tag="security")
+        self.assertEqual(response.status_code, 302)  # not 301: the setting can be changed back
+        self.assertEqual(response["Location"], f"{self.base}?tag=security#all-content")
+
+    def test_links_to_all_content_go_to_the_main_page(self):
+        self.assertContains(self.get("standards-and-policies/"), f'href="{self.base}#all-content"')
+        self.assertEqual(_browse_url(), f"{self.base}#all-content")
 
 
 @override_settings(FEATURE_FLAGS=catalogue_flags())
