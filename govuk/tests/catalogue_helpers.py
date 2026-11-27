@@ -58,7 +58,7 @@ def catalogue_files() -> dict[str, bytes | None]:
                 label: Resources and tools
             types:
               standard: {label: Standard, plural: Standards, layout: requirements, group: standards-and-policies}
-              policy: {label: Policy, plural: Policies, layout: policy, group: standards-and-policies}
+              policy: {label: Policy, plural: Policies, layout: policy, group: standards-and-policies, colour: "#8F338E"}
               guidance: {label: Guidance, plural: Guidance, layout: guide, group: guidance}
               method: {label: Method, plural: Methods, layout: steps, group: guidance}
               product: {label: Product, plural: Products, layout: tool, group: resources-and-tools}

@@ -131,6 +131,7 @@ class _Exporter:
             if entry_type.description:
                 value["description"] = entry_type.description
             value["layout"] = entry_type.layout
+            value["colour"] = entry_type.colour
             counts = type_groups.get(entry_type.pk)
             if counts:
                 value["group"] = counts.most_common(1)[0][0]

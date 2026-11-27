@@ -1,13 +1,13 @@
-"""Filter catalogue entries by ``?q=``, ``?tag=``, ``?profession=``, ``?type=``, ``?scope=``.
+"""Filter catalogue entries by ``?q=``, ``?tag=``, ``?profession=``, ``?type=``.
 
 Done in Python: a catalogue is a few hundred entries, and SQLite cannot index JSON lists.
 """
 
 from dataclasses import dataclass, field
 
-FILTER_FIELDS = ("tag", "profession", "type", "scope")
-_ATTRIBUTES = {"tag": "tags", "profession": "professions", "type": "type", "scope": "scope"}
-_VOCABULARIES = {"tag": "tags", "profession": "professions", "type": "types", "scope": "scope"}
+FILTER_FIELDS = ("tag", "profession", "type")
+_ATTRIBUTES = {"tag": "tags", "profession": "professions", "type": "type"}
+_VOCABULARIES = {"tag": "tags", "profession": "professions", "type": "types"}
 PRIMARY_BOOST = 1.5
 
 

@@ -1,5 +1,7 @@
 """The content catalogue's pages: where they go, what they serve, how search finds them, and the admin around them."""
 
+import re
+from datetime import datetime, timezone
 from io import StringIO
 
 from django.apps import apps
@@ -11,6 +13,13 @@ from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
 from wagtail.models import Page, Site
 
+from govuk.catalogue.colours import (
+    colour_class,
+    contrast,
+    star_colour,
+    style_sheet,
+    tag_colours,
+)
 from govuk.models import (
     CatalogueScope,
     CatalogueType,
@@ -23,6 +32,7 @@ from govuk.models import (
     ContentMainPage,
     ContentPage,
     ContentRequirementPage,
+    HarvestedSource,
     catalogue_page_models,
     catalogue_type_labels,
     without_catalogue_pages,
@@ -107,10 +117,13 @@ class MainPageTests(CatalogueTestCase):
 
     def test_the_filters_are_dropdowns_that_keep_the_chosen_value(self):
         response = self.get("all/", profession="architecture")
-        for name in ("tag", "profession", "type", "scope"):
+        for name in ("tag", "profession", "type"):
             self.assertContains(
                 response, f'<select class="govuk-select" id="catalogue-{name}" name="{name}">', html=False
             )
+        self.assertNotContains(response, 'id="catalogue-scope"')
+        self.assertContains(response, '<label class="govuk-label govuk-label--s" for="catalogue-q">Keyword search</label>')
+        self.assertContains(response, '<label class="govuk-label govuk-label--s" for="catalogue-type">Content type</label>')
         self.assertContains(
             response, '<option value="architecture" selected>Architecture (1)</option>', html=False
         )
@@ -162,7 +175,7 @@ class GroupPageTests(CatalogueTestCase):
                 ("Policies", [("External policy", True), ("Hosted policy", False)]),
             ],
         )
-        self.assertContains(response, "app-catalogue-card app-catalogue-card--primary")
+        self.assertContains(response, "app-catalogue-card--primary")
 
     def test_cards_link_to_their_page_or_straight_to_the_source(self):
         response = self.get("standards-and-policies/")
@@ -176,6 +189,56 @@ class GroupPageTests(CatalogueTestCase):
             if card["title"] == "Hosted standard"
         )
         self.assertEqual(hosted["source_name"], "")
+
+    def test_each_card_has_its_types_tag_and_colour(self):
+        response = self.get("standards-and-policies/")
+        html = response.content.decode()
+        self.assertIn('<strong class="govuk-tag app-catalogue-card__tag">Policy</strong>', html)
+        self.assertIn('<li class="app-catalogue-card app-colour-8f338e app-catalogue-card--primary">', html)
+        self.assertIn('<li class="app-catalogue-card app-colour-1d70b8 app-catalogue-card--primary">', html)
+        # The CSP blocks style attributes, so the colours are a nonced style sheet.
+        nonce = re.search(r'<style nonce="([^"]+)">li\.app-colour-', html).group(1)
+        self.assertIn(f"'nonce-{nonce}'", response["Content-Security-Policy"])
+        self.assertIn(
+            "li.app-colour-8f338e{--app-card-colour:#8f338e;--app-card-star:#ffffff;"
+            "--app-tag-text:#481a47;--app-tag-background:#e9d6e8}",
+            html,
+        )
+        # The starred corner is drawn by CSS, so its meaning is also in the heading.
+        self.assertIn('>Hosted standard</a><span class="govuk-visually-hidden">, featured</span>', html)
+        self.assertNotIn('>Another standard</a><span class="govuk-visually-hidden">', html)
+
+    def test_a_hosted_entrys_card_says_when_it_was_published_or_updated(self):
+        entry = ContentEntryRequirementsPage.objects.get(slug="hosted-standard")
+        Page.objects.filter(pk=entry.pk).update(
+            first_published_at=datetime(2026, 3, 2, 9, tzinfo=timezone.utc),
+            last_published_at=datetime(2026, 3, 2, 17, tzinfo=timezone.utc),
+        )
+        self.assertContains(
+            self.get("standards-and-policies/"), 'Published <time datetime="2026-03-02">2 March 2026</time>'
+        )
+        Page.objects.filter(pk=entry.pk).update(last_published_at=datetime(2026, 4, 5, tzinfo=timezone.utc))
+        self.assertContains(
+            self.get("standards-and-policies/"), 'Last updated <time datetime="2026-04-05">5 April 2026</time>'
+        )
+
+    def test_an_external_entrys_card_has_its_sources_date_or_none(self):
+        response = self.get("standards-and-policies/")
+        external = next(
+            card for s in response.context["type_sections"] for card in s["cards"] if card["title"] == "External policy"
+        )
+        # Not the date it was listed here, which says nothing of the source.
+        self.assertIsNone(external["updated"])
+        HarvestedSource.objects.create(
+            url="https://www.gov.uk/guidance/external-policy",
+            source_updated_at=datetime(2025, 11, 20, 12, tzinfo=timezone.utc),
+        )
+        html = self.get("standards-and-policies/").content.decode()
+        self.assertIn(
+            '<p class="govuk-body-s">Last updated <time datetime="2025-11-20">20 November 2025</time></p>\n'
+            '            <p class="govuk-body-s">Source: GOV.UK</p>',
+            html,
+        )
 
     def test_an_unpublished_entry_leaves_its_group(self):
         ContentEntryRequirementsPage.objects.get(slug="hosted-standard").unpublish()
@@ -577,3 +640,29 @@ class CatalogueSearchTests(CatalogueTestCase):
         self.assertContains(
             response, '<strong class="govuk-tag govuk-tag--purple">Standard</strong>', html=False
         )
+
+
+class CardColourTests(TestCase):
+    def test_a_tag_is_drawn_as_govuk_frontend_draws_its_own(self):
+        # GOV.UK Frontend 6's .govuk-tag, --green and --red.
+        for colour, expected in (
+            ("#1d70b8", ("#0f385c", "#d2e2f1")),
+            ("#0f7a52", ("#083d29", "#cfe4dc")),
+            ("#ca3535", ("#651b1b", "#f4d7d7")),
+        ):
+            with self.subTest(colour):
+                self.assertEqual(tag_colours(colour), expected)
+
+    def test_a_light_colours_tag_text_is_darkened_to_be_readable(self):
+        text, background = tag_colours("#ffee00")
+        self.assertGreaterEqual(contrast(text, background), 4.5)
+
+    def test_the_star_is_white_unless_the_corner_is_too_light(self):
+        self.assertEqual(star_colour("#54319f"), "#ffffff")
+        self.assertEqual(star_colour("#f47738"), "#0b0c0c")
+
+    def test_one_rule_per_colour_and_an_unreadable_one_is_blue(self):
+        sheet = style_sheet(["#1D70B8", "#1d70b8", "red;}body{display:none"])
+        self.assertEqual(sheet.count("li.app-colour-1d70b8{"), 1)
+        self.assertNotIn("display", sheet)
+        self.assertEqual(colour_class("not a colour"), "app-colour-1d70b8")

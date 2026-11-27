@@ -82,6 +82,8 @@ class ImportTests(CatalogueImportTestCase):
             ],
         )
         self.assertEqual(CatalogueType.objects.get(key="standard").heading, "Standards")
+        self.assertEqual(CatalogueType.objects.get(key="policy").colour, "#8f338e")
+        self.assertEqual(CatalogueType.objects.get(key="standard").colour, "#1d70b8")
         self.assertEqual(CatalogueScope.objects.count(), 2)
         self.assertEqual(CatalogueProfession.objects.count(), 2)
         self.assertTrue(GovukTag.objects.filter(slug="security", name="Security").exists())
@@ -289,6 +291,7 @@ class ExportTests(CatalogueImportTestCase):
         self.assertEqual(vocab["types"]["standard"]["group"], "standards-and-policies")
         # A type with no entries has no group: it is not listed on import.
         self.assertNotIn("group", vocab["types"]["blog"])
+        self.assertEqual(vocab["types"]["policy"]["colour"], "#8f338e")
         self.assertEqual(self.result.entries, 7)
 
     def test_an_entry_file_holds_its_record(self):

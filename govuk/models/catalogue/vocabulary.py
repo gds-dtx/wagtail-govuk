@@ -3,8 +3,13 @@
 Topics are not one of these: they are the site's own ``GovukTag``s.
 """
 
+from django.core.validators import RegexValidator
 from django.db import models
+from django.forms import TextInput
 from wagtail.admin.panels import FieldPanel
+
+# Six digits only: the admin's colour picker shows no other form.
+COLOUR_VALIDATOR = RegexValidator(r"^#[0-9a-fA-F]{6}$", "Enter a colour as # and six hex digits, such as #1d70b8.")
 
 # Not a type's layout: a generic page takes a type of any layout, so the
 # catalogue format records it on the entry (``layout: generic``).
@@ -58,12 +63,19 @@ class CatalogueType(CatalogueVocabulary):
         help_text="Heading on group pages, such as 'Standards'.",
     )
     layout = models.CharField(max_length=20, choices=CatalogueLayout.choices)
+    colour = models.CharField(
+        max_length=7,
+        default="#1d70b8",
+        validators=[COLOUR_VALIDATOR],
+        help_text="Of the bar along the top of its cards. Its tag is a darker and a lighter shade of it.",
+    )
 
     panels = [
         FieldPanel("label"),
         FieldPanel("plural"),
         FieldPanel("key"),
         FieldPanel("layout"),
+        FieldPanel("colour", widget=TextInput(attrs={"type": "color"})),
         FieldPanel("description"),
         FieldPanel("sort_order"),
     ]

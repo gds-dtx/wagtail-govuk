@@ -253,7 +253,7 @@ class ContentEntryPage(CatalogueFlagMixin, Page):
     primary = models.BooleanField(
         default=False,
         verbose_name="Primary",
-        help_text="Listed first in its section, with a darker edge to its card.",
+        help_text="Listed first in its section, with a starred corner on its card.",
     )
     withdrawn = models.BooleanField(
         default=False, help_text="Still listed, with a withdrawn notice."

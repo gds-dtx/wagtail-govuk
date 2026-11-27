@@ -156,11 +156,50 @@
     flex-direction: column;
     padding: 15px 20px 20px;
     border: 1px solid #b1b4b6;
-    border-top: 5px solid #1d70b8;
+    border-top: 5px solid var(--app-card-colour);
     background-color: #ffffff;
+    /* GOV.UK blue until the catalogue_colours tag's rule for the card's colour applies. */
+    --app-card-colour: #1d70b8;
+    --app-card-star: #ffffff;
+    --app-tag-text: #0f385c;
+    --app-tag-background: #d2e2f1;
 }
-.app-catalogue-card--primary {
-    border-top-color: #0b0c0c;
+/* A primary card's corner, over the bar and the right border, with a star in it. */
+.app-catalogue-card--primary::before,
+.app-catalogue-card--primary::after {
+    position: absolute;
+    top: -5px;
+    right: -1px;
+    content: "";
+    pointer-events: none;
+    forced-color-adjust: none;
+}
+.app-catalogue-card--primary::before {
+    width: 36px;
+    height: 34px;
+    background-color: var(--app-card-colour);
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+/* A drawn star, not the ★ character, whose size varies by font.
+   Centred 12px in from the corner's top and right, the middle of its inscribed circle. */
+.app-catalogue-card--primary::after {
+    top: -2px;
+    right: 2px;
+    width: 16px;
+    height: 16px;
+    background-color: var(--app-card-star);
+    clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+@media (forced-colors: active) {
+    .app-catalogue-card--primary::before {
+        background-color: CanvasText;
+    }
+    .app-catalogue-card--primary::after {
+        background-color: Canvas;
+    }
+}
+.app-catalogue-card--primary .app-catalogue-card__title {
+    padding-right: 20px;
 }
 .app-catalogue-card__title {
     margin-bottom: 10px;
@@ -177,7 +216,16 @@
 .app-catalogue-card__badges {
     margin: 0 0 10px;
 }
-.app-catalogue-card__source {
+/* As the site's own start cards draw theirs. */
+.app-catalogue-card .govuk-tag {
+    font-size: 0.875rem;
+    color: var(--app-tag-text);
+    background-color: var(--app-tag-background);
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+.app-catalogue-card__meta p {
     margin-bottom: 0;
     color: #505a5f;
 }
@@ -316,20 +364,11 @@
     max-width: 40em;
     margin-bottom: 20px;
 }
+/* auto-fit: the row is filled however many filters a page has. */
 .app-catalogue-filters__selects {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12em), 1fr));
     gap: 0 20px;
-}
-@media (min-width: 40.0625em) {
-    .app-catalogue-filters__selects {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-@media (min-width: 64em) {
-    .app-catalogue-filters__selects {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
 }
 .app-catalogue-filters__selects .govuk-form-group {
     margin-bottom: 20px;

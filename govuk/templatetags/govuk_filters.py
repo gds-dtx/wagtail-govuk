@@ -2,6 +2,7 @@ from urllib.parse import urlencode
 
 from django import template
 from django.urls import reverse
+from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from wagtail.rich_text import expand_db_html
 
@@ -54,6 +55,23 @@ TABLE_CELL_ALIGNMENT_CLASSES = {
     "htCenter": "app-table-cell--align-centre",
     "htRight": "app-table-cell--align-right",
 }
+
+
+@register.simple_tag(takes_context=True)
+def catalogue_colours(context):
+    """Each catalogue type's card and tag colours, nonced as the CSP blocks style attributes.
+
+    In the page, not beside the cards, so it also styles cards ai-search.js adds later.
+    """
+    from govuk.catalogue.colours import catalogue_style_sheet
+
+    # Not "if nonce": Django's lazy nonce is falsy until something has used it, and this comes first.
+    nonce = context.get("csp_nonce")
+    return format_html(
+        "<style{}>{}</style>",
+        format_html(' nonce="{}"', nonce) if nonce is not None else "",
+        catalogue_style_sheet(),  # only normalised #rrggbb values
+    )
 
 
 @register.simple_tag(takes_context=True)

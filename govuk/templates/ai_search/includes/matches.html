@@ -6,7 +6,7 @@
     <h3 class="govuk-heading-m">Close matches</h3>
     <p class="govuk-body">The most relevant content to what you asked. Check each one to be sure it applies to what you are doing.</p>
     <ul class="app-catalogue-cards">
-        {% for card in cards %}{% include "catalogue/includes/card.html" with heading_level=3 show_type=True %}{% endfor %}
+        {% for card in cards %}{% include "catalogue/includes/card.html" with heading_level=3 %}{% endfor %}
     </ul>
 {% else %}
     <h3 class="govuk-heading-m">Nothing close to your question</h3>

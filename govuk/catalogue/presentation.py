@@ -5,15 +5,17 @@ Models are imported inside functions: the model module imports this one.
 
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup
 from django.core.paginator import Paginator
 from django.http import JsonResponse
+from django.utils import timezone
 from django.utils.safestring import mark_safe
 from django.utils.text import slugify
 
+from .colours import DEFAULT_COLOUR, colour_class
 from .filtering import filter_entries
 from .render import _GithubAnchors
 
@@ -23,19 +25,13 @@ _IMG_SRC = re.compile(r'<img[^>]*\ssrc="([^"]+)"')
 
 def vocabularies() -> dict:
     """The vocabulary snippets as key -> label dicts, in order."""
-    from govuk.models import (
-        CatalogueProfession,
-        CatalogueScope,
-        CatalogueType,
-        GovukTag,
-    )
+    from govuk.models import CatalogueProfession, CatalogueType, GovukTag
 
     return {
         "types": {
-            t.key: {"label": t.label, "plural": t.heading, "layout": t.layout}
+            t.key: {"label": t.label, "plural": t.heading, "layout": t.layout, "colour": t.colour}
             for t in CatalogueType.objects.all()
         },
-        "scope": {s.key: {"label": s.label} for s in CatalogueScope.objects.all()},
         "professions": {p.key: {"label": p.label} for p in CatalogueProfession.objects.all()},
         "tags": {t.slug: {"label": t.name} for t in GovukTag.objects.order_by("name")},
     }
@@ -50,7 +46,6 @@ class EntryView:
     short_description: str
     long_description: str
     type: str
-    scope: str
     tags: list[str]
     professions: list[str]
     owner: dict
@@ -59,21 +54,28 @@ class EntryView:
     url: str
     external: bool
     source_name: str = ""
+    updated: dict | None = None
     position: int = 0
     extra: dict = field(default_factory=dict)
 
     @classmethod
-    def from_page(cls, page, request, position: int = 0) -> "EntryView":
+    def from_page(cls, page, request, position: int = 0, dates=None) -> "EntryView":
+        """``dates`` is ``source_dates()`` for many pages at once; looked up when absent."""
         from govuk.models import ContentEntryExternalPage
 
         external = isinstance(page, ContentEntryExternalPage)
+        if external:
+            if dates is None:
+                dates = source_dates([page.source_url])
+            updated = dated(None, dates.get(page.source_url))
+        else:
+            updated = publication(page)
         return cls(
             page=page,
             title=page.title,
             short_description=page.short_description,
             long_description=page.long_description,
             type=page.entry_type.key,
-            scope=page.scope.key,
             tags=[tag.slug for tag in page.topics.all()],
             professions=[profession.key for profession in page.professions.all()],
             owner={"organisation": page.owner_organisation},
@@ -82,8 +84,36 @@ class EntryView:
             url=page.source_url if external else (page.get_url(request) or ""),
             external=external,
             source_name=page.source_name if external or page.source_url else "",
+            updated=updated,
             position=position,
         )
+
+
+def source_dates(urls) -> dict[str, datetime]:
+    """When each source last changed, by its own account: only GOV.UK's Content API says."""
+    from govuk.models import HarvestedSource
+
+    return dict(
+        HarvestedSource.objects.filter(url__in=[url for url in urls if url])
+        .exclude(source_updated_at=None)
+        .values_list("url", "source_updated_at")
+    )
+
+
+def dated(published: datetime | None, updated: datetime | None) -> dict | None:
+    """A card's "Published"/"Last updated" line, by the day."""
+    published_on = timezone.localdate(published) if published else None
+    updated_on = timezone.localdate(updated) if updated else None
+    if updated_on and (published_on is None or updated_on > published_on):
+        return {"label": "Last updated", "on": updated_on}
+    if published_on:
+        return {"label": "Published", "on": published_on}
+    return None
+
+
+def publication(obj) -> dict | None:
+    """``dated`` from Wagtail's publishing dates, for a page, role or skill on this site."""
+    return dated(getattr(obj, "first_published_at", None), getattr(obj, "last_published_at", None))
 
 
 def live_entries(queryset) -> list:
@@ -96,18 +126,29 @@ def live_entries(queryset) -> list:
 
 
 def entry_views(pages, request) -> list[EntryView]:
-    return [EntryView.from_page(page, request, position) for position, page in enumerate(pages)]
+    from govuk.models import ContentEntryExternalPage
+
+    pages = list(pages)
+    dates = source_dates(
+        page.source_url for page in pages if isinstance(page, ContentEntryExternalPage)
+    )
+    return [
+        EntryView.from_page(page, request, position, dates=dates)
+        for position, page in enumerate(pages)
+    ]
 
 
 def card(view: EntryView, vocab: dict) -> dict:
-
+    entry_type = vocab.get("types", {}).get(view.type, {})
     return {
         "title": view.title,
         "url": view.url,
         "external": view.external,
         "source_name": view.source_name,
         "description": view.short_description,
-        "type": vocab.get("types", {}).get(view.type, {}).get("label", view.type),
+        "type": entry_type.get("label", view.type),
+        "colour_class": colour_class(entry_type.get("colour", DEFAULT_COLOUR)),
+        "updated": view.updated,
         "primary": view.primary,
         "withdrawn": view.withdrawn,
     }
@@ -118,13 +159,13 @@ def _primary_first(views):
 
 
 def _filter_form(entry_filter) -> dict:
-    labels = {"tag": "Topic", "profession": "Profession", "type": "Type", "scope": "Scope"}
+    labels = {"tag": "Topic", "profession": "Profession", "type": "Content type"}
     return {
         "query": entry_filter.query,
         "active": entry_filter.active,
         "fields": [
             {"name": name, "label": labels[name], "options": entry_filter.options[name]}
-            for name in ("tag", "profession", "type", "scope")
+            for name in ("tag", "profession", "type")
             if entry_filter.options.get(name)
         ],
     }

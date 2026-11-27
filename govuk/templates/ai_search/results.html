@@ -3,7 +3,7 @@
     Context from govuk/ai_search/views.py. "deferred": sent by ai-search.js, which
     then fetches the matches and summary from the ASGI service with "access".
 {% endcomment %}
-{% block title %}{% if area.error %}Error: {% endif %}{% if asked %}Query results{% else %}{{ area.label }}{% endif %}{% endblock %}
+{% block title %}{% if area.error %}Error: {% endif %}{% if asked %}Search results{% else %}{{ area.label }}{% endif %}{% endblock %}
 {% block content %}
     {% if area.error %}
         <div class="govuk-width-container">
@@ -25,7 +25,7 @@
         <div class="govuk-width-container govuk-!-padding-bottom-6">
             <div class="govuk-grid-row">
                 <div class="govuk-grid-column-two-thirds">
-                    <h2 class="govuk-heading-l">Query results</h2>
+                    <h2 class="govuk-heading-l">Search results</h2>
                     {% if summary_on %}
                         {# Only when deferred: the fetched matches bring the summary's ticket. #}
                         <div class="app-ai-search-summary"

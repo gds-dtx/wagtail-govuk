@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 from wagtail.models import Page
 
 from govuk.catalogue import presentation
+from govuk.catalogue.colours import SITE_PAGE_COLOUR, colour_class
 from govuk.content_index.extract import entry_for
 from govuk.models import IndexedDocument, entry_page_models
 
@@ -43,6 +44,7 @@ def _entry_card(entry, page, hit, request, vocab) -> dict:
 def _other_card(document, page, hit, request) -> dict:
     url = page.get_url(request) if page is not None else _local(hit.url)
     kind_label = "" if document.kind == IndexedDocument.Kind.PAGE else document.get_kind_display()
+    published = page if page is not None else document.role if document.role_id else document.skill
     return {
         "title": document.title,
         "url": url or _local(hit.url),
@@ -50,6 +52,8 @@ def _other_card(document, page, hit, request) -> dict:
         "source_name": "",
         "description": document.description or hit.snippet,
         "type": document.type_label or kind_label,
+        "colour_class": colour_class(SITE_PAGE_COLOUR),
+        "updated": presentation.publication(published),
         "primary": False,
         "withdrawn": False,
         "section": _section_line(hit),

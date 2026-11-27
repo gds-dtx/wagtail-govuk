@@ -25,6 +25,7 @@ from django.utils.text import slugify
 from .adapters import build_bundle
 from .bundle import GuidanceSyncError
 from .catalogue import read_catalogue
+from .colours import normalised
 from .fetch import fetch_files, resolve_commit
 from .markdown_blocks import markdown_to_blocks, split_sections
 from .render import LinkResolver, render_bundle
@@ -192,6 +193,10 @@ class _Importer:
                 if model is CatalogueType:
                     values["plural"] = value.get("plural") or ""
                     values["layout"] = value.get("layout") or "guide"
+                    # Left as it is when absent, so an older export keeps the chosen colour.
+                    colour = normalised(value.get("colour"))
+                    if colour:
+                        values["colour"] = colour
                 row = model.objects.filter(key=key).first()
                 if row is None:
                     model.objects.create(key=key, **values)

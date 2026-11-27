@@ -1,6 +1,7 @@
 """AI search: /search/, the matches endpoint, and the button and search area."""
 
 import re
+from datetime import datetime, timezone as dt_timezone
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -8,7 +9,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.core.cache import cache
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
-from wagtail.models import Site
+from wagtail.models import Page, Site
 
 from govuk.ai_search import (
     MATCHES_PATH,
@@ -111,6 +112,15 @@ class SearchPageTests(WithFakeModel):
         self.assertIn("no-store", response["Cache-Control"])
         self.assertEqual(response["X-Robots-Tag"], "noindex")
 
+    def test_a_pages_card_says_when_it_was_published(self):
+        Page.objects.filter(pk=self.pay.pk).update(
+            first_published_at=datetime(2026, 1, 6, tzinfo=dt_timezone.utc),
+            last_published_at=datetime(2026, 1, 6, tzinfo=dt_timezone.utc),
+        )
+        html = self.client.get(self.url, {"question": "How do I take money from the public?"}).content.decode()
+        self.assertIn('Published <time datetime="2026-01-06">6 January 2026</time>', html)
+        self.assertIn("app-catalogue-card app-colour-19609f", html)
+
     def test_a_query_in_the_address_is_not_searched(self):
         html = self.client.get(self.url, {"query": "payments"}).content.decode()
         self.assertNotIn("app-catalogue-card", html)
@@ -120,7 +130,7 @@ class SearchPageTests(WithFakeModel):
         with mock.patch("govuk.ai_search.views.get_claude") as get_claude:
             response = self.client.get(self.url, {"question": "How do I take money from the public?"})
         get_claude.assert_not_called()
-        self.assertContains(response, "<title>Query results")
+        self.assertContains(response, "<title>Search results")
         self.assertContains(response, '<h3 class="govuk-heading-m">Close matches</h3>')
         self.assertContains(response, 'class="app-catalogue-card')
         self.assertContains(response, self.pay.url)
@@ -649,7 +659,7 @@ class ButtonAndAreaTests(WithFakeModel):
         self.assertIn('value="How do I take money from the public?"', band)
         self.assertIn("govuk-service-navigation--inverse", html)
         self.assertIn('class="app-catalogue-card', self._below(html))
-        self.assertIn("<title>Query results", html)
+        self.assertIn("<title>Search results", html)
         self.assertNotIn("Edit this page", html)
 
     def test_an_empty_question_is_an_error_under_the_box(self):
@@ -696,7 +706,11 @@ class CatalogueCardTests(TestCase):
         self.assertIn('href="https://www.gov.uk/guidance/external-policy"', html)
 
     def test_each_card_has_its_type(self):
-        self.assertIn("app-catalogue-badge--grey\">Policy<", self._ask("external policy"))
+        html = self._ask("external policy")
+        self.assertIn('<strong class="govuk-tag app-catalogue-card__tag">Policy</strong>', html)
+        self.assertIn("app-catalogue-card app-colour-8f338e", html)
+        # In the page, so cards ai-search.js adds later are coloured too.
+        self.assertIn("li.app-colour-8f338e{", html)
 
     def test_at_most_six_cards(self):
         with mock.patch("govuk.ai_search.views.MAX_CARDS", 2):
